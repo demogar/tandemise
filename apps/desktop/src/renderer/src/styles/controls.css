@@ -397,7 +397,15 @@ kbd {
   color: var(--text-tertiary);
 }
 
+/*
+ * `text-overflow` only takes effect on a block container with inline content -
+ * on a flex container the overflowing item is clipped with no ellipsis at all.
+ * Several callers put this on a `.list__subtitle`, which is a flex row, so the
+ * display override is what makes the ellipsis actually appear.
+ */
 .truncate {
+  display: block;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

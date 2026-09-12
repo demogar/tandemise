@@ -31,6 +31,17 @@ export interface PolicyRequest {
   readonly shell?: ShellContext;
   readonly grants: readonly CapabilityGrant[];
   readonly autonomy: AutonomySettings;
+  /**
+   * Whether the mission's plan has been approved by a human.
+   *
+   * This is what gives `externalWrites: 'policy'` - the default - a meaning
+   * distinct from `'auto'`. MVP.md §18.2 says external side effects are
+   * "usually allow after plan approval", and without this flag that sentence
+   * has no representation: the dial would have three effective values instead
+   * of four, and a mission would be able to open a pull request before anyone
+   * had agreed to the plan that proposed it. Absent means "not approved".
+   */
+  readonly planApproved?: boolean;
   /** Carried through to the decision so the event log can attribute it. */
   readonly assignmentId?: WorkerAssignment['id'];
 }
@@ -128,7 +139,7 @@ export function createPolicyEngine(options: PolicyEngineOptions = {}): PolicyEng
 
       const matchedGrant = inScope.find((g) => g.approvalMode === 'auto') ?? inScope[0]!;
       const grantFloor: PolicyOutcome = matchedGrant.approvalMode === 'auto' ? 'allow' : 'require_approval';
-      const { outcome: riskFloor, reason: riskReason } = floorForRisk(risk, request.autonomy);
+      const { outcome: riskFloor, reason: riskReason } = floorForRisk(risk, request.autonomy, request.planApproved ?? false);
       const outcome = stricter(grantFloor, riskFloor);
 
       const reason = outcome === 'allow'
@@ -166,7 +177,11 @@ function isExpired(grant: CapabilityGrant, now: Timestamp): boolean {
  * The floor the risk class imposes regardless of what the grant says, read off
  * the workspace autonomy dials (MVP.md §18.2 and Appendix A).
  */
-function floorForRisk(risk: RiskClass, autonomy: AutonomySettings): { outcome: PolicyOutcome; reason: string } {
+function floorForRisk(
+  risk: RiskClass,
+  autonomy: AutonomySettings,
+  planApproved: boolean,
+): { outcome: PolicyOutcome; reason: string } {
   switch (risk) {
     case 'read':
       return { outcome: 'allow', reason: 'reads are auto-allowed within granted scope' };
@@ -178,10 +193,11 @@ function floorForRisk(risk: RiskClass, autonomy: AutonomySettings): { outcome: P
       switch (autonomy.externalWrites) {
         case 'deny': return { outcome: 'deny', reason: 'this workspace forbids external writes' };
         case 'ask': return { outcome: 'require_approval', reason: 'this workspace asks before external writes' };
-        // 'policy' means "whatever the grant says", and the grant was already
-        // checked; 'auto' means allow. Both land on the grant's own floor.
-        case 'auto':
-        case 'policy': return { outcome: 'allow', reason: 'external writes follow the grant' };
+        case 'auto': return { outcome: 'allow', reason: 'external writes follow the grant' };
+        case 'policy':
+          return planApproved
+            ? { outcome: 'allow', reason: 'the mission plan is approved, so external writes follow the grant' }
+            : { outcome: 'require_approval', reason: 'external writes need an approved mission plan first' };
       }
     case 'destructive':
       return { outcome: 'require_approval', reason: 'destructive actions always require human approval' };

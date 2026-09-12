@@ -135,7 +135,9 @@
   flex: none;
 }
 
+/* Inline margins, not a flex `gap`: a truncating subtitle is a block box. */
 .sep {
+  margin: 0 var(--s2);
   color: var(--text-tertiary);
   opacity: 0.6;
 }

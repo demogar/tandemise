@@ -507,16 +507,19 @@
   background: var(--accent);
 }
 
+/* Both are spans in the markup; without this they run together on one line. */
 .option__label {
+  display: block;
   font-size: var(--fs-base);
   font-weight: 550;
 }
 
 .option__desc {
+  display: block;
   font-size: var(--fs-sm);
   color: var(--text-secondary);
   line-height: 1.5;
-  margin-top: 1px;
+  margin-top: var(--s1);
 }
 
 /* ------------------------------------------------------------------- prose */

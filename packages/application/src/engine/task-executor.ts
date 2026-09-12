@@ -9,13 +9,16 @@ import type {
 } from '@tandemise/domain';
 import type { ContextCompiler, ExpectedArtifact } from '@tandemise/context';
 import type { ExecutionTarget, ExecutionTargetManager } from '@tandemise/execution-core';
-import type { ApprovalFactory, GrantBuilder } from '@tandemise/policy';
+import type { ApprovalFactory, GrantBuilder, PolicyEngine } from '@tandemise/policy';
+import type { ToolBroker } from '@tandemise/integrations-core';
+import { RunScopedToolGateway } from '@tandemise/integrations-core';
 import type { RuntimeManager } from '@tandemise/runtimes-core';
 import type { Clock, Logger, RunId, TandemisePaths, TaskId } from '@tandemise/shared';
 import { TandemiseError, errorMessage, ids, slugify, summarize } from '@tandemise/shared';
 import type { ArtifactTemplatePort } from '../ports.js';
 import type { EventRecorder, EventScope } from '../support/event-recorder.js';
 import { runtimeCapabilitiesFor } from '../support/capabilities.js';
+import type { RuntimeOverrides } from '../support/runtime-overrides.js';
 import { ARTIFACT_OUT_DIR, ArtifactHarvester, type HarvestResult } from './harvester.js';
 import type { CheckService } from './checks.js';
 import type { GateService } from './gates.js';
@@ -54,7 +57,12 @@ export interface TaskExecutorDeps {
   readonly targetManager: ExecutionTargetManager;
   readonly contextCompiler: ContextCompiler;
   readonly grantBuilder: GrantBuilder;
+  /** The decision point every capability this attempt is given must survive. */
+  readonly policy: PolicyEngine;
   readonly approvalFactory: ApprovalFactory;
+  /** Null when no integration surface is composed; the run simply gets no tools. */
+  readonly toolBroker: ToolBroker | null;
+  readonly overrides: RuntimeOverrides;
   readonly templates: ArtifactTemplatePort;
   readonly harvester: ArtifactHarvester;
   readonly checks: CheckService;
@@ -170,7 +178,7 @@ export class TaskExecutor {
 
     try {
       // 4. Grants: least privilege, scoped to this target and this mission.
-      const grants = deps.grantBuilder.build({
+      const requested = deps.grantBuilder.build({
         role,
         task: running,
         autonomy: workspace.autonomy,
@@ -179,6 +187,11 @@ export class TaskExecutor {
         readOnlyPaths: repository === null ? [] : [repository.path],
         ttlMs: task.executionPolicy.maxWallTimeMs,
       });
+      const vetted = this.#vet(requested, running, workspace, scope);
+      if (vetted.blockedOn !== null) {
+        return this.#block(running, scope, vetted.blockedOn);
+      }
+      const grants = vetted.grants;
 
       // 5. Assignment: the unit permissions attach to.
       const assignment = deps.assignments.create({
@@ -197,10 +210,15 @@ export class TaskExecutor {
         createdAt: deps.clock.now(),
       });
 
-      // 6. Context.
+      // 6. Context. The tool surface is narrowed to this assignment before the
+      //    prompt is written, so a worker is never told about a tool its grants
+      //    would not let it call.
+      const tools = deps.toolBroker === null
+        ? []
+        : RunScopedToolGateway.for(deps.toolBroker, assignment, deps.clock).names();
       await deps.harvester.prepare(target, scope);
       const prompt = await this.#compilePrompt({
-        ...ctx, task: running, workspace, role, grants, target,
+        ...ctx, task: running, workspace, role, grants, target, tools,
       });
 
       // 7. Run.
@@ -444,6 +462,59 @@ export class TaskExecutor {
     return this.#settle(task, scope, 'BLOCKED', feedback);
   }
 
+  // -------------------------------------------------------------------- policy
+
+  /**
+   * Runs every grant the builder produced through the policy engine before the
+   * worker is launched (MVP.md §19.2).
+   *
+   * The grant builder answers "what did the role and the task ask for?". That
+   * is a *description*. The policy engine answers "what does this workspace
+   * permit, at this risk class, right now?" - and that is the decision. Without
+   * this step the engine's shell classification and autonomy dials are computed
+   * and discarded, and a worker is handed whatever its role template listed.
+   *
+   * A denied capability is dropped from the grant set and recorded as
+   * `policy.denied`, so the worker is launched strictly narrower rather than
+   * failing later for a reason nobody can see. A denied capability the task
+   * declared as *required* is different: running without it would produce work
+   * that silently does not do what the plan said, so the task blocks.
+   */
+  #vet(
+    grants: readonly CapabilityGrant[],
+    task: MissionTask,
+    workspace: Workspace,
+    scope: EventScope,
+  ): { grants: readonly CapabilityGrant[]; blockedOn: string | null } {
+    const required = new Set(task.requiredCapabilities);
+    const allowed: CapabilityGrant[] = [];
+
+    for (const grant of grants) {
+      const decision = this.deps.policy.evaluate({
+        capability: grant.capability,
+        ...(grant.resourceScope[0] === undefined ? {} : { resource: grant.resourceScope[0] }),
+        grants,
+        autonomy: workspace.autonomy,
+      });
+      if (decision.outcome !== 'deny') {
+        allowed.push(grant);
+        continue;
+      }
+      this.deps.recorder.record(scope, {
+        type: 'policy.denied',
+        capability: grant.capability,
+        reason: decision.reason,
+      });
+      if (required.has(grant.capability)) {
+        return {
+          grants: allowed,
+          blockedOn: `'${task.key}' requires '${grant.capability}', which policy refuses: ${decision.reason}`,
+        };
+      }
+    }
+    return { grants: allowed, blockedOn: null };
+  }
+
   // ------------------------------------------------------------------- context
 
   async #compilePrompt(input: PromptInput): Promise<string> {
@@ -470,7 +541,7 @@ export class TaskExecutor {
         artifacts: expected,
         workingDirectory: target.workingDirectory,
         completionGate: task.completionGate,
-        notes: this.#contractNotes(task, target),
+        notes: this.#contractNotes(task, target, input.tools),
       },
     });
 
@@ -484,7 +555,7 @@ export class TaskExecutor {
     return compiled.prompt;
   }
 
-  #contractNotes(task: MissionTask, target: ExecutionTarget): readonly string[] {
+  #contractNotes(task: MissionTask, target: ExecutionTarget, tools: readonly string[]): readonly string[] {
     const notes = [
       `Write each artifact to its own file under \`${ARTIFACT_OUT_DIR}/\` in ${target.workingDirectory}. `
       + `The file name is the artifact type followed by \`.md\` — for example \`${ARTIFACT_OUT_DIR}/ProductSpec.md\`. `
@@ -495,6 +566,12 @@ export class TaskExecutor {
       notes.push(
         'You are on your own branch in an isolated worktree. Commit your code changes. '
         + 'Anything left uncommitted is committed for you and attributed to this run.',
+      );
+    }
+    if (tools.length > 0) {
+      notes.push(
+        `Integration tools available to you: ${tools.join(', ')}. `
+        + 'Every call is checked against this task\'s grants; one that needs a human is paused, not refused.',
       );
     }
     // The retry feedback loop: the previous attempt's failure, stated verbatim.
@@ -835,8 +912,19 @@ export class TaskExecutor {
   // ----------------------------------------------------------------- lookups
 
   #candidateProfiles(workspace: Workspace, task: MissionTask): readonly RuntimeProfile[] {
-    const routed = workspace.routing[task.roleId];
     const all = this.deps.runtimeProfiles.list(workspace.id).filter((p) => p.enabled);
+
+    // A manual retry may name a runtime. It is a preference, not a bypass: the
+    // profile still has to pass health and capability selection, so overriding
+    // onto a runtime that cannot do the work blocks with a reason rather than
+    // failing halfway through the run.
+    const override = this.deps.overrides.take(task.id);
+    if (override !== undefined) {
+      const chosen = all.filter((p) => p.id === override);
+      if (chosen.length > 0) return chosen;
+    }
+
+    const routed = workspace.routing[task.roleId];
     if (routed === undefined || routed.length === 0) return all;
     // Routing is an ordered preference list, so it is walked in order and a
     // profile it does not mention is not a candidate at all.
@@ -875,6 +963,7 @@ interface AttemptContext {
 interface PromptInput extends AttemptContext {
   readonly grants: readonly CapabilityGrant[];
   readonly target: ExecutionTarget;
+  readonly tools: readonly string[];
 }
 
 interface DriveInput {
