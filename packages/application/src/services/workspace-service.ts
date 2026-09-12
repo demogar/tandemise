@@ -41,38 +41,7 @@ export class WorkspaceServiceImpl implements WorkspaceService {
     return this.workspaces.list().map((w) => this.#view(w));
   }
 
-  /**
-   * Guarantees the daemon always has a workspace to work in.
-   *
-   * Every screen assumes one exists - Settings reads `workspaces[0]` to offer
-   * the "add a repository" action - so an empty database was a dead end: no
-   * workspace, and no way to make one. Seeding on first start is the honest fix
-   * because a workspace with no repository carries no decisions a user would
-   * want to make themselves; the interesting choice is which repository to
-   * point it at, and that stays theirs.
-   *
-   * Idempotent: a second call with any workspace present does nothing.
-   */
-  ensureDefault(): WorkspaceView | undefined {
-    const existing = this.workspaces.list();
-    if (existing.length > 0) return undefined;
-    this.#seedBuiltInRoles();
-    const workspace = this.workspaces.create({
-      id: ids.workspace(),
-      name: DEFAULT_WORKSPACE_NAME,
-      defaultRepositoryId: null,
-      autonomy: DEFAULT_AUTONOMY,
-      concurrency: DEFAULT_CONCURRENCY,
-      routing: this.#defaultRouting(),
-      defaultAutonomyLevel: 'balanced',
-      knowledge: EMPTY_KNOWLEDGE,
-    });
-    return this.view(workspace.id);
-  }
-
   async create(request: CreateWorkspaceRequest): Promise<WorkspaceView> {
-    this.#seedBuiltInRoles();
-
     const id = ids.workspace();
     const workspace = this.workspaces.create({
       id,
@@ -84,6 +53,11 @@ export class WorkspaceServiceImpl implements WorkspaceService {
       defaultAutonomyLevel: 'balanced',
       knowledge: EMPTY_KNOWLEDGE,
     });
+
+    // Seeded into the project rather than globally: a project's roles are its
+    // own, so sharpening the reviewer's contract for one codebase does not
+    // quietly change how every other project reviews.
+    this.#seedBuiltInRoles(id);
 
     if (request.repositoryPath !== undefined) {
       const repository = await this.addRepository(id, { path: request.repositoryPath });
@@ -187,13 +161,13 @@ export class WorkspaceServiceImpl implements WorkspaceService {
    * row, which is what makes an upgraded built-in instruction take effect on the
    * next daemon start without a migration.
    */
-  #seedBuiltInRoles(): void {
+  #seedBuiltInRoles(workspaceId: WorkspaceId): void {
     const now = this.clock.now();
     for (const role of BUILT_IN_ROLES) {
-      const existing = this.roles.get(role.id, null);
+      const existing = this.roles.get(role.id, workspaceId);
       this.roles.upsert({
         ...role,
-        workspaceId: null,
+        workspaceId,
         createdAt: existing?.createdAt ?? now,
         updatedAt: now,
       });

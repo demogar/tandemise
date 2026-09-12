@@ -686,15 +686,36 @@ const customRole = services.roles.upsert({
   producesArtifacts: ['ProductSpec'], consumesArtifacts: [],
   defaultIsolation: 'none', outputContract: 'A ProductSpec.',
 });
-ok('a workspace can override a built-in role',
+ok('a project can rewrite a built-in role',
   customRole.workspaceId === workspaceId && customRole.builtIn === true
   && services.roles.list(workspaceId).find((r) => r.id === 'product')?.name === 'Product Manager (house style)');
+
+// Roles belong to the project, so a second project must not see the first's
+// house style - that is the whole reason for scoping them.
+const otherWorkspace = (await services.workspaces.create({ name: 'Another project' })).workspace.id;
+ok('another project keeps the shipped role',
+  services.roles.list(otherWorkspace).find((r) => r.id === 'product')?.name === 'Product Manager',
+  services.roles.list(otherWorkspace).find((r) => r.id === 'product')?.name);
+
+// Removing a built-in restores it rather than deleting it: the workflow presets
+// name these ids, and losing one would break planning with no way back.
 services.roles.remove('product', workspaceId);
-ok('removing the override restores the built-in',
+ok('removing a built-in restores the shipped definition',
   services.roles.list(workspaceId).find((r) => r.id === 'product')?.name === 'Product Manager');
-let roleRefusal = null;
-try { services.roles.remove('design', workspaceId); } catch (e) { roleRefusal = e; }
-ok('a global built-in is not deletable', roleRefusal?.code === 'PRECONDITION_FAILED');
+ok('a built-in survives removal', services.roles.list(workspaceId).some((r) => r.id === 'design'));
+services.roles.remove('design', workspaceId);
+ok('removing an untouched built-in still leaves it there',
+  services.roles.list(workspaceId).find((r) => r.id === 'design')?.builtIn === true);
+
+services.roles.upsert({
+  workspaceId, id: 'house_scribe', name: 'Scribe',
+  summary: 's', instructions: 'i',
+  defaultCapabilities: ['artifact.write'], producesArtifacts: [], consumesArtifacts: [],
+  defaultIsolation: 'none', outputContract: 'o',
+});
+ok('a role someone wrote can be created', services.roles.list(workspaceId).some((r) => r.id === 'house_scribe'));
+services.roles.remove('house_scribe', workspaceId);
+ok('a role someone wrote is actually deleted', !services.roles.list(workspaceId).some((r) => r.id === 'house_scribe'));
 
 ok('artifacts are searchable', services.artifacts.search(workspaceId, 'clear').length > 0,
   `${services.artifacts.search(workspaceId, 'clear').length} hits`);

@@ -100,16 +100,39 @@ try {
       ws.send(JSON.stringify({ id: i, method: 'Runtime.evaluate', params: { expression, returnByValue: true, awaitPromise: true } }));
     });
 
+  // A fresh install has no project, and the daemon no longer invents one: the
+  // first screen asks for one. Anything else here means the seeding came back.
   let text = '';
   for (let i = 0; i < 40; i++) {
     text = (await evalJs('document.body.innerText')) ?? '';
-    if (text.includes('Daemon connected') || text.includes('unreachable')) break;
+    if (text.includes('Create your first project') || text.includes('unreachable')) break;
     await sleep(500);
   }
-
-  ok('UI reports the daemon as connected', text.includes('Daemon connected'), text.slice(0, 80).replace(/\n/g, ' / '));
+  ok('a new install asks for a project first', text.includes('Create your first project'),
+    text.slice(0, 70).replace(/\n/g, ' / '));
+  ok('no project is invented for the user', !text.includes('My workspace'));
   ok('UI does not show the unreachable screen', !/unreachable/i.test(text));
-  ok('home screen rendered real data', text.includes('workspace'), 'workspace name present');
+
+  // Create one the way a person would: type a name, press the button.
+  await evalJs(`(() => {
+    const input = document.querySelector('.onboard input');
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+    setter.call(input, 'Live check project');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    return input.value;
+  })()`);
+  await evalJs(`[...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Create project')?.click()`);
+
+  for (let i = 0; i < 40; i++) {
+    text = (await evalJs('document.body.innerText')) ?? '';
+    if (text.includes('Daemon connected')) break;
+    await sleep(500);
+  }
+  ok('UI reports the daemon as connected', text.includes('Daemon connected'), text.slice(0, 60).replace(/\n/g, ' / '));
+  ok('the new project frames the sidebar',
+    (await evalJs(`[...document.querySelectorAll('.sidebar__section')].map((s) => s.textContent.trim()).join('|')`)) === 'Live check project|App',
+    await evalJs(`[...document.querySelectorAll('.sidebar__section')].map((s) => s.textContent.trim()).join('|')`));
+  ok('home screen rendered real data', text.includes('Live check project'));
   ws.close();
 } catch (error) {
   failures.push(`threw: ${error.message}`);

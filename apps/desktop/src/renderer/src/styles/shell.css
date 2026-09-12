@@ -498,3 +498,52 @@
   margin: var(--s1) 0;
   background: var(--border);
 }
+
+/* ------------------------------------------------------------- first run */
+.onboard {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  padding: var(--s6) var(--s5);
+  background: var(--canvas);
+  overflow-y: auto;
+  -webkit-app-region: drag;
+}
+
+.onboard__inner {
+  width: 100%;
+  max-width: 460px;
+  text-align: center;
+  -webkit-app-region: no-drag;
+}
+
+.onboard__mark {
+  display: grid;
+  place-items: center;
+  width: 60px;
+  height: 60px;
+  margin: 0 auto var(--s4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 16px);
+  background: var(--surface);
+  color: var(--accent);
+}
+
+.onboard__title {
+  margin: 0 0 var(--s2);
+  font-size: var(--fs-xl, 22px);
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.onboard__body {
+  margin: 0 0 var(--s6);
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+}
+
+.list__row--bordered {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}

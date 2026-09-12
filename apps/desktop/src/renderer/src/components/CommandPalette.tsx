@@ -38,6 +38,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }): JSX.Elemen
       { id: 'workforce', group: 'Go to', label: 'Workforce', icon: 'workforce', run: go('/workforce') },
       { id: 'runtimes', group: 'Go to', label: 'Runtimes', icon: 'runtimes', run: go('/runtimes') },
       { id: 'integrations', group: 'Go to', label: 'Integrations', icon: 'integrations', run: go('/integrations') },
+      { id: 'project', group: 'Go to', label: 'Repositories', icon: 'folder', run: go('/project') },
       { id: 'settings', group: 'Go to', label: 'Settings', icon: 'settings', run: go('/settings') },
     ];
     const missionCommands: Command[] = (missions.data ?? []).map((summary) => ({

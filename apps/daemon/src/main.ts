@@ -39,13 +39,6 @@ export async function startDaemon(overrides: Parameters<typeof loadConfig>[0] = 
   // before the scheduler can dispatch anything (MVP.md §21.2).
   await container.resolve(RECOVERY_SERVICE).run();
 
-  // A fresh install has no workspace, and every screen assumes one exists -
-  // Settings reads the first workspace to offer "add a repository". Seeding it
-  // here means the app opens ready to be pointed at a repository rather than at
-  // a dead end.
-  const seeded = services.workspaces.ensureDefault();
-  if (seeded) log.info('workspace.seeded', { workspaceId: seeded.workspace.id, name: seeded.workspace.name });
-
   await lifecycle.start();
 
   const token = loadOrCreateToken(config.home);

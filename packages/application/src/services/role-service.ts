@@ -8,10 +8,17 @@ import type { RoleService } from '../services.js';
 /**
  * Role templates (MVP.md §16.3).
  *
- * A workspace edits a built-in role by *overriding* it - the global template is
- * never mutated. That is what makes "reset to default" a delete rather than a
- * re-seed, and it means an upgrade that improves a built-in role's instructions
- * reaches every workspace that has not deliberately diverged.
+ * A project owns its roles: they are seeded into it when it is created, and
+ * sharpening the reviewer's contract for one codebase leaves every other
+ * project alone. That is the point of scoping them - a house style is a
+ * property of a codebase, not of the machine it is checked out on.
+ *
+ * Removing a role therefore means two different things, and both are what the
+ * word should mean in context. A role someone wrote is deleted. A built-in is
+ * restored to its shipped definition instead, because the workflow presets name
+ * built-in roles by id and a plan referencing a role that no longer exists
+ * fails validation - losing `review` would quietly break planning for the whole
+ * project, with no way back through the UI.
  */
 export class RoleServiceImpl implements RoleService {
   constructor(
@@ -38,8 +45,8 @@ export class RoleServiceImpl implements RoleService {
       consumesArtifacts: request.consumesArtifacts,
       defaultIsolation: request.defaultIsolation,
       outputContract: request.outputContract,
-      // A workspace override of a built-in keeps the flag: the UI shows it as
-      // "customized built-in", and `remove` is allowed to restore the original.
+      // An edited built-in keeps the flag: the UI shows it as a customized
+      // built-in, and `remove` restores the shipped definition.
       builtIn: BUILT_IN_ROLE_MAP.has(request.id),
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
@@ -49,12 +56,16 @@ export class RoleServiceImpl implements RoleService {
 
   remove(id: string, workspaceId: WorkspaceId): void {
     const scoped = this.roles.get(id, workspaceId);
-    if (scoped === undefined || scoped.workspaceId === null) {
-      throw new TandemiseError(
-        'PRECONDITION_FAILED',
-        `Role '${id}' is a built-in template and is not deletable. Override it instead.`,
-        { details: { roleId: id } },
-      );
+    if (scoped === undefined) {
+      throw TandemiseError.notFound('Role', id);
+    }
+
+    const builtIn = BUILT_IN_ROLE_MAP.get(id);
+    if (builtIn !== undefined) {
+      // Restore rather than delete. The presets name this id.
+      const now = this.clock.now();
+      this.roles.upsert({ ...builtIn, workspaceId, createdAt: scoped.createdAt, updatedAt: now });
+      return;
     }
     this.roles.remove(id, workspaceId);
   }

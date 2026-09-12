@@ -44,12 +44,6 @@ export interface SystemService {
 
 export interface WorkspaceService {
   list(): readonly WorkspaceView[];
-  /**
-   * Creates the first workspace when none exists, so a fresh install has
-   * somewhere to put a repository. Idempotent; returns undefined when one was
-   * already present.
-   */
-  ensureDefault(): WorkspaceView | undefined;
   create(request: CreateWorkspaceRequest): Promise<WorkspaceView>;
   view(id: WorkspaceId): WorkspaceView;
   update(id: WorkspaceId, patch: UpdateWorkspaceRequest): WorkspaceView;

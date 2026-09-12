@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from './Icon.js';
 import { Modal } from './Modal.js';
-import { ErrorState, Field } from './primitives.js';
+
 import { useWorkspace } from '../lib/workspace.js';
-import { useDaemonMutation } from '../lib/queries.js';
+import { ProjectForm } from '../screens/FirstProject.js';
 
 /**
  * Which project this window is working on.
@@ -105,74 +105,18 @@ function NewWorkspaceModal({
   onClose: () => void;
   onCreated: (id: string) => void;
 }): JSX.Element {
-  const [name, setName] = useState('');
-  const [repositoryPath, setRepositoryPath] = useState('');
-
-  const create = useDaemonMutation(
-    (daemon) =>
-      daemon.createWorkspace({
-        name: name.trim(),
-        ...(repositoryPath.trim() === '' ? {} : { repositoryPath: repositoryPath.trim() }),
-      }),
-    ['workspaces'],
-  );
-
-  const browse = async (): Promise<void> => {
-    const path = await window.tandemise.selectDirectory('Choose a repository');
-    if (path) setRepositoryPath(path);
-  };
-
   return (
-    <Modal
-      title="New project"
-      onClose={onClose}
-      footer={
-        <>
-          <button type="button" className="btn btn--ghost" onClick={onClose}>
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="btn btn--primary"
-            disabled={name.trim() === '' || create.isPending}
-            onClick={() =>
-              create.mutate(undefined, {
-                onSuccess: (view) => {
-                  onCreated(view.workspace.id);
-                  onClose();
-                },
-              })
-            }
-          >
-            {create.isPending ? 'Creating…' : 'Create project'}
-          </button>
-        </>
-      }
-    >
+    <Modal title="New project" onClose={onClose}>
       <div className="stack" style={{ gap: 'var(--s4)', color: 'var(--text)' }}>
         <p className="muted">
-          A project keeps its own repositories, integrations, roles and routing. Runtimes are shared across the install unless you scope
-          one to a project.
+          A project keeps its own repositories, roles, runtimes and integrations. Nothing configured here reaches another project.
         </p>
-        <Field label="Name">
-          <input className="input" value={name} onChange={(event) => setName(event.target.value)} placeholder="Beveloce" autoFocus />
-        </Field>
-        <Field label="First repository" hint="Optional. You can add this and others in Settings at any time.">
-          <div className="row" style={{ gap: 'var(--s2)' }}>
-            <input
-              className="input mono"
-              style={{ flex: 1 }}
-              value={repositoryPath}
-              onChange={(event) => setRepositoryPath(event.target.value)}
-              placeholder="~/projects/beveloce/beveloce-web"
-            />
-            <button type="button" className="btn" onClick={() => void browse()}>
-              <Icon name="folder" size={13} />
-              Browse
-            </button>
-          </div>
-        </Field>
-        {create.isError ? <ErrorState error={create.error} /> : null}
+        <ProjectForm
+          onCreated={(id) => {
+            onCreated(id);
+            onClose();
+          }}
+        />
       </div>
     </Modal>
   );

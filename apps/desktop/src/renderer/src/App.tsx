@@ -5,6 +5,7 @@ import { Sidebar } from './components/Sidebar.js';
 import { CommandPalette } from './components/CommandPalette.js';
 import { ErrorBoundary } from './components/ErrorBoundary.js';
 import { DaemonDown } from './screens/DaemonDown.js';
+import { FirstProject } from './screens/FirstProject.js';
 import { Home } from './screens/Home.js';
 import { Missions } from './screens/Missions.js';
 import { NewMission } from './screens/NewMission.js';
@@ -15,6 +16,7 @@ import { Workforce } from './screens/Workforce.js';
 import { Runtimes } from './screens/Runtimes.js';
 import { Integrations } from './screens/Integrations.js';
 import { Settings } from './screens/Settings.js';
+import { Project } from './screens/Project.js';
 import { useConnection } from './lib/connection.js';
 import { useDaemonStream } from './lib/stream.js';
 import { useApprovals, useWorkspaces } from './lib/queries.js';
@@ -50,6 +52,15 @@ function ConnectedShell(): JSX.Element {
   // shell would mean one render where each screen silently asks for "the whole
   // install" and then re-asks - visible as a flash of another project's data.
   const workspaces = useWorkspaces();
+
+  // Nothing until the list is known: rendering the shell first and the first-run
+  // screen a moment later reads as the app changing its mind.
+  if (workspaces.isPending) return <div className="app app--booting" />;
+
+  // A project is made deliberately. The daemon no longer seeds one, so an empty
+  // install has exactly one thing to do.
+  if ((workspaces.data ?? []).length === 0) return <FirstProject />;
+
   return (
     <WorkspaceProvider workspaces={workspaces.data ?? []}>
       <ProjectShell />
@@ -88,6 +99,7 @@ function ProjectShell(): JSX.Element {
             <Route path="/workforce" component={Workforce} />
             <Route path="/runtimes" component={Runtimes} />
             <Route path="/integrations" component={Integrations} />
+            <Route path="/project" component={Project} />
             <Route path="/settings" component={Settings} />
             <Route component={Home} />
           </Switch>

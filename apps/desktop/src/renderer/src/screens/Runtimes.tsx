@@ -6,6 +6,7 @@ import { Icon } from '../components/Icon.js';
 import { ConfirmDialog, Modal } from '../components/Modal.js';
 import { Empty, ErrorState, Field, SkeletonList, StatusDot, Switch } from '../components/primitives.js';
 import { useDaemonMutation, useRuntimes } from '../lib/queries.js';
+import { useWorkspaceId } from '../lib/workspace.js';
 import { dateTime, healthTone, pluralize, shortenPath, titleCase } from '../lib/format.js';
 
 export function Runtimes(): JSX.Element {
@@ -253,9 +254,15 @@ function Detail({ label, children }: { label: string; children: React.ReactNode 
 }
 
 function DiscoveryModal({ results, onClose }: { results: readonly RuntimeDiscoveryView[]; onClose: () => void }): JSX.Element {
+  // A runtime belongs to the project. Two projects frequently want the same CLI
+  // under different logins - a different `configDir` is the whole point of a
+  // second profile - so a runtime configured here is this project's, not the
+  // machine's.
+  const workspaceId = useWorkspaceId();
   const create = useDaemonMutation(
     (daemon, discovery: RuntimeDiscoveryView) =>
       daemon.createRuntime({
+        workspaceId,
         adapterId: discovery.adapterId,
         // A second profile of the same adapter would otherwise be
         // indistinguishable from the first in every list that shows a name.
@@ -324,6 +331,7 @@ type ProfileMode = 'edit' | 'duplicate';
  */
 function ProfileModal({ view, mode, onClose }: { view: RuntimeView; mode: ProfileMode; onClose: () => void }): JSX.Element {
   const { profile } = view;
+  const workspaceId = useWorkspaceId();
   const schema = view.settingsSchema ?? [];
   const duplicating = mode === 'duplicate';
   const [name, setName] = useState(duplicating ? `${profile.name} (copy)` : profile.name);
@@ -349,6 +357,7 @@ function ProfileModal({ view, mode, onClose }: { view: RuntimeView; mode: Profil
     (daemon) =>
       duplicating
         ? daemon.createRuntime({
+            workspaceId,
             adapterId: profile.adapterId,
             ...body,
             args: [...profile.args],
@@ -461,9 +470,11 @@ function GenericCliModal({ onClose }: { onClose: () => void }): JSX.Element {
   const [args, setArgs] = useState('');
   const [promptVia, setPromptVia] = useState<'stdin' | 'arg' | 'file'>('stdin');
 
+  const workspaceId = useWorkspaceId();
   const create = useDaemonMutation(
     (daemon) =>
       daemon.createRuntime({
+        workspaceId,
         adapterId: 'generic-cli',
         name: name.trim(),
         executablePath: command.trim(),

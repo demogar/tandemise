@@ -1,6 +1,7 @@
 import { Link, useLocation } from 'wouter';
 import { Icon, Logo, type IconName } from './Icon.js';
 import { WorkspaceSwitcher } from './WorkspaceSwitcher.js';
+import { useWorkspace } from '../lib/workspace.js';
 import { useConnection } from '../lib/connection.js';
 import type { StreamState } from '../lib/stream.js';
 import type { Tone } from '../lib/format.js';
@@ -18,16 +19,27 @@ const PRIMARY: readonly NavEntry[] = [
   { href: '/artifacts', label: 'Artifacts', icon: 'artifacts' },
 ];
 
-const CONFIGURE: readonly NavEntry[] = [
+/**
+ * Everything below here belongs to the selected project.
+ *
+ * Grouped under the project's own name rather than a generic "Configure",
+ * because roles, runtimes and integrations are all project-scoped and the old
+ * label made them read as machine-wide setup.
+ */
+const PROJECT: readonly NavEntry[] = [
+  { href: '/project', label: 'Repositories', icon: 'folder' },
   { href: '/workforce', label: 'Workforce', icon: 'workforce' },
   { href: '/runtimes', label: 'Runtimes', icon: 'runtimes' },
   { href: '/integrations', label: 'Integrations', icon: 'integrations' },
-  { href: '/settings', label: 'Settings', icon: 'settings' },
 ];
+
+/** The only genuinely install-wide screen. */
+const APP: readonly NavEntry[] = [{ href: '/settings', label: 'Settings', icon: 'settings' }];
 
 export function Sidebar({ pendingApprovals, stream }: { pendingApprovals: number; stream: StreamState }): JSX.Element {
   const [location] = useLocation();
   const { status, reconnect, reconnecting } = useConnection();
+  const projectName = useWorkspace().current?.workspace.name ?? null;
 
   const connectionTone: Tone =
     status.phase !== 'connected' ? 'failed' : stream === 'open' ? 'succeeded' : stream === 'idle' ? 'pending' : 'blocked';
@@ -60,8 +72,14 @@ export function Sidebar({ pendingApprovals, stream }: { pendingApprovals: number
             count={entry.href === '/approvals' ? pendingApprovals : 0}
           />
         ))}
-        <div className="sidebar__section">Configure</div>
-        {CONFIGURE.map((entry) => (
+        <div className="sidebar__section truncate" title={projectName ?? undefined}>
+          {projectName ?? 'Project'}
+        </div>
+        {PROJECT.map((entry) => (
+          <NavLink key={entry.href} entry={entry} active={isActive(location, entry.href)} count={0} />
+        ))}
+        <div className="sidebar__section">App</div>
+        {APP.map((entry) => (
           <NavLink key={entry.href} entry={entry} active={isActive(location, entry.href)} count={0} />
         ))}
       </nav>
