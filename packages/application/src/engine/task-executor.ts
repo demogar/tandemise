@@ -914,7 +914,13 @@ export class TaskExecutor {
       const lease = this.deps.leases.acquire(key, { taskId: task.id }, LEASE_TTL_MS);
       if (lease === undefined) {
         for (const acquired of held) this.deps.leases.release(acquired.id);
-        return { ok: false, reason: `Resource '${key}' is held by another task.`, held: [] };
+        return {
+          ok: false,
+          reason: key.endsWith(':worktree')
+            ? 'Queued: another task is working directly in this repository checkout, and tasks that run in place take turns.'
+            : `Queued: resource '${key}' is held by another task.`,
+          held: [],
+        };
       }
       held.push(lease);
     }

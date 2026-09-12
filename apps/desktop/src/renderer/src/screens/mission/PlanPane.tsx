@@ -241,6 +241,13 @@ function TaskCard({
         </div>
       ) : null}
 
+      {task.status === 'READY' && task.statusReason?.startsWith('Queued') ? (
+        <div className="taskcard__gate">
+          <Icon name="clock" size={11} />
+          <span>{task.statusReason}</span>
+        </div>
+      ) : null}
+
       {task.gate ? (
         <div className={`taskcard__gate${task.gate.passed ? '' : ' taskcard__gate--failed'}`}>
           <Icon name={task.gate.passed ? 'shield' : 'alert'} size={11} />

@@ -338,6 +338,13 @@ export class SchedulerService implements LifecycleComponent {
       // Contention, not failure. Hold the slot open for a moment so a pair of
       // tasks fighting over one resource do not spin against each other.
       this.#retryAfter.set(task.id, this.deps.clock.epochMs() + 1_000);
+      // Said once, on the row: a READY task that never starts, with no reason
+      // anywhere, is indistinguishable from a hung scheduler.
+      const waiting = this.deps.tasks.get(task.id);
+      if (waiting !== undefined && waiting.status === 'READY' && waiting.statusReason !== outcome.reason) {
+        this.deps.tasks.update(task.id, { statusReason: outcome.reason });
+        this.deps.recorder.invalidate('tasks', mission.id);
+      }
       return;
     }
     if (outcome.retryAfterMs !== undefined) {

@@ -156,7 +156,10 @@ export class ProjectionServiceImpl implements ProjectionService {
         checks: this.deps.evaluations.listChecks(task.id),
         // Evaluated live rather than stored: a gate is a view of the evidence as
         // it stands now, and a re-run check has to move the badge.
-        gate: this.deps.gates.evaluate(task),
+        // Only once the task has been judged: on a task that has not run, every
+        // gate reads "Not met", and a plan full of red "Not met" badges looks
+        // like a stuck mission when nothing has even started.
+        gate: task.attempts > 0 && task.status !== 'RUNNING' ? this.deps.gates.evaluate(task) : null,
         pendingApprovalId: this.deps.approvals.pendingForTask(task.id)[0]?.id ?? null,
         runtimeName: profile?.name ?? latestRun?.runtimeProfileId ?? null,
         targetName: target?.name ?? null,
