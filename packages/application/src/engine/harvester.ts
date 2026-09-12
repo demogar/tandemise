@@ -13,6 +13,18 @@ import { evaluationFrom } from './evaluations.js';
 export { ARTIFACT_OUT_DIR };
 
 /**
+ * Where one task writes its artifacts: its own folder under the out directory.
+ *
+ * Tasks that run in place share one checkout, so a single shared folder forced
+ * them to take turns - the next task's preparation would empty the folder under
+ * a running one. A folder per task lets read-only work in several missions run
+ * in the same checkout at once.
+ */
+export function outDirFor(task: Pick<MissionTask, 'id'>): string {
+  return `${ARTIFACT_OUT_DIR}/${task.id}`;
+}
+
+/**
  * Keeps agent output out of the diff, two ways.
  *
  * `.git/info/exclude` is the canonical place (APPLICATION_DESIGN.md) and is
@@ -83,10 +95,19 @@ export class ArtifactHarvester {
    * Clearing also means a retry is judged on what this attempt produced rather
    * than on what the failed one left behind.
    */
-  async prepare(target: ExecutionTarget, scope: EventScope): Promise<void> {
+  async prepare(target: ExecutionTarget, scope: EventScope, task: MissionTask): Promise<void> {
     const fs = target.filesystem();
-    if (await fs.exists(ARTIFACT_OUT_DIR)) await fs.remove(ARTIFACT_OUT_DIR, { recursive: true });
-    await fs.mkdir(ARTIFACT_OUT_DIR);
+    const own = outDirFor(task);
+    // Only this task's folder is cleared, plus any loose files at the top level
+    // (the pre-folder layout). Other folders belong to tasks that may be running
+    // in this same checkout right now.
+    if (await fs.exists(ARTIFACT_OUT_DIR)) {
+      for (const entry of await fs.list(ARTIFACT_OUT_DIR)) {
+        if (entry.kind === 'file') await fs.remove(`${ARTIFACT_OUT_DIR}/${entry.name}`);
+      }
+    }
+    if (await fs.exists(own)) await fs.remove(own, { recursive: true });
+    await fs.mkdir(own);
     await fs.write(IGNORE_FILE, IGNORE_BODY);
     await this.#excludeFromGit(target, scope);
   }
@@ -128,19 +149,29 @@ export class ArtifactHarvester {
     const issues: string[] = [];
     const collected = new Set<ArtifactType>();
 
-    if (!(await fs.exists(ARTIFACT_OUT_DIR))) {
+    // This task's own folder, then loose top-level files for a worker that
+    // wrote to the directory itself. Collected once per type, own folder first.
+    const directories = [outDirFor(task), ARTIFACT_OUT_DIR];
+    const entries: Array<{ dir: string; name: string }> = [];
+    for (const dir of directories) {
+      if (!(await fs.exists(dir))) continue;
+      for (const entry of await fs.list(dir)) {
+        if (entry.kind === 'file' && entry.name.endsWith('.md')) entries.push({ dir, name: entry.name });
+      }
+    }
+    if (entries.length === 0) {
       return { manifests, missing: task.expectedOutputs, issues };
     }
 
-    for (const entry of await fs.list(ARTIFACT_OUT_DIR)) {
-      if (entry.kind !== 'file' || !entry.name.endsWith('.md')) continue;
-      const typeName = entry.name.slice(0, -'.md'.length);
+    for (const { dir, name } of entries) {
+      const typeName = name.slice(0, -'.md'.length);
       if (!isArtifactType(typeName)) {
-        issues.push(`\`${ARTIFACT_OUT_DIR}/${entry.name}\` is not a recognised artifact type and was ignored.`);
+        issues.push(`\`${dir}/${name}\` is not a recognised artifact type and was ignored.`);
         continue;
       }
+      if (collected.has(typeName)) continue;
 
-      const stored = await this.#collectOne(request, typeName, `${ARTIFACT_OUT_DIR}/${entry.name}`);
+      const stored = await this.#collectOne(request, typeName, `${dir}/${name}`);
       if (stored.ok) {
         manifests.push(stored.manifest);
         collected.add(typeName);

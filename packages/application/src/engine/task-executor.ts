@@ -7,6 +7,7 @@ import type {
   RuntimeProfile, RuntimeProfileRepositoryPort, TargetKind, TaskRepositoryPort, TaskStatus,
   Workspace, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
+import { CORE_CAPABILITIES, anyCapabilityMatches } from '@tandemise/domain';
 import type { ContextCompiler, ExpectedArtifact } from '@tandemise/context';
 import type { ExecutionTarget, ExecutionTargetManager } from '@tandemise/execution-core';
 import type { ApprovalFactory, GrantBuilder, PolicyEngine } from '@tandemise/policy';
@@ -20,7 +21,7 @@ import type { ArtifactTemplatePort } from '../ports.js';
 import type { EventRecorder, EventScope } from '../support/event-recorder.js';
 import { runtimeCapabilitiesFor } from '../support/capabilities.js';
 import type { RuntimeOverrides } from '../support/runtime-overrides.js';
-import { ARTIFACT_OUT_DIR, ArtifactHarvester, type HarvestResult } from './harvester.js';
+import { ArtifactHarvester, outDirFor, type HarvestResult } from './harvester.js';
 import type { CheckService } from './checks.js';
 import type { GateService } from './gates.js';
 import { MAX_PARKED_MS, type RunDeadlines } from './run-deadline.js';
@@ -273,7 +274,7 @@ export class TaskExecutor {
         workingDirectory: target.workingDirectory,
         signal,
       });
-      await deps.harvester.prepare(target, scope);
+      await deps.harvester.prepare(target, scope, running);
       const prompt = await this.#compilePrompt({
         ...ctx, task: running, workspace, role, grants, target, tools: toolSurface.toolNames, feedback,
       });
@@ -597,7 +598,7 @@ export class TaskExecutor {
     const expected: readonly ExpectedArtifact[] = task.expectedOutputs.map((type) => ({
       type,
       template: this.deps.templates.render(type) ?? `(no template is defined for ${type}; write clear Markdown.)`,
-      destination: `${ARTIFACT_OUT_DIR}/${type}.md`,
+      destination: `${outDirFor(task)}/${type}.md`,
     }));
 
     const compiled = this.deps.contextCompiler.compile({
@@ -635,8 +636,8 @@ export class TaskExecutor {
     feedback: string | null,
   ): readonly string[] {
     const notes = [
-      `Write each artifact to its own file under \`${ARTIFACT_OUT_DIR}/\` in ${target.workingDirectory}. `
-      + `The file name is the artifact type followed by \`.md\` — for example \`${ARTIFACT_OUT_DIR}/ProductSpec.md\`. `
+      `Write each artifact to its own file under \`${outDirFor(task)}/\` in ${target.workingDirectory}. `
+      + `The file name is the artifact type followed by \`.md\` — for example \`${outDirFor(task)}/ProductSpec.md\`. `
       + 'Tandemise reads those files after your run ends; anything you only describe in conversation is discarded.',
       `\`.tandemise/\` is git-ignored, so writing there never pollutes the diff.`,
     ];
@@ -1217,13 +1218,25 @@ function targetKindFor(isolation: MissionTask['executionPolicy']['isolation']): 
  * running unisolated in the user's checkout contends with every other such
  * task, because they share one working tree (MVP.md §9.4).
  */
+/** Capabilities that let a task change the checkout it runs in, beyond its own artifacts. */
+const CHANGES_CHECKOUT = [
+  CORE_CAPABILITIES.filesystemWrite, CORE_CAPABILITIES.shell, CORE_CAPABILITIES.git, CORE_CAPABILITIES.gitCommit,
+];
+
 function resourceKeysFor(
   task: MissionTask,
   mission: Mission,
   repository: Repository | null,
 ): readonly string[] {
   if (repository === null) return [];
-  if (task.executionPolicy.isolation === 'none') return [`repository:${repository.id}:worktree`];
+  if (task.executionPolicy.isolation === 'none') {
+    // A task that only reads and writes its own artifact folder cannot disturb
+    // another task in the same checkout, so it does not take turns with them.
+    // Without this, research in one mission queued behind a spec in another.
+    const capabilities = [...task.executionPolicy.capabilities, ...task.requiredCapabilities];
+    const changes = capabilities.some((c) => CHANGES_CHECKOUT.some((w) => anyCapabilityMatches([c], w)));
+    return changes ? [`repository:${repository.id}:worktree`] : [];
+  }
   return [`mission:${mission.id}:branch:${task.key}`];
 }
 
