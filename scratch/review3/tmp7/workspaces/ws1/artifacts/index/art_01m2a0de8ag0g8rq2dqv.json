@@ -1,0 +1,18 @@
+{
+  "id": "art_01m2a0de8ag0g8rq2dqv",
+  "workspaceId": "ws1",
+  "missionId": "../../../../../../tmp/pwned2",
+  "taskId": null,
+  "createdByRunId": null,
+  "type": "ProductSpec",
+  "title": "t",
+  "contentRef": "../../../../../../tmp/pwned2/ProductSpec/art_01m2a0de8ag0g8rq2dqv.md",
+  "mediaType": "text/markdown",
+  "sha256": "d35097893d982b219240ea77bc433868060dd18338eaa7dde6b314424c17bd17",
+  "byteSize": 8,
+  "schemaVersion": 1,
+  "sourceRefs": [],
+  "supersedes": null,
+  "summary": null,
+  "createdAt": "2026-09-12T05:11:03.690Z"
+}

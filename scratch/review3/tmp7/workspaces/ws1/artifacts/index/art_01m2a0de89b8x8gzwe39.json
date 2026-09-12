@@ -1,0 +1,18 @@
+{
+  "id": "art_01m2a0de89b8x8gzwe39",
+  "workspaceId": "ws1",
+  "missionId": "m1",
+  "taskId": null,
+  "createdByRunId": null,
+  "type": "../../../../../../tmp/pwned",
+  "title": "t",
+  "contentRef": "../../../../../tmp/pwned/art_01m2a0de89b8x8gzwe39.md",
+  "mediaType": "text/markdown",
+  "sha256": "1a9dbcab212e6f9a2b76b4efe38b5ee0eee498e80aa5669e1b47724899cf6566",
+  "byteSize": 7,
+  "schemaVersion": 1,
+  "sourceRefs": [],
+  "supersedes": null,
+  "summary": null,
+  "createdAt": "2026-09-12T05:11:03.689Z"
+}

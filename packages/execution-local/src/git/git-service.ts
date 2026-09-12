@@ -174,11 +174,15 @@ export class GitService {
   }
 
   async createBranch(cwd: string, name: string, base = 'HEAD'): Promise<void> {
-    await this.#must(cwd, ['branch', name, base]);
+    await this.#must(cwd, ['branch', '--', name, base]);
   }
 
   async checkout(cwd: string, ref: string): Promise<void> {
-    await this.#must(cwd, ['checkout', ref]);
+    // `--` ends option parsing: without it a ref whose name begins with a dash,
+    // or which collides with a path in the tree, is reinterpreted by git as a
+    // flag or a pathspec. Branch names here are derived from task titles, so
+    // they are not fully under our control.
+    await this.#must(cwd, ['checkout', ref, '--']);
   }
 
   async branchExists(cwd: string, name: string): Promise<boolean> {

@@ -1,0 +1,18 @@
+{
+  "id": "art_01m2a0de8bct4hkjekjv",
+  "workspaceId": "ws1",
+  "missionId": "m1",
+  "taskId": null,
+  "createdByRunId": null,
+  "type": "ProductSpec",
+  "title": "../../escape",
+  "contentRef": "m1/ProductSpec/art_01m2a0de8bct4hkjekjv.md",
+  "mediaType": "text/markdown",
+  "sha256": "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881",
+  "byteSize": 1,
+  "schemaVersion": 1,
+  "sourceRefs": [],
+  "supersedes": null,
+  "summary": null,
+  "createdAt": "2026-09-12T05:11:03.691Z"
+}
