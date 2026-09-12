@@ -10,7 +10,7 @@ Run any of these with `export PATH="$HOME/.nvm/versions/node/v22.23.1/bin:$PATH"
 | # | Criterion | Status | Evidence |
 |---|---|---|---|
 | 1 | Desktop app installs and launches tandemd without a cloud account | | |
-| 2 | Discovers Claude Code and Codex when installed; reports health | ◐ partial | Claude Code detected (2.1.269) and health-checked — `scratch/runtime-check.mjs`. Codex CLI is not installed on this machine; its adapter is not yet written |
+| 2 | Discovers Claude Code and Codex when installed; reports health | ✅ met | `scratch/runtime-check.mjs` (Claude Code 2.1.269 detected + healthy), `scratch/codex-check.mjs` (Codex adapter degrades to an actionable message; it distinguishes "CLI missing" from "not signed in") |
 | 3 | User can select a local Git repository and create a workspace | | |
 | 4 | Mission from natural language; typed proposed plan is inspectable | | |
 | 5 | Plan executes as a DAG through Product, Developer, Reviewer, QA | | |

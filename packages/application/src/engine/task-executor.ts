@@ -429,8 +429,11 @@ export class TaskExecutor {
     //        quotes it verbatim so the worker is told exactly what it failed.
     const feedback = verdict.detail;
     if (task.attempts < task.retryPolicy.maxAttempts) {
+      this.#setStatus(task, scope, 'READY', feedback);
       return {
-        ...this.#settle(task, scope, 'READY', feedback),
+        kind: 'settled',
+        status: 'READY',
+        reason: feedback,
         retryAfterMs: task.retryPolicy.backoffMs,
       };
     }
@@ -819,7 +822,8 @@ export class TaskExecutor {
 
   #settleFailure(task: MissionTask, scope: EventScope, reason: string): TaskAttemptOutcome {
     if (task.attempts < task.retryPolicy.maxAttempts) {
-      return { ...this.#settle(task, scope, 'READY', reason), retryAfterMs: task.retryPolicy.backoffMs };
+      this.#setStatus(task, scope, 'READY', reason);
+      return { kind: 'settled', status: 'READY', reason, retryAfterMs: task.retryPolicy.backoffMs };
     }
     return this.#settle(task, scope, task.retryPolicy.onExhausted === 'fail' ? 'FAILED' : 'BLOCKED', reason);
   }

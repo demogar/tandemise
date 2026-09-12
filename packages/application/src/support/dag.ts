@@ -2,7 +2,7 @@ import type {
   Capability, MissionTask, PlanValidationIssue, PlannedTask, RoleTemplate,
 } from '@tandemise/domain';
 import { validateMissionPlan } from '@tandemise/domain';
-import type { Result } from '@tandemise/shared';
+import { Ok, type Result } from '@tandemise/shared';
 
 /**
  * A `MissionTask` is a `PlannedTask` that has been given an id and a status, so
@@ -34,10 +34,11 @@ export function validateTaskGraph(
     for (const c of task.requiredCapabilities) satisfiable.add(c);
     for (const c of task.executionPolicy.capabilities) satisfiable.add(c);
   }
-  return validateMissionPlan(
+  const validated = validateMissionPlan(
     { summary: 'mutated mission graph', tasks: asPlannedTasks(tasks) },
     { knownRoleIds: new Set(roles.map((r) => r.id)), satisfiableCapabilities: satisfiable },
   );
+  return validated.ok ? Ok(validated.value.tasks) : validated;
 }
 
 export function describeIssues(issues: readonly PlanValidationIssue[]): string {

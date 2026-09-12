@@ -16,6 +16,7 @@ import { contextModule } from '@tandemise/context';
 import { createEvaluationModule } from '@tandemise/evaluation';
 import { runtimesCoreModule } from '@tandemise/runtimes-core';
 import { claudeRuntimeModule } from '@tandemise/runtime-claude';
+import { codexRuntimeModule } from '@tandemise/runtime-codex';
 import { genericRuntimeModule } from '@tandemise/runtime-generic';
 import { executionCoreModule } from '@tandemise/execution-core';
 import { executionLocalModule } from '@tandemise/execution-local';
@@ -75,6 +76,7 @@ export function bootstrap(config: DaemonConfig): Bootstrapped {
     createEvaluationModule(),
     runtimesCoreModule,
     claudeRuntimeModule,
+    codexRuntimeModule,
     genericRuntimeModule,
     executionCoreModule,
     executionLocalModule,

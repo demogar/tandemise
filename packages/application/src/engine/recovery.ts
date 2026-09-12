@@ -3,7 +3,7 @@ import type {
   RunRepositoryPort, RunStatus, RuntimeProfileRepositoryPort, TaskRepositoryPort,
 } from '@tandemise/domain';
 import type { RuntimeRegistry } from '@tandemise/runtimes-core';
-import type { Clock, Logger, MissionId, RunId } from '@tandemise/shared';
+import { asId, type Clock, type Logger, type MissionId, type RunId } from '@tandemise/shared';
 import type { ProcessLivenessPort } from '../ports.js';
 import type { EventRecorder } from '../support/event-recorder.js';
 
@@ -50,7 +50,13 @@ export class RecoveryService {
     private readonly log: Logger,
   ) {}
 
-  run(): RecoveryReport {
+  /**
+   * Asynchronous although every step is a synchronous repository call: the
+   * daemon awaits this before the scheduler starts, and a future step that has
+   * to touch the filesystem (verifying a worktree still exists, say) must not
+   * force that call site to change.
+   */
+  async run(): Promise<RecoveryReport> {
     const adopted: string[] = [];
     const resumable: string[] = [];
     const interrupted: string[] = [];
@@ -124,7 +130,7 @@ export class RecoveryService {
    * from scratch while telling the user it continued.
    */
   #classify(run: Run): RunStatus {
-    const profile = this.runtimeProfiles.get(run.runtimeProfileId);
+    const profile = this.runtimeProfiles.get(asId<'RuntimeProfileId'>(run.runtimeProfileId));
     const adapter = profile === undefined ? undefined : this.registry.tryAdapter(profile.adapterId);
     const canResume = adapter?.resume !== undefined && run.externalSessionId !== null;
     return canResume ? 'RESUMABLE' : 'INTERRUPTED';

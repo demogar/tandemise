@@ -45,7 +45,7 @@ export const PACKAGES = {
   context: { deps: ['shared', 'kernel', 'domain', 'policy'], ext: {} },
   evaluation: { deps: ['shared', 'kernel', 'domain'], ext: {} },
   'runtime-claude': { deps: ['shared', 'domain', 'runtimes-core'], ext: {} },
-  'runtime-codex': { deps: ['shared', 'domain', 'runtimes-core'], ext: {} },
+  'runtime-codex': { deps: ['shared', 'kernel', 'domain', 'runtimes-core'], ext: {} },
   'runtime-generic': { deps: ['shared', 'domain', 'runtimes-core'], ext: {} },
   'execution-local': { deps: ['shared', 'domain', 'kernel', 'execution-core'], ext: {} },
   'integration-github': { deps: ['shared', 'kernel', 'domain', 'integrations-core', 'execution-core'], ext: {} },

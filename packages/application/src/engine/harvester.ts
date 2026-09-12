@@ -19,17 +19,21 @@ import { evaluationFrom } from './evaluations.js';
 export const ARTIFACT_OUT_DIR = '.tandemise/out';
 
 /**
- * Keeps agent output out of the diff.
+ * Keeps agent output out of the diff, two ways.
  *
- * The design note calls for `.git/info/exclude`, which lives outside the
- * target's filesystem scope (for a worktree it is in the main repository's
- * `.git/worktrees/<name>/`). A self-ignoring `.gitignore` inside `.tandemise/`
- * achieves the same thing from inside the sandbox, survives the worktree being
- * re-provisioned, and is visible to the user in Finder rather than buried in a
- * git internal.
+ * `.git/info/exclude` is the canonical place (APPLICATION_DESIGN.md) and is
+ * written through git itself, because for a worktree that file lives in the
+ * *main* repository's `.git/worktrees/<name>/` - outside the target's
+ * filesystem scope, so `fs.write` cannot reach it.
+ *
+ * The self-ignoring `.gitignore` inside `.tandemise/` is the belt to that
+ * braces: it works when the target is not a git repository at all, it survives
+ * the worktree being re-provisioned, and it is visible to the user in Finder
+ * rather than buried in a git internal.
  */
 const IGNORE_FILE = '.tandemise/.gitignore';
 const IGNORE_BODY = '# Written by Tandemise. Agent working files never belong in the diff.\n*\n';
+const EXCLUDE_ENTRY = '.tandemise/';
 
 export interface HarvestRequest {
   readonly mission: Mission;
@@ -80,6 +84,41 @@ export class ArtifactHarvester {
     const fs = target.filesystem();
     await fs.mkdir(ARTIFACT_OUT_DIR);
     await fs.write(IGNORE_FILE, IGNORE_BODY);
+    await this.#excludeFromGit(target);
+  }
+
+  /**
+   * Appends `.tandemise/` to the target's `.git/info/exclude`, idempotently.
+   *
+   * Failure is logged as a note, never thrown: a target that is not a git
+   * repository has no exclude file to write, and that is not a reason to fail
+   * the run before the worker has done anything.
+   */
+  async #excludeFromGit(target: ExecutionTarget): Promise<void> {
+    try {
+      const gitDir = await target.exec({ command: 'git', args: ['rev-parse', '--absolute-git-dir'] });
+      if (gitDir.exitCode !== 0) return;
+      const dir = gitDir.stdout.trim();
+      if (dir.length === 0) return;
+      // One shell line so the read, the test and the append happen atomically
+      // enough that a re-provisioned worktree never accumulates duplicates.
+      await target.exec({
+        command: '/bin/sh',
+        args: [
+          '-c',
+          `mkdir -p "$1/info" && grep -qxF '${EXCLUDE_ENTRY}' "$1/info/exclude" 2>/dev/null `
+          + `|| printf '%s\\n' '${EXCLUDE_ENTRY}' >> "$1/info/exclude"`,
+          'sh',
+          dir,
+        ],
+      });
+    } catch (e) {
+      this.recorder.note(
+        { workspaceId: target.describe().workspaceId, missionId: requireMissionId(target) },
+        `Could not add ${EXCLUDE_ENTRY} to .git/info/exclude: ${errorMessage(e)}`,
+        'warn',
+      );
+    }
   }
 
   async harvest(request: HarvestRequest): Promise<HarvestResult> {
