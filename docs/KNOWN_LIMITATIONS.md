@@ -91,25 +91,40 @@ cheaper. Inbound webhooks need a listener the daemon does not have, and a
 tunnel or a hosted endpoint to reach it — worth doing when a workflow is waiting
 on something that pushes rather than something that can be asked.
 
-## Integrations authenticate by hand, not by OAuth
+## Some vendors cannot be connected with one click
 
-An integration is configured with whatever the underlying transport already
-needs: `gh` is logged in already, and an MCP server takes its own environment.
-There is no authorize-in-a-browser flow, no token refresh, and no expiry
-handling — a credential that expires shows up as an integration going
-`unavailable` with the vendor's own error, which is honest but is not the
-one-click connect a non-engineer expects.
+Connect relies on the vendor's authorization server accepting dynamic client
+registration. GitHub's hosted MCP server and Stripe's do not (checked against
+the live servers), so they are not connectors: GitHub goes through `gh`, and a
+server like Stripe's needs a client registered with the vendor, which there is
+no place to enter yet.
 
-OAuth needs three things Tandemise does not have: a loopback redirect listener
-in the daemon, refresh-token storage in the OS credential store with rotation,
-and a per-provider authorize/token endpoint description. The credential store
-and the health model are already the right shape for it; the flow is the work.
+## A connect attempt does not survive a daemon restart
 
-## An MCP integration's `env` is config, not a secret
+The attempt, its PKCE verifier and its loopback listener live in memory. If the
+daemon restarts while you are on the consent page, the browser's redirect finds
+nothing listening. Press Connect again.
 
-The `mcp` transport passes `config.env` straight to the server process, and
-config lives in the database. That is correct for a project ref, a region or a
-`--read-only` flag, and wrong for an access token. Until `secretRef` is wired
-through to the spawned environment, prefer a server that reads its own
-credentials from the environment the daemon inherits, or one that is already
-authenticated the way `gh` is.
+## An integration's permissions are its capability, not a per-tool list
+
+Earlier builds showed a switch per capability on each integration. Nothing ever
+enforced those switches — they were stored and ignored — so they were removed
+rather than left looking like a permission. What a worker can do with an app is
+decided by which roles hold its capability and by the project's autonomy
+setting. Choosing individual tools per project is not possible today.
+
+## A local MCP server's `env` is config, not a secret
+
+The stdio `mcp` transport passes `config.env` straight to the server process,
+and config lives in the database. That is correct for a project ref or a
+`--read-only` flag and wrong for an access token. Hosted servers do not have
+this problem — their credentials are in the Keychain — so prefer the connector
+when a vendor has one.
+
+## A worker's question does not survive a daemon restart
+
+A worker blocked in `ask_human` is a live process waiting on the answer. A daemon
+restart ends the run; the question is withdrawn, and the task retries and may
+ask again. A question is also answered or expired within 24 hours, after which
+the worker decides on its own and records the assumption.
+

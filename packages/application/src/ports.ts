@@ -104,3 +104,29 @@ export interface LoadedWorkflow {
 export interface WorkflowSourcePort {
   list(repositoryPaths: readonly string[]): Promise<readonly LoadedWorkflow[]>;
 }
+
+/** What the browser brought back to the loopback redirect. */
+export interface OAuthCallback {
+  readonly params: URLSearchParams;
+  /** Answers the browser tab. Called exactly once per callback. */
+  respond(outcome: { readonly ok: boolean; readonly title: string; readonly message: string }): void;
+}
+
+/**
+ * A redirect URI that exists for one connect attempt (RFC 8252 §7.3).
+ *
+ * Bound in the daemon, which may listen on sockets. The listener is on
+ * 127.0.0.1, on a port the OS picks, for as long as the attempt lasts - never on
+ * the daemon's API port, whose every route requires the desktop's bearer token
+ * and which a browser redirect could not present.
+ */
+export interface OAuthCallbackListener {
+  readonly redirectUri: string;
+  /** Resolves with the next request to the callback path. */
+  next(signal: AbortSignal): Promise<OAuthCallback>;
+  close(): void;
+}
+
+export interface OAuthCallbackPort {
+  open(): Promise<OAuthCallbackListener>;
+}

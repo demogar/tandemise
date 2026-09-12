@@ -7,11 +7,7 @@ import type {
   RoleRepositoryPort, RunRepositoryPort, RuntimeProfileRepositoryPort, SecretStorePort,
   TaskRepositoryPort, UnitOfWork, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
-import type {
-  ArtifactParserPort, ArtifactTemplatePort, ProcessLivenessPort, SettingsStorePort,
-  SystemEnvironmentPort,
-  WorkflowSourcePort,
-} from './ports.js';
+import type { ArtifactParserPort, ArtifactTemplatePort, ProcessLivenessPort, SettingsStorePort, SystemEnvironmentPort, WorkflowSourcePort, OAuthCallbackPort } from './ports.js';
 import type {
   ApprovalService, ArtifactService, IntegrationService, MissionService, PlanningService,
   ProjectionService, RoleService, RuntimeService, SystemService, TandemiseServices,
@@ -28,6 +24,8 @@ import type { RemediationPlanner } from './engine/remediation.js';
 import type { SchedulerService } from './engine/scheduler.js';
 import type { ApprovalWaiter } from './support/tool-policy.js';
 import type { RunDeadlines } from './engine/run-deadline.js';
+import type { ConnectFlow } from './services/connect-flow.js';
+import type { IntegrationCredentials } from './support/integration-credentials.js';
 import type { RuntimeOverrides } from './support/runtime-overrides.js';
 import type { TaskExecutor } from './engine/task-executor.js';
 import type { EventRecorder } from './support/event-recorder.js';
@@ -117,6 +115,11 @@ export const RUNTIME_OVERRIDES = token<RuntimeOverrides>('application.RuntimeOve
 export const APPROVAL_WAITER = token<ApprovalWaiter>('application.ApprovalWaiter');
 /** Live run budgets, shared by the executor that owns them and `ask_human`, which pauses them. */
 export const RUN_DEADLINES = token<RunDeadlines>('application.RunDeadlines');
+/** Access tokens for connected integrations; also bound to integrations-core's credential source. */
+export const INTEGRATION_CREDENTIAL_STORE = token<IntegrationCredentials>('application.IntegrationCredentials');
+export const CONNECT_FLOW = token<ConnectFlow>('application.ConnectFlow');
+/** The loopback redirect listener. Bound by the daemon; absent in headless compositions. */
+export const OAUTH_CALLBACK = token<OAuthCallbackPort>('port.OAuthCallback');
 
 // --------------------------------------------------------------- API services
 

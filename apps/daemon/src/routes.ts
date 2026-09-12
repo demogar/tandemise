@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { TandemiseError, asId } from '@tandemise/shared';
 import {
-  addRepositoryRequest, cancelMissionRequest, createIntegrationRequest, createMissionRequest,
+  addRepositoryRequest, cancelMissionRequest, connectIntegrationRequest, createIntegrationRequest, createMissionRequest,
   createRuntimeProfileRequest, createWorkspaceRequest, decideApprovalRequest, listMissionsQuery,
   missionEventsQuery, probeRepositoryRequest, retryTaskRequest, updateIntegrationRequest,
   updateRuntimeProfileRequest, updateWorkspaceRequest, upsertRoleRequest,
@@ -140,6 +140,12 @@ export function buildRouter(services: TandemiseServices): Router {
     return services.integrations.list(workspaceId === null ? undefined : asId(workspaceId));
   });
   r.get('/v1/integrations/providers', () => services.integrations.listProviders());
+  r.get('/v1/integrations/connectors', () => services.integrations.listConnectors());
+  r.post('/v1/integrations/connect', async (ctx) =>
+    services.integrations.connect(await ctx.body(connectIntegrationRequest)));
+  r.get('/v1/integrations/connect/:attemptId', (ctx) => services.integrations.connection(ctx.params.attemptId!));
+  r.delete('/v1/integrations/connect/:attemptId', (ctx) =>
+    services.integrations.cancelConnection(ctx.params.attemptId!));
   r.post('/v1/integrations', async (ctx) => services.integrations.create(await ctx.body(createIntegrationRequest)));
   r.patch('/v1/integrations/:id', async (ctx) =>
     services.integrations.update(asId(ctx.params.id!), await ctx.body(updateIntegrationRequest)));

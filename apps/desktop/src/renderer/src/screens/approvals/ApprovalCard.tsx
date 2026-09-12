@@ -28,9 +28,12 @@ export function ApprovalCard({ view, compact = false }: { view: ApprovalView; co
   );
 
   const chosen = approval.options.find((option) => option.id === selected) ?? approval.options[0];
-  const copy = copyFor(approval, chosen?.id);
+  const copy = copyFor(approval, chosen?.id, view.revisable);
   const needsConfirm = copy.question ? false : isConsequential(approval.risk) || chosen?.id === REJECT_OPTION;
   const missingAnswer = copy.noteRequired && note.trim().length === 0;
+  // The full question is kept as evidence because titles are cut at one line;
+  // when it was not cut, repeating it under the title says nothing new.
+  const evidence = approval.evidence.filter((item) => !(copy.question && item.value === approval.title));
 
   const submit = (): void => {
     if (!chosen || missingAnswer) return;
@@ -43,10 +46,13 @@ export function ApprovalCard({ view, compact = false }: { view: ApprovalView; co
       <div className="approval__risk" />
 
       <header className="approval__head">
-        <span className={`badge ${riskBadgeClass(approval.risk)}`} title={`Risk class: ${approval.risk}`}>
-          <Icon name={riskIcon(approval.risk)} size={12} />
-          {riskLabel(approval.risk)}
-        </span>
+        {/* A question carries no risk of its own; a badge saying so is noise. */}
+        {copy.question ? null : (
+          <span className={`badge ${riskBadgeClass(approval.risk)}`} title={`Risk class: ${approval.risk}`}>
+            <Icon name={riskIcon(approval.risk)} size={12} />
+            {riskLabel(approval.risk)}
+          </span>
+        )}
         <div style={{ flex: 1, minWidth: 0 }}>
           <h3 className="approval__title">{approval.title}</h3>
           <div className="approval__context">
@@ -81,14 +87,14 @@ export function ApprovalCard({ view, compact = false }: { view: ApprovalView; co
         <Question icon="zap" question={copy.effectQuestion} answer={approval.effect} />
       </div>
 
-      {approval.evidence.length > 0 && !compact ? (
+      {evidence.length > 0 && !compact ? (
         <div style={{ padding: '0 var(--s5) var(--s4)' }}>
           <div className="qa__q" style={{ marginBottom: 6 }}>
             <Icon name="eye" size={12} />
             Evidence
           </div>
           <div className="evidence">
-            {approval.evidence.map((item, index) => (
+            {evidence.map((item, index) => (
               <EvidenceRow key={`${item.label}-${index}`} evidence={item} />
             ))}
           </div>
@@ -159,7 +165,7 @@ export function ApprovalCard({ view, compact = false }: { view: ApprovalView; co
             disabled={decide.isPending || !chosen || missingAnswer}
             onClick={() => (needsConfirm && chosen ? setConfirming(chosen) : submit())}
           >
-            {decide.isPending ? 'Submitting…' : (chosen?.label ?? 'Decide')}
+            {decide.isPending ? 'Submitting…' : submitLabel(copy, chosen)}
           </button>
         </div>
       </div>
@@ -221,6 +227,13 @@ export function ApprovalPreviewCard({ view }: { view: ApprovalView }): JSX.Eleme
   );
 }
 
+/** A question's button says it sends an answer; "Figma" alone reads like a link. */
+function submitLabel(copy: CardCopy, chosen: ApprovalOption | undefined): string {
+  if (chosen === undefined) return 'Decide';
+  if (!copy.question || chosen.id === 'answer' || chosen.id === REJECT_OPTION) return chosen.label;
+  return `Answer: ${chosen.label}`;
+}
+
 interface CardCopy {
   /** A worker asked something, rather than asked to be allowed something. */
   readonly question: boolean;
@@ -243,7 +256,7 @@ interface CardCopy {
  * Rejecting a task's output is the other case that changed: the note is no
  * longer a comment for the record, it is the brief the revision is built from.
  */
-function copyFor(approval: Approval, selectedId: string | undefined): CardCopy {
+function copyFor(approval: Approval, selectedId: string | undefined, revisable = false): CardCopy {
   if (approval.kind === 'choice') {
     const open = selectedId === 'answer';
     return {
@@ -258,12 +271,12 @@ function copyFor(approval: Approval, selectedId: string | undefined): CardCopy {
       noteRequired: open,
     };
   }
-  const revisable = approval.taskId !== null && approval.kind !== 'plan' && selectedId === REJECT_OPTION;
+  const revising = revisable && selectedId === REJECT_OPTION;
   return {
     question: false,
     kindLabel: titleCase(approval.kind),
     effectQuestion: 'What changes if you approve?',
-    notePlaceholder: revisable
+    notePlaceholder: revising
       ? 'What should change? It goes back to be revised, using exactly what you write.'
       : 'Add a note for the record (optional) — downstream roles will read it.',
     noteRequired: false,

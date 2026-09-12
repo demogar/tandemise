@@ -65,7 +65,10 @@ const published = provider.tools(integration);
 ok('tools appear after discovery', published.length === 2, published.map((t) => t.name).join(', '));
 ok('names are namespaced by integration', published[0].name === 'supabase.list_tables', published[0].name);
 ok('the configured capability is what is granted', published.every((t) => t.capability === 'supabase.call'));
-ok('the configured risk is carried', published.every((t) => t.risk === 'external_write'));
+// `external_write` was never a risk class; rows written with it are read as
+// what they meant, so an approval for one of these tools satisfies the schema.
+ok('a legacy risk name is read as the real risk class', published.every((t) => t.risk === 'external_side_effect'),
+   published.map((t) => t.risk).join(','));
 
 const result = await published[0].execute(
   { logger: nullLogger, signal: new AbortController().signal }, { schema: 'public' },

@@ -2,6 +2,9 @@ import type {
   ApiErrorBody,
   ApprovalView,
   HomeView,
+  ConnectIntegrationRequest,
+  ConnectionAttemptView,
+  ConnectorView,
   IntegrationView,
   MissionDetail,
   MissionSummary,
@@ -286,6 +289,23 @@ export class DaemonClient {
 
   deleteIntegration(id: string): Promise<void> {
     return this.#request('DELETE', `/integrations/${id}`);
+  }
+
+  connectors(): Promise<readonly ConnectorView[]> {
+    return this.#get('/integrations/connectors');
+  }
+
+  /** Starts connecting an account. Open the returned `authorizationUrl` in the browser. */
+  connectIntegration(body: ConnectIntegrationRequest): Promise<ConnectionAttemptView> {
+    return this.#request('POST', '/integrations/connect', body);
+  }
+
+  connectionAttempt(attemptId: string): Promise<ConnectionAttemptView> {
+    return this.#get(`/integrations/connect/${attemptId}`);
+  }
+
+  cancelConnection(attemptId: string): Promise<ConnectionAttemptView> {
+    return this.#request('DELETE', `/integrations/connect/${attemptId}`);
   }
 
   // ---------------------------------------------------------------- settings

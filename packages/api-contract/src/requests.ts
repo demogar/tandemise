@@ -139,7 +139,32 @@ export const createIntegrationRequest = z.object({
 });
 export type CreateIntegrationRequest = z.infer<typeof createIntegrationRequest>;
 
-export const updateIntegrationRequest = createIntegrationRequest.partial().omit({ workspaceId: true, providerId: true });
+export const updateIntegrationRequest = createIntegrationRequest.partial().omit({ workspaceId: true, providerId: true })
+  // Switching an integration off withdraws its tools from every worker. The
+  // desktop has always sent this; the schema used to strip it, so the switch
+  // flipped back on the next refresh and nothing was ever withdrawn.
+  .extend({ enabled: z.boolean().optional() });
+
+/**
+ * Connect an account through its consent screen.
+ *
+ * Name a curated connector (`figma`), or give a provider and configuration for
+ * a server that is not in the catalog. Name an existing integration to
+ * reconnect it - an account whose refresh token was revoked keeps its row, its
+ * name and every mission reference to it.
+ */
+export const connectIntegrationRequest = z.object({
+  workspaceId: z.string().min(1),
+  connectorId: z.string().min(1).optional(),
+  providerId: z.string().min(1).optional(),
+  config: z.record(z.string(), z.unknown()).optional(),
+  name: z.string().min(1).max(120).optional(),
+  integrationId: z.string().min(1).optional(),
+}).refine((r) => r.connectorId !== undefined || r.integrationId !== undefined
+  || (r.providerId !== undefined && r.config !== undefined), {
+  message: 'Name a connector, an integration to reconnect, or a provider with its configuration.',
+});
+export type ConnectIntegrationRequest = z.infer<typeof connectIntegrationRequest>;
 
 export const upsertRoleRequest = z.object({
   workspaceId: z.string().min(1),

@@ -144,11 +144,15 @@ export class RunDeadlines {
     return this.#live.get(assignmentId)?.pause() ?? null;
   }
 
-  /** Returns whether the run is still parked on some other question. */
-  resume(assignmentId: WorkerAssignmentId): boolean {
+  /**
+   * Restarts the run's clock. `running` means the run is live and no other
+   * question is open; `parked` that another still is; `gone` that the run this
+   * assignment belonged to has already ended.
+   */
+  resume(assignmentId: WorkerAssignmentId): 'running' | 'parked' | 'gone' {
     const deadline = this.#live.get(assignmentId);
-    if (deadline === undefined) return false;
+    if (deadline === undefined) return 'gone';
     deadline.resume();
-    return deadline.parked;
+    return deadline.parked ? 'parked' : 'running';
   }
 }

@@ -11,7 +11,7 @@ import type { SchedulerService } from '../engine/scheduler.js';
 import type { EventRecorder, EventScope } from '../support/event-recorder.js';
 import type { ApprovalWaiter } from '../support/tool-policy.js';
 import type { RemediationPlanner } from '../engine/remediation.js';
-import { toApprovalView } from '../support/approval-view.js';
+import { isStartApproval, toApprovalView } from '../support/approval-view.js';
 import { materializePlan } from '../planning/materialize.js';
 import { parsePlanResponse } from '../planning/parse.js';
 
@@ -191,7 +191,7 @@ export class ApprovalServiceImpl implements ApprovalService {
       return;
     }
 
-    if (this.#wasStartApproval(approval, task)) {
+    if (isStartApproval(approval, task, this.deps.runs)) {
       if (approved) this.#setTaskStatus(task, scope, 'READY', 'Approved to start.');
       else this.#setTaskStatus(task, scope, 'BLOCKED', 'A human declined to let this task start.');
       return;
@@ -217,16 +217,8 @@ export class ApprovalServiceImpl implements ApprovalService {
     // A bare "no" gives the worker nothing to change, so nothing is re-run on
     // a guess. The reason says how to get a revision instead.
     this.#setTaskStatus(task, scope, 'BLOCKED',
-      'Rejected without feedback. Reject again with a note to have it revised.');
+      'Rejected without saying what to change, so nothing was re-run on a guess. Retry the task to run it again.');
     this.#setMissionStatus(mission, scope, 'BLOCKED', `The output of '${task.key}' was rejected.`);
-  }
-
-  /** Created before the attempt's run row existed ⇒ it gated the start. */
-  #wasStartApproval(approval: Approval, task: MissionTask): boolean {
-    const latest = [...this.deps.runs.listByTask(task.id)]
-      .sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
-    if (latest === undefined) return true;
-    return approval.createdAt <= latest.startedAt;
   }
 
   // -------------------------------------------------------------- transitions

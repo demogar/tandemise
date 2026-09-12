@@ -1,4 +1,5 @@
 import type {
+  ApprovalRepositoryPort, MissionTask,
   ExecutionTargetRepositoryPort, LeaseRepositoryPort, MissionRepositoryPort, Run,
   RunRepositoryPort, RunStatus, RuntimeProfileRepositoryPort, TaskRepositoryPort,
 } from '@tandemise/domain';
@@ -48,6 +49,8 @@ export class RecoveryService {
     private readonly recorder: EventRecorder,
     private readonly clock: Clock,
     private readonly log: Logger,
+    /** Questions a dead run was waiting on, so they can be withdrawn. */
+    private readonly approvals: ApprovalRepositoryPort,
   ) {}
 
   /**
@@ -87,7 +90,12 @@ export class RecoveryService {
       // an attempt, and pretending otherwise would let a task that fails by
       // crashing loop past its retry budget.
       const task = this.tasks.get(run.taskId);
-      if (task !== undefined && task.status === 'RUNNING') {
+      // A task parked on a question is still an in-flight run: the worker was
+      // blocked inside `ask_human`, and that process is gone now. Left alone it
+      // would sit in AWAITING_INPUT forever, and its question would stay in the
+      // inbox with nothing waiting for the answer.
+      if (task !== undefined && task.status === 'AWAITING_INPUT') this.#withdrawQuestions(task.id);
+      if (task !== undefined && (task.status === 'RUNNING' || task.status === 'AWAITING_INPUT')) {
         this.tasks.update(task.id, {
           status: 'READY',
           statusReason: status === 'RESUMABLE'
@@ -134,6 +142,18 @@ export class RecoveryService {
     const adapter = profile === undefined ? undefined : this.registry.tryAdapter(profile.adapterId);
     const canResume = adapter?.resume !== undefined && run.externalSessionId !== null;
     return canResume ? 'RESUMABLE' : 'INTERRUPTED';
+  }
+
+  #withdrawQuestions(taskId: MissionTask['id']): void {
+    for (const approval of this.approvals.list({ statuses: ['PENDING'] })) {
+      if (approval.taskId !== taskId || approval.kind !== 'choice') continue;
+      this.approvals.update(approval.id, {
+        status: 'CANCELLED',
+        decisionNote: 'Tandemise restarted while the worker was waiting on this. It will ask again if it still needs to.',
+        decidedAt: this.clock.now(),
+      });
+      this.recorder.invalidate('approvals', approval.missionId ?? undefined);
+    }
   }
 
   #releaseDeadLeases(): number {

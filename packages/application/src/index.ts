@@ -66,3 +66,6 @@ export { WorkspaceServiceImpl } from './services/workspace-service.js';
 export { MAX_PARKED_MS, RunDeadline, RunDeadlines } from './engine/run-deadline.js';
 export { ASK_HUMAN_TOOL, createAskHumanTool } from './tools/ask-human.js';
 export type { AskHumanDeps } from './tools/ask-human.js';
+export { ConnectFlow, CONNECT_TIMEOUT_MS } from './services/connect-flow.js';
+export { IntegrationCredentials } from './support/integration-credentials.js';
+export type { OAuthCallback, OAuthCallbackListener, OAuthCallbackPort } from './ports.js';

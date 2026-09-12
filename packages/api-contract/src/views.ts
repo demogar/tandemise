@@ -110,6 +110,44 @@ export interface IntegrationView {
   readonly integration: Integration;
   readonly health: { state: string; detail: string; checkedAt: string };
   readonly availableCapabilities: readonly { capability: string; risk: string; description: string }[];
+  /** The catalog entry this was connected from, when it was. */
+  readonly connectorId: string | null;
+  /** The account connected, when the server told us. Never a secret. */
+  readonly account: string | null;
+  /** Whether it authenticates through a consent screen, and so can be reconnected. */
+  readonly reconnectable: boolean;
+}
+
+/** A one-click integration in the gallery. */
+export interface ConnectorView {
+  readonly id: string;
+  readonly name: string;
+  readonly description: string;
+  readonly category: string;
+  readonly providerId: string;
+  readonly authorization: 'oauth' | 'none';
+  readonly usedBy: string;
+  readonly homepage: string;
+}
+
+export type ConnectionStatus = 'waiting' | 'connecting' | 'connected' | 'failed' | 'cancelled';
+
+/**
+ * One attempt to connect an account.
+ *
+ * The renderer opens `authorizationUrl` in the user's browser and polls this
+ * until it settles. Nothing that could finish the exchange - the PKCE verifier,
+ * the registered client - is ever in it.
+ */
+export interface ConnectionAttemptView {
+  readonly id: string;
+  readonly status: ConnectionStatus;
+  readonly name: string;
+  readonly connectorId: string | null;
+  readonly authorizationUrl: string | null;
+  readonly integrationId: string | null;
+  readonly error: string | null;
+  readonly startedAt: string;
 }
 
 export interface ApprovalView {
@@ -117,6 +155,8 @@ export interface ApprovalView {
   readonly missionTitle: string | null;
   readonly taskTitle: string | null;
   readonly roleName: string | null;
+  /** Rejecting this with a note sends the task back to be revised. */
+  readonly revisable: boolean;
 }
 
 export interface WorkspaceView {

@@ -134,6 +134,12 @@ export function useRoles() {
   return useQuery({ queryKey: keys.roles(workspaceId), queryFn: () => daemon.roles(workspaceId), staleTime: 30_000 });
 }
 
+/** The one-click catalog. It changes only when the daemon does. */
+export function useConnectors() {
+  const daemon = useDaemon();
+  return useQuery({ queryKey: ['integrations', 'connectors'], queryFn: () => daemon.connectors(), staleTime: 5 * 60_000 });
+}
+
 export function useIntegrations() {
   const daemon = useDaemon();
   const workspaceId = useWorkspaceId();

@@ -85,6 +85,11 @@ export class McpGatewayProvisioner {
     await mkdir(join(paths.root, 'sockets'), { recursive: true, mode: 0o700 });
 
     const token = randomBytes(24).toString('hex');
+    // Ends with this run, not with the task. A tool can block for a long time -
+    // `ask_human` waits on a person - and the task signal is not aborted when a
+    // runtime process dies or an attempt finishes, so a tool waiting on it would
+    // outlive the run and settle into whatever attempt came next.
+    const run = new AbortController();
     const ctx: ToolContext = {
       assignment: request.assignment,
       assignmentId: request.assignment.id,
@@ -92,7 +97,7 @@ export class McpGatewayProvisioner {
       workingDirectory: request.workingDirectory,
       logger: log.child({ runId: request.runId, component: 'tools' }),
       exec: this.deps.exec(),
-      signal: request.signal,
+      signal: AbortSignal.any([request.signal, run.signal]),
     };
 
     const bridge = new ToolBridgeServer(gatewayBridgeHandler(gateway, ctx), {
@@ -111,6 +116,7 @@ export class McpGatewayProvisioner {
         token,
       });
     } catch (e) {
+      run.abort();
       await bridge.close().catch(() => undefined);
       throw e;
     }
@@ -125,6 +131,7 @@ export class McpGatewayProvisioner {
       mcpConfigPath: handle.configPath,
       toolNames,
       dispose: async () => {
+        run.abort(new Error('The run ended.'));
         // The socket and the token die with the run. A leftover socket would be
         // a second, unauthenticated door into the broker.
         try { await bridge.close(); } catch (e) { log.debug('mcp.bridge_stop_failed', { error: errorMessage(e) }); }

@@ -4,6 +4,7 @@ import { Registry, multiToken, type Descriptor } from '@tandemise/kernel';
 import type { z } from 'zod';
 import type { CommandExecutor } from './exec.js';
 import type { IntegrationTool } from './tool.js';
+import type { IntegrationAuthorizer, IntegrationConnector } from './auth.js';
 
 /** What a provider is given to answer "is this integration usable right now?". */
 export interface IntegrationHealthContext {
@@ -33,6 +34,10 @@ export interface IntegrationProvider extends Descriptor {
    * down with it (MVP.md §12.5 - degrade, do not fail).
    */
   healthCheck(integration: Integration, ctx: IntegrationHealthContext): Promise<IntegrationHealth>;
+  /** Present when an integration of this kind is connected through a consent screen. */
+  readonly authorizer?: IntegrationAuthorizer;
+  /** One-click integrations this provider offers. */
+  readonly connectors?: readonly IntegrationConnector[];
 }
 
 /** Every integration package contributes here; the core names none of them. */
@@ -46,5 +51,10 @@ export class IntegrationProviderRegistry extends Registry<IntegrationProvider> {
   /** Providers usable over a given transport, for the "add integration" UI. */
   byTransport(transport: IntegrationTransport): readonly IntegrationProvider[] {
     return this.filter((p) => p.transport === transport);
+  }
+
+  /** Every provider's connectors, for the gallery. */
+  connectors(): readonly IntegrationConnector[] {
+    return this.all().flatMap((p) => p.connectors ?? []);
   }
 }

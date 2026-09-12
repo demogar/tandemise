@@ -21,6 +21,8 @@ const DECLINE_OPTION: ApprovalOption = {
   description: 'The worker continues on its own judgement and records the assumption it made.',
 };
 
+const RESERVED_OPTION_IDS: ReadonlySet<string> = new Set([OPEN_ANSWER_OPTION.id, REJECT_OPTION]);
+
 const askHumanInput = z.object({
   question: z
     .string()
@@ -38,7 +40,11 @@ const askHumanInput = z.object({
   options: z
     .array(
       z.object({
-        id: z.string().trim().min(1),
+        // `answer` and `reject` are the card's own options. A worker offering an
+        // option called `reject` would have it read back as a decline.
+        id: z.string().trim().min(1).refine((id) => !RESERVED_OPTION_IDS.has(id), {
+          message: 'Option ids "answer" and "reject" are reserved; choose another id.',
+        }),
         label: z.string().trim().min(1),
         description: z.string().trim().optional(),
       }),
@@ -211,10 +217,11 @@ export function createAskHumanTool(deps: AskHumanDeps): IntegrationTool {
               ? '' : ` '${decision.selectedOptionId}'`}: ${summarize(decision.reason, 120)}`,
         };
       } finally {
-        // A runtime may ask two things at once. The task is only RUNNING again
-        // once the last of them is answered.
-        const stillParked = deps.deadlines.resume(ctx.assignmentId);
-        if (!stillParked) unpark(ctx.assignment.taskId);
+        // A runtime may ask two things at once: the task is only RUNNING again
+        // once the last is answered. And only while this run is still the live
+        // one - a question that outlived its run must not flip the next attempt,
+        // which may be parked on a question of its own, back to RUNNING.
+        if (deps.deadlines.resume(ctx.assignmentId) === 'running') unpark(ctx.assignment.taskId);
         deps.recorder.invalidate('tasks', ctx.assignment.missionId);
       }
     },

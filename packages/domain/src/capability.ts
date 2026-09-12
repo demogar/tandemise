@@ -50,6 +50,14 @@ export const CORE_CAPABILITIES = {
   humanAsk: 'human.ask',
   /** Produce a design in a real design tool, rather than describing one. */
   design: 'design',
+  /**
+   * Work in the tools a connected app provides. Each has a `.read` child that
+   * a connector publishes its read-only tools under.
+   */
+  planning: 'planning',
+  database: 'database',
+  deploy: 'deploy',
+  monitoring: 'monitoring',
 } as const;
 
 /**

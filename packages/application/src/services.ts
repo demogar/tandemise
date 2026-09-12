@@ -9,6 +9,7 @@ import type {
 import type {
   AddRepositoryRequest, ApprovalView, CreateIntegrationRequest, CreateMissionRequest,
   CreateRuntimeProfileRequest, CreateWorkspaceRequest, DecideApprovalRequest, HomeView,
+  ConnectIntegrationRequest, ConnectionAttemptView, ConnectorView,
   IntegrationView, MissionDetail, MissionSummary, RepositoryProbe, RuntimeDiscoveryView,
   RuntimeView, SystemInfo, TaskView, UpdateWorkspaceRequest, UpsertRoleRequest, WorkspaceView,
   CompleteTaskRequest,
@@ -116,9 +117,15 @@ export interface IntegrationService {
   list(workspaceId?: WorkspaceId): Promise<readonly IntegrationView[]>;
   listProviders(): readonly { id: string; displayName: string; transport: string; description: string }[];
   create(request: CreateIntegrationRequest): Promise<IntegrationView>;
-  update(id: IntegrationId, patch: Partial<CreateIntegrationRequest>): Promise<IntegrationView>;
+  update(id: IntegrationId, patch: Partial<CreateIntegrationRequest> & { readonly enabled?: boolean }): Promise<IntegrationView>;
   remove(id: IntegrationId): void;
   checkHealth(id: IntegrationId): Promise<IntegrationView>;
+  /** One-click integrations the composed providers offer. */
+  listConnectors(): readonly ConnectorView[];
+  /** Starts connecting an account; the desktop opens the returned URL. */
+  connect(request: ConnectIntegrationRequest): Promise<ConnectionAttemptView>;
+  connection(attemptId: string): ConnectionAttemptView;
+  cancelConnection(attemptId: string): ConnectionAttemptView;
 }
 
 export interface ProjectionService {

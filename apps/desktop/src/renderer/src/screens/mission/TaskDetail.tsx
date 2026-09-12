@@ -65,7 +65,7 @@ export function TaskDetail({ task, detail, onClose }: { task: TaskView; detail: 
         {question !== undefined ? (
           <ApprovalCard
             compact
-            view={{ approval: question, missionTitle: null, taskTitle: null, roleName: task.roleName }}
+            view={{ approval: question, missionTitle: null, taskTitle: null, roleName: task.roleName, revisable: false }}
           />
         ) : null}
 

@@ -45,6 +45,12 @@ const CAPABILITY_RISK: ReadonlyArray<readonly [Capability, RiskClass]> = [
   // the person who would otherwise be approving it. Classifying it any higher
   // would mean a worker needed permission to request permission.
   ['human.ask', 'read'],
+  // Read-only tools of a connected app, split off by the connector.
+  ['design.read', 'read'],
+  ['planning.read', 'read'],
+  ['database.read', 'read'],
+  ['deploy.read', 'read'],
+  ['monitoring.read', 'read'],
 
   // Reversible local work.
   ['filesystem.write', 'write_reversible'],
@@ -68,6 +74,11 @@ const CAPABILITY_RISK: ReadonlyArray<readonly [Capability, RiskClass]> = [
   ['github.issue.create', 'external_side_effect'],
   ['github.comment', 'external_side_effect'],
   ['figma.write', 'external_side_effect'],
+  // Writes to a connected app: an issue created, a migration run, a deploy.
+  ['planning', 'external_side_effect'],
+  ['database', 'external_side_effect'],
+  ['deploy', 'external_side_effect'],
+  ['monitoring', 'external_side_effect'],
   ['web.write', 'external_side_effect'],
   ['email.send', 'external_side_effect'],
 

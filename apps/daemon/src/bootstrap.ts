@@ -41,6 +41,7 @@ import { InMemoryEventBus, InMemoryProjectionBus } from './buses.js';
 import { createSecretStore } from './secrets.js';
 import { createSettingsStore, createSystemEnvironment, processLiveness } from './platform.js';
 import { createBackgroundProcessLauncher, createToolCommandExecutor } from './tool-exec.js';
+import { oauthCallbacks } from './oauth-callback.js';
 import { FileWorkflowSource } from './workflow-source.js';
 
 export const CLOCK = token<Clock>('Clock');
@@ -198,6 +199,7 @@ function aliasPorts(container: Container, log: Logger): void {
   bindDirect('SETTINGS_STORE', (r) => createSettingsStore(r.resolve(CONFIG).home, log));
   bindDirect('SYSTEM_ENVIRONMENT', (r) => createSystemEnvironment(r.resolve(CONFIG), SCHEMA_VERSION));
   bindDirect('PROCESS_LIVENESS', () => processLiveness);
+  bindDirect('OAUTH_CALLBACK', () => oauthCallbacks);
 
   log.debug('bootstrap.ports_bound', { aliased, missing });
 }

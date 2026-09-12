@@ -65,7 +65,7 @@ you write.`,
     summary: 'Produces the design itself, in the tool the project uses, before code is written.',
     defaultCapabilities: [
       CORE_CAPABILITIES.repositoryRead, CORE_CAPABILITIES.filesystemRead, CORE_CAPABILITIES.artifactWrite,
-      CORE_CAPABILITIES.design, CORE_CAPABILITIES.browser, CORE_CAPABILITIES.mcp,
+      CORE_CAPABILITIES.design, CORE_CAPABILITIES.browser,
     ],
     producesArtifacts: ['DesignBrief'],
     consumesArtifacts: ['ProductSpec'],
@@ -322,6 +322,24 @@ stated confidence level. An unsourced number is worse than no number.`,
 ];
 
 /**
+ * Which roles work in which kind of connected app.
+ *
+ * Connecting Figma should give the designer Figma - not every worker. So each
+ * connector publishes under one capability and only the roles that do that
+ * work hold it. A role holding `planning` sees Linear, Notion and Jira once
+ * they are connected, and nothing when they are not: an unconnected app
+ * contributes no tools, so the grant is inert until someone clicks Connect.
+ */
+const CONNECTED_APPS: Readonly<Record<string, readonly string[]>> = {
+  product: [CORE_CAPABILITIES.planning],
+  architecture: [CORE_CAPABILITIES.planning],
+  development: [CORE_CAPABILITIES.database, `${CORE_CAPABILITIES.monitoring}.read`],
+  review: [`${CORE_CAPABILITIES.database}.read`],
+  qa: [`${CORE_CAPABILITIES.deploy}.read`, `${CORE_CAPABILITIES.monitoring}.read`],
+  release: [CORE_CAPABILITIES.planning, CORE_CAPABILITIES.deploy, CORE_CAPABILITIES.monitoring],
+};
+
+/**
  * Every role can ask the person supervising the mission a question.
  *
  * Granted here rather than on each role, so the next role someone adds cannot
@@ -331,10 +349,16 @@ stated confidence level. An unsourced number is worse than no number.`,
  */
 export const BUILT_IN_ROLES: readonly BuiltInRole[] = ROLES.map((role) => ({
   ...role,
-  defaultCapabilities: role.defaultCapabilities.includes(CORE_CAPABILITIES.humanAsk)
-    ? role.defaultCapabilities
-    : [...role.defaultCapabilities, CORE_CAPABILITIES.humanAsk],
+  defaultCapabilities: unique([
+    ...role.defaultCapabilities,
+    CORE_CAPABILITIES.humanAsk,
+    ...(CONNECTED_APPS[role.id] ?? []),
+  ]),
 }));
+
+function unique<T>(values: readonly T[]): T[] {
+  return [...new Set(values)];
+}
 
 
 export const BUILT_IN_ROLE_MAP: ReadonlyMap<string, BuiltInRole> = new Map(

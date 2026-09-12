@@ -9,7 +9,7 @@ import {
   PATHS as EXECUTION_PATHS, PROCESS_SUPERVISOR,
 } from '@tandemise/execution-core';
 import {
-  APPROVAL_GATE, BUILT_IN_TOOLS, INTEGRATION_PROVIDER_REGISTRY, INTEGRATION_SOURCE, TOOL_BROKER,
+  APPROVAL_GATE, BUILT_IN_TOOLS, INTEGRATION_CREDENTIALS, INTEGRATION_PROVIDER_REGISTRY, INTEGRATION_SOURCE, TOOL_BROKER,
   TOOL_POLICY_GATE,
   COMMAND_EXECUTOR as INTEGRATION_COMMAND_EXECUTOR,
 } from '@tandemise/integrations-core';
@@ -32,6 +32,8 @@ import { RuntimeOverrides } from './support/runtime-overrides.js';
 import { ApprovalWaiter, createApprovalGate, createPolicyEngineToolGate } from './support/tool-policy.js';
 import { createAskHumanTool } from './tools/ask-human.js';
 import { RunDeadlines } from './engine/run-deadline.js';
+import { ConnectFlow } from './services/connect-flow.js';
+import { IntegrationCredentials } from './support/integration-credentials.js';
 import { ApprovalServiceImpl } from './services/approval-service.js';
 import { ArtifactServiceImpl } from './services/artifact-service.js';
 import { WorkflowServiceImpl } from './services/workflow-service.js';
@@ -258,6 +260,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       r.resolve(t.EVENT_RECORDER),
       clock(r),
       log(r).child({ component: 'recovery' }),
+      r.resolve(t.APPROVAL_REPOSITORY),
     ), { source: SOURCE });
 
     // ---------------------------------------------------------- API services
@@ -298,12 +301,37 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       clock(r),
     ), { source: SOURCE });
 
+    bind(t.INTEGRATION_CREDENTIAL_STORE, (r) => new IntegrationCredentials({
+      secrets: r.resolve(t.SECRET_STORE),
+      integrations: r.resolve(t.INTEGRATION_REPOSITORY),
+      providers: r.resolve(INTEGRATION_PROVIDER_REGISTRY),
+      clock: clock(r),
+      log: log(r).child({ component: 'integration-credentials' }),
+    }), { source: SOURCE });
+    // Providers resolve this core token; they never see the store behind it.
+    bind(INTEGRATION_CREDENTIALS, (r) => r.resolve(t.INTEGRATION_CREDENTIAL_STORE), { source: SOURCE });
+
+    bind(t.CONNECT_FLOW, (r) => new ConnectFlow({
+      integrations: r.resolve(t.INTEGRATION_REPOSITORY),
+      workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
+      providers: r.resolve(INTEGRATION_PROVIDER_REGISTRY),
+      credentials: r.resolve(t.INTEGRATION_CREDENTIAL_STORE),
+      callbacks: r.resolve(t.OAUTH_CALLBACK),
+      // Resolved at call time: the service depends on this flow, so resolving
+      // it while constructing the flow would be a cycle.
+      checkHealth: (id) => r.resolve(t.INTEGRATION_SERVICE).checkHealth(id),
+      clock: clock(r),
+      log: log(r).child({ component: 'connect' }),
+    }), { source: SOURCE });
+
     bind(t.INTEGRATION_SERVICE, (r) => new IntegrationServiceImpl({
       integrations: r.resolve(t.INTEGRATION_REPOSITORY),
       workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
       providers: r.resolve(INTEGRATION_PROVIDER_REGISTRY),
       secrets: r.resolve(t.SECRET_STORE),
       exec: r.tryResolve(INTEGRATION_COMMAND_EXECUTOR) ?? null,
+      connect: r.has(t.OAUTH_CALLBACK) ? r.resolve(t.CONNECT_FLOW) : null,
+      credentials: r.resolve(t.INTEGRATION_CREDENTIAL_STORE),
       clock: clock(r),
       log: log(r).child({ component: 'integrations' }),
     }), { source: SOURCE });

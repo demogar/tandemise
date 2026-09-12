@@ -2,13 +2,17 @@ import type {
   Integration, IntegrationRepositoryPort, SecretStorePort, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
 import { riskForCapability } from '@tandemise/policy';
-import type { CreateIntegrationRequest, IntegrationView } from '@tandemise/api-contract';
+import type {
+  ConnectIntegrationRequest, ConnectionAttemptView, ConnectorView, CreateIntegrationRequest, IntegrationView,
+} from '@tandemise/api-contract';
 import type {
   CommandExecutor, IntegrationProvider, IntegrationProviderRegistry,
 } from '@tandemise/integrations-core';
 import type { Clock, IntegrationId, Logger, WorkspaceId } from '@tandemise/shared';
 import { TandemiseError, asId, errorMessage, ids } from '@tandemise/shared';
 import type { IntegrationService } from '../services.js';
+import type { ConnectFlow } from './connect-flow.js';
+import type { IntegrationCredentials } from '../support/integration-credentials.js';
 
 const HEALTH_TIMEOUT_MS = 15_000;
 
@@ -18,6 +22,9 @@ export interface IntegrationDeps {
   readonly providers: IntegrationProviderRegistry;
   readonly secrets: SecretStorePort;
   readonly exec: CommandExecutor | null;
+  /** Null when no callback listener is composed - a headless daemon cannot send anyone to consent. */
+  readonly connect: ConnectFlow | null;
+  readonly credentials: IntegrationCredentials;
   readonly clock: Clock;
   readonly log: Logger;
 }
@@ -57,6 +64,38 @@ export class IntegrationServiceImpl implements IntegrationService {
     }));
   }
 
+  listConnectors(): readonly ConnectorView[] {
+    return (this.deps.connect?.connectors() ?? []).map((c) => ({
+      id: c.id,
+      name: c.name,
+      description: c.description,
+      category: c.category,
+      providerId: c.providerId,
+      authorization: c.authorization,
+      usedBy: c.usedBy,
+      homepage: c.homepage,
+    }));
+  }
+
+  connect(request: ConnectIntegrationRequest): Promise<ConnectionAttemptView> {
+    return this.#flow().start(request);
+  }
+
+  connection(attemptId: string): ConnectionAttemptView {
+    return this.#flow().get(attemptId);
+  }
+
+  cancelConnection(attemptId: string): ConnectionAttemptView {
+    return this.#flow().cancel(attemptId);
+  }
+
+  #flow(): ConnectFlow {
+    if (this.deps.connect === null) {
+      throw new TandemiseError('PRECONDITION_FAILED', 'This daemon cannot connect accounts: no callback listener is available.');
+    }
+    return this.deps.connect;
+  }
+
   async create(request: CreateIntegrationRequest): Promise<IntegrationView> {
     const workspaceId = asId<'WorkspaceId'>(request.workspaceId);
     if (this.deps.workspaces.get(workspaceId) === undefined) {
@@ -91,10 +130,14 @@ export class IntegrationServiceImpl implements IntegrationService {
     return this.#view(created);
   }
 
-  async update(id: IntegrationId, patch: Partial<CreateIntegrationRequest>): Promise<IntegrationView> {
+  async update(
+    id: IntegrationId,
+    patch: Partial<CreateIntegrationRequest> & { readonly enabled?: boolean },
+  ): Promise<IntegrationView> {
     const existing = this.#require(id);
     const updated = this.deps.integrations.update(id, {
       ...(patch.name !== undefined ? { name: patch.name } : {}),
+      ...(patch.enabled !== undefined ? { enabled: patch.enabled } : {}),
       ...(patch.config !== undefined ? { config: { ...existing.config, ...patch.config } } : {}),
       ...(patch.enabledCapabilities !== undefined
         ? { enabledCapabilities: patch.enabledCapabilities }
@@ -141,6 +184,9 @@ export class IntegrationServiceImpl implements IntegrationService {
     return {
       integration,
       health,
+      connectorId: this.deps.connect?.connectorFor(integration)?.id ?? null,
+      account: await this.deps.credentials.account(integration).catch(() => null),
+      reconnectable: provider?.authorizer !== undefined && integration.config['auth'] === 'oauth',
       availableCapabilities: provider === undefined
         ? []
         : provider.tools(integration).map((tool) => ({

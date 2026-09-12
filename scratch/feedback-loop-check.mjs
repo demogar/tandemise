@@ -150,6 +150,9 @@ function runningDesignTask() {
     roleId: 'design', runtimeProfileId: asId('rp1'), executionTargetId: asId('et1'),
     grants, budgets: { maxWallTimeMs: 600000, maxAttempts: 2 }, createdAt: systemClock.now(),
   });
+  // A live run always has a deadline registered; the tool only un-parks a task
+  // whose run is still live.
+  deadlines.open(assignment.id, 600000);
   return { task, assignment };
 }
 
@@ -193,7 +196,6 @@ for (const role of BUILT_IN_ROLES) {
 head('The designer asks which tool, and the answer comes back');
 {
   const { task, assignment } = runningDesignTask();
-  deadlines.open(assignment.id, 600000);
   const gateway = RunScopedToolGateway.for(broker, assignment, systemClock);
   const controller = new AbortController();
 
@@ -483,7 +485,66 @@ head('A bare "no" does not re-run anything on a guess');
   ok('no revision is created without feedback',
      !repo.tasks.listByMission(asId('m3')).some((x) => x.key.includes('revision')));
   ok('the task is blocked', after?.status === 'BLOCKED');
-  ok('and the reason says how to get a revision', /with a note/.test(after?.statusReason ?? ''), after?.statusReason);
+  // The card is already decided, so "reject again with a note" would be a
+  // dead end; the reason points at the action that actually exists.
+  ok('and the reason points at something the person can actually do', /Retry the task/.test(after?.statusReason ?? ''), after?.statusReason);
+}
+
+
+// ============================================================ restart
+
+head('A question that outlives its run cannot disturb the next attempt');
+{
+  const { task, assignment } = runningDesignTask();
+  const gateway = RunScopedToolGateway.for(broker, assignment, systemClock);
+  const call = gateway.invoke('ask_human', { question: 'Stale question?' }, contextFor(assignment, new AbortController().signal));
+  const card = await until(() => pendingFor(task.id));
+  // The run ends underneath the question, and a new attempt parks on its own.
+  deadlines.close(assignment.id);
+  repo.tasks.update(task.id, { status: 'AWAITING_INPUT', statusReason: 'Waiting for your answer: the new attempt' });
+  await services.approvals.decide(card.id, { optionId: 'answer', note: 'late answer' });
+  await call;
+  ok('the next attempt stays parked on its own question', repo.tasks.get(task.id)?.status === 'AWAITING_INPUT',
+     repo.tasks.get(task.id)?.status);
+}
+
+head('A worker cannot offer an option that collides with the card\'s own');
+{
+  const { assignment } = runningDesignTask();
+  const gateway = RunScopedToolGateway.for(broker, assignment, systemClock);
+  const result = await gateway.invoke('ask_human', {
+    question: 'Ship it?', options: [{ id: 'reject', label: 'Reject the PR' }, { id: 'merge', label: 'Merge' }],
+  }, contextFor(assignment, new AbortController().signal));
+  ok('an option id of "reject" is refused with a reason the worker can act on',
+     result.outcome === 'error' && /reserved/.test(result.error?.message ?? ''), result.error?.message);
+}
+
+head('A restart while a worker waits on a question does not strand the mission');
+{
+  const { task, assignment } = runningDesignTask();
+  const gateway = RunScopedToolGateway.for(broker, assignment, systemClock);
+  const controller = new AbortController();
+  // The worker asks, and then the daemon dies: the run row is left RUNNING
+  // with a pid that no longer exists, exactly as a crash leaves it.
+  const call = gateway.invoke('ask_human', { question: 'Which copy tone?' }, contextFor(assignment, controller.signal));
+  const card = await until(() => pendingFor(task.id));
+  container.resolve(app.RUN_REPOSITORY).create({
+    id: ids.run(), missionId: asId('m1'), taskId: task.id, assignmentId: assignment.id, attempt: 1, status: 'RUNNING',
+    roleId: 'design', runtimeProfileId: asId('rp1'), executionTargetId: asId('et1'), externalSessionId: null,
+    pid: 999999, exitCode: null, errorCode: null, errorMessage: null, usage: null,
+    startedAt: systemClock.now(), finishedAt: null, heartbeatAt: systemClock.now(),
+  });
+  ok('before: parked, with a pending question', repo.tasks.get(task.id)?.status === 'AWAITING_INPUT' && card !== undefined);
+
+  await container.resolve(app.RECOVERY_SERVICE).run();
+
+  ok('the task is requeued rather than left parked forever', repo.tasks.get(task.id)?.status === 'READY',
+     repo.tasks.get(task.id)?.status);
+  const after = repo.approvals.get(card.id);
+  ok('its question is withdrawn from the inbox', after?.status === 'CANCELLED', after?.status);
+  ok('saying why', /restarted/.test(after?.decisionNote ?? ''), after?.decisionNote);
+  controller.abort();
+  await call;
 }
 
 clearInterval(keepAlive);

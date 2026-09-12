@@ -1,5 +1,12 @@
 export { McpIntegrationProvider, MCP_PROVIDER_ID } from './provider.js';
+export type { McpProviderOptions } from './provider.js';
 export { McpStdioClient } from './client.js';
-export type { McpServerSpec, McpToolDefinition, McpCallResult } from './client.js';
+export type { McpServerSpec } from './client.js';
+export { McpHttpClient } from './http-client.js';
+export type { McpHttpServerSpec } from './http-client.js';
+export type { McpCallResult, McpClient, McpServerInfo, McpToolDefinition } from './protocol.js';
+export { McpOAuthAuthorizer, discoverAuthorizationServer, parseChallenge } from './oauth.js';
+export type { AuthorizationServer } from './oauth.js';
+export { MCP_CONNECTORS } from './connectors.js';
 export { jsonSchemaToZod } from './schema.js';
 export { mcpIntegrationModule } from './module.js';

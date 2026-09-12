@@ -12,6 +12,11 @@ export type { JsonSchema } from './json-schema.js';
 export { toJsonSchema } from './json-schema.js';
 
 export type { IntegrationHealthContext, IntegrationProvider } from './provider.js';
+export type {
+  AuthorizationRequest, AuthorizationStart, IntegrationAuthorizer, IntegrationConnector,
+  IntegrationCredential, IntegrationCredentialSource,
+} from './auth.js';
+export { INTEGRATION_CREDENTIALS, IntegrationUnauthorizedError } from './auth.js';
 export { INTEGRATION_PROVIDERS, IntegrationProviderRegistry } from './provider.js';
 
 export type { ToolCatalog } from './catalog.js';
