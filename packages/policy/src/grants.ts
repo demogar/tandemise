@@ -28,6 +28,8 @@ export interface GrantBuildRequest {
   readonly allowedDomains?: readonly string[];
   /** Repositories (`owner/name`) the mission may act on. */
   readonly allowedRepositories?: readonly string[];
+  /** Integration names a connected-app capability may reach. Absent: every app connected under it. */
+  readonly connectedApps?: readonly string[];
   /** Extra read-only roots, e.g. the user's original checkout. */
   readonly readOnlyPaths?: readonly string[];
   /** Grant lifetime. Defaults to the task's wall-time budget. */
@@ -44,6 +46,11 @@ const PATH_SCOPED = ['filesystem', 'shell', 'tests', 'git', 'repository.read', '
 const DOMAIN_SCOPED = ['browser', 'web', 'http'];
 /** Capabilities whose scope entries are `owner/name` repository slugs. */
 const REPO_SCOPED = ['github', 'gitlab'];
+/**
+ * Capabilities a connected app publishes its tools under. The resource of such
+ * a call is the integration's name.
+ */
+const APP_SCOPED = ['design', 'planning', 'database', 'deploy', 'monitoring'];
 
 function startsWithAny(capability: Capability, prefixes: readonly string[]): boolean {
   return prefixes.some((p) => capability === p || capability.startsWith(`${p}.`));
@@ -120,6 +127,13 @@ function scopeFor(capability: Capability, request: GrantBuildRequest): readonly 
   if (startsWithAny(capability, PATH_SCOPED)) return [request.workingDirectory];
   if (startsWithAny(capability, DOMAIN_SCOPED)) return request.allowedDomains ?? [];
   if (startsWithAny(capability, REPO_SCOPED)) return request.allowedRepositories ?? [];
+  // Which apps a worker reaches is already decided by the capability: only
+  // integrations the user connected under `design` publish `design` tools, and
+  // choosing "who uses it" when connecting is that decision. An empty scope
+  // here denied every call - a designer granted `design` was refused
+  // `open-design.list_projects` - so a connected-app grant covers the apps
+  // connected under it, narrowed further when the caller names them.
+  if (startsWithAny(capability, APP_SCOPED)) return request.connectedApps ?? ['*'];
   // Unknown capability families get no resource scope. `matchesScope` treats an
   // empty scope as covering nothing, so this is the default-deny branch.
   return [];

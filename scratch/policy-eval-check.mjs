@@ -202,6 +202,25 @@ const builtEngineDecision = engine.evaluate({
 });
 check('the built grants cannot authorise the dropped capability', builtEngineDecision.outcome === 'deny');
 
+// Found in the real app: a designer granted `design` was denied every Open
+// Design call, because a connected-app grant carried no resource scope.
+const designerGrants = createGrantBuilder({ clock }).build({
+  role: { ...role, defaultCapabilities: ['design'] },
+  task: { ...task, requiredCapabilities: ['design'], executionPolicy: { ...task.executionPolicy, capabilities: ['design'] } },
+  autonomy: DEFAULT_AUTONOMY, workingDirectory: WORKTREE, artifactRoot: ARTIFACT_ROOT,
+});
+const designRead = engine.evaluate({ ...base, capability: 'design.read', resource: 'open-design', grants: designerGrants });
+check('a `design` grant reaches a design app it was connected under', designRead.outcome === 'allow', designRead.reason);
+const designAsDatabase = engine.evaluate({ ...base, capability: 'database', resource: 'supabase', grants: designerGrants });
+check('a `design` grant still reaches no other kind of app', designAsDatabase.outcome === 'deny', designAsDatabase.reason);
+const namedOnly = createGrantBuilder({ clock }).build({
+  role: { ...role, defaultCapabilities: ['design'] },
+  task: { ...task, requiredCapabilities: ['design'], executionPolicy: { ...task.executionPolicy, capabilities: ['design'] } },
+  autonomy: DEFAULT_AUTONOMY, workingDirectory: WORKTREE, artifactRoot: ARTIFACT_ROOT, connectedApps: ['open-design'],
+});
+check('naming the apps narrows the grant to them',
+  engine.evaluate({ ...base, capability: 'design', resource: 'figma', grants: namedOnly }).outcome === 'deny');
+
 section('policy — approval factory');
 const approvals = createApprovalFactory({ clock });
 const incomplete = approvals.create({
