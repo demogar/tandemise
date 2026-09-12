@@ -33,8 +33,18 @@ export interface IntegrationDeps {
 export class IntegrationServiceImpl implements IntegrationService {
   constructor(private readonly deps: IntegrationDeps) {}
 
-  async list(workspaceId: WorkspaceId): Promise<readonly IntegrationView[]> {
-    const integrations = this.deps.integrations.listByWorkspace(workspaceId);
+  /**
+   * Integrations, for one workspace or for the whole install.
+   *
+   * Omitting the workspace is the honest answer to "what is connected?" before
+   * a workspace is chosen - the desktop asks exactly that on a screen the user
+   * can reach without having picked one. Requiring it here made the screen fail
+   * outright rather than show what exists.
+   */
+  async list(workspaceId?: WorkspaceId): Promise<readonly IntegrationView[]> {
+    const integrations = workspaceId === undefined
+      ? this.deps.workspaces.list().flatMap((w) => this.deps.integrations.listByWorkspace(w.id))
+      : this.deps.integrations.listByWorkspace(workspaceId);
     return Promise.all(integrations.map((i) => this.#view(i)));
   }
 

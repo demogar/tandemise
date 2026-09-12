@@ -87,7 +87,8 @@ export interface ApprovalService {
 export interface ArtifactService {
   listByMission(missionId: MissionId): readonly ArtifactManifest[];
   read(id: ArtifactId): Promise<LoadedArtifact>;
-  search(workspaceId: WorkspaceId, query: string): readonly ArtifactManifest[];
+  /** Omit the workspace to search the whole install. */
+  search(workspaceId: WorkspaceId | undefined, query: string): readonly ArtifactManifest[];
 }
 
 export interface RuntimeService {
@@ -106,7 +107,8 @@ export interface RoleService {
 }
 
 export interface IntegrationService {
-  list(workspaceId: WorkspaceId): Promise<readonly IntegrationView[]>;
+  /** Omit the workspace to list every integration in the install. */
+  list(workspaceId?: WorkspaceId): Promise<readonly IntegrationView[]>;
   listProviders(): readonly { id: string; displayName: string; transport: string; description: string }[];
   create(request: CreateIntegrationRequest): Promise<IntegrationView>;
   update(id: IntegrationId, patch: Partial<CreateIntegrationRequest>): Promise<IntegrationView>;

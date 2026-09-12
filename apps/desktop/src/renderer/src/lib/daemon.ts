@@ -253,8 +253,8 @@ export class DaemonClient {
 
   // ------------------------------------------------------------ integrations
 
-  integrations(): Promise<readonly IntegrationView[]> {
-    return this.#get('/integrations');
+  integrations(workspaceId?: string): Promise<readonly IntegrationView[]> {
+    return this.#get('/integrations', { workspaceId });
   }
 
   createIntegration(body: CreateIntegrationRequest): Promise<IntegrationView> {

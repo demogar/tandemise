@@ -262,6 +262,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
     bind(t.ARTIFACT_SERVICE, (r) => new ArtifactServiceImpl(
       r.resolve(t.ARTIFACT_REPOSITORY),
       r.resolve(t.ARTIFACT_STORE),
+      r.resolve(t.WORKSPACE_REPOSITORY),
     ), { source: SOURCE });
 
     bind(t.RUNTIME_SERVICE, (r) => new RuntimeServiceImpl(

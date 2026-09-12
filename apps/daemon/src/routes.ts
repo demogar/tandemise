@@ -87,8 +87,10 @@ export function buildRouter(services: TandemiseServices): Router {
   r.post('/v1/tasks/:id/skip', (ctx) => services.missions.skipTask(asId(ctx.params.id!)));
 
   // -------------------------------------------------------------- artifacts
-  r.get('/v1/artifacts', (ctx) =>
-    services.artifacts.search(asId(required(ctx, 'workspaceId')), ctx.query.get('q') ?? ''));
+  r.get('/v1/artifacts', (ctx) => {
+    const workspaceId = ctx.query.get('workspaceId');
+    return services.artifacts.search(workspaceId === null ? undefined : asId(workspaceId), ctx.query.get('q') ?? '');
+  });
   r.get('/v1/artifacts/:id', (ctx) => services.artifacts.read(asId(ctx.params.id!)));
 
   // -------------------------------------------------------------- approvals
@@ -125,7 +127,10 @@ export function buildRouter(services: TandemiseServices): Router {
     services.roles.remove(ctx.params.id!, asId(required(ctx, 'workspaceId'))));
 
   // ----------------------------------------------------------- integrations
-  r.get('/v1/integrations', (ctx) => services.integrations.list(asId(required(ctx, 'workspaceId'))));
+  r.get('/v1/integrations', (ctx) => {
+    const workspaceId = ctx.query.get('workspaceId');
+    return services.integrations.list(workspaceId === null ? undefined : asId(workspaceId));
+  });
   r.get('/v1/integrations/providers', () => services.integrations.listProviders());
   r.post('/v1/integrations', async (ctx) => services.integrations.create(await ctx.body(createIntegrationRequest)));
   r.patch('/v1/integrations/:id', async (ctx) =>

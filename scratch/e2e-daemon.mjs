@@ -120,6 +120,16 @@ try {
     evil.headers.get('access-control-allow-origin') === null,
     String(evil.headers.get('access-control-allow-origin')));
 
+  // Every GET the desktop makes with no arguments must work with no arguments.
+  // The Integrations screen called `/v1/integrations` while the route required
+  // `workspaceId`, so the page failed outright the moment it was opened - a
+  // whole screen lost to a contract mismatch no type checked.
+  section('routes the desktop calls with no arguments');
+  for (const path of ['/v1/integrations', '/v1/integrations/providers', '/v1/runtimes', '/v1/workspaces', '/v1/roles', '/v1/home', '/v1/system', '/v1/missions', '/v1/approvals', '/v1/artifacts']) {
+    const res = await api('GET', path);
+    ok(`GET ${path} needs no query`, res.status === 200, `status=${res.status}${res.status === 200 ? '' : ` ${JSON.stringify(res.body?.error?.message ?? '')}`}`);
+  }
+
   section('websocket stream');
   const events = [];
   const invalidations = [];

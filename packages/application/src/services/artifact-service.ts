@@ -1,5 +1,6 @@
 import type {
   ArtifactManifest, ArtifactRepositoryPort, ArtifactStorePort, LoadedArtifact,
+  WorkspaceRepositoryPort,
 } from '@tandemise/domain';
 import type { ArtifactId, MissionId, WorkspaceId } from '@tandemise/shared';
 import { TandemiseError } from '@tandemise/shared';
@@ -19,6 +20,7 @@ export class ArtifactServiceImpl implements ArtifactService {
   constructor(
     private readonly artifacts: ArtifactRepositoryPort,
     private readonly store: ArtifactStorePort,
+    private readonly workspaces: WorkspaceRepositoryPort,
   ) {}
 
   listByMission(missionId: MissionId): readonly ArtifactManifest[] {
@@ -30,9 +32,19 @@ export class ArtifactServiceImpl implements ArtifactService {
     return this.store.read(id);
   }
 
-  search(workspaceId: WorkspaceId, query: string): readonly ArtifactManifest[] {
+  /**
+   * Search one workspace, or the whole install when none is given.
+   *
+   * The desktop opens this screen before a workspace has been chosen, so
+   * demanding one turned an empty search box into an error.
+   */
+  search(workspaceId: WorkspaceId | undefined, query: string): readonly ArtifactManifest[] {
     const trimmed = query.trim();
     if (trimmed.length === 0) return [];
-    return this.artifacts.search(workspaceId, trimmed, SEARCH_LIMIT);
+    if (workspaceId !== undefined) return this.artifacts.search(workspaceId, trimmed, SEARCH_LIMIT);
+    return this.workspaces
+      .list()
+      .flatMap((w) => this.artifacts.search(w.id, trimmed, SEARCH_LIMIT))
+      .slice(0, SEARCH_LIMIT);
   }
 }
