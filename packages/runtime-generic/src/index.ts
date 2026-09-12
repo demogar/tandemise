@@ -12,4 +12,9 @@ export type { FakeRuntimeAdapterOptions } from './fake.js';
 export { DEFAULT_FAKE_SCRIPT, parseFakeScript, substituteStep } from './fake-script.js';
 export type { FakeScript, FakeStep } from './fake-script.js';
 
+export {
+  BACKPRESSURE_HIGH_WATER, BACKPRESSURE_LOW_WATER, relieveBackPressure, spawnStream,
+} from './spawn-stream.js';
+export type { SpawnStreamOptions, SpawnedStream } from './spawn-stream.js';
+
 export { genericRuntimeModule } from './module.js';

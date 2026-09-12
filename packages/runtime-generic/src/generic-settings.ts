@@ -141,7 +141,7 @@ function parseCapabilities(value: unknown): readonly RuntimeCapability[] | null 
   return value.filter((c): c is RuntimeCapability => typeof c === 'string' && known.has(c));
 }
 
-export function stringList(value: unknown): string[] {
+function stringList(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.filter((v): v is string => typeof v === 'string');
 }

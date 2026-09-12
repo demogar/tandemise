@@ -105,34 +105,38 @@ export class ToolBridgeServer {
   }
 
   async #onLine(socket: Socket, line: string): Promise<void> {
-    let request: BridgeRequest;
+    // The frame is untrusted input from a child process, so it is narrowed
+    // rather than asserted - a cast here would be the one unchecked step on the
+    // path between an agent and the broker.
+    let frame: Partial<BridgeRequest> & { id?: unknown };
     try {
-      request = JSON.parse(line) as BridgeRequest;
+      frame = JSON.parse(line) as Partial<BridgeRequest>;
     } catch {
       this.#send(socket, { id: 0, ok: false, error: 'Malformed bridge frame' });
       return;
     }
-    if (request.token !== this.options.token) {
+    const id = typeof frame.id === 'number' ? frame.id : 0;
+    if (frame.token !== this.options.token) {
       this.options.log.warn('tool_bridge.rejected', { reason: 'bad token' });
-      this.#send(socket, { id: request.id ?? 0, ok: false, error: 'Unauthorized' });
+      this.#send(socket, { id, ok: false, error: 'Unauthorized' });
       socket.destroy();
       return;
     }
     try {
-      if (request.type === 'list') {
-        this.#send(socket, { id: request.id, ok: true, tools: await this.handler.list() });
+      if (frame.type === 'list') {
+        this.#send(socket, { id, ok: true, tools: await this.handler.list() });
         return;
       }
-      if (request.type === 'call') {
-        const result = await this.handler.call(request.tool, request.input);
-        this.#send(socket, { id: request.id, ok: true, result: toBridgeResult(result) });
+      if (frame.type === 'call' && typeof frame.tool === 'string') {
+        const result = await this.handler.call(frame.tool, frame.input);
+        this.#send(socket, { id, ok: true, result: toBridgeResult(result) });
         return;
       }
-      this.#send(socket, { id: request.id, ok: false, error: 'Unknown bridge request type' });
+      this.#send(socket, { id, ok: false, error: 'Unknown bridge request type' });
     } catch (e) {
       // The broker answers denials in-band, so reaching here means the daemon
       // itself failed. Report it rather than hanging the agent's call.
-      this.#send(socket, { id: request.id, ok: false, error: errorMessage(e) });
+      this.#send(socket, { id, ok: false, error: errorMessage(e) });
     }
   }
 

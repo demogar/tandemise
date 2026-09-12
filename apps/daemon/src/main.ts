@@ -1,1 +1,109 @@
-export {};
+import { mkdirSync, realpathSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { errorMessage } from '@tandemise/shared';
+import { API_VERSION } from '@tandemise/api-contract';
+import { loadConfig } from './config.js';
+import { bootstrap } from './bootstrap.js';
+import { buildRouter } from './routes.js';
+import { HttpServer } from './http/server.js';
+import { StreamServer } from './http/stream.js';
+import {
+  InstanceLock, loadOrCreateToken, removeConnectionFile, writeConnectionFile,
+} from './http/identity.js';
+import { installShutdownHandlers } from './lifecycle.js';
+import { RECOVERY_SERVICE } from '@tandemise/application';
+
+/**
+ * tandemd.
+ *
+ * Startup order is load-bearing (MVP.md §21.2): take the instance lock before
+ * touching the database, finish recovery before the scheduler can dispatch
+ * anything, and only then publish the connection file - because the moment that
+ * file exists, the desktop will start making requests.
+ */
+export async function startDaemon(overrides: Parameters<typeof loadConfig>[0] = {}): Promise<{
+  url: string;
+  stop: () => Promise<void>;
+}> {
+  const config = loadConfig(overrides);
+  mkdirSync(config.home, { recursive: true });
+  mkdirSync(config.paths.logs, { recursive: true });
+
+  const lock = new InstanceLock(config.home);
+  lock.acquire();
+
+  const { container, services, lifecycle, events, projections, log } = bootstrap(config);
+  log.info('daemon.starting', { version: config.version, apiVersion: API_VERSION, home: config.home });
+
+  // Recovery reconciles whatever the last daemon left behind, and must complete
+  // before the scheduler can dispatch anything (MVP.md §21.2).
+  await container.resolve(RECOVERY_SERVICE).run();
+
+  await lifecycle.start();
+
+  const token = loadOrCreateToken(config.home);
+  const router = buildRouter(services);
+
+  let stream: StreamServer | undefined;
+  const http = new HttpServer({
+    token,
+    router,
+    log,
+    port: config.port,
+    onUpgrade: (req, socket, head) => stream?.handleUpgrade(req, socket, head),
+  });
+
+  const url = await http.listen();
+  stream = new StreamServer({
+    server: http.httpServer,
+    log,
+    daemonVersion: config.version,
+    events,
+    projections,
+  });
+
+  writeConnectionFile(config.home, {
+    url,
+    token,
+    pid: process.pid,
+    apiVersion: API_VERSION,
+    startedAt: new Date().toISOString(),
+  });
+
+  log.info('daemon.ready', { url, routes: router.routeTable().length });
+
+  let stopped = false;
+  const stop = async (): Promise<void> => {
+    if (stopped) return;
+    stopped = true;
+    stream?.close();
+    await http.close();
+    await lifecycle.stop();
+    await container.dispose();
+    removeConnectionFile(config.home, log);
+    lock.release();
+  };
+
+  installShutdownHandlers({ log, shutdown: stop });
+  return { url, stop };
+}
+
+/** True when this module is the process entry point rather than an import. */
+function isEntryPoint(): boolean {
+  const argv = process.argv[1];
+  if (!argv) return false;
+  try {
+    return realpathSync(argv) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+// Tests and the desktop's spawner import `startDaemon` directly; only a direct
+// `node main.js` should start a daemon, or they would race a second instance.
+if (isEntryPoint()) {
+  startDaemon().catch((e) => {
+    process.stderr.write(`tandemd failed to start: ${errorMessage(e)}\n`);
+    process.exit(1);
+  });
+}

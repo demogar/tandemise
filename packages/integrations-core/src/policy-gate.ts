@@ -155,3 +155,18 @@ function scopeEntryMatches(entry: string, resource: string): boolean {
   if (entry.startsWith('/') && resource.startsWith('/')) return isPathInside(entry, resource);
   return false;
 }
+
+/**
+ * The gate used when no policy engine has been bound.
+ *
+ * Deliberately not permissive. A missing engine is a composition bug, and the
+ * failure mode of an allow-all default is that the bug ships silently as an
+ * authorization hole (MVP.md §19.1 - default deny).
+ */
+export const denyAllPolicyGate: ToolPolicyGate = {
+  check: async (request) => ({
+    outcome: 'deny',
+    reason: 'No policy engine is bound; every tool invocation is denied',
+    risk: request.risk,
+  }),
+};

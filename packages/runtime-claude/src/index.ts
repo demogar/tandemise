@@ -10,6 +10,9 @@ export {
 } from './cli-args.js';
 export type { ClaudeInvocation, PermissionMode } from './cli-args.js';
 
-export { findExecutable, parseVersion, probeVersion, requireExecutable } from './discovery.js';
+export {
+  CLAUDE_EXECUTABLE, VERSION_PROBE_TIMEOUT_MS, findExecutable, parseVersion, probeVersion, requireExecutable,
+} from './discovery.js';
+export type { VersionProbe } from './discovery.js';
 
 export { claudeRuntimeModule } from './module.js';
