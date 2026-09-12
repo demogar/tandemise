@@ -8,7 +8,7 @@ same way no matter who wrote the tool.
 | Transport | What it is | How you connect it |
 | --- | --- | --- |
 | `mcp` (hosted) | A vendor's MCP server over HTTPS | **Connect** — sign in and allow access in your browser |
-| `mcp` (local) | An MCP server run as a process | Configuration |
+| `mcp` (local) | An MCP server run as a process | **Custom server → Run a command** |
 | `cli` | A CLI that is already logged in — `gh` | **Use gh login** |
 | `browser` | A real browser session, allowlisted per domain | Built in |
 | `desktop` | macOS app control | Built in |
@@ -105,6 +105,13 @@ The `cli` transport, through `gh`, deliberately: the CLI is already signed in on
 most developers' machines, so Tandemise never holds a GitHub token. GitHub's
 hosted MCP server does not allow dynamic registration, so it cannot be a
 one-click connector anyway. Run `gh auth login`, then **Use gh login**.
+
+Who may use it is a decision, not a side effect: **development** may push a
+branch, open a pull request and comment on one; **review** may read and comment;
+**release** may push and open a pull request. Every one of those is an external
+write, so the *Writes that leave this machine* autonomy setting decides whether
+each call asks you first - set it to Ask or Deny to keep every push and PR
+behind a click.
 
 ## Design tools
 

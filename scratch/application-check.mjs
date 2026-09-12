@@ -741,6 +741,14 @@ ok('a role someone wrote is actually deleted', !services.roles.list(workspaceId)
 // the old defaults forever, so a design task could not reach Open Design.
 {
   const roleRepo = container.resolve(appTokens.ROLE_REPOSITORY);
+  // The unedited test relies on seeding writing createdAt === updatedAt.
+  const seededWs = await services.workspaces.create({ name: 'Seeding timestamps check' });
+  const seededId = seededWs.workspace?.id ?? seededWs.id;
+  ok('a freshly seeded project role reads as unedited',
+    roleRepo.list(seededId).filter((r) => r.workspaceId === seededId).every((r) => r.createdAt === r.updatedAt),
+    `${roleRepo.list(seededId).filter((r) => r.workspaceId === seededId).length} scoped roles`);
+  ok('a freshly seeded project needs no refresh', services.roles.refreshBuiltIns([seededId]) === 0);
+
   const shippedDesign = roleRepo.get('design', workspaceId);
   const stale = ['repository.read', 'filesystem.read', 'artifact.write'];
   roleRepo.upsert({ ...shippedDesign, workspaceId: null, defaultCapabilities: stale, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-02T00:00:00.000Z' });

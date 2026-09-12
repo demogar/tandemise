@@ -163,12 +163,17 @@ export class WorkspaceServiceImpl implements WorkspaceService {
   #seedBuiltInRoles(workspaceId: WorkspaceId): void {
     const now = this.clock.now();
     for (const role of BUILT_IN_ROLES) {
+      // `get` falls back to the global row, whose createdAt is not this
+      // project's. Reading it here made every seeded role look edited
+      // (createdAt !== updatedAt), so no later upgrade to the shipped role
+      // would ever reach the project.
       const existing = this.roles.get(role.id, workspaceId);
+      const createdAt = existing?.workspaceId === workspaceId ? existing.createdAt : now;
       this.roles.upsert({
         ...role,
         workspaceId,
-        createdAt: existing?.createdAt ?? now,
-        updatedAt: now,
+        createdAt,
+        updatedAt: createdAt,
       });
     }
   }

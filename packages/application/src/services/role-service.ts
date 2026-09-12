@@ -48,7 +48,9 @@ export class RoleServiceImpl implements RoleService {
       // An edited built-in keeps the flag: the UI shows it as a customized
       // built-in, and `remove` restores the shipped definition.
       builtIn: BUILT_IN_ROLE_MAP.has(request.id),
-      createdAt: existing?.createdAt ?? now,
+      // Only this project's own row has a createdAt to keep; `get` may have
+      // returned the global one.
+      createdAt: existing?.workspaceId === workspaceId ? existing.createdAt : now,
       updatedAt: now,
     };
     return this.roles.upsert(role);
