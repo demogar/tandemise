@@ -23,6 +23,7 @@ import { MetricsService } from './engine/metrics.js';
 import { RecoveryService } from './engine/recovery.js';
 import { RemediationPlanner } from './engine/remediation.js';
 import { SchedulerService } from './engine/scheduler.js';
+import { McpGatewayProvisioner } from './engine/mcp-gateway.js';
 import { TaskExecutor } from './engine/task-executor.js';
 import { EventRecorder } from './support/event-recorder.js';
 import { RepositoryProber } from './support/repository-prober.js';
@@ -165,6 +166,13 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       grantBuilder: r.resolve(GRANT_BUILDER),
       policy: r.resolve(POLICY_ENGINE),
       approvalFactory: r.resolve(APPROVAL_FACTORY),
+      mcpGateway: new McpGatewayProvisioner({
+        broker: r.tryResolve(TOOL_BROKER) ?? null,
+        exec: () => r.resolve(INTEGRATION_COMMAND_EXECUTOR),
+        paths: paths(r),
+        clock: clock(r),
+        log: log(r).child({ component: 'mcp-gateway' }),
+      }),
       toolBroker: r.tryResolve(TOOL_BROKER) ?? null,
       overrides: r.resolve(t.RUNTIME_OVERRIDES),
       templates: r.resolve(t.ARTIFACT_TEMPLATES),

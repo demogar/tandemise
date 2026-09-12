@@ -11,7 +11,7 @@ import type { ContextCompiler, ExpectedArtifact } from '@tandemise/context';
 import type { ExecutionTarget, ExecutionTargetManager } from '@tandemise/execution-core';
 import type { ApprovalFactory, GrantBuilder, PolicyEngine } from '@tandemise/policy';
 import type { ToolBroker } from '@tandemise/integrations-core';
-import { RunScopedToolGateway } from '@tandemise/integrations-core';
+import { McpGatewayProvisioner, NO_TOOL_SURFACE, type RunToolSurface } from './mcp-gateway.js';
 import type { RuntimeManager } from '@tandemise/runtimes-core';
 import type { Clock, Logger, RunId, TandemisePaths, TaskId } from '@tandemise/shared';
 import { TandemiseError, errorMessage, ids, slugify, summarize } from '@tandemise/shared';
@@ -62,6 +62,8 @@ export interface TaskExecutorDeps {
   readonly approvalFactory: ApprovalFactory;
   /** Null when no integration surface is composed; the run simply gets no tools. */
   readonly toolBroker: ToolBroker | null;
+  /** Builds the run-scoped MCP surface so a worker can actually call a tool. */
+  readonly mcpGateway: McpGatewayProvisioner;
   readonly overrides: RuntimeOverrides;
   readonly templates: ArtifactTemplatePort;
   readonly harvester: ArtifactHarvester;
@@ -182,6 +184,11 @@ export class TaskExecutor {
     }
     const target = provisioned.target;
 
+    // Declared outside the try so the finally can tear it down however the
+    // attempt ends. A leftover socket would be a second, unauthenticated door
+    // into the tool broker.
+    let toolSurface: RunToolSurface = NO_TOOL_SURFACE;
+
     try {
       // 4. Grants: least privilege, scoped to this target and this mission.
       const requested = deps.grantBuilder.build({
@@ -216,20 +223,33 @@ export class TaskExecutor {
         createdAt: deps.clock.now(),
       });
 
+      // The run id is minted here rather than inside #drive so the tool surface,
+      // its socket and its config file can all be keyed to this attempt and
+      // destroyed with it.
+      const runId = ids.run();
+
       // 6. Context. The tool surface is narrowed to this assignment before the
       //    prompt is written, so a worker is never told about a tool its grants
-      //    would not let it call.
-      const tools = deps.toolBroker === null
-        ? []
-        : RunScopedToolGateway.for(deps.toolBroker, assignment, deps.clock).names();
+      //    would not let it call - and the same narrowed gateway is what backs
+      //    the MCP server it will call through, so the list it is shown and the
+      //    list it can reach are the same list by construction.
+      toolSurface = await deps.mcpGateway.provision({
+        runId,
+        workspaceId: mission.workspaceId,
+        missionId: mission.id,
+        assignment,
+        workingDirectory: target.workingDirectory,
+        signal,
+      });
       await deps.harvester.prepare(target, scope);
       const prompt = await this.#compilePrompt({
-        ...ctx, task: running, workspace, role, grants, target, tools, feedback,
+        ...ctx, task: running, workspace, role, grants, target, tools: toolSurface.toolNames, feedback,
       });
 
       // 7. Run.
       const outcome = await this.#drive({
         task: running, mission, profile, adapter, target, assignment, prompt, grants, scope, signal,
+        runId, mcpConfigPath: toolSurface.mcpConfigPath,
       });
 
       if (outcome.cancelled) {
@@ -268,7 +288,9 @@ export class TaskExecutor {
         runFailure: outcome.failure, runId: outcome.runId,
       });
     } finally {
-      // 13. Release. A worktree is left intact: it is the reviewable artifact.
+      // 13. Release. A worktree is left intact: it is the reviewable artifact,
+      //     but the run's private tool surface dies with the run.
+      await toolSurface.dispose();
       await this.#releaseTarget(target, kind);
     }
   }
@@ -280,7 +302,7 @@ export class TaskExecutor {
     const { task, mission, profile, target, assignment, prompt, grants, scope, signal } = input;
 
     const resumeFrom = this.#resumableSession(task.id, input.adapter.resume !== undefined);
-    const runId = ids.run();
+    const { runId } = input;
     const startedAt = deps.clock.now();
 
     deps.runs.create({
@@ -324,7 +346,7 @@ export class TaskExecutor {
       workingDirectory: target.workingDirectory,
       grants: grants.map((g) => g.capability),
       allowedRoots: allowedRoots(grants, target.workingDirectory),
-      mcpConfigPath: null,
+      mcpConfigPath: input.mcpConfigPath,
       maxWallTimeMs: task.executionPolicy.maxWallTimeMs,
       signal: combined,
       log: deps.log.child({ runId, taskId: task.id, missionId: mission.id, runtime: profile.adapterId }),
@@ -992,6 +1014,9 @@ interface DriveInput {
   readonly grants: readonly CapabilityGrant[];
   readonly scope: EventScope;
   readonly signal: AbortSignal;
+  readonly runId: import('@tandemise/shared').RunId;
+  /** Null when the assignment was granted no tools. */
+  readonly mcpConfigPath: string | null;
 }
 
 interface RunFailure {

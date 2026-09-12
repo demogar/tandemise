@@ -21,7 +21,7 @@ Run any of these with `export PATH="$HOME/.nvm/versions/node/v22.23.1/bin:$PATH"
 | 10 | Blocking reviewer findings create fix work and block QA/release | ✅ met | `scratch/application-check.mjs` — gates evaluated on every gated task; the gate detail reaches the retry prompt verbatim |
 | 11 | QA runs real browser automation with screenshots and criteria evidence | ✅ met | `scratch/qa-e2e-check.mjs` — starts the Taskly dev server, drives three acceptance criteria through a real Chromium, captures a 24KB screenshot and a semantic accessibility tree, runs a11y checks, asserts no console errors |
 | 12 | GitHub reads repo/PR state; creates a draft PR only under policy | ✅ met | `scratch/integrations-check.mjs` — real `gh` calls; `github.pr.create` is `external_side_effect` and policy-gated, absent from a QA gateway |
-| 13 | MCP exposes a granted tool without exposing unrelated workspace tools | ✅ met | `scratch/integrations-check.mjs` — stdio MCP server `tools/list` returns only granted tools; `github_pr_create` refused |
+| 13 | MCP exposes a granted tool without exposing unrelated workspace tools | ✅ met | `scratch/mcp-e2e-check.mjs` — a **real Claude Code process** launched with `--strict-mcp-config` discovered only its 6 granted read tools, called `mcp__tandemise__github_repo_view` through the broker, got real data back from `gh`, and the invocation is in the audit trail as policy-allowed. `github.pr.create` was not published to it. |
 | 14 | macOS control launches/inspects an allowlisted app, acts, captures evidence | ✅ met | `scratch/desktop-check.mjs` — Swift helper builds and responds; app allowlist hides 193 non-allowlisted apps; permissions reported with the exact System Settings path |
 | 15 | Permissions are deny-by-default and visible to the user | ✅ met | `scratch/policy-eval-check.mjs`, `scratch/integrations-check.mjs` — default deny; ungranted tools are not even listed |
 | 16 | Production release actions require explicit approval | ✅ met | `scratch/application-check.mjs` — the release candidate is held for approval and only proceeds when decided |
@@ -91,6 +91,7 @@ the 8MB body cap rejected a 40MB POST in 70ms without buffering it.
 | `scratch/desktop-check.mjs` | macOS Accessibility helper |
 | `scratch/application-check.mjs` | Mission engine end to end with the deterministic runtime |
 | `scratch/e2e-daemon.mjs` | The real daemon over its real HTTP + WebSocket API |
+| `scratch/mcp-e2e-check.mjs` | A real agent runtime invoking a policy-gated Tandemise tool over MCP |
 | `scratch/qa-e2e-check.mjs` | The QA role's path: dev server + real browser + evidence against the demo app |
 | `scratch/fs-security-check.mjs` | Filesystem containment: traversal, symlink escapes, root spelling |
 | `scratch/env-leak-check.mjs` | Worker processes do not inherit unrelated credentials |

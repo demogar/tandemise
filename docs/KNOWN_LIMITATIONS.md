@@ -5,20 +5,6 @@ it. Written plainly — a surprise here costs more than an omission.
 
 ## Not yet implemented
 
-**Integration tools are advertised but not invocable by a runtime.**
-The tool broker, the per-assignment `RunScopedToolGateway`, the policy gate and
-the approval gate are all live and exercised, and the compiled prompt names the
-tools a worker may use. But `RunRequest.mcpConfigPath` is still null: the daemon
-does not yet compose `writeMcpGatewayConfig` + `ToolBridgeServer`, so a runtime
-has no channel to actually call one. GitHub and browser tools therefore work
-when driven directly (and are verified that way) but a *worker* cannot reach
-them. This is the largest single gap.
-
-**Integration health reads `unknown`.** `COMMAND_EXECUTOR` and
-`BACKGROUND_PROCESS_LAUNCHER` are unbound in the composition root. Handled
-gracefully, not thrown, but the Integrations screen cannot tell you whether
-`gh` is authenticated.
-
 **Codex has never driven a real run.** The adapter is written and degrades
 correctly, but the CLI is not installed on this machine. Its argv defaults are
 configuration, editable from the Runtimes screen, precisely because they could

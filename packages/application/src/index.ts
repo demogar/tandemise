@@ -18,6 +18,8 @@ export * from './planning/materialize.js';
 
 export { SchedulerService } from './engine/scheduler.js';
 export type { SchedulerDeps } from './engine/scheduler.js';
+export { McpGatewayProvisioner, NO_TOOL_SURFACE } from './engine/mcp-gateway.js';
+export type { RunToolSurface, McpGatewayProvisionerDeps, ProvisionToolSurfaceRequest } from './engine/mcp-gateway.js';
 export { TaskExecutor } from './engine/task-executor.js';
 export type { TaskAttemptOutcome, TaskExecutorDeps } from './engine/task-executor.js';
 export { ARTIFACT_OUT_DIR, ArtifactHarvester } from './engine/harvester.js';

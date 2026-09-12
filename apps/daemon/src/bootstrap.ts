@@ -19,11 +19,14 @@ import { claudeRuntimeModule } from '@tandemise/runtime-claude';
 import { codexRuntimeModule } from '@tandemise/runtime-codex';
 import { genericRuntimeModule } from '@tandemise/runtime-generic';
 import {
-  executionCoreModule,
+  executionCoreModule, PROCESS_SUPERVISOR,
   CLOCK as EXECUTION_CLOCK, LOGGER as EXECUTION_LOGGER, PATHS as EXECUTION_PATHS,
 } from '@tandemise/execution-core';
 import { executionLocalModule } from '@tandemise/execution-local';
-import { integrationsCoreModule } from '@tandemise/integrations-core';
+import {
+  integrationsCoreModule,
+  BACKGROUND_PROCESS_LAUNCHER, COMMAND_EXECUTOR as TOOL_COMMAND_EXECUTOR,
+} from '@tandemise/integrations-core';
 import { githubIntegrationModule } from '@tandemise/integration-github';
 import { browserIntegrationModule } from '@tandemise/browser';
 import { applicationModule, createServices, SCHEDULER, type TandemiseServices } from '@tandemise/application';
@@ -34,6 +37,7 @@ import type { DaemonConfig } from './config.js';
 import { InMemoryEventBus, InMemoryProjectionBus } from './buses.js';
 import { createSecretStore } from './secrets.js';
 import { createSettingsStore, createSystemEnvironment, processLiveness } from './platform.js';
+import { createBackgroundProcessLauncher, createToolCommandExecutor } from './tool-exec.js';
 
 export const CLOCK = token<Clock>('Clock');
 export const LOGGER = token<Logger>('Logger');
@@ -101,6 +105,17 @@ export function bootstrap(config: DaemonConfig): Bootstrapped {
   container.bind(EXECUTION_LOGGER, (r) => r.resolve(LOGGER), { source: 'bootstrap' });
   container.bind(EXECUTION_CLOCK, (r) => r.resolve(CLOCK), { source: 'bootstrap' });
   container.bind(EXECUTION_PATHS, (r) => r.resolve(CONFIG).paths, { source: 'bootstrap' });
+
+  // `integrations-core` is a core package and cannot spawn a process itself, so
+  // it declares these ports and gets them here. Routing tool execution through
+  // the same supervisor a worker run uses is what gives every tool call an
+  // allowlisted environment, a tracked pid, and no orphan on shutdown - and it
+  // is what lets an integration report real health instead of `unknown`.
+  container.bind(TOOL_COMMAND_EXECUTOR, (r) =>
+    createToolCommandExecutor(r.resolve(PROCESS_SUPERVISOR), r.resolve(LOGGER).child({ component: 'tool-exec' })),
+    { source: 'bootstrap' });
+  container.bind(BACKGROUND_PROCESS_LAUNCHER, (r) =>
+    createBackgroundProcessLauncher(r.resolve(PROCESS_SUPERVISOR)), { source: 'bootstrap' });
 
   const services = createServices(container);
 
