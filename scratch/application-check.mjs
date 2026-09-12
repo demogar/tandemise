@@ -593,6 +593,7 @@ while (Date.now() < settleBy && repos.missions.get(mission.id).status === 'EXECU
 console.log(`  ${statusLine()}`);
 ok('the mission completed', repos.missions.get(mission.id).status === 'COMPLETE',
   `${repos.missions.get(mission.id).status}: ${repos.missions.get(mission.id).statusReason}`);
+const completedDetail = await services.projections.missionDetail(mission.id);
 ok('the task branches were integrated',
   repos.events.listByMission(mission.id, { limit: 100000 })
     .some((e) => e.body.type === 'note' && /Integrated \d+\/\d+ task branches/.test(e.body.text)),
@@ -667,8 +668,76 @@ const outOfScope = await gate.check({
 ok('a granted capability out of scope is denied', outOfScope.outcome === 'deny', outOfScope.reason);
 
 // ================================================ 9. metrics and the final view
-head('9. the final MissionDetail');
-const final = await services.projections.missionDetail(mission.id);
+head('9. the rest of the service surface');
+const info = services.system.info();
+ok('system info reports the daemon', info.apiVersion === 'v1' && info.schemaVersion === 1, `${info.daemonVersion} on ${info.platform}`);
+ok('settings round-trip', services.system.updateSettings({ theme: 'dark' }).theme === 'dark'
+  && services.system.settings().theme === 'dark');
+const diag = services.system.diagnostics();
+ok('diagnostics list the composed providers',
+  diag.runtimeAdapters.includes('fake') && diag.targetKinds.includes('worktree') && diag.bindings.length > 40,
+  `${diag.bindings.length} bindings, targets=${diag.targetKinds.join('/')}`);
+
+const customRole = services.roles.upsert({
+  workspaceId, id: 'product', name: 'Product Manager (house style)',
+  summary: 'Scopes work the way this team scopes work.',
+  instructions: 'Write the spec in the house template.',
+  defaultCapabilities: ['repository.read', 'artifact.write'],
+  producesArtifacts: ['ProductSpec'], consumesArtifacts: [],
+  defaultIsolation: 'none', outputContract: 'A ProductSpec.',
+});
+ok('a workspace can override a built-in role',
+  customRole.workspaceId === workspaceId && customRole.builtIn === true
+  && services.roles.list(workspaceId).find((r) => r.id === 'product')?.name === 'Product Manager (house style)');
+services.roles.remove('product', workspaceId);
+ok('removing the override restores the built-in',
+  services.roles.list(workspaceId).find((r) => r.id === 'product')?.name === 'Product Manager');
+let roleRefusal = null;
+try { services.roles.remove('design', workspaceId); } catch (e) { roleRefusal = e; }
+ok('a global built-in is not deletable', roleRefusal?.code === 'PRECONDITION_FAILED');
+
+ok('artifacts are searchable', services.artifacts.search(workspaceId, 'clear').length > 0,
+  `${services.artifacts.search(workspaceId, 'clear').length} hits`);
+const discovered = await services.runtimes.discover();
+ok('runtime discovery reports the fake as configured',
+  discovered.find((d) => d.adapterId === 'fake')?.configured === true,
+  discovered.map((d) => `${d.adapterId}:${d.detected ? 'found' : 'missing'}`).join(' '));
+ok('integration providers enumerate', Array.isArray(services.integrations.listProviders())
+  && (await services.integrations.list(workspaceId)).length === 0);
+ok('live targets are listable', services.projections.targets().length >= 0
+  && services.projections.targets(mission.id).length >= 4);
+ok('mission events page by sequence',
+  services.projections.missionEvents(mission.id, { afterSequence: 100, limit: 5 }).length === 5);
+
+const throwaway = await services.missions.create({
+  workspaceId, goal: 'A mission created only to exercise pause, resume, cancel and delete.',
+});
+await services.planning.plan(throwaway.id);
+const throwawayApproval = services.approvals.list({ missionId: throwaway.id, status: 'PENDING' })[0];
+await services.approvals.decide(throwawayApproval.approval.id, { optionId: 'approve' });
+await scheduler.drain();
+ok('pause stops dispatch', (await services.missions.pause(throwaway.id)).status === 'PAUSED');
+const attemptsAtPause = repos.tasks.listByMission(throwaway.id).map((t) => t.attempts).join(',');
+await scheduler.tick(); await scheduler.drain();
+ok('a paused mission dispatches nothing',
+  repos.tasks.listByMission(throwaway.id).map((t) => t.attempts).join(',') === attemptsAtPause,
+  `attempts ${attemptsAtPause}`);
+ok('resume puts it back to work', (await services.missions.resume(throwaway.id)).status === 'EXECUTING');
+await scheduler.drain();
+const cancelled = await services.missions.cancel(throwaway.id, 'Done demonstrating.');
+const throwawayTasks = repos.tasks.listByMission(throwaway.id);
+ok('cancel is terminal and cascades',
+  cancelled.status === 'CANCELLED' && throwawayTasks.every((t) => isFinished(t.status)),
+  throwawayTasks.map((t) => t.status).join(' '));
+await services.missions.remove(throwaway.id);
+ok('a removed mission is gone', repos.missions.get(throwaway.id) === undefined);
+ok('mission listing filters by workspace',
+  services.missions.list({ workspaceId, limit: 10 }).length === 1);
+
+head('10. the final MissionDetail');
+console.log('  (the live mission is back in EXECUTING because §7 simulated a crash;');
+console.log('   this is the detail captured the moment the mission completed)');
+const final = completedDetail;
 ok('MissionDetail is well formed',
   final.mission.id === mission.id
   && final.tasks.length >= 7
@@ -708,7 +777,7 @@ console.log(JSON.stringify({
 }, null, 2).split('\n').map((l) => `  ${l}`).join('\n'));
 
 // ============================================================ 10. lifecycle
-head('10. the scheduler is a lifecycle component');
+head('11. the scheduler is a lifecycle component');
 ok('it exposes the lifecycle shape',
   scheduler.name === 'scheduler' && typeof scheduler.start === 'function' && typeof scheduler.stop === 'function');
 await lifecycle.start();
@@ -722,17 +791,25 @@ rmSync(join(REPO, '.tandemise'), { recursive: true, force: true });
 rmSync(join(REPO, 'CLEAR_COMPLETED.md'), { force: true });
 try {
   const { execFileSync } = await import('node:child_process');
-  const stale = execFileSync('git', ['worktree', 'list', '--porcelain'], { cwd: REPO, encoding: 'utf8' });
-  for (const line of stale.split('\n')) {
-    if (line.startsWith('worktree ') && line.includes(HOME)) {
-      execFileSync('git', ['worktree', 'remove', '--force', line.slice('worktree '.length)], { cwd: REPO });
+  const git = (...args) => execFileSync('git', args, { cwd: REPO, encoding: 'utf8' });
+
+  // Only this run's worktrees and branches. Another check may be running
+  // against the same repository, and tearing down its work would be worse than
+  // leaving mine behind.
+  for (const line of git('worktree', 'list', '--porcelain').split('\n')) {
+    if (line.startsWith('worktree ') && line.includes(HOME.replace('/var/', '/private/var/'))) {
+      try { git('worktree', 'remove', '--force', line.slice('worktree '.length)); } catch { /* already gone */ }
     }
   }
-  execFileSync('git', ['worktree', 'prune'], { cwd: REPO });
-  for (const branch of execFileSync('git', ['branch', '--list', 'tandemise/*'], { cwd: REPO, encoding: 'utf8' }).split('\n')) {
+  git('worktree', 'prune');
+
+  const mine = `tandemise/${final.mission.integrationBranch.split('/')[1]}/`;
+  for (const branch of git('branch', '--list', `${mine}*`).split('\n')) {
     const name = branch.replace(/^[*+]?\s*/, '').trim();
-    if (name.length > 0) execFileSync('git', ['branch', '-D', name], { cwd: REPO });
+    if (name.length === 0) continue;
+    try { git('branch', '-D', name); } catch { /* held by a live worktree */ }
   }
+
   const exclude = join(REPO, '.git', 'info', 'exclude');
   if (existsSync(exclude)) {
     writeFileSync(exclude, readFileSyncSafe(exclude).split('\n').filter((l) => l.trim() !== '.tandemise/').join('\n'));
@@ -744,6 +821,10 @@ rmSync(HOME, { recursive: true, force: true });
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : `${failures} CHECK(S) FAILED`}`);
 process.exit(failures === 0 ? 0 : 1);
+
+function isFinished(status) {
+  return ['SUCCEEDED', 'FAILED', 'SKIPPED', 'CANCELLED'].includes(status);
+}
 
 function readFileSyncSafe(path) {
   try { return readFileSync(path, 'utf8'); } catch { return ''; }

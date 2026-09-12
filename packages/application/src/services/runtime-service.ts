@@ -34,13 +34,20 @@ export class RuntimeServiceImpl implements RuntimeService {
   ) {}
 
   async list(workspaceId?: string): Promise<readonly RuntimeView[]> {
-    const scope = workspaceId === undefined ? null : asId<'WorkspaceId'>(workspaceId);
-    const profiles = this.profiles.list(scope);
+    // No workspace means "every profile", not "the global ones": the settings
+    // screen opens without a workspace selected and must still show what is
+    // configured. `list(null)` would answer the narrower question.
+    const profiles = workspaceId === undefined
+      ? this.profiles.list()
+      : this.profiles.list(asId<'WorkspaceId'>(workspaceId));
     return Promise.all(profiles.map((p) => this.#view(p)));
   }
 
   async discover(): Promise<readonly RuntimeDiscoveryView[]> {
-    const configured = new Set(this.profiles.list(null).map((p) => p.adapterId));
+    // "Configured" is a question about the installation, not about one
+    // workspace: an adapter that any workspace already has a profile for is not
+    // a new discovery for the onboarding screen to offer.
+    const configured = new Set(this.profiles.list().map((p) => p.adapterId));
     const found = await this.runtimes.discoverAll();
     return found.map((d) => ({ ...d, configured: configured.has(d.adapterId) }));
   }
