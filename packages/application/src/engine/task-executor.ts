@@ -10,6 +10,7 @@ import type {
 import { ACCEPT_RESULT_OPTION, CORE_CAPABILITIES, anyCapabilityMatches } from '@tandemise/domain';
 import { isDaemonStopping } from '../support/shutdown.js';
 import { liveArtifacts, upstreamTaskIds } from '../support/lineage.js';
+import { githubSlug } from '../support/repository-slug.js';
 import type { ContextCompiler, ExpectedArtifact } from '@tandemise/context';
 import type { ExecutionTarget, ExecutionTargetManager } from '@tandemise/execution-core';
 import type { ApprovalFactory, GrantBuilder, PolicyEngine } from '@tandemise/policy';
@@ -235,6 +236,10 @@ export class TaskExecutor {
         workingDirectory: target.workingDirectory,
         artifactRoot: deps.paths.artifacts(workspace.id),
         readOnlyPaths: repository === null ? [] : [repository.path],
+        // The repository this task works in, as the code host names it. Without
+        // it every github.* grant carried an empty scope and was denied: a
+        // task that had pushed its branch could not open its pull request.
+        allowedRepositories: [githubSlug(repository?.remoteUrl ?? null)].filter((s): s is string => s !== null),
         // Wall time plus the longest the run may be parked on a person. This does
         // not extend what the worker can do: a grant is only exercisable through
         // the run-scoped tool socket, which is destroyed with the run, and the
