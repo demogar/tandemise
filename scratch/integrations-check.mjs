@@ -16,17 +16,21 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 
-import { ids, asId, systemClock, createLogger, createPaths } from '@tandemise/shared';
+import { ids, systemClock, createLogger, createPaths } from '@tandemise/shared';
 import { grant } from '@tandemise/domain';
 import {
   ToolBroker, StaticToolCatalog, RunScopedToolGateway, RecordingAuditSink,
   grantsPolicyGate, denyingApprovalGate, writeMcpGatewayConfig, ToolBridgeServer,
-  gatewayBridgeHandler, toolDescriptor, mcpToolName,
+  gatewayBridgeHandler, mcpToolName, integrationsCoreModule, TOOL_BROKER, LOGGER, CLOCK,
+  INTEGRATION_SOURCE, INTEGRATION_PROVIDER_REGISTRY, TOOL_POLICY_GATE,
+  BACKGROUND_PROCESS_LAUNCHER,
 } from '@tandemise/integrations-core';
-import { GitHubIntegrationProvider } from '@tandemise/integration-github';
+import { Container, compose } from '@tandemise/kernel';
+import { GitHubIntegrationProvider, githubIntegrationModule } from '@tandemise/integration-github';
 import {
   BrowserIntegrationProvider, BrowserProfileManager, BrowserSessionManager,
-  DomainAllowlist, browserOptionsFrom, DevServerController,
+  DomainAllowlist, browserOptionsFrom, DevServerController, browserIntegrationModule,
+  BROWSER_OPTIONS, DEV_SERVER_CONTROLLER,
 } from '@tandemise/browser';
 
 // ---------------------------------------------------------------- test harness
@@ -160,12 +164,9 @@ const githubProvider = new GitHubIntegrationProvider();
 const githubIntegration = integration('github', { defaultRepo: 'cli/cli' }, 'cli');
 const githubToolList = githubProvider.tools(githubIntegration);
 
+const tmpRoot = await mkdtemp(join(tmpdir(), 'tandemise-check-'));
 const profiles = new BrowserProfileManager(log);
-const sessions = new BrowserSessionManager(
-  profiles,
-  browserOptionsFrom(createPaths(await mkdtemp(join(tmpdir(), 'tandemise-check-')))),
-  log,
-);
+const sessions = new BrowserSessionManager(profiles, browserOptionsFrom(createPaths(tmpRoot)), log);
 const browserProvider = new BrowserIntegrationProvider(sessions);
 const browserIntegration = integration(
   'browser',
@@ -198,6 +199,28 @@ assignments.set(qa.id, qa);
 // A maintainer assignment that may open pull requests.
 const maintainer = assignment([grant('github.read', ['cli/cli']), grant('github.pr.create', ['cli/cli'])], 'engineer');
 assignments.set(maintainer.id, maintainer);
+
+section('0. Module composition');
+{
+  const container = new Container();
+  container.bindValue(LOGGER, log);
+  container.bindValue(CLOCK, systemClock);
+  container.bindValue(BROWSER_OPTIONS, browserOptionsFrom(createPaths(tmpRoot)));
+  container.bindValue(BACKGROUND_PROCESS_LAUNCHER, launcher);
+  container.bindValue(TOOL_POLICY_GATE, grantsPolicyGate((id) => assignments.get(id), systemClock));
+  container.bindValue(INTEGRATION_SOURCE, () => [githubIntegration, browserIntegration]);
+  compose(container, integrationsCoreModule, githubIntegrationModule, browserIntegrationModule);
+
+  const registry = container.resolve(INTEGRATION_PROVIDER_REGISTRY);
+  check('both providers registered through the module seam',
+    registry.ids().sort().join(',') === 'browser,github', registry.ids().join(','));
+  const composed = container.resolve(TOOL_BROKER);
+  check('the composed broker sees every tool from both providers',
+    composed.tools().length === 19, `${composed.tools().length} tools`);
+  check('the dev server controller resolves',
+    container.resolve(DEV_SERVER_CONTROLLER) !== undefined);
+  await container.dispose();
+}
 
 section('1. Tool broker: scoping, discovery and default deny');
 
@@ -517,6 +540,7 @@ await bridge.close();
 fixture.close();
 await sessions.closeAll();
 await rm(runDir, { recursive: true, force: true });
+await rm(tmpRoot, { recursive: true, force: true });
 
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : `${failures} FAILURE(S)`} — ${checks - failures}/${checks}`);
 process.exit(failures === 0 ? 0 : 1);
