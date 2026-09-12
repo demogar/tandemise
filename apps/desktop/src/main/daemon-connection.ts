@@ -56,7 +56,7 @@ export class DaemonConnector extends EventEmitter {
       return this.#set(
         'unavailable',
         null,
-        'The Tandemise daemon is not running, and its build was not found. Run `npm run build` in the repository, then retry.',
+        'Its build was not found at apps/daemon/dist/main.js, so there was nothing to start. Run `npm run build` in the repository, then retry.',
       );
     }
 

@@ -47,7 +47,13 @@ export async function runScreenshotPass(window: BrowserWindow, directory: string
   await once(window.webContents, 'did-finish-load');
   await delay(2_500);
 
-  for (const shot of SHOTS) {
+  // Lets a run capture one state in isolation - the daemon-down screen needs
+  // its own launch with no reachable daemon, and re-shooting all twenty would
+  // just overwrite the good ones with error states.
+  const only = process.env['TANDEMISE_SCREENSHOT_ONLY'];
+  const selected = only ? SHOTS.filter((shot) => shot.name.includes(only)) : SHOTS;
+
+  for (const shot of selected) {
     await applyTheme(window, shot.theme);
     await window.webContents.executeJavaScript(`location.hash = ${JSON.stringify('#' + shot.hash)}`);
     await delay(shot.waitMs ?? 800);

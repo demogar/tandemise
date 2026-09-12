@@ -24,6 +24,8 @@ import type { MetricsService } from './engine/metrics.js';
 import type { RecoveryService } from './engine/recovery.js';
 import type { RemediationPlanner } from './engine/remediation.js';
 import type { SchedulerService } from './engine/scheduler.js';
+import type { ApprovalWaiter } from './support/tool-policy.js';
+import type { RuntimeOverrides } from './support/runtime-overrides.js';
 import type { TaskExecutor } from './engine/task-executor.js';
 import type { EventRecorder } from './support/event-recorder.js';
 import type { RepositoryProber } from './support/repository-prober.js';
@@ -97,9 +99,16 @@ export const ARTIFACT_HARVESTER = token<ArtifactHarvester>('application.Artifact
 export const TASK_EXECUTOR = token<TaskExecutor>('application.TaskExecutor');
 export const REMEDIATION_PLANNER = token<RemediationPlanner>('application.RemediationPlanner');
 export const BRANCH_INTEGRATION_SERVICE = token<BranchIntegrationService>('application.BranchIntegrationService');
-export const SCHEDULER_SERVICE = token<SchedulerService>('application.SchedulerService');
+/**
+ * The tick loop, as a `LifecycleComponent`. The composition root registers it
+ * with its `LifecycleHost` so that shutdown stops the scheduler before the
+ * processes it supervises are reaped (MVP.md §7.3).
+ */
+export const SCHEDULER = token<SchedulerService>('application.Scheduler');
 export const RECOVERY_SERVICE = token<RecoveryService>('application.RecoveryService');
 export const METRICS_SERVICE = token<MetricsService>('application.MetricsService');
+export const RUNTIME_OVERRIDES = token<RuntimeOverrides>('application.RuntimeOverrides');
+export const APPROVAL_WAITER = token<ApprovalWaiter>('application.ApprovalWaiter');
 
 // --------------------------------------------------------------- API services
 
