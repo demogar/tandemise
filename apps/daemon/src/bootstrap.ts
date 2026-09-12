@@ -108,11 +108,20 @@ function aliasPorts(container: Container, log: Logger): void {
   const aliased: string[] = [];
   const missing: string[] = [];
 
-  for (const [name, appToken] of Object.entries(applicationTokens)) {
-    if (!isToken(appToken)) continue;
-    const provider = (persistenceTokens as Record<string, unknown>)[name];
-    if (!isToken(provider) || !container.has(provider)) continue;
-    if (container.has(appToken)) continue;
+  // Both sides are erased to `Token<unknown>` deliberately. The alias is
+  // type-safe by construction rather than by declaration: the two tokens carry
+  // the same exported name, and the port interface they are parameterised with
+  // is literally the same type imported from `@tandemise/domain`. Enumerating
+  // fifty pairs explicitly to satisfy the compiler would add fifty places to
+  // forget one.
+  const appTokens = applicationTokens as Record<string, unknown>;
+  const providerTokens = persistenceTokens as Record<string, unknown>;
+
+  for (const name of Object.keys(appTokens)) {
+    const appToken = appTokens[name];
+    const provider = providerTokens[name];
+    if (!isToken(appToken) || !isToken(provider)) continue;
+    if (!container.has(provider) || container.has(appToken)) continue;
     container.bind(appToken, (r) => r.resolve(provider), { source: `alias:${name}` });
     aliased.push(name);
   }
@@ -120,13 +129,13 @@ function aliasPorts(container: Container, log: Logger): void {
   // The remaining ports have no persistence counterpart to match by name, so
   // they are bound explicitly. Each one is a provider the application layer is
   // forbidden to import directly.
-  const appArtifactStore = (applicationTokens as Record<string, unknown>).ARTIFACT_STORE;
+  const appArtifactStore = appTokens['ARTIFACT_STORE'];
   if (isToken(appArtifactStore) && !container.has(appArtifactStore)) {
     container.bind(appArtifactStore, (r) => r.resolve(ARTIFACTS_STORE_TOKEN), { source: 'alias:ARTIFACT_STORE' });
     aliased.push('ARTIFACT_STORE');
   }
   const bindDirect = (name: string, factory: (r: import('@tandemise/kernel').Resolver) => unknown): void => {
-    const t = (applicationTokens as Record<string, unknown>)[name];
+    const t = appTokens[name];
     if (!isToken(t)) { missing.push(name); return; }
     if (container.has(t)) return;
     container.bind(t as Token<unknown>, factory, { source: `bind:${name}` });
