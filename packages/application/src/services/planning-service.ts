@@ -102,7 +102,7 @@ export class PlanningServiceImpl implements PlanningService {
     // compiled rather than proposed: the author already decided what the steps
     // are, and asking a model to re-derive them would be both slower and less
     // faithful than reading the file.
-    const authored = await this.#authoredWorkflow(planning, repositories, scope);
+    const authored = await this.#authoredWorkflow(planning, repositories, roles, scope);
     if (authored !== null) {
       const tasks = materializePlan(authored, mission.id, this.deps.clock, repositories);
       this.deps.tasks.replaceAll(mission.id, tasks);
@@ -138,6 +138,7 @@ export class PlanningServiceImpl implements PlanningService {
   async #authoredWorkflow(
     mission: Mission,
     repositories: readonly Repository[],
+    roles: readonly RoleTemplate[],
     scope: EventScope,
   ): Promise<MissionPlan | null> {
     const name = mission.workflowPreset.trim();
@@ -154,7 +155,11 @@ export class PlanningServiceImpl implements PlanningService {
       );
     }
 
-    const compiled = compileWorkflow(found.definition, mission.workflowInputs);
+    const compiled = compileWorkflow(found.definition, mission.workflowInputs, {
+      // So a `development` step gets a worktree without the author having to
+      // ask for one.
+      isolationForRole: (roleId) => roles.find((r) => r.id === roleId)?.defaultIsolation,
+    });
     if (!compiled.ok) {
       throw TandemiseError.validation(
         `Workflow '${name}' cannot run: ${compiled.error.map((i: { path: string; message: string }) => `${i.path}: ${i.message}`).join('; ')}`,

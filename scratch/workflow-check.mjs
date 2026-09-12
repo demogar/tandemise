@@ -69,6 +69,33 @@ ok('the executor survives materialization',
   materialized.find((t) => t.key === 'design').executor === 'human'
   && materialized.find((t) => t.key === 'build').executor === 'agent');
 
+console.log('\n── isolation is inherited, not remembered');
+{
+  // What the built-in roles actually declare.
+  const roleIsolation = { product: 'none', architecture: 'none', development: 'worktree', review: 'worktree', qa: 'worktree', release: 'none' };
+  const withRoles = compileWorkflow(wf.definition, { issue: '42' }, {
+    isolationForRole: (id) => roleIsolation[id],
+  });
+  const byKey2 = Object.fromEntries(withRoles.value.tasks.map((t) => [t.key, t]));
+
+  // The example does not say `isolation:` on the review step - the role does.
+  ok('a code step gets a worktree without asking for one',
+    byKey2.review.executionPolicy.isolation === 'worktree', byKey2.review.executionPolicy.isolation);
+  ok('a step that names its own isolation keeps it',
+    byKey2.build.executionPolicy.isolation === 'worktree');
+  ok('a step whose role needs none gets none',
+    byKey2.read_issue.executionPolicy.isolation === 'none');
+  ok('a person is never sandboxed', byKey2.design.executionPolicy.isolation === 'none');
+  ok('a wait is never sandboxed', byKey2.ci.executionPolicy.isolation === 'none');
+
+  // Without the role lookup the same workflow would put review in the real
+  // checkout, which is the bug this guards.
+  const without = compileWorkflow(wf.definition, { issue: '42' });
+  ok('without the role lookup the same step would run in the real checkout',
+    without.value.tasks.find((t) => t.key === 'review').executionPolicy.isolation === 'none',
+    without.value.tasks.find((t) => t.key === 'review').executionPolicy.isolation);
+}
+
 console.log('\n── waiting on the world outside');
 const ci = tasks.find((t) => t.key === 'ci');
 ok('a wait step is its own executor', ci.executor === 'wait');

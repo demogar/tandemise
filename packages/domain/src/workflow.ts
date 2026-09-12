@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { ARTIFACT_TYPES } from './entities/artifact.js';
 import { DEFAULT_WAIT_EVERY_MS, DEFAULT_WAIT_TIMEOUT_MS, ISOLATION_MODES } from './entities/task.js';
+import type { IsolationMode } from './entities/task.js';
 import { Err, Ok, type Result } from '@tandemise/shared';
 import type { MissionPlan, PlannedTask } from './plan.js';
 
@@ -130,9 +131,25 @@ export function parseWorkflowDefinition(raw: unknown): Result<WorkflowDefinition
  * because a workflow author wants to hear "step 'build' depends on 'desgin',
  * which does not exist" and not a failure three tasks into a mission.
  */
+export interface WorkflowCompileContext {
+  /**
+   * A role's default isolation, so a step inherits it rather than falling to
+   * `none`.
+   *
+   * This matters more than it reads. Tandemise's promise is that it never edits
+   * your checkout - code work happens in a git worktree cut for that task. A
+   * workflow author writing a `development` step should not have to remember
+   * `isolation: worktree` to get that; forgetting it would silently point an
+   * agent at the real working tree, which is the one outcome the product exists
+   * to prevent. The role already knows; the step asks it.
+   */
+  readonly isolationForRole?: (roleId: string) => IsolationMode | undefined;
+}
+
 export function compileWorkflow(
   definition: WorkflowDefinition,
   inputs: Readonly<Record<string, string>>,
+  ctx: WorkflowCompileContext = {},
 ): Result<MissionPlan, readonly WorkflowIssue[]> {
   const issues: WorkflowIssue[] = [];
   const resolved = resolveInputs(definition, inputs, issues);
@@ -162,7 +179,7 @@ export function compileWorkflow(
 
   if (issues.length > 0) return Err(issues);
 
-  const tasks = definition.steps.map((step) => toPlannedTask(step, resolved, issues));
+  const tasks = definition.steps.map((step) => toPlannedTask(step, resolved, issues, ctx));
   if (issues.length > 0) return Err(issues);
 
   return Ok({
@@ -214,6 +231,7 @@ function toPlannedTask(
   step: WorkflowStep,
   values: Readonly<Record<string, string>>,
   issues: WorkflowIssue[],
+  ctx: WorkflowCompileContext,
 ): PlannedTask {
   const objective = applyTemplate(step.objective, values, (name) => {
     issues.push({ path: `steps.${step.key}.objective`, message: `Uses {{ ${name} }}, which this workflow does not declare as an input.` });
@@ -243,8 +261,13 @@ function toPlannedTask(
     expectedOutputs: step.outputs,
     executionPolicy: {
       // Neither a person nor a poll is sandboxed. Cutting a worktree on their
-      // behalf would leave one nobody ever opens.
-      isolation: human || waiting ? 'none' : step.isolation ?? 'none',
+      // behalf would leave one nobody ever opens. Everything else takes the
+      // step's own answer, then its role's, and only then `none`.
+      isolation: human || waiting
+        ? 'none'
+        : step.isolation
+          ?? (step.role === undefined ? undefined : ctx.isolationForRole?.(step.role))
+          ?? 'none',
       maxWallTimeMs: step.maxWallTimeMs ?? DEFAULT_WALL_TIME_MS,
       capabilities: step.capabilities,
     },

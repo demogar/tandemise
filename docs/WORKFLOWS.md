@@ -51,6 +51,22 @@ A **wait** step holds no model and no worker slot. The obvious alternative — a
 agent polling in a loop — re-sends its whole context on every poll, so a
 ten-minute CI wait is billed as a ten-minute conversation.
 
+## Worktrees
+
+You do not ask for one. A step's isolation comes from the step if it says so,
+otherwise from its **role** — `development`, `review` and `qa` all declare
+`worktree`, so a code step gets its own checkout and branch without the workflow
+mentioning it. Only if neither says anything does a step run in place.
+
+That order exists because forgetting `isolation: worktree` on a `development`
+step would point an agent at your real working tree, which is the one thing
+Tandemise exists to prevent.
+
+Each worktree is cut per task, branched from the mission's base — except a
+reviewer or tester, which is branched from the upstream task's change branch so
+it sees the actual diff rather than the description of it. `node_modules` is
+cloned copy-on-write where the filesystem supports it, so provisioning is fast.
+
 ## Inputs
 
 ```yaml

@@ -74,7 +74,9 @@ steps:
     title: Review the diff
     role: review
     dependsOn: [build]
-    isolation: worktree
+    # No `isolation:` here on purpose. The review role already declares
+    # `worktree`, so the step inherits it — and a reviewer gets a checkout with
+    # the change in it without the author having to remember to ask.
     objective: |
       Review the actual diff for issue #{{ issue }} against the plan and the
       acceptance criteria. Report findings by severity with file:line evidence.
