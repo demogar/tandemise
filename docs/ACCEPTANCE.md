@@ -20,14 +20,14 @@ Run any of these with `export PATH="$HOME/.nvm/versions/node/v22.23.1/bin:$PATH"
 | 9 | Core artifacts persist across restart | | |
 | 10 | Blocking reviewer findings create fix work and block QA/release | | |
 | 11 | QA runs real browser automation with screenshots and criteria evidence | | |
-| 12 | GitHub reads repo/PR state; creates a draft PR only under policy | | |
-| 13 | MCP exposes a granted tool without exposing unrelated workspace tools | | |
+| 12 | GitHub reads repo/PR state; creates a draft PR only under policy | ✅ met | `scratch/integrations-check.mjs` — real `gh` calls; `github.pr.create` is `external_side_effect` and policy-gated, absent from a QA gateway |
+| 13 | MCP exposes a granted tool without exposing unrelated workspace tools | ✅ met | `scratch/integrations-check.mjs` — stdio MCP server `tools/list` returns only granted tools; `github_pr_create` refused |
 | 14 | macOS control launches/inspects an allowlisted app, acts, captures evidence | | |
-| 15 | Permissions are deny-by-default and visible to the user | | |
+| 15 | Permissions are deny-by-default and visible to the user | ✅ met | `scratch/policy-eval-check.mjs`, `scratch/integrations-check.mjs` — default deny; ungranted tools are not even listed |
 | 16 | Production release actions require explicit approval | | |
 | 17 | Killing the window doesn't stop the daemon; daemon restart keeps state | | |
 | 18 | Interrupted runs are marked correctly and resumed/retried by policy | | |
-| 19 | No raw credentials in SQLite when a CLI session or OS reference will do | | |
+| 19 | No raw credentials in SQLite when a CLI session or OS reference will do | ✅ met | `scratch/secrets-check.mjs` — macOS Keychain; DB stores opaque refs; gh/claude reuse their own sessions |
 | 20 | Cancelling a mission leaves no orphaned background worker | | |
 | 21 | Full reference mission produces a release candidate, no copy/paste | | |
 
