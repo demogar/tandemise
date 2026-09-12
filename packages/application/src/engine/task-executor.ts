@@ -9,6 +9,7 @@ import type {
 } from '@tandemise/domain';
 import { CORE_CAPABILITIES, anyCapabilityMatches } from '@tandemise/domain';
 import { isDaemonStopping } from '../support/shutdown.js';
+import { liveArtifacts, upstreamTaskIds } from '../support/lineage.js';
 import type { ContextCompiler, ExpectedArtifact } from '@tandemise/context';
 import type { ExecutionTarget, ExecutionTargetManager } from '@tandemise/execution-core';
 import type { ApprovalFactory, GrantBuilder, PolicyEngine } from '@tandemise/policy';
@@ -700,9 +701,17 @@ export class TaskExecutor {
 
   async #loadDependencies(task: MissionTask, scope: EventScope): Promise<readonly LoadedArtifact[]> {
     const loaded: LoadedArtifact[] = [];
+    const upstream = upstreamTaskIds(task, this.deps.tasks.listByMission(task.missionId));
     for (const requirement of task.inputArtifacts) {
-      const manifest = this.deps.artifacts.latest(task.missionId, requirement.type);
-      if (manifest === undefined) {
+      // Every live artifact of the type from an upstream task, not just the
+      // newest in the mission: a product document fed by web and mobile
+      // research needs both briefs. Falls back to the newest when nothing
+      // upstream produced one (an input produced outside the graph).
+      const fromUpstream = liveArtifacts(this.deps.artifacts, task.missionId, requirement.type)
+        .filter((a) => a.taskId !== null && upstream.has(a.taskId));
+      const latest = this.deps.artifacts.latest(task.missionId, requirement.type);
+      const manifests = fromUpstream.length > 0 ? fromUpstream : latest === undefined ? [] : [latest];
+      if (manifests.length === 0) {
         if (requirement.required) {
           this.deps.recorder.note(
             scope,
@@ -712,10 +721,12 @@ export class TaskExecutor {
         }
         continue;
       }
-      try {
-        loaded.push(await this.deps.artifactStore.read(manifest.id));
-      } catch (e) {
-        this.deps.recorder.note(scope, `Could not read ${requirement.type}: ${errorMessage(e)}`, 'warn');
+      for (const manifest of manifests) {
+        try {
+          loaded.push(await this.deps.artifactStore.read(manifest.id));
+        } catch (e) {
+          this.deps.recorder.note(scope, `Could not read ${requirement.type}: ${errorMessage(e)}`, 'warn');
+        }
       }
     }
     return loaded;

@@ -153,6 +153,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       r.resolve(t.ARTIFACT_PARSER),
       r.resolve(t.EVENT_RECORDER),
       clock(r),
+      r.resolve(t.TASK_REPOSITORY),
     ), { source: SOURCE });
 
     bind(t.METRICS_SERVICE, (r) => new MetricsService(

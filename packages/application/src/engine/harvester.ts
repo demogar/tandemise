@@ -1,12 +1,13 @@
 import type {
   ArtifactManifest, ArtifactRepositoryPort, ArtifactStorePort, ArtifactType,
-  EvaluationRepositoryPort, ExternalRef, Mission, MissionTask,
+  EvaluationRepositoryPort, ExternalRef, Mission, MissionTask, TaskRepositoryPort,
 } from '@tandemise/domain';
 import { ARTIFACT_OUT_DIR, isArtifactType } from '@tandemise/domain';
 import type { ExecutionTarget } from '@tandemise/execution-core';
 import type { Clock, RunId } from '@tandemise/shared';
 import { errorMessage, summarize } from '@tandemise/shared';
 import type { ArtifactParserPort } from '../ports.js';
+import { supersededBy } from '../support/lineage.js';
 import type { EventRecorder, EventScope } from '../support/event-recorder.js';
 import { evaluationFrom } from './evaluations.js';
 
@@ -83,6 +84,8 @@ export class ArtifactHarvester {
     private readonly parser: ArtifactParserPort,
     private readonly recorder: EventRecorder,
     private readonly clock: Clock,
+    /** Optional so older compositions keep mission-wide superseding. */
+    private readonly tasks?: TaskRepositoryPort,
   ) {}
 
   /**
@@ -207,10 +210,11 @@ export class ArtifactHarvester {
 
     const title = readTitle(parsed.value.frontMatter) ?? `${type} for ${request.task.title}`;
     const summary = summarize(firstParagraph(parsed.value.body), 300);
-    // Supersede in the same breath as the write: `latest()` is what the next
-    // role's context is built from, and two live artifacts of one type is how a
-    // downstream task ends up reading last attempt's work.
-    const previous = this.artifacts.latest(request.mission.id, type);
+    // Supersede in the same breath as the write, so a downstream task never
+    // reads last attempt's work - but only work this one actually replaces.
+    const previous = this.tasks === undefined
+      ? this.artifacts.latest(request.mission.id, type)
+      : supersededBy(request.task, type, this.artifacts, this.tasks);
 
     const manifest = await this.store.write({
       workspaceId: request.mission.workspaceId,
