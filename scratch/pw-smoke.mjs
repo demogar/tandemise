@@ -1,0 +1,11 @@
+import { chromium } from 'playwright';
+const b = await chromium.launch({ headless: true });
+const p = await b.newPage();
+await p.setContent('<main><h1>Tandemise</h1><button aria-label="Run">Go</button><input aria-label="Task title"/></main>');
+const aria = await p.locator('body').ariaSnapshot();
+const shot = await p.screenshot();
+console.log('--- aria snapshot ---');
+console.log(aria);
+console.log('screenshot bytes:', shot.length);
+await b.close();
+console.log(aria.includes('button') && shot.length > 1000 ? 'PLAYWRIGHT OK (ariaSnapshot)' : 'PLAYWRIGHT SUSPECT');

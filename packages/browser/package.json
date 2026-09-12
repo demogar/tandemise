@@ -16,8 +16,10 @@
   },
   "dependencies": {
     "@tandemise/shared": "0.1.0",
+    "@tandemise/kernel": "0.1.0",
     "@tandemise/domain": "0.1.0",
     "@tandemise/integrations-core": "0.1.0",
-    "playwright": "^1.49.1"
+    "playwright": "^1.49.1",
+    "zod": "^3.24.1"
   }
 }

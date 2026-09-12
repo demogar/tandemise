@@ -2,7 +2,12 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "rootDir": "./src",
-    "outDir": "./dist"
+    "outDir": "./dist",
+    "lib": [
+      "ES2023",
+      "DOM",
+      "DOM.Iterable"
+    ]
   },
   "include": [
     "src/**/*"
@@ -10,6 +15,9 @@
   "references": [
     {
       "path": "../../packages/shared"
+    },
+    {
+      "path": "../../packages/kernel"
     },
     {
       "path": "../../packages/domain"
