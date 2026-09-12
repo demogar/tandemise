@@ -5,7 +5,7 @@ import { defaultMediaTypeFor } from '@tandemise/domain';
 import type { ArtifactId, Clock, TandemisePaths } from '@tandemise/shared';
 import { TandemiseError, ids, systemClock } from '@tandemise/shared';
 import { createHash, randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 /**
@@ -44,6 +44,8 @@ const SHA_PREFIX = 'sha256:';
 export function createFilesystemArtifactStore(options: ArtifactStoreOptions): ArtifactStorePort {
   const { paths } = options;
   const clock = options.clock ?? systemClock;
+  /** id → workspace, so the common case never scans the workspaces directory. */
+  const workspaceOfArtifact = new Map<ArtifactId, string>();
 
   const rootFor = (workspaceId: string): string => paths.artifacts(workspaceId);
   const indexPath = (workspaceId: string, id: ArtifactId): string => join(rootFor(workspaceId), 'index', `${id}.json`);
@@ -55,9 +57,13 @@ export function createFilesystemArtifactStore(options: ArtifactStoreOptions): Ar
    * listing rather than a file walk.
    */
   const findManifest = (id: ArtifactId): ArtifactManifest | undefined => {
-    for (const workspaceId of listWorkspaces(paths)) {
+    const known = workspaceOfArtifact.get(id);
+    const candidates = known !== undefined ? [known] : listWorkspaces(paths);
+    for (const workspaceId of candidates) {
       const file = indexPath(workspaceId, id);
-      if (existsSync(file)) return JSON.parse(readFileSync(file, 'utf8')) as ArtifactManifest;
+      if (!existsSync(file)) continue;
+      workspaceOfArtifact.set(id, workspaceId);
+      return JSON.parse(readFileSync(file, 'utf8')) as ArtifactManifest;
     }
     return undefined;
   };
@@ -111,6 +117,7 @@ export function createFilesystemArtifactStore(options: ArtifactStoreOptions): Ar
         createdAt: clock.now(),
       };
       atomicWrite(indexPath(request.workspaceId, id), Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`, 'utf8'));
+      workspaceOfArtifact.set(id, request.workspaceId);
       return manifest;
     },
 
@@ -170,12 +177,11 @@ function atomicWrite(target: string, bytes: Buffer): void {
 
 function listWorkspaces(paths: TandemisePaths): readonly string[] {
   try {
-    // Imported lazily-ish: readdirSync is only needed on the id-lookup path.
-    const { readdirSync } = require('node:fs') as typeof import('node:fs');
     return readdirSync(paths.workspaces, { withFileTypes: true })
       .filter((e) => e.isDirectory())
       .map((e) => e.name);
   } catch {
+    // No workspaces directory yet: nothing has been written, so nothing resolves.
     return [];
   }
 }

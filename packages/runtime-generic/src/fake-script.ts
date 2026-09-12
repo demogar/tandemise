@@ -137,3 +137,29 @@ function parseStep(raw: unknown, index: number): Result<FakeStep, TandemiseError
 function optionalNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
+
+/** Substitutes `{{prompt}}`, `{{cwd}}` and `{{runId}}` into a step's free text. */
+export function substituteStep(step: FakeStep, values: Readonly<Record<string, string>>): FakeStep {
+  const fill = (text: string): string => {
+    let out = text;
+    for (const [key, value] of Object.entries(values)) out = out.split(`{{${key}}}`).join(value);
+    return out;
+  };
+  switch (step.kind) {
+    case 'message':
+    case 'thinking':
+      return { ...step, text: fill(step.text) };
+    case 'write-file':
+      return { ...step, path: fill(step.path), content: fill(step.content) };
+    case 'checkpoint':
+      return step.sessionId === undefined ? step : { ...step, sessionId: fill(step.sessionId) };
+    case 'complete':
+      return step.summary === undefined ? step : { ...step, summary: fill(step.summary) };
+    case 'fail':
+      return { ...step, message: fill(step.message) };
+    case 'tool':
+      return step.input === undefined ? step : { ...step, input: fill(step.input) };
+    default:
+      return step;
+  }
+}
