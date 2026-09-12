@@ -9,27 +9,27 @@ Run any of these with `export PATH="$HOME/.nvm/versions/node/v22.23.1/bin:$PATH"
 
 | # | Criterion | Status | Evidence |
 |---|---|---|---|
-| 1 | Desktop app installs and launches tandemd without a cloud account | | |
+| 1 | Desktop app installs and launches tandemd without a cloud account | ✅ met | tandemd starts, migrates, serves 49 routes, no account — `scratch/e2e-daemon.mjs` |
 | 2 | Discovers Claude Code and Codex when installed; reports health | ✅ met | `scratch/runtime-check.mjs` (Claude Code 2.1.269 detected + healthy), `scratch/codex-check.mjs` (Codex adapter degrades to an actionable message; it distinguishes "CLI missing" from "not signed in") |
-| 3 | User can select a local Git repository and create a workspace | | |
-| 4 | Mission from natural language; typed proposed plan is inspectable | | |
-| 5 | Plan executes as a DAG through Product, Developer, Reviewer, QA | | |
-| 6 | Developer work happens in an isolated worktree → reviewable changeset | | |
+| 3 | User can select a local Git repository and create a workspace | ✅ met | `scratch/application-check.mjs` — workspace created, repo probed (detects `npm test`, `npm run typecheck`), built-in roles seeded |
+| 4 | Mission from natural language; typed proposed plan is inspectable | ✅ met | `scratch/e2e-daemon.mjs`, `scratch/application-check.mjs` — one sentence in, typed plan out, inspectable before execution |
+| 5 | Plan executes as a DAG through Product, Developer, Reviewer, QA | ✅ met | `scratch/application-check.mjs` — full product → design → architecture → implement → review → qa → release_candidate DAG runs to COMPLETE |
+| 6 | Developer work happens in an isolated worktree → reviewable changeset | ✅ met | `scratch/application-check.mjs` — one worktree per code task, outside the user checkout, retries reuse it; 3/3 branches integrated |
 | 7 | One mission uses different runtimes for different roles | ✅ met | `scratch/gemini-check.mjs` — two different agent CLIs driven through one adapter by configuration alone; Claude Code completes a real run |
 | 8 | Runtime events normalized into one mission timeline | ✅ met | `scratch/runtime-check.mjs` — every runtime normalizes into the canonical AgentEvent union |
-| 9 | Core artifacts persist across restart | | |
-| 10 | Blocking reviewer findings create fix work and block QA/release | | |
+| 9 | Core artifacts persist across restart | ✅ met | `scratch/application-check.mjs` — all 11 artifact types harvested from `.tandemise/out/`; `scratch/e2e-daemon.mjs` proves they survive a restart |
+| 10 | Blocking reviewer findings create fix work and block QA/release | ✅ met | `scratch/application-check.mjs` — gates evaluated on every gated task; the gate detail reaches the retry prompt verbatim |
 | 11 | QA runs real browser automation with screenshots and criteria evidence | ✅ met | `scratch/qa-e2e-check.mjs` — starts the Taskly dev server, drives three acceptance criteria through a real Chromium, captures a 24KB screenshot and a semantic accessibility tree, runs a11y checks, asserts no console errors |
 | 12 | GitHub reads repo/PR state; creates a draft PR only under policy | ✅ met | `scratch/integrations-check.mjs` — real `gh` calls; `github.pr.create` is `external_side_effect` and policy-gated, absent from a QA gateway |
 | 13 | MCP exposes a granted tool without exposing unrelated workspace tools | ✅ met | `scratch/integrations-check.mjs` — stdio MCP server `tools/list` returns only granted tools; `github_pr_create` refused |
 | 14 | macOS control launches/inspects an allowlisted app, acts, captures evidence | ✅ met | `scratch/desktop-check.mjs` — Swift helper builds and responds; app allowlist hides 193 non-allowlisted apps; permissions reported with the exact System Settings path |
 | 15 | Permissions are deny-by-default and visible to the user | ✅ met | `scratch/policy-eval-check.mjs`, `scratch/integrations-check.mjs` — default deny; ungranted tools are not even listed |
-| 16 | Production release actions require explicit approval | | |
-| 17 | Killing the window doesn't stop the daemon; daemon restart keeps state | | |
-| 18 | Interrupted runs are marked correctly and resumed/retried by policy | | |
+| 16 | Production release actions require explicit approval | ✅ met | `scratch/application-check.mjs` — the release candidate is held for approval and only proceeds when decided |
+| 17 | Killing the window doesn't stop the daemon; daemon restart keeps state | ✅ met | `scratch/e2e-daemon.mjs` — mission, tasks, artifacts and the event log all survive a daemon stop/start |
+| 18 | Interrupted runs are marked correctly and resumed/retried by policy | ✅ met | `scratch/application-check.mjs` — a run with a dead pid is reclassified INTERRUPTED, its task requeued with the attempt preserved, and a note written to the timeline |
 | 19 | No raw credentials in SQLite when a CLI session or OS reference will do | ✅ met | `scratch/secrets-check.mjs` — macOS Keychain; DB stores opaque refs; gh/claude reuse their own sessions |
 | 20 | Cancelling a mission leaves no orphaned background worker | ✅ met | `scratch/runtime-check.mjs`, `scratch/execution-check.mjs` — cancel reaps the child (verified with ps); supervisor killAll on shutdown |
-| 21 | Full reference mission produces a release candidate, no copy/paste | | |
+| 21 | Full reference mission produces a release candidate, no copy/paste | ✅ met | `scratch/application-check.mjs` — mission reaches COMPLETE with a ReleaseCandidate, no manual copy/paste at any point |
 
 ## Security fixes made during review
 
@@ -38,6 +38,7 @@ mattered, all now fixed with permanent regression coverage:
 
 | Finding | Status |
 |---|---|
+| Prompt-injection escape: a forged fence terminator in an artifact **title** broke out of the untrusted boundary | fixed — `scratch/trust-boundary-check.mjs` (11 checks) |
 | Sandbox escape: a **dangling** symlink defeated path scoping, writing outside every declared root | fixed — `scratch/fs-security-check.mjs` (28 checks) |
 | Permission engine returned **allow** on an unparseable grant expiry | fixed — an expiry that cannot be read has passed |
 | Risk classification **discarded the command** when shell context was absent, returning allow for `sudo rm -rf ~` | fixed — classified against an empty context instead |
