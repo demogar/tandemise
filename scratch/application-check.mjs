@@ -737,6 +737,32 @@ ok('a role someone wrote can be created', services.roles.list(workspaceId).some(
 services.roles.remove('house_scribe', workspaceId);
 ok('a role someone wrote is actually deleted', !services.roles.list(workspaceId).some((r) => r.id === 'house_scribe'));
 
+// Found in the real app: roles seeded before the Designer gained `design` kept
+// the old defaults forever, so a design task could not reach Open Design.
+{
+  const roleRepo = container.resolve(appTokens.ROLE_REPOSITORY);
+  const shippedDesign = roleRepo.get('design', workspaceId);
+  const stale = ['repository.read', 'filesystem.read', 'artifact.write'];
+  roleRepo.upsert({ ...shippedDesign, workspaceId: null, defaultCapabilities: stale, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-02T00:00:00.000Z' });
+  const qa = roleRepo.get('qa', workspaceId);
+  roleRepo.upsert({ ...qa, workspaceId, defaultCapabilities: stale, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' });
+  const reviewer = roleRepo.get('review', workspaceId);
+  roleRepo.upsert({ ...reviewer, workspaceId, defaultCapabilities: stale, instructions: 'Our house review rules.', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-05T00:00:00.000Z' });
+
+  const refreshed = services.roles.refreshBuiltIns([workspaceId]);
+  ok('stale, unedited built-ins are brought up to the shipped definition', refreshed >= 2, `refreshed=${refreshed}`);
+  ok('a stale global built-in regains its shipped capabilities',
+    roleRepo.list(null).find((r) => r.id === 'design' && r.workspaceId === null)?.defaultCapabilities.includes('design'));
+  const qaAfter = roleRepo.get('qa', workspaceId);
+  ok('an unedited project built-in is refreshed and still reads as unedited',
+    qaAfter.defaultCapabilities.includes('browser') && qaAfter.createdAt === qaAfter.updatedAt);
+  const reviewAfter = roleRepo.get('review', workspaceId);
+  ok('a built-in someone edited is left exactly as they left it',
+    reviewAfter.instructions === 'Our house review rules.' && reviewAfter.defaultCapabilities.length === stale.length);
+  ok('refreshing again changes nothing', services.roles.refreshBuiltIns([workspaceId]) === 0);
+  services.roles.remove('review', workspaceId);
+}
+
 ok('artifacts are searchable', services.artifacts.search(workspaceId, 'clear').length > 0,
   `${services.artifacts.search(workspaceId, 'clear').length} hits`);
 const discovered = await services.runtimes.discover();

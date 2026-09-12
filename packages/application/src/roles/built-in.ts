@@ -333,10 +333,20 @@ stated confidence level. An unsourced number is worse than no number.`,
 const CONNECTED_APPS: Readonly<Record<string, readonly string[]>> = {
   product: [CORE_CAPABILITIES.planning],
   architecture: [CORE_CAPABILITIES.planning],
-  development: [CORE_CAPABILITIES.database, `${CORE_CAPABILITIES.monitoring}.read`],
-  review: [`${CORE_CAPABILITIES.database}.read`],
+  // Delivering a change ends at a pull request, and a review ends at comments
+  // on it. Without these a plan's "push and open the PR" step was granted
+  // neither, and a reviewer could not leave its findings where the author
+  // works. Both are external writes, so the autonomy setting still asks first.
+  development: [
+    CORE_CAPABILITIES.database, `${CORE_CAPABILITIES.monitoring}.read`,
+    CORE_CAPABILITIES.gitPush, CORE_CAPABILITIES.githubRead, CORE_CAPABILITIES.githubPrCreate, 'github.pr.comment',
+  ],
+  review: [`${CORE_CAPABILITIES.database}.read`, CORE_CAPABILITIES.githubRead, 'github.pr.comment'],
   qa: [`${CORE_CAPABILITIES.deploy}.read`, `${CORE_CAPABILITIES.monitoring}.read`],
-  release: [CORE_CAPABILITIES.planning, CORE_CAPABILITIES.deploy, CORE_CAPABILITIES.monitoring],
+  release: [
+    CORE_CAPABILITIES.planning, CORE_CAPABILITIES.deploy, CORE_CAPABILITIES.monitoring,
+    CORE_CAPABILITIES.gitPush, CORE_CAPABILITIES.githubPrCreate, 'github.pr.comment',
+  ],
 };
 
 /**

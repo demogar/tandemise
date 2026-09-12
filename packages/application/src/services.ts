@@ -114,6 +114,8 @@ export interface RoleService {
   list(workspaceId?: string): readonly RoleTemplate[];
   upsert(request: UpsertRoleRequest): RoleTemplate;
   remove(id: string, workspaceId: WorkspaceId): void;
+  /** Upgrades unedited built-in roles to the shipped definition; returns how many changed. */
+  refreshBuiltIns(workspaceIds: readonly WorkspaceId[]): number;
 }
 
 export interface IntegrationService {

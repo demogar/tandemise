@@ -39,6 +39,12 @@ export async function startDaemon(overrides: Parameters<typeof loadConfig>[0] = 
   // before the scheduler can dispatch anything (MVP.md §21.2).
   await container.resolve(RECOVERY_SERVICE).run();
 
+  // Before anything is planned or dispatched: a task is granted from its role,
+  // so a stale built-in would withhold capabilities the shipped role now has.
+  const workspaceIds = services.workspaces.list().map((view) => view.workspace.id);
+  const refreshedRoles = services.roles.refreshBuiltIns(workspaceIds);
+  if (refreshedRoles > 0) log.info('roles.built_ins_refreshed', { count: refreshedRoles });
+
   await lifecycle.start();
   // After the lifecycle, so a re-plan has the runtimes and targets it needs.
   const replanned = services.planning.resumeInterrupted();
