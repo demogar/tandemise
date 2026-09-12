@@ -311,6 +311,15 @@ export class MissionServiceImpl implements MissionService {
     this.deps.recorder.record({ ...scopeOf(mission), taskId, roleId: task.roleId }, {
       type: 'task.status', from: task.status, to: 'SKIPPED', reason,
     });
+    // A skipped task has nothing left to decide, so its open cards are
+    // withdrawn - otherwise an intervention for work nobody is doing anymore
+    // stays in the inbox asking to retry it.
+    for (const approval of this.deps.approvals.pendingForTask(taskId)) {
+      this.deps.approvals.update(approval.id, {
+        status: 'CANCELLED', decidedAt: this.deps.clock.now(), decisionNote: reason,
+      });
+    }
+    this.deps.recorder.invalidate('approvals', mission.id);
     // A skipped task counts as satisfied for its dependents, so downstream work
     // that was waiting on it can proceed - that is the point of skipping.
     this.#reviveMission(mission, `'${task.key}' was skipped by the user.`);
