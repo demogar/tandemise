@@ -47,7 +47,7 @@ export const PACKAGES = {
   'runtime-claude': { deps: ['shared', 'domain', 'runtimes-core'], ext: {} },
   'runtime-codex': { deps: ['shared', 'domain', 'runtimes-core'], ext: {} },
   'runtime-generic': { deps: ['shared', 'domain', 'runtimes-core'], ext: {} },
-  'execution-local': { deps: ['shared', 'domain', 'execution-core'], ext: {} },
+  'execution-local': { deps: ['shared', 'domain', 'kernel', 'execution-core'], ext: {} },
   'integration-github': { deps: ['shared', 'domain', 'integrations-core', 'execution-core'], ext: {} },
   browser: { deps: ['shared', 'domain', 'integrations-core'], ext: { playwright: '^1.49.1' } },
   'desktop-control': { deps: ['shared', 'domain', 'kernel', 'integrations-core'], ext: {} },
