@@ -396,3 +396,105 @@
 .spacer {
   flex: 1;
 }
+
+/* -------------------------------------------------------- project switcher */
+/*
+ * Sits directly under the brand because the selected project frames everything
+ * below it. Styled as a surface rather than a nav row so it does not read as a
+ * fifth destination.
+ */
+.wsswitch {
+  position: relative;
+  padding: var(--s1) var(--s3) var(--s2);
+}
+
+.wsswitch__trigger {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  width: 100%;
+  padding: var(--s2) var(--s2) var(--s2) var(--s3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  cursor: default;
+}
+
+.wsswitch__trigger:hover {
+  background: var(--surface-raised, var(--surface));
+  border-color: var(--border-strong, var(--border));
+}
+
+.wsswitch__body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+}
+
+.wsswitch__name {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.wsswitch__meta {
+  font-size: var(--fs-micro);
+  color: var(--text-dim);
+}
+
+.wsswitch__menu {
+  position: absolute;
+  z-index: 40;
+  left: var(--s3);
+  right: var(--s3);
+  top: calc(100% - var(--s1));
+  padding: var(--s1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised, var(--surface));
+  box-shadow: var(--shadow-lg, 0 16px 40px rgba(0, 0, 0, 0.45));
+}
+
+.wsswitch__option {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  width: 100%;
+  padding: var(--s2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text);
+  font-size: var(--fs-sm);
+  text-align: left;
+  cursor: default;
+}
+
+.wsswitch__option:hover {
+  background: var(--accent-soft);
+}
+
+.wsswitch__check {
+  display: grid;
+  place-items: center;
+  width: 14px;
+  flex: none;
+  color: var(--accent);
+}
+
+.wsswitch__count {
+  margin-left: auto;
+  font-size: var(--fs-micro);
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.wsswitch__sep {
+  height: 1px;
+  margin: var(--s1) 0;
+  background: var(--border);
+}

@@ -4,7 +4,8 @@ import { ARTIFACT_TYPES } from '../lib/domain.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { Icon } from '../components/Icon.js';
 import { Empty, ErrorState, Field, SkeletonList } from '../components/primitives.js';
-import { useDaemonMutation, useRoles, useRuntimes, useWorkspaces } from '../lib/queries.js';
+import { useDaemonMutation, useRoles, useRuntimes } from '../lib/queries.js';
+import { useWorkspace } from '../lib/workspace.js';
 import { titleCase } from '../lib/format.js';
 
 /**
@@ -17,8 +18,7 @@ import { titleCase } from '../lib/format.js';
 export function Workforce(): JSX.Element {
   const roles = useRoles();
   const runtimes = useRuntimes();
-  const workspaces = useWorkspaces();
-  const workspace = workspaces.data?.[0]?.workspace;
+  const workspace = useWorkspace().current?.workspace;
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = useMemo(() => (roles.data ?? []).find((role) => role.id === selectedId) ?? roles.data?.[0] ?? null, [roles.data, selectedId]);

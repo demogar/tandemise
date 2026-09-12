@@ -4,7 +4,8 @@ import { PageHeader } from '../components/PageHeader.js';
 import { Icon } from '../components/Icon.js';
 import { ConfirmDialog, Modal } from '../components/Modal.js';
 import { Empty, ErrorState, Field, SkeletonList, StatusDot, Switch } from '../components/primitives.js';
-import { useDaemonMutation, useIntegrations, useWorkspaces } from '../lib/queries.js';
+import { useDaemonMutation, useIntegrations } from '../lib/queries.js';
+import { useWorkspace } from '../lib/workspace.js';
 import { dateTime, healthTone, titleCase } from '../lib/format.js';
 
 const PROVIDERS: readonly { id: string; name: string; transport: string; hint: string }[] = [
@@ -156,8 +157,7 @@ function IntegrationCard({ view, onRemove }: { view: IntegrationView; onRemove: 
 }
 
 function AddIntegrationModal({ onClose }: { onClose: () => void }): JSX.Element {
-  const workspaces = useWorkspaces();
-  const workspaceId = workspaces.data?.[0]?.workspace.id ?? '';
+  const workspaceId = useWorkspace().current?.workspace.id ?? '';
   const [providerId, setProviderId] = useState(PROVIDERS[0]?.id ?? 'github');
   const [name, setName] = useState('');
   const [secret, setSecret] = useState('');

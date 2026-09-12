@@ -4,7 +4,8 @@ import type { AutonomyLevel } from '@tandemise/domain';
 import { PageHeader } from '../components/PageHeader.js';
 import { Icon } from '../components/Icon.js';
 import { ErrorState, Field, Segmented } from '../components/primitives.js';
-import { useDaemonMutation, useWorkspaces } from '../lib/queries.js';
+import { useDaemonMutation } from '../lib/queries.js';
+import { useWorkspace } from '../lib/workspace.js';
 import { useHotkey } from '../lib/keyboard.js';
 import { shortenPath } from '../lib/format.js';
 
@@ -30,8 +31,7 @@ const PRESETS: readonly { value: string; label: string; hint: string }[] = [
  */
 export function NewMission(): JSX.Element {
   const [, navigate] = useLocation();
-  const workspaces = useWorkspaces();
-  const workspace = workspaces.data?.[0];
+  const workspace = useWorkspace().current;
 
   const [goal, setGoal] = useState('');
   const [repositoryId, setRepositoryId] = useState<string>('');
@@ -120,7 +120,7 @@ export function NewMission(): JSX.Element {
             </Field>
 
             <div className="grid grid--2">
-              <Field label="Repository" hint={selectedRepositoryPath(workspace, repositoryId)}>
+              <Field label="Repository" hint={selectedRepositoryPath(workspace ?? undefined, repositoryId)}>
                 <select className="select" value={repositoryId} onChange={(event) => setRepositoryId(event.target.value)}>
                   <option value="">No repository (research only)</option>
                   {(workspace?.repositories ?? []).map((repository) => (
@@ -190,10 +190,10 @@ export function NewMission(): JSX.Element {
               ) : null}
             </div>
 
-            {workspaces.isSuccess && !workspace ? (
+            {!workspace ? (
               <div className="banner banner--warn">
                 <Icon name="alert" size={14} />
-                No workspace exists yet. Create one in Settings before starting a mission.
+                No project selected. Create one from the project menu at the top of the sidebar.
               </div>
             ) : null}
 

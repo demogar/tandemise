@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import type { ProjectionTopic, RunEventRecord } from '@tandemise/domain';
 import { useDaemon } from './connection.js';
+import { useWorkspaceId } from './workspace.js';
 import type { DaemonClient } from './daemon.js';
 
 /**
@@ -10,19 +11,24 @@ import type { DaemonClient } from './daemon.js';
  * has to line up with those topics exactly - `TOPIC_KEYS` below is the
  * translation, and it only stays correct if every key is minted here.
  */
+/**
+ * Workspace-scoped keys carry the workspace id last, so switching project
+ * refetches instead of showing the previous one's data. The id goes last
+ * because `invalidateTopic` matches on the key's first element.
+ */
 export const keys = {
   system: ['system'] as const,
-  home: ['home'] as const,
+  home: (ws?: string) => ['home', ws ?? 'all'] as const,
   workspaces: ['workspaces'] as const,
-  missions: (filter?: string) => ['missions', filter ?? 'all'] as const,
+  missions: (filter?: string, ws?: string) => ['missions', filter ?? 'all', ws ?? 'all'] as const,
   mission: (id: string) => ['mission', id] as const,
   missionEvents: (id: string) => ['mission-events', id] as const,
-  approvals: ['approvals'] as const,
-  artifacts: (q: string) => ['artifacts', q] as const,
+  approvals: (ws?: string) => ['approvals', ws ?? 'all'] as const,
+  artifacts: (q: string, ws?: string) => ['artifacts', q, ws ?? 'all'] as const,
   artifact: (id: string) => ['artifact', id] as const,
-  runtimes: ['runtimes'] as const,
-  roles: ['roles'] as const,
-  integrations: ['integrations'] as const,
+  runtimes: (ws?: string) => ['runtimes', ws ?? 'all'] as const,
+  roles: (ws?: string) => ['roles', ws ?? 'all'] as const,
+  integrations: (ws?: string) => ['integrations', ws ?? 'all'] as const,
   settings: ['settings'] as const,
 };
 
@@ -59,7 +65,8 @@ export function useSystem() {
 
 export function useHome() {
   const daemon = useDaemon();
-  return useQuery({ queryKey: keys.home, queryFn: () => daemon.home() });
+  const workspaceId = useWorkspaceId();
+  return useQuery({ queryKey: keys.home(workspaceId), queryFn: () => daemon.home(workspaceId) });
 }
 
 export function useWorkspaces() {
@@ -69,9 +76,10 @@ export function useWorkspaces() {
 
 export function useMissions(status?: string) {
   const daemon = useDaemon();
+  const workspaceId = useWorkspaceId();
   return useQuery({
-    queryKey: keys.missions(status),
-    queryFn: () => daemon.missions(status ? { status: status as never } : undefined),
+    queryKey: keys.missions(status, workspaceId),
+    queryFn: () => daemon.missions({ workspaceId, ...(status ? { status: status as never } : {}) }),
   });
 }
 
@@ -91,12 +99,17 @@ export function useMissionEvents(id: string): UseQueryResult<readonly RunEventRe
 
 export function useApprovals() {
   const daemon = useDaemon();
-  return useQuery({ queryKey: keys.approvals, queryFn: () => daemon.approvals() });
+  const workspaceId = useWorkspaceId();
+  return useQuery({ queryKey: keys.approvals(workspaceId), queryFn: () => daemon.approvals(workspaceId) });
 }
 
 export function useArtifactSearch(query: string) {
   const daemon = useDaemon();
-  return useQuery({ queryKey: keys.artifacts(query), queryFn: () => daemon.artifacts({ q: query || undefined }) });
+  const workspaceId = useWorkspaceId();
+  return useQuery({
+    queryKey: keys.artifacts(query, workspaceId),
+    queryFn: () => daemon.artifacts({ workspaceId, q: query || undefined }),
+  });
 }
 
 export function useArtifact(id: string | null) {
@@ -110,17 +123,20 @@ export function useArtifact(id: string | null) {
 
 export function useRuntimes() {
   const daemon = useDaemon();
-  return useQuery({ queryKey: keys.runtimes, queryFn: () => daemon.runtimes() });
+  const workspaceId = useWorkspaceId();
+  return useQuery({ queryKey: keys.runtimes(workspaceId), queryFn: () => daemon.runtimes(workspaceId) });
 }
 
 export function useRoles() {
   const daemon = useDaemon();
-  return useQuery({ queryKey: keys.roles, queryFn: () => daemon.roles(), staleTime: 30_000 });
+  const workspaceId = useWorkspaceId();
+  return useQuery({ queryKey: keys.roles(workspaceId), queryFn: () => daemon.roles(workspaceId), staleTime: 30_000 });
 }
 
 export function useIntegrations() {
   const daemon = useDaemon();
-  return useQuery({ queryKey: keys.integrations, queryFn: () => daemon.integrations() });
+  const workspaceId = useWorkspaceId();
+  return useQuery({ queryKey: keys.integrations(workspaceId), queryFn: () => daemon.integrations(workspaceId) });
 }
 
 export function useSettings() {

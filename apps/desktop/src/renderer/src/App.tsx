@@ -17,7 +17,8 @@ import { Integrations } from './screens/Integrations.js';
 import { Settings } from './screens/Settings.js';
 import { useConnection } from './lib/connection.js';
 import { useDaemonStream } from './lib/stream.js';
-import { useApprovals } from './lib/queries.js';
+import { useApprovals, useWorkspaces } from './lib/queries.js';
+import { WorkspaceProvider } from './lib/workspace.js';
 import { useHotkey } from './lib/keyboard.js';
 import { useThemePreference } from './lib/theme.js';
 
@@ -44,6 +45,19 @@ function Shell(): JSX.Element {
  * one exists - it removes the `client === null` branch from every screen.
  */
 function ConnectedShell(): JSX.Element {
+  // The workspace list is fetched above everything else because which project
+  // is selected decides what every other query asks for. Fetching it inside the
+  // shell would mean one render where each screen silently asks for "the whole
+  // install" and then re-asks - visible as a flash of another project's data.
+  const workspaces = useWorkspaces();
+  return (
+    <WorkspaceProvider workspaces={workspaces.data ?? []}>
+      <ProjectShell />
+    </WorkspaceProvider>
+  );
+}
+
+function ProjectShell(): JSX.Element {
   const stream = useDaemonStream();
   const approvals = useApprovals();
   const [paletteOpen, setPaletteOpen] = useState(false);

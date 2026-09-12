@@ -17,6 +17,7 @@ import type {
   UpsertRoleRequest,
   UpdateWorkspaceRequest,
   AddRepositoryRequest,
+  CreateWorkspaceRequest,
 } from '@tandemise/api-contract';
 import { API_VERSION, API_VERSION_HEADER, STREAM_PATH } from './domain.js';
 import type {
@@ -127,8 +128,8 @@ export class DaemonClient {
     return this.#get('/system');
   }
 
-  home(): Promise<HomeView> {
-    return this.#get('/home');
+  home(workspaceId?: string): Promise<HomeView> {
+    return this.#get('/home', { workspaceId });
   }
 
   // -------------------------------------------------------------- workspaces
@@ -139,6 +140,10 @@ export class DaemonClient {
 
   workspace(id: string): Promise<WorkspaceView> {
     return this.#get(`/workspaces/${id}`);
+  }
+
+  createWorkspace(body: CreateWorkspaceRequest): Promise<WorkspaceView> {
+    return this.#request('POST', '/workspaces', body);
   }
 
   updateWorkspace(id: string, body: UpdateWorkspaceRequest): Promise<Workspace> {
@@ -207,8 +212,8 @@ export class DaemonClient {
 
   // --------------------------------------------------------------- approvals
 
-  approvals(): Promise<readonly ApprovalView[]> {
-    return this.#get('/approvals');
+  approvals(workspaceId?: string): Promise<readonly ApprovalView[]> {
+    return this.#get('/approvals', { workspaceId });
   }
 
   decideApproval(id: string, body: DecideApprovalRequest): Promise<ApprovalView> {
@@ -217,8 +222,8 @@ export class DaemonClient {
 
   // ---------------------------------------------------------------- runtimes
 
-  runtimes(): Promise<readonly RuntimeView[]> {
-    return this.#get('/runtimes');
+  runtimes(workspaceId?: string): Promise<readonly RuntimeView[]> {
+    return this.#get('/runtimes', { workspaceId });
   }
 
   discoverRuntimes(): Promise<readonly RuntimeDiscoveryView[]> {

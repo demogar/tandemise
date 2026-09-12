@@ -1,5 +1,6 @@
 import { Link, useLocation } from 'wouter';
 import { Icon, Logo, type IconName } from './Icon.js';
+import { WorkspaceSwitcher } from './WorkspaceSwitcher.js';
 import { useConnection } from '../lib/connection.js';
 import type { StreamState } from '../lib/stream.js';
 import type { Tone } from '../lib/format.js';
@@ -47,6 +48,8 @@ export function Sidebar({ pendingApprovals, stream }: { pendingApprovals: number
         </span>
         <span className="sidebar__name">Tandemise</span>
       </div>
+
+      <WorkspaceSwitcher />
 
       <nav className="sidebar__nav">
         {PRIMARY.map((entry) => (

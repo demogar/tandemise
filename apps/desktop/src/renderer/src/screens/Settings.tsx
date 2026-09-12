@@ -5,6 +5,7 @@ import { Icon } from '../components/Icon.js';
 import { ConfirmDialog } from '../components/Modal.js';
 import { Empty, ErrorState, Field, SectionHead, Segmented, SkeletonList, Switch } from '../components/primitives.js';
 import { useDaemonMutation, useSettings, useSystem, useWorkspaces } from '../lib/queries.js';
+import { useWorkspace } from '../lib/workspace.js';
 import { useConnection } from '../lib/connection.js';
 import { useThemePreference, type ThemePreference } from '../lib/theme.js';
 import { dateTime, shortenPath } from '../lib/format.js';
@@ -25,7 +26,7 @@ export function Settings(): JSX.Element {
   const [theme, setTheme] = useThemePreference();
   const [removingRepository, setRemovingRepository] = useState<Repository | null>(null);
 
-  const workspaceView = workspaces.data?.[0];
+  const workspaceView = useWorkspace().current;
   const workspace = workspaceView?.workspace;
 
   const updateWorkspace = useDaemonMutation(
