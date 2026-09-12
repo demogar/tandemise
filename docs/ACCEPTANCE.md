@@ -48,6 +48,8 @@ mattered, all now fixed with permanent regression coverage:
 | A detached-HEAD worktree was reused, so salvaged work would land unreachable and be dropped | fixed — refused with CONFLICT |
 | Signal-killed children read as still running, causing a redundant SIGKILL on every clean cancel | fixed — `signalCode` is now checked |
 | Concurrency slot was not held until the first event was read, so two schedulers could pick the same single-slot runtime | fixed — `scratch/concurrency-check.mjs` |
+| The permission engine had **zero callers** outside its own package, so risk was classified but never enforced | fixed — `TaskExecutor` derives grants through `GrantBuilder` and every tool call passes `PolicyEngine` |
+| `externalWrites: 'policy'` (the default) collapsed to plain allow, so a PR could open before the plan was approved | fixed — gated on plan approval |
 
 ## Verification scripts
 
