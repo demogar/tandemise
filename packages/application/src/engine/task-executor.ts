@@ -306,6 +306,13 @@ export class TaskExecutor {
         return this.#settle(running, scope, 'READY', 'Tandemise stopped mid-run; this task resumes when it starts again.');
       }
       if (outcome.cancelled) {
+        // Cancelled so that something else could happen - a retry with more
+        // access requeues the task and stops its run. The run ends after that
+        // decision, and settling it CANCELLED here overwrote the retry.
+        const current = deps.tasks.get(running.id);
+        if (current !== undefined && current.status !== 'RUNNING' && current.status !== 'AWAITING_INPUT') {
+          return { kind: 'settled', status: current.status, reason: current.statusReason };
+        }
         return this.#settle(running, scope, 'CANCELLED', 'Cancelled before the run finished.');
       }
 
