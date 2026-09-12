@@ -40,6 +40,9 @@ export async function startDaemon(overrides: Parameters<typeof loadConfig>[0] = 
   await container.resolve(RECOVERY_SERVICE).run();
 
   await lifecycle.start();
+  // After the lifecycle, so a re-plan has the runtimes and targets it needs.
+  const replanned = services.planning.resumeInterrupted();
+  if (replanned.length > 0) log.info('planning.resumed', { missions: replanned });
 
   const token = loadOrCreateToken(config.home);
   const router = buildRouter(services);

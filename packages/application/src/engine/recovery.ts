@@ -106,7 +106,8 @@ export class RecoveryService {
       }
     }
 
-    const leasesReleased = this.#releaseDeadLeases();
+    const adoptedTasks = new Set(adopted.map((id) => this.runs.get(id as RunId)?.taskId).filter((t) => t !== undefined));
+    const leasesReleased = this.#releaseDeadLeases(adoptedTasks);
     const targetsFailed = this.#failOrphanedTargets(touched);
 
     for (const missionId of touched) {
@@ -156,7 +157,7 @@ export class RecoveryService {
     }
   }
 
-  #releaseDeadLeases(): number {
+  #releaseDeadLeases(adoptedTasks: ReadonlySet<string>): number {
     let released = 0;
     const now = this.clock.now();
     const expired = new Set(this.leases.listExpired(now).map((l) => l.id));
@@ -169,11 +170,16 @@ export class RecoveryService {
         && this.liveness.isAlive(holder.pid);
 
       if (holderAlive) continue;
-      if (lease.holderRunId === null && !expired.has(lease.id)) {
-        // Held by a task rather than a run and not yet expired: this daemon has
-        // no process to check, so the TTL is the only safe arbiter.
+      if (lease.holderRunId === null && !expired.has(lease.id)
+        && lease.holderTaskId !== null && adoptedTasks.has(lease.holderTaskId)) {
+        // Held by a task whose worker outlived the last daemon and was adopted
+        // above: that worker is still using the resource.
         continue;
       }
+      // Any other task-held lease belonged to the previous daemon's executor,
+      // and the instance lock means that daemon is gone. Waiting out the TTL
+      // stranded the task that held it - and every task sharing its checkout -
+      // for up to half an hour after a restart, READY but never dispatched.
       this.leases.release(lease.id);
       released += 1;
     }

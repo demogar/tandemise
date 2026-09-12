@@ -98,7 +98,10 @@ export class ClaudeCodeAdapter implements AgentRuntimeAdapter {
       version,
       capabilities: version === null ? [] : CLAUDE_CAPABILITIES,
       detail,
-      suggestedSettings: { permissionMode: 'default' },
+      // Nothing pinned: an explicit `permissionMode` overrides the mode derived
+      // from each run's grants, and `default` headless means a developer's
+      // first edit waits on a prompt nobody can answer until the budget kills it.
+      suggestedSettings: {},
       settingsSchema: CLAUDE_SETTINGS_SCHEMA,
     };
   }

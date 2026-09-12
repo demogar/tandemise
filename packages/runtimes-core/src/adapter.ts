@@ -27,6 +27,24 @@ export interface RunRequest {
   /** Aborting must terminate the child process, not merely stop iteration. */
   readonly signal: AbortSignal;
   readonly log: Logger;
+  /**
+   * The slot `RuntimeManager.select` reserved for this run. Passing it hands
+   * the slot to the run instead of claiming a second one; omitting it claims
+   * afresh, which is right for a run that was never routed.
+   */
+  readonly reservation?: SlotReservation;
+}
+
+/**
+ * A concurrency slot held between routing and `start()`.
+ *
+ * Routing and starting are separated by real work - provisioning a worktree
+ * takes seconds - so a slot that was only observed free at routing time is a
+ * slot two tasks can both be given.
+ */
+export interface SlotReservation {
+  /** Returns the slot if no run took it over. Idempotent. */
+  release(): void;
 }
 
 /**

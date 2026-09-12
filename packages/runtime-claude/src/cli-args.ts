@@ -1,4 +1,4 @@
-import { CORE_CAPABILITIES, anyCapabilityMatches } from '@tandemise/domain';
+import { ARTIFACT_OUT_DIR, CORE_CAPABILITIES, anyCapabilityMatches } from '@tandemise/domain';
 import type { Capability } from '@tandemise/domain';
 import type { RunRequest } from '@tandemise/runtimes-core';
 import { isPathInside } from '@tandemise/shared';
@@ -20,10 +20,37 @@ export const CAPABILITY_TOOL_GUARDS: ReadonlyArray<{ capability: Capability; too
   { capability: CORE_CAPABILITIES.filesystemWrite, tools: ['Edit', 'Write', 'NotebookEdit'] },
 ];
 
+/**
+ * A run that may write artifacts but not the tree still needs a file tool:
+ * the artifact hand-off is a file in `.tandemise/out/`. Disallowing Write for
+ * every run without `filesystem.write` left each product, design, architecture
+ * and finance run unable to deliver - it did the research, then failed its
+ * `artifact.*.exists` gate with the finished document stranded in a message.
+ *
+ * So `artifact.write` alone keeps Edit and Write offered and allows them only
+ * under the out directory. In headless mode a write that matches no allow rule
+ * is refused rather than prompted, so the rest of the tree stays read-only.
+ * `Edit(...)` is the rule form the CLI applies to every file-editing tool;
+ * a `Write(...)` rule is ignored with a warning.
+ */
+export const ARTIFACT_ONLY_TOOLS: readonly string[] = ['Edit', 'Write'];
+export const ARTIFACT_WRITE_RULE = `Edit(${ARTIFACT_OUT_DIR}/**)`;
+
+function artifactOnly(grants: readonly Capability[]): boolean {
+  return anyCapabilityMatches(grants, CORE_CAPABILITIES.artifactWrite)
+    && !anyCapabilityMatches(grants, CORE_CAPABILITIES.filesystemWrite);
+}
+
 export function disallowedTools(grants: readonly Capability[]): string[] {
-  return CAPABILITY_TOOL_GUARDS
+  const disallowed = CAPABILITY_TOOL_GUARDS
     .filter((guard) => !anyCapabilityMatches(grants, guard.capability))
     .flatMap((guard) => guard.tools);
+  return artifactOnly(grants) ? disallowed.filter((tool) => !ARTIFACT_ONLY_TOOLS.includes(tool)) : disallowed;
+}
+
+/** Scoped allow rules implied by the grants, on top of any the profile configures. */
+export function allowedToolRules(grants: readonly Capability[]): string[] {
+  return artifactOnly(grants) ? [ARTIFACT_WRITE_RULE] : [];
 }
 
 /**
@@ -94,7 +121,7 @@ export function buildInvocation(request: RunRequest, resumeSessionRef: string | 
 
   args.push('--permission-mode', permissionMode(request.grants, settings));
 
-  const allowed = stringList(settings['allowedTools']);
+  const allowed = [...new Set([...allowedToolRules(request.grants), ...stringList(settings['allowedTools'])])];
   if (allowed.length > 0) args.push('--allowed-tools', allowed.join(','));
 
   const disallowed = [...new Set([...disallowedTools(request.grants), ...stringList(settings['disallowedTools'])])];

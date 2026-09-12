@@ -82,6 +82,10 @@ export interface MissionService {
 export interface PlanningService {
   /** Runs the planner role, validates the result, and stores the plan. */
   plan(id: MissionId): Promise<MissionDetail>;
+  /** Moves the mission to PLANNING and plans in the background; resolves at once. */
+  begin(id: MissionId): Promise<MissionDetail>;
+  /** Re-plans missions a previous daemon left in PLANNING. */
+  resumeInterrupted(): readonly MissionId[];
 }
 
 export interface ApprovalService {

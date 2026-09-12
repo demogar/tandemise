@@ -12,7 +12,8 @@ import type { ExecutionTarget, ExecutionTargetManager } from '@tandemise/executi
 import type { ApprovalFactory, GrantBuilder, PolicyEngine } from '@tandemise/policy';
 import type { ToolBroker } from '@tandemise/integrations-core';
 import { McpGatewayProvisioner, NO_TOOL_SURFACE, type RunToolSurface } from './mcp-gateway.js';
-import type { RuntimeManager } from '@tandemise/runtimes-core';
+import { onlyBusy } from '@tandemise/runtimes-core';
+import type { RuntimeManager, RuntimeSelection, SlotReservation } from '@tandemise/runtimes-core';
 import type { Clock, Logger, RunId, TandemisePaths, TaskId } from '@tandemise/shared';
 import { TandemiseError, errorMessage, ids, slugify, summarize } from '@tandemise/shared';
 import type { ArtifactTemplatePort } from '../ports.js';
@@ -142,7 +143,7 @@ export class TaskExecutor {
   // --------------------------------------------------------------- the attempt
 
   async #run(ctx: AttemptContext): Promise<TaskAttemptOutcome> {
-    const { task, mission, workspace, repository, role, scope, signal } = ctx;
+    const { task, workspace, scope } = ctx;
     const { deps } = this;
 
     // 2. Routing. A role with an explicit routing policy is never given a
@@ -156,13 +157,29 @@ export class TaskExecutor {
     const selected = await deps.runtimeManager.select(candidates, required);
     if (!selected.ok) {
       const detail = selected.error.rejections.map((r) => `${r.profileId}: ${r.reason}`).join('; ');
+      // Every capable runtime is busy: that is contention, not a failure. The
+      // task stays READY and is offered again once a slot frees up.
+      if (onlyBusy(selected.error)) return { kind: 'deferred', reason: `Waiting for a runtime slot. ${detail}` };
       return this.#block(
         task,
         scope,
         `No healthy runtime satisfies [${required.join(', ')}] for role '${task.roleId}'. ${detail}`,
       );
     }
-    const { profile, adapter } = selected.value;
+    // Routing reserved the slot; it passes to the run in #drive, and is given
+    // back here on every path that never gets that far - a failed provision,
+    // a vetting block - so an attempt that never ran cannot hold a worker.
+    try {
+      return await this.#runRouted(ctx, selected.value);
+    } finally {
+      selected.value.reservation.release();
+    }
+  }
+
+  async #runRouted(ctx: AttemptContext, selection: RuntimeSelection): Promise<TaskAttemptOutcome> {
+    const { task, mission, workspace, repository, role, scope, signal } = ctx;
+    const { deps } = this;
+    const { profile, adapter, reservation } = selection;
     const attempt = task.attempts + 1;
 
     // Captured before the transition, because moving to RUNNING clears
@@ -264,7 +281,7 @@ export class TaskExecutor {
       // 7. Run.
       const outcome = await this.#drive({
         task: running, mission, profile, adapter, target, assignment, prompt, grants, scope, signal,
-        runId, mcpConfigPath: toolSurface.mcpConfigPath,
+        runId, mcpConfigPath: toolSurface.mcpConfigPath, reservation,
       });
 
       if (outcome.cancelled) {
@@ -370,6 +387,7 @@ export class TaskExecutor {
       maxWallTimeMs: task.executionPolicy.maxWallTimeMs + MAX_PARKED_MS,
       signal: combined,
       log: deps.log.child({ runId, taskId: task.id, missionId: mission.id, runtime: profile.adapterId }),
+      reservation: input.reservation,
     };
 
     let usage: RunUsage = {};
@@ -623,9 +641,19 @@ export class TaskExecutor {
       `\`.tandemise/\` is git-ignored, so writing there never pollutes the diff.`,
     ];
     if (target.kind === 'worktree') {
+      const branch = target.describe().branch;
       notes.push(
-        'You are on your own branch in an isolated worktree. Commit your code changes. '
+        `You are on your own branch${branch ? ` (\`${branch}\`)` : ''} in an isolated worktree `
+        + `at ${target.workingDirectory}. Commit your code changes here, on this branch. `
         + 'Anything left uncommitted is committed for you and attributed to this run.',
+        // Repository instructions often say "create a worktree and a feature
+        // branch first". Followed here, the work lands on a branch Tandemise
+        // does not know, and the reviewer and tester - whose worktrees are cut
+        // from this one - review a tree without the change in it.
+        'Do not create another worktree, clone, or branch to do this work, even if the repository\'s own '
+        + 'instructions (CLAUDE.md, AGENTS.md, contributing docs) say to: this worktree already is that '
+        + 'isolation, and downstream review and QA read this branch. If a later task needs a differently named '
+        + 'branch - for a pull request, say - push this branch under that name rather than moving the work.',
       );
     }
     if (tools.length > 0) {
@@ -1113,6 +1141,7 @@ interface DriveInput {
   readonly runId: import('@tandemise/shared').RunId;
   /** Null when the assignment was granted no tools. */
   readonly mcpConfigPath: string | null;
+  readonly reservation: SlotReservation;
 }
 
 interface RunFailure {

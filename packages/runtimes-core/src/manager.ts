@@ -4,22 +4,41 @@ import type {
 import { Err, Ok, TandemiseError, errorMessage, nullLogger, systemClock } from '@tandemise/shared';
 import type { Clock, Logger, Result, RunId, RuntimeProfileId } from '@tandemise/shared';
 import { token } from '@tandemise/kernel';
-import type { AgentRuntimeAdapter, RunRequest } from './adapter.js';
+import type { AgentRuntimeAdapter, RunRequest, SlotReservation } from './adapter.js';
 import type { RuntimeRegistry } from './registry.js';
 
 /** How long a health probe is reused. Short enough for a polling UI to feel live. */
 export const DEFAULT_HEALTH_TTL_MS = 10_000;
 
+/**
+ * How long a reservation may go unstarted before it is reclaimed. A backstop
+ * for a caller that forgot to release, not the normal path - long enough to
+ * cover provisioning a large worktree.
+ */
+export const RESERVATION_TTL_MS = 5 * 60_000;
+
 export interface RuntimeSelection {
   readonly profile: RuntimeProfile;
   readonly adapter: AgentRuntimeAdapter;
   readonly health: RuntimeHealth;
+  /** Held from selection. Hand it to `start()`, or release it if the run never starts. */
+  readonly reservation: SlotReservation;
 }
 
 /** Why a candidate was passed over. Surfaced verbatim so routing is explainable. */
 export interface RuntimeRejection {
   readonly profileId: RuntimeProfileId;
   readonly reason: string;
+  /**
+   * The candidate could run this, just not right now. A caller that finds only
+   * busy candidates should wait for a slot rather than treat it as a failure.
+   */
+  readonly busy?: true;
+}
+
+/** True when every candidate was capable and merely out of slots. */
+export function onlyBusy(failure: RuntimeSelectionFailure): boolean {
+  return failure.rejections.length > 0 && failure.rejections.every((r) => r.busy === true);
 }
 
 export interface RuntimeSelectionFailure {
@@ -32,6 +51,11 @@ export interface RuntimeManagerOptions {
   readonly clock?: Clock;
   readonly log?: Logger;
   readonly healthTtlMs?: number;
+}
+
+interface ReservationHandle extends SlotReservation {
+  /** Transfers the slot to a run. False if already released, expired, or for another profile. */
+  takeOver(profileId: RuntimeProfileId): boolean;
 }
 
 interface CachedHealth {
@@ -58,6 +82,8 @@ export class RuntimeManager {
   readonly #healthTtlMs: number;
   readonly #health = new Map<RuntimeProfileId, CachedHealth>();
   readonly #inFlight = new Map<RuntimeProfileId, number>();
+  /** Live reservations this manager issued; a foreign or stale handle is not honoured. */
+  readonly #reservations = new Set<ReservationHandle>();
 
   constructor(options: RuntimeManagerOptions) {
     this.#registry = options.registry;
@@ -160,14 +186,26 @@ export class RuntimeManager {
         rejections.push({ profileId: profile.id, reason });
         continue;
       }
+      if (this.isSaturated(profile)) {
+        rejections.push({ profileId: profile.id, reason: this.#saturationReason(profile), busy: true });
+        continue;
+      }
       // Safe: `#rejectCheaply` returns a reason when the adapter is unknown.
       eligible.push({ profile, adapter: this.#registry.adapter(profile.adapterId) });
     }
 
-    let degraded: RuntimeSelection | null = null;
+    let degraded: { profile: RuntimeProfile; adapter: AgentRuntimeAdapter; health: RuntimeHealth } | null = null;
     for (const { profile, adapter } of eligible) {
       const health = await this.health(profile);
-      if (health.state === 'healthy') return Ok({ profile, adapter, health });
+      if (health.state === 'healthy') {
+        // Saturation is re-read after the await: another selection may have
+        // taken the last slot while this one was probing health.
+        if (this.isSaturated(profile)) {
+          rejections.push({ profileId: profile.id, reason: this.#saturationReason(profile), busy: true });
+          continue;
+        }
+        return Ok({ profile, adapter, health, reservation: this.#reserve(profile.id) });
+      }
       if (health.state === 'degraded') {
         degraded ??= { profile, adapter, health };
         continue;
@@ -176,13 +214,64 @@ export class RuntimeManager {
     }
 
     if (degraded !== null) {
+      if (this.isSaturated(degraded.profile)) {
+        rejections.push({ profileId: degraded.profile.id, reason: this.#saturationReason(degraded.profile), busy: true });
+        return Err({ requiredCapabilities, rejections });
+      }
       this.#log.warn('routing to a degraded runtime', {
         runtime: degraded.profile.adapterId,
         detail: degraded.health.detail,
       });
-      return Ok(degraded);
+      return Ok({ ...degraded, reservation: this.#reserve(degraded.profile.id) });
     }
     return Err({ requiredCapabilities, rejections });
+  }
+
+  /**
+   * Holds a slot from selection until a run takes it over or it is released.
+   * The TTL is a backstop so a caller that never releases cannot saturate a
+   * profile forever.
+   */
+  #reserve(profileId: RuntimeProfileId): SlotReservation {
+    this.#claim(profileId);
+    let held = true;
+    const timer = setTimeout(() => {
+      this.#reservations.delete(reservation);
+      if (!held) return;
+      held = false;
+      this.#log.warn('runtime reservation expired unstarted', { profileId });
+      this.#release(profileId);
+    }, RESERVATION_TTL_MS);
+    timer.unref?.();
+    const reservation: ReservationHandle = {
+      release: () => {
+        this.#reservations.delete(reservation);
+        if (!held) return;
+        held = false;
+        clearTimeout(timer);
+        this.#release(profileId);
+      },
+      takeOver: (forProfile) => {
+        if (!held || forProfile !== profileId) return false;
+        held = false;
+        clearTimeout(timer);
+        return true;
+      },
+    };
+    this.#reservations.add(reservation);
+    return reservation;
+  }
+
+  /** True when `start` inherits a reserved slot rather than needing its own. */
+  #inherit(request: RunRequest): boolean {
+    const candidate = request.reservation as ReservationHandle | undefined;
+    if (candidate === undefined || !this.#reservations.has(candidate)) return false;
+    this.#reservations.delete(candidate);
+    return candidate.takeOver(request.profile.id);
+  }
+
+  #saturationReason(profile: RuntimeProfile): string {
+    return `saturated: ${this.inFlight(profile.id)}/${profile.maxConcurrent} runs in flight`;
   }
 
   /**
@@ -197,7 +286,7 @@ export class RuntimeManager {
     // caller that had started a run but not yet consumed an event still showed
     // as idle - and two schedulers would both route to the same
     // `maxConcurrent: 1` profile.
-    this.#claim(request.profile.id);
+    if (!this.#inherit(request)) this.#claim(request.profile.id);
     return this.#tracked(request.profile.id, adapter.start(request));
   }
 
@@ -208,7 +297,7 @@ export class RuntimeManager {
         details: { adapterId: adapter.id, sessionRef },
       });
     }
-    this.#claim(request.profile.id);
+    if (!this.#inherit(request)) this.#claim(request.profile.id);
     return this.#tracked(request.profile.id, adapter.resume(sessionRef, request));
   }
 
@@ -229,9 +318,6 @@ export class RuntimeManager {
     const offered = new Set(adapter.capabilities(profile));
     const missing = required.filter((c) => !offered.has(c));
     if (missing.length > 0) return `missing capabilities: ${missing.join(', ')}`;
-    if (this.isSaturated(profile)) {
-      return `saturated: ${this.inFlight(profile.id)}/${profile.maxConcurrent} runs in flight`;
-    }
     return null;
   }
 

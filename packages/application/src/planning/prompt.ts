@@ -136,6 +136,27 @@ ${fence(JSON.stringify(presetPlan, null, 2), 'json')}
 9. Set \`approvalPolicy.onCompletion: true\` for any task whose output authorizes
    a consequential action — a release candidate always does.
 
+# Steps that are not an agent
+
+Most tasks are agent work. Two other kinds exist, and using an agent for either
+is a mistake that costs the user time and money:
+
+- \`"executor": "wait"\` — something outside this machine that must finish before
+  the next task: CI on a pull request, a deploy. Give it \`"waitFor"\`, a shell
+  command run in the repository every \`everyMs\` until it exits 0 (fails after
+  \`timeoutMs\`). It holds no model and no worker slot. For CI on a pull request
+  whose head branch the plan names, use
+  \`gh pr checks <that-branch> --required\` (exit 0 only when every required
+  check passed). Name that exact branch in the objective of the task that opens
+  the pull request, so the two agree.
+- \`"executor": "human"\` — a step only a person can do, or a decision only a
+  person may make outside this system (approving a pull request on GitHub,
+  making a design in a tool the workers cannot reach). The mission parks until
+  they return; what they paste becomes the step's \`expectedOutputs\` artifact.
+
+Neither kind needs a real \`roleId\`, capabilities, a gate, or isolation. Both
+still take \`key\`, \`title\`, \`objective\` and \`dependsOn\`.
+
 # Writing good objectives
 
 Each task's \`objective\` is handed to a worker that has no memory of this
@@ -166,6 +187,16 @@ fence, matching:
       "approvalPolicy": { "beforeStart": false, "onCompletion": false },
       "retryPolicy": { "maxAttempts": 2, "backoffMs": 5000, "onExhausted": "block" },
       "completionGate": null
+    },
+    {
+      "key": "ci",
+      "title": "Wait for CI on the pull request",
+      "objective": "Wait for the required checks on feat/example to pass.",
+      "executor": "wait",
+      "waitFor": "gh pr checks feat/example --required",
+      "everyMs": 30000,
+      "timeoutMs": 2700000,
+      "dependsOn": ["product_spec"]
     }
   ]
 }`;

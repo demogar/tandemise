@@ -88,3 +88,11 @@ export type RiskClass = (typeof RISK_CLASSES)[number];
 export function maxRisk(a: RiskClass, b: RiskClass): RiskClass {
   return RISK_CLASSES.indexOf(a) >= RISK_CLASSES.indexOf(b) ? a : b;
 }
+
+/**
+ * The directory a worker writes its outputs into, relative to its working
+ * directory. The whole hand-off protocol: the prompt names it, the harvester
+ * scans it, the `artifact.<Type>.exists` gate measures it, and a runtime that
+ * scopes file writes scopes `artifact.write` to it.
+ */
+export const ARTIFACT_OUT_DIR = '.tandemise/out';

@@ -70,7 +70,7 @@ export function buildRouter(services: TandemiseServices): Router {
   r.get('/v1/missions/:id', (ctx) => services.projections.missionDetail(asId(ctx.params.id!)));
   r.delete('/v1/missions/:id', (ctx) => services.missions.remove(asId(ctx.params.id!)));
 
-  r.post('/v1/missions/:id/plan', (ctx) => services.planning.plan(asId(ctx.params.id!)));
+  r.post('/v1/missions/:id/plan', (ctx) => services.planning.begin(asId(ctx.params.id!)));
   r.post('/v1/missions/:id/start', (ctx) => services.missions.start(asId(ctx.params.id!)));
   r.post('/v1/missions/:id/pause', (ctx) => services.missions.pause(asId(ctx.params.id!)));
   r.post('/v1/missions/:id/resume', (ctx) => services.missions.resume(asId(ctx.params.id!)));

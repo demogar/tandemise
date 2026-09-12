@@ -110,6 +110,12 @@ export function PlanPane({ detail }: { detail: MissionDetail }): JSX.Element {
                   ))}
                 </div>
               </>
+            ) : detail.mission.status === 'PLANNING' ? (
+              <Empty
+                icon="sparkle"
+                title="Planning…"
+                body="The planner is reading the repositories and shaping a task graph for this goal. It usually takes a minute or two, longer if a runtime is busy; the timeline shows what it is doing. Nothing runs until you have approved the plan."
+              />
             ) : (
               <Empty
                 icon="sparkle"

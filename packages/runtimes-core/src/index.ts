@@ -1,9 +1,9 @@
 export { RUNTIME_ADAPTERS, describeAdapter } from './adapter.js';
-export type { AgentRuntimeAdapter, RunRequest, RuntimeAdapterDescriptor } from './adapter.js';
+export type { AgentRuntimeAdapter, RunRequest, RuntimeAdapterDescriptor, SlotReservation } from './adapter.js';
 
 export { RuntimeRegistry, RUNTIME_REGISTRY } from './registry.js';
 
-export { RuntimeManager, RUNTIME_MANAGER, DEFAULT_HEALTH_TTL_MS } from './manager.js';
+export { RuntimeManager, RUNTIME_MANAGER, DEFAULT_HEALTH_TTL_MS, RESERVATION_TTL_MS, onlyBusy } from './manager.js';
 export type {
   RuntimeManagerOptions, RuntimeRejection, RuntimeSelection, RuntimeSelectionFailure,
 } from './manager.js';

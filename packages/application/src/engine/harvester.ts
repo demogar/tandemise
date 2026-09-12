@@ -2,7 +2,7 @@ import type {
   ArtifactManifest, ArtifactRepositoryPort, ArtifactStorePort, ArtifactType,
   EvaluationRepositoryPort, ExternalRef, Mission, MissionTask,
 } from '@tandemise/domain';
-import { isArtifactType } from '@tandemise/domain';
+import { ARTIFACT_OUT_DIR, isArtifactType } from '@tandemise/domain';
 import type { ExecutionTarget } from '@tandemise/execution-core';
 import type { Clock, RunId } from '@tandemise/shared';
 import { errorMessage, summarize } from '@tandemise/shared';
@@ -10,13 +10,7 @@ import type { ArtifactParserPort } from '../ports.js';
 import type { EventRecorder, EventScope } from '../support/event-recorder.js';
 import { evaluationFrom } from './evaluations.js';
 
-/**
- * The directory a worker writes its outputs into, relative to the target's
- * working directory. This string is the whole hand-off protocol: it is stated
- * in the prompt, it is what the harvester scans, and it is what the
- * `artifact.<Type>.exists` gate condition ultimately measures.
- */
-export const ARTIFACT_OUT_DIR = '.tandemise/out';
+export { ARTIFACT_OUT_DIR };
 
 /**
  * Keeps agent output out of the diff, two ways.

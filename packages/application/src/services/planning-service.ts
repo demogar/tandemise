@@ -9,7 +9,8 @@ import type { MissionDetail } from '@tandemise/api-contract';
 import type { WorkflowSourcePort } from '../ports.js';
 import type { ApprovalFactory } from '@tandemise/policy';
 import type { ExecutionTarget, ExecutionTargetManager } from '@tandemise/execution-core';
-import type { RuntimeManager } from '@tandemise/runtimes-core';
+import { onlyBusy } from '@tandemise/runtimes-core';
+import type { RuntimeManager, RuntimeSelection, SlotReservation } from '@tandemise/runtimes-core';
 import type { Clock, Logger, MissionId, TandemisePaths } from '@tandemise/shared';
 import { TandemiseError, errorMessage, ids, slugify, summarize } from '@tandemise/shared';
 import type { PlanningService, ProjectionService } from '../services.js';
@@ -28,6 +29,10 @@ const PLANNER_ROLE_ID = 'architecture';
 const MAX_PLANNER_ATTEMPTS = 2;
 
 const PLANNER_WALL_TIME_MS = 10 * 60_000;
+
+/** How long planning waits for a busy runtime before falling back to the preset. */
+const PLANNER_SLOT_WAIT_MS = 30 * 60_000;
+const PLANNER_SLOT_POLL_MS = 3_000;
 
 /** Every capability a plan is allowed to name, before filtering by the machine. */
 const KNOWN_CAPABILITIES: readonly Capability[] = Object.values(CORE_CAPABILITIES);
@@ -76,13 +81,62 @@ export class PlanningServiceImpl implements PlanningService {
   constructor(private readonly deps: PlanningDeps) {}
 
   async plan(id: MissionId): Promise<MissionDetail> {
-    const mission = this.#requireMission(id);
-    const workspace = this.#requireWorkspace(mission);
-    const repository = mission.repositoryId === null
-      ? undefined
-      : this.deps.repositories.get(mission.repositoryId);
-    const scope: EventScope = { workspaceId: mission.workspaceId, missionId: mission.id };
+    const planning = this.#enterPlanning(id);
+    return this.#planFrom(planning);
+  }
 
+  /**
+   * Starts planning and returns at once, with the mission already in PLANNING.
+   *
+   * Planning runs a model and routinely takes longer than any sensible HTTP
+   * timeout - the desktop gives up after 30s, and planning a real mission took
+   * 40s and more - so a request that waited for it reported failure for a
+   * mission that was in fact created and planned, and left the user on the
+   * form wondering whether to press the button again. The plan's progress and
+   * outcome reach the UI the way everything else does: over the event stream.
+   */
+  async begin(id: MissionId): Promise<MissionDetail> {
+    const planning = this.#enterPlanning(id);
+    this.#inBackground(planning);
+    return this.deps.projections.missionDetail(id);
+  }
+
+  /**
+   * Re-plans every mission a previous daemon left in PLANNING.
+   *
+   * Planning lives in memory. A daemon that exits mid-plan leaves a mission in
+   * a state nothing will move it out of - and PLANNING offers the user no way
+   * to re-plan either - so the only honest recovery is to plan it again.
+   */
+  resumeInterrupted(): readonly MissionId[] {
+    const stranded = this.deps.missions.list({ statuses: ['PLANNING'] });
+    for (const mission of stranded) {
+      this.deps.recorder.note(
+        { workspaceId: mission.workspaceId, missionId: mission.id },
+        'The daemon stopped while this mission was being planned. Planning it again.',
+        'warn',
+      );
+      this.#inBackground(mission);
+    }
+    return stranded.map((m) => m.id);
+  }
+
+  #inBackground(planning: Mission): void {
+    const scope: EventScope = { workspaceId: planning.workspaceId, missionId: planning.id };
+    void this.#planFrom(planning).catch((e: unknown) => {
+      // Never leave a mission in PLANNING because planning threw: BLOCKED says
+      // why and offers Re-plan, where PLANNING offers nothing.
+      this.deps.log.error('planning.failed', { missionId: planning.id, error: errorMessage(e) });
+      const current = this.deps.missions.get(planning.id);
+      if (current?.status === 'PLANNING') {
+        this.#setStatus(current, scope, 'BLOCKED', `Planning failed: ${errorMessage(e)}`);
+      }
+    });
+  }
+
+  #enterPlanning(id: MissionId): Mission {
+    const mission = this.#requireMission(id);
+    const scope: EventScope = { workspaceId: mission.workspaceId, missionId: mission.id };
     if (!canTransition(mission.status, 'PLANNING')) {
       throw new TandemiseError(
         'PRECONDITION_FAILED',
@@ -90,7 +144,23 @@ export class PlanningServiceImpl implements PlanningService {
         { details: { missionId: id, status: mission.status } },
       );
     }
-    const planning = this.#setStatus(mission, scope, 'PLANNING', 'Planning the mission.');
+    // A re-plan replaces the tasks the pending plan approval describes, so that
+    // approval would authorize a plan that no longer exists.
+    for (const approval of this.deps.approvals.list({ missionId: id, statuses: ['PENDING'] })) {
+      if (approval.kind !== 'plan') continue;
+      this.deps.approvals.update(approval.id, { status: 'CANCELLED', decidedAt: this.deps.clock.now() });
+      this.deps.recorder.invalidate('approvals', id);
+    }
+    return this.#setStatus(mission, scope, 'PLANNING', 'Planning the mission.');
+  }
+
+  async #planFrom(planning: Mission): Promise<MissionDetail> {
+    const mission = planning;
+    const workspace = this.#requireWorkspace(mission);
+    const repository = mission.repositoryId === null
+      ? undefined
+      : this.deps.repositories.get(mission.repositoryId);
+    const scope: EventScope = { workspaceId: mission.workspaceId, missionId: mission.id };
 
     const roles = this.deps.roles.list(workspace.id);
     // A project's repositories are what its plans may target: a mission in a
@@ -197,7 +267,7 @@ export class PlanningServiceImpl implements PlanningService {
     if (candidates.length === 0) {
       return fallback('no enabled runtime profile is configured.');
     }
-    const selected = await this.deps.runtimeManager.select(candidates, ['reasoning']);
+    const selected = await this.#selectPlannerRuntime(candidates, scope);
     if (!selected.ok) {
       return fallback(
         `no healthy runtime could be selected (${
@@ -205,6 +275,51 @@ export class PlanningServiceImpl implements PlanningService {
         }).`,
       );
     }
+    try {
+      return await this.#planWith(selected.value, mission, repository, roles, preset, scope, repositories, workspace, fallback);
+    } finally {
+      selected.value.reservation.release();
+    }
+  }
+
+  /**
+   * A runtime for the planner, waiting for one that is merely busy.
+   *
+   * Falling back to the preset because the only runtime was running another
+   * task handed the user a generic seven-step pipeline for a goal the planner
+   * would have shaped - it planned a one-line sidebar change as full feature
+   * delivery - and nothing on the approval said why. Busy is a reason to wait;
+   * only a runtime that cannot plan at all is a reason to fall back.
+   */
+  async #selectPlannerRuntime(
+    candidates: readonly RuntimeProfile[],
+    scope: EventScope,
+  ): ReturnType<RuntimeManager['select']> {
+    const deadline = this.deps.clock.epochMs() + PLANNER_SLOT_WAIT_MS;
+    let announced = false;
+    for (;;) {
+      const selected = await this.deps.runtimeManager.select(candidates, ['reasoning']);
+      if (selected.ok || !onlyBusy(selected.error) || this.deps.clock.epochMs() >= deadline) return selected;
+      if (!announced) {
+        announced = true;
+        this.deps.recorder.note(scope, 'Every runtime that can plan is busy. Waiting for one to free up.');
+      }
+      await new Promise((resolve) => setTimeout(resolve, PLANNER_SLOT_POLL_MS));
+    }
+  }
+
+  async #planWith(
+    selection: RuntimeSelection,
+    mission: Mission,
+    repository: Repository | null,
+    roles: readonly RoleTemplate[],
+    preset: WorkflowPreset,
+    scope: EventScope,
+    repositories: readonly Repository[],
+    workspace: Workspace,
+    fallback: (reason: string) => PlanOutcome,
+  ): Promise<PlanOutcome> {
+    const selected = { value: selection };
 
     const context = {
       knownRoleIds: new Set(roles.map((r) => r.id)),
@@ -227,7 +342,7 @@ export class PlanningServiceImpl implements PlanningService {
       for (let attempt = 1; attempt <= MAX_PLANNER_ATTEMPTS; attempt++) {
         const prompt = this.#prompt(mission, repository, roles, preset, context, issues, attempt, repositories);
         const response = await this.#runPlanner(
-          selected.value.profile, prompt, target, scope, attempt,
+          selected.value.profile, prompt, target, scope, attempt, selected.value.reservation,
         );
         if (!response.ok) {
           return fallback(`the planner run failed (${response.error}).`);
@@ -313,6 +428,7 @@ export class PlanningServiceImpl implements PlanningService {
     target: ExecutionTarget,
     scope: EventScope,
     attempt: number,
+    reservation: SlotReservation,
   ): Promise<{ ok: true; value: string } | { ok: false; error: string }> {
     const runId = ids.run();
     const runScope: EventScope = { ...scope, roleId: PLANNER_ROLE_ID, runtimeProfileId: profile.id };
@@ -343,6 +459,8 @@ export class PlanningServiceImpl implements PlanningService {
         allowedRoots: [],
         mcpConfigPath: null,
         maxWallTimeMs: PLANNER_WALL_TIME_MS,
+        // Honoured on the first attempt only; a retry claims a fresh slot.
+        reservation,
         signal,
         log: this.deps.log.child({ runId, missionId: scope.missionId, runtime: profile.adapterId }),
       })) {

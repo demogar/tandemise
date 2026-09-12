@@ -221,8 +221,11 @@ function actionsFor(status: MissionStatus): readonly MissionAction[] {
     case 'PLANNING':
       return [{ id: 'cancel', label: 'Cancel', icon: 'x' }];
     case 'AWAITING_PLAN_APPROVAL':
+      // Re-plan is how a user answers a plan that does not fit the goal - a
+      // preset fallback, say - without cancelling and retyping the mission.
       return [
         { id: 'start', label: 'Start', icon: 'play', primary: true },
+        { id: 'plan', label: 'Re-plan', icon: 'sparkle' },
         { id: 'cancel', label: 'Cancel', icon: 'x' },
       ];
     case 'PAUSED':

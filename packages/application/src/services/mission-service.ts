@@ -107,7 +107,9 @@ export class MissionServiceImpl implements MissionService {
     this.deps.recorder.invalidate('missions', id);
 
     if (request.planNow === true) {
-      await this.deps.planning.plan(id);
+      // In the background: the caller gets the mission back in PLANNING, not a
+      // request held open for as long as a model takes to think.
+      await this.deps.planning.begin(id);
       return this.#require(id);
     }
     return withBranch;
