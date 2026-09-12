@@ -1,4 +1,7 @@
 import { DaemonStopping } from '../support/shutdown.js';
+
+/** The reason a task carries when it is blocked only by a dead dependency. */
+const DEPENDENCY_BLOCK_PREFIX = 'Blocked by ';
 import type {
   ApprovalRepositoryPort, Mission, MissionRepositoryPort, MissionStatus, MissionTask,
   TaskRepositoryPort, WorkspaceRepositoryPort,
@@ -186,7 +189,20 @@ export class SchedulerService implements LifecycleComponent {
     const scope = scopeOf(mission);
 
     for (const task of tasks) {
-      if (task.status !== 'PENDING') continue;
+      // Blocked only because an upstream task had died - and that task has
+      // since been retried. Without this, retrying a cancelled or failed task
+      // left everything downstream BLOCKED forever: the retried task would
+      // succeed and the mission would still never finish.
+      if (task.status === 'BLOCKED' && task.statusReason?.startsWith(DEPENDENCY_BLOCK_PREFIX)) {
+        const upstream = task.dependsOn.map((key) => byKey.get(key)).filter((d) => d !== undefined);
+        if (upstream.every((d) => d.status !== 'FAILED' && d.status !== 'CANCELLED')) {
+          this.#setStatus(task, scope, 'PENDING', null);
+        } else {
+          continue;
+        }
+      } else if (task.status !== 'PENDING') {
+        continue;
+      }
 
       const missing = task.dependsOn.filter((key) => !byKey.has(key));
       if (missing.length > 0) {
@@ -198,7 +214,7 @@ export class SchedulerService implements LifecycleComponent {
       if (dead.length > 0) {
         this.#setStatus(
           task, scope, 'BLOCKED',
-          `Blocked by ${dead.map((d) => `${d.key} (${d.status})`).join(', ')}.`,
+          `${DEPENDENCY_BLOCK_PREFIX}${dead.map((d) => `${d.key} (${d.status})`).join(', ')}.`,
         );
         continue;
       }
