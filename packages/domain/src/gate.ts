@@ -52,7 +52,7 @@ export function evaluateGate(expression: GateExpression, facts: GateFacts): Gate
   return {
     expression,
     passed,
-    detail: passed ? 'All gate conditions met.' : explainFailure(parsed.value, facts, used),
+    detail: passed ? 'All gate conditions met.' : explainFailure(parsed.value, facts),
     facts: used,
   };
 }
@@ -237,8 +237,13 @@ function collectPaths(node: Node, out: Set<string>): void {
   else if (node.kind === 'binary') { collectPaths(node.left, out); collectPaths(node.right, out); }
 }
 
-/** Names the specific conjuncts that failed, so the UI can say why. */
-function explainFailure(node: Node, facts: GateFacts, used: Record<string, GateValue>): string {
+/**
+ * Names the specific conjuncts that failed, so the UI can say *why* a gate
+ * blocked rather than only that it did. Walks the top-level `&&` chain and
+ * reports each unmet branch - reporting only the first would hide the second
+ * problem until the first was fixed.
+ */
+function explainFailure(node: Node, facts: GateFacts): string {
   const unmet: string[] = [];
   const walk = (n: Node): void => {
     if (n.kind === 'binary' && n.op === '&&') { walk(n.left); walk(n.right); return; }
@@ -250,7 +255,6 @@ function explainFailure(node: Node, facts: GateFacts, used: Record<string, GateV
   };
   walk(node);
   if (unmet.length === 0) return 'Gate did not evaluate to true.';
-  void used;
   return `Not met: ${unmet.join('; ')}`;
 }
 
