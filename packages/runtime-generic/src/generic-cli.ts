@@ -143,10 +143,12 @@ export class GenericCliAdapter implements AgentRuntimeAdapter {
       onSpawned: (child) => this.#children.set(request.runId, child),
       onStdoutLine: (line) => this.#handleLine(line, settings, sink),
       onClose: (exitCode) => {
-        // A configured CLI usually has no `completed` record of its own, so the
-        // process exit is the result: this is what makes the plain-text case
-        // usable at all.
-        if (exitCode === 0) sink.push({ type: 'completed' });
+        // Reached only when the runtime produced no verdict of its own. A
+        // configured CLI usually has none - the process exit *is* the result,
+        // which is what makes the plain-text case usable at all - but one whose
+        // output maps onto `completed`/`failed` has already spoken, and
+        // `spawnStream` skips this callback in that case.
+        if (exitCode === 0) sink.complete();
         else sink.fail('RUNTIME_FAILED', `'${settings.command}' exited with code ${exitCode}`, false);
       },
     });

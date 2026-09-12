@@ -68,10 +68,24 @@ export class NormalizingEventSink implements AsyncIterable<AgentEvent> {
     if (text.length > 0) this.push({ type: 'raw', channel, text });
   }
 
-  /** Pushes a terminal `failed` event unless the adapter already ended the run. */
+  /**
+   * Pushes a terminal event unless the run already produced one.
+   *
+   * Every process-backed adapter has two sources of a verdict - the runtime's
+   * own result record and the child's exit - and they both fire on a normal
+   * run. A terminal event means "the run is over" to the executor, so emitting
+   * two either double-counts the run or races the post-run harvest. These two
+   * methods are the only supported way to end a stream, and they are guarded
+   * here so that no adapter has to remember to do it.
+   */
   fail(code: string, message: string, retryable: boolean): void {
     if (this.#terminated) return;
     this.push({ type: 'failed', code, message, retryable });
+  }
+
+  complete(result: { resultRef?: string; summary?: string } = {}): void {
+    if (this.#terminated) return;
+    this.push({ type: 'completed', ...result });
   }
 
   close(): void {

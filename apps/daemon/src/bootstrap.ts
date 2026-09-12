@@ -63,7 +63,7 @@ export function bootstrap(config: DaemonConfig): Bootstrapped {
   compose(
     container,
     persistenceModule({ path: config.paths.db, logger: log.child({ component: 'persistence' }) }),
-    createArtifactsModule({ paths: config.paths, logger: log.child({ component: 'artifacts' }) }),
+    createArtifactsModule({ paths: config.paths }),
     policyModule,
     contextModule,
     createEvaluationModule(),

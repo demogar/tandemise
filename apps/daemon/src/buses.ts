@@ -1,4 +1,5 @@
-import type { EventBusPort, ProjectionBusPort, ProjectionTopic, RunEventRecord, MissionId } from '@tandemise/domain';
+import type { EventBusPort, ProjectionBusPort, ProjectionTopic, RunEventRecord } from '@tandemise/domain';
+import type { MissionId } from '@tandemise/shared';
 
 /**
  * In-process pub/sub.

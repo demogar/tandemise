@@ -98,11 +98,15 @@ export function spawnStream(options: SpawnStreamOptions): SpawnedStream {
   });
 
   child.on('close', (code, killedBy) => {
-    if (signal.aborted && !sink.terminated) {
-      const outcome = classifyAbort(options.signal, options.maxWallTimeMs);
-      sink.fail(outcome.code, outcome.message, outcome.retryable);
-    } else {
-      options.onClose(code, killedBy, signal.aborted);
+    // A runtime that already reported its own verdict has said everything there
+    // is to say; the exit code is then just how the process happened to stop.
+    if (!sink.terminated) {
+      if (signal.aborted) {
+        const outcome = classifyAbort(options.signal, options.maxWallTimeMs);
+        sink.fail(outcome.code, outcome.message, outcome.retryable);
+      } else {
+        options.onClose(code, killedBy, signal.aborted);
+      }
     }
     sink.close();
   });

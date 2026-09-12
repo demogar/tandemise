@@ -161,7 +161,7 @@ export class FakeRuntimeAdapter implements AgentRuntimeAdapter {
       this.#emit(substituteStep(step, values), request, sink, log);
       if (sink.terminated) return;
     }
-    if (!sink.terminated) sink.push({ type: 'completed' });
+    sink.complete();
   }
 
   #emit(step: FakeStep, request: RunRequest, sink: NormalizingEventSink, log: RunRequest['log']): void {
@@ -198,10 +198,10 @@ export class FakeRuntimeAdapter implements AgentRuntimeAdapter {
         sink.raw('stderr', step.detail ?? 'Simulated rate limit: quota exhausted');
         return;
       case 'complete':
-        sink.push({ type: 'completed', summary: step.summary });
+        sink.complete({ summary: step.summary });
         return;
       case 'fail':
-        sink.push({ type: 'failed', code: step.code, message: step.message, retryable: step.retryable === true });
+        sink.fail(step.code, step.message, step.retryable === true);
         return;
       case 'delay':
         return;
