@@ -51,6 +51,31 @@ mattered, all now fixed with permanent regression coverage:
 | The permission engine had **zero callers** outside its own package, so risk was classified but never enforced | fixed — `TaskExecutor` derives grants through `GrantBuilder` and every tool call passes `PolicyEngine` |
 | `externalWrites: 'policy'` (the default) collapsed to plain allow, so a PR could open before the plan was approved | fixed — gated on plan approval |
 
+### Second review pass (persistence, artifacts, context, evaluation, daemon)
+
+| Finding | Status |
+|---|---|
+| `InstanceLock` was check-then-write — four processes all acquired it | fixed — atomic `O_EXCL` claim |
+| `http.close()` never resolved while a keep-alive or upgraded socket was open, so every quit force-exited after 15s without releasing the lock or any lease | fixed — clean stop now takes 4ms |
+| `qa.acceptance_criteria_coverage` was a pass-rate, not coverage: 1 PASS + 9 SKIP passed `ready_to_ship` | fixed — SKIP counts against coverage |
+| Internal error messages returned to HTTP clients unredacted | fixed — correlation id to the client, redacted detail to the log |
+| Keychain reference index written relative to the daemon's CWD | fixed — uses the workspace home |
+| One task's PASS masked another task's FAIL in a mission-level check fact | fixed — worst outcome wins |
+| `unsubscribe` from everything acted as `subscribe` to everything | fixed — explicit `all` flag |
+| Artifact store joined caller-supplied path segments unchecked | fixed — containment assertion |
+| Query-parameter validation errors surfaced as 500s | fixed — 400 with a readable message |
+
+**What the reviewer could not break**, after real multi-process contention:
+lease acquisition (4 processes on one key at a 40ms TTL — 63 handoffs, zero
+overlapping holding windows) and event sequencing (4 processes × 150 appends,
+verified interleaved — 600 unique gapless sequences). Also held: the context
+budget never drops the objective, policy or output contract even at
+`maxChars=1`; `contentRef` is never absolute; content-addressing hashes the
+right bytes; `latest()` excludes superseded rows; corrupt JSON columns fail
+closed; every statement is parameterised with no FTS injection; the bearer
+comparison is constant-time; the WebSocket upgrade rejects unauthenticated; and
+the 8MB body cap rejected a 40MB POST in 70ms without buffering it.
+
 ## Verification scripts
 
 | Script | Covers |
