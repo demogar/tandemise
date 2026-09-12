@@ -24,6 +24,16 @@ export interface PlannedTask {
   readonly title: string;
   readonly objective: string;
   readonly roleId: string;
+  /**
+   * Repository this task works in, by name, or null for the mission's own.
+   *
+   * A name rather than an id because a plan is written by a language model and
+   * read by a human: `beveloce-mobile` is checkable at a glance and an id is
+   * not. It is resolved against the project's repositories when the plan is
+   * materialized, and a name that matches none of them is a plan error rather
+   * than a task that quietly runs in the wrong place.
+   */
+  readonly repository?: string | null;
   readonly dependsOn: readonly string[];
   readonly requiredCapabilities: readonly Capability[];
   readonly inputArtifacts: readonly ArtifactRequirement[];
@@ -51,6 +61,15 @@ export interface PlanValidationContext {
   readonly satisfiableCapabilities: ReadonlySet<Capability>;
   /** Artifact types that already exist on the mission (e.g. from a prior run). */
   readonly preexistingArtifacts?: ReadonlySet<ArtifactType>;
+  /**
+   * Repository names available to this mission, lowercased.
+   *
+   * Omitted means "do not check", which is what a caller with no project
+   * context passes. Given the set, a task naming a repository outside it is an
+   * error: silently running it in the mission's own repository would put a
+   * change in the wrong codebase, which is worse than refusing the plan.
+   */
+  readonly knownRepositoryNames?: ReadonlySet<string>;
 }
 
 export function validateMissionPlan(
@@ -75,6 +94,12 @@ export function validateMissionPlan(
   for (const task of plan.tasks) {
     if (!ctx.knownRoleIds.has(task.roleId)) {
       error(task.key, `Unknown role '${task.roleId}'. Known roles: ${[...ctx.knownRoleIds].sort().join(', ')}.`);
+    }
+    const repository = task.repository?.trim();
+    if (repository !== undefined && repository !== '' && ctx.knownRepositoryNames !== undefined
+        && !ctx.knownRepositoryNames.has(repository.toLowerCase())) {
+      error(task.key, `Unknown repository '${repository}'. This project has: `
+        + `${[...ctx.knownRepositoryNames].sort().join(', ') || 'none'}.`);
     }
     for (const dep of task.dependsOn) {
       if (!byKey.has(dep)) error(task.key, `Depends on unknown task '${dep}'.`);

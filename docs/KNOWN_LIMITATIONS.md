@@ -72,3 +72,12 @@ lives in the config directory the profile names, but a profile still cannot
 carry a token, a base URL override, or a proxy setting of its own. Doing that
 properly means referencing the existing secret store by id rather than storing
 a value, which is worth building before any runtime needs per-profile auth.
+
+## A task's repository is chosen at plan time, not re-chosen on retry
+
+A task names its repository when the plan is materialized, and a retry reruns it
+in the same one. That is right for a retry of the same work, but a plan that put
+a task in the wrong repository has to be re-planned rather than corrected in
+place - there is no way to move a single task to another repository from the
+mission view. Worth adding once it is clear whether people correct plans or
+simply re-plan.

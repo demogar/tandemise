@@ -92,9 +92,15 @@ export class PlanningServiceImpl implements PlanningService {
 
     const preset = findPreset(mission.workflowPreset || DEFAULT_PRESET_ID);
     const roles = this.deps.roles.list(workspace.id);
-    const outcome = await this.#producePlan(planning, workspace, repository ?? null, roles, preset, scope);
+    // A project's repositories are what its plans may target: a mission in a
+    // three-repository project can put one task in each and keep them in one
+    // dependency graph.
+    const repositories = this.deps.repositories.listByWorkspace(workspace.id);
+    const outcome = await this.#producePlan(
+      planning, workspace, repository ?? null, roles, preset, scope, repositories,
+    );
 
-    const tasks = materializePlan(outcome.plan, mission.id, this.deps.clock);
+    const tasks = materializePlan(outcome.plan, mission.id, this.deps.clock, repositories);
     this.deps.tasks.replaceAll(mission.id, tasks);
     await this.#storePlanDocument(planning, outcome.plan);
     this.deps.recorder.invalidate('tasks', mission.id);
@@ -112,6 +118,7 @@ export class PlanningServiceImpl implements PlanningService {
     roles: readonly RoleTemplate[],
     preset: WorkflowPreset,
     scope: EventScope,
+    repositories: readonly Repository[],
   ): Promise<PlanOutcome> {
     const fallback = (reason: string): PlanOutcome => {
       this.deps.recorder.note(
@@ -143,6 +150,7 @@ export class PlanningServiceImpl implements PlanningService {
         this.deps.runtimeManager.capabilities(selected.value.profile),
         KNOWN_CAPABILITIES,
       ),
+      knownRepositoryNames: new Set(repositories.map((r) => r.name.toLowerCase())),
     };
 
     let target: ExecutionTarget;
@@ -155,7 +163,7 @@ export class PlanningServiceImpl implements PlanningService {
     try {
       let issues: readonly PlanValidationIssue[] = [];
       for (let attempt = 1; attempt <= MAX_PLANNER_ATTEMPTS; attempt++) {
-        const prompt = this.#prompt(mission, repository, roles, preset, context, issues, attempt);
+        const prompt = this.#prompt(mission, repository, roles, preset, context, issues, attempt, repositories);
         const response = await this.#runPlanner(
           selected.value.profile, prompt, target, scope, attempt,
         );
@@ -201,10 +209,12 @@ export class PlanningServiceImpl implements PlanningService {
     context: { satisfiableCapabilities: ReadonlySet<Capability> },
     issues: readonly PlanValidationIssue[],
     attempt: number,
+    repositories: readonly Repository[],
   ): string {
     const base = buildPlannerPrompt({
       mission,
       repository,
+      repositories,
       roles,
       preset,
       availableCapabilities: [...context.satisfiableCapabilities],

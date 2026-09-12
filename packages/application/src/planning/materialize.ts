@@ -1,6 +1,6 @@
-import type { MissionId, Clock } from '@tandemise/shared';
+import type { MissionId, Clock, RepositoryId } from '@tandemise/shared';
 import { ids } from '@tandemise/shared';
-import type { MissionPlan, MissionTask, PlannedTask } from '@tandemise/domain';
+import type { MissionPlan, MissionTask, PlannedTask, Repository } from '@tandemise/domain';
 
 /**
  * Turns an accepted plan into the task rows the scheduler runs.
@@ -15,9 +15,30 @@ export function materializePlan(
   plan: MissionPlan,
   missionId: MissionId,
   clock: Clock,
+  repositories: readonly Repository[] = [],
 ): readonly MissionTask[] {
   const now = clock.now();
-  return plan.tasks.map((task, index) => fromPlanned(task, missionId, index, now));
+  // Matched case-insensitively: a plan author writing `Beveloce-Web` means the
+  // same repository as `beveloce-web`, and failing over capitalisation would be
+  // a needless way to lose a plan.
+  const byName = new Map(repositories.map((r) => [r.name.toLowerCase(), r.id]));
+  return plan.tasks.map((task, index) => fromPlanned(task, missionId, index, now, byName));
+}
+
+/**
+ * The repository a planned task names, or null to inherit the mission's.
+ *
+ * An unknown name resolves to null rather than throwing: plan validation is
+ * where a bad name is reported, and a task that falls back to the mission's own
+ * repository is a great deal better than a mission that cannot be materialized.
+ */
+function resolveRepository(
+  task: PlannedTask,
+  byName: ReadonlyMap<string, RepositoryId>,
+): RepositoryId | null {
+  const name = task.repository?.trim();
+  if (name === undefined || name === '') return null;
+  return byName.get(name.toLowerCase()) ?? null;
 }
 
 function fromPlanned(
@@ -25,10 +46,12 @@ function fromPlanned(
   missionId: MissionId,
   index: number,
   now: string,
+  byName: ReadonlyMap<string, RepositoryId>,
 ): MissionTask {
   return {
     id: ids.task(),
     missionId,
+    repositoryId: resolveRepository(task, byName),
     key: task.key,
     title: task.title,
     objective: task.objective,

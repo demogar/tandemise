@@ -17,6 +17,8 @@ import type { WorkflowPreset } from './presets.js';
 export interface PlannerPromptInput {
   readonly mission: Mission;
   readonly repository: Repository | null;
+  /** Every repository in the project; a task may name any of them. */
+  readonly repositories?: readonly Repository[];
   readonly roles: readonly RoleTemplate[];
   readonly preset: WorkflowPreset;
   readonly availableCapabilities: readonly string[];
@@ -25,6 +27,9 @@ export interface PlannerPromptInput {
 
 export function buildPlannerPrompt(input: PlannerPromptInput): string {
   const { mission, repository, roles, preset, availableCapabilities, repositoryContext } = input;
+  // Only worth mentioning when the project has more than the mission's own:
+  // otherwise it is an instruction about a choice that does not exist.
+  const others = (input.repositories ?? []).filter((r) => r.id !== repository?.id);
 
   const roleCatalogue = roles
     .map((r) => [
@@ -53,6 +58,16 @@ ${mission.constraints.length > 0 ? `Constraints:\n${mission.constraints.map((c) 
       : ''
   }
 Repository: ${repository ? `${repository.name} at ${repository.path} (default branch ${repository.defaultBranch})` : 'none selected — plan tasks that do not require a repository'}
+${others.length === 0 ? '' : `
+This project has more than one repository. A task may set "repository" to any of
+these names to work there instead of the mission's own; omit it or use null to
+work in the mission's repository. Split work by repository only when it truly
+belongs there, and make the cross-repository dependency explicit with
+"dependsOn" - a task in one repository cannot see another's branch.
+
+${[repository, ...others].filter((r): r is Repository => r !== null)
+    .map((r) => `- ${r.name} (default branch ${r.defaultBranch})`).join('\n')}
+`}
 Autonomy level: ${mission.autonomy}
 
 ${repositoryContext ? `# What the repository looks like\n\n${repositoryContext}\n` : ''}
@@ -142,6 +157,7 @@ fence, matching:
       "title": "short imperative title",
       "objective": "the direct instruction for the worker",
       "roleId": "product",
+      "repository": null,
       "dependsOn": [],
       "requiredCapabilities": ["repository.read", "filesystem.read", "artifact.write"],
       "inputArtifacts": [{ "type": "ProductSpec", "required": true }],

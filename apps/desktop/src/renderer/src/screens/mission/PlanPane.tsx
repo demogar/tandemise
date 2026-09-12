@@ -203,6 +203,13 @@ function TaskCard({
       <div className="taskcard__title">{task.title}</div>
 
       <div className="taskcard__meta">
+        {/* Only set when the task works somewhere other than the mission's own
+            repository, so a single-repository mission shows nothing. */}
+        {task.repositoryName ? (
+          <span className="taskcard__repo">
+            <Icon name="folder" size={11} /> {task.repositoryName}
+          </span>
+        ) : null}
         {task.runtimeName ? (
           <span>
             <Icon name="runtimes" size={11} /> {task.runtimeName}

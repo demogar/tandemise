@@ -1,4 +1,4 @@
-import type { MissionId, TaskId, Timestamp } from '@tandemise/shared';
+import type { MissionId, RepositoryId, TaskId, Timestamp } from '@tandemise/shared';
 import type { Capability } from '../capability.js';
 import type { ArtifactType } from './artifact.js';
 import type { GateExpression } from '../gate.js';
@@ -62,6 +62,15 @@ export interface ArtifactRequirement {
 export interface MissionTask {
   readonly id: TaskId;
   readonly missionId: MissionId;
+  /**
+   * The repository this task works in, or null for the mission's own.
+   *
+   * A project is frequently several repositories that ship together, and one
+   * change lands in more than one of them. Letting a task name its repository
+   * is what keeps that a single mission with a single dependency graph, rather
+   * than separate missions that cannot wait on each other.
+   */
+  readonly repositoryId: RepositoryId | null;
   /** Stable, plan-author-supplied key (`implement_onboarding`). Unique per mission. */
   readonly key: string;
   readonly title: string;

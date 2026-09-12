@@ -37,6 +37,13 @@ export interface TaskView extends MissionTask {
   readonly pendingApprovalId: string | null;
   readonly runtimeName: string | null;
   readonly targetName: string | null;
+  /**
+   * Repository this task works in, named, when it is not the mission's own.
+   *
+   * Null for the common case, so a single-repository mission shows nothing and
+   * only a task that genuinely works somewhere else is called out.
+   */
+  readonly repositoryName: string | null;
 }
 
 export interface MissionSummary {

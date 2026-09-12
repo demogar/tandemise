@@ -784,3 +784,10 @@
   font-size: var(--fs-xs);
   font-variant-numeric: tabular-nums;
 }
+
+/* A task working in another of the project's repositories. Accented because it
+   is the one thing on the card that changes where the work lands. */
+.taskcard__repo {
+  color: var(--accent);
+  font-weight: 600;
+}

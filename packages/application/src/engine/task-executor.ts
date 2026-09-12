@@ -100,9 +100,7 @@ export class TaskExecutor {
     const workspace = this.#require(
       this.deps.workspaces.get(mission.workspaceId), 'Workspace', mission.workspaceId,
     );
-    const repository = mission.repositoryId === null
-      ? null
-      : this.deps.repositories.get(mission.repositoryId) ?? null;
+    const repository = this.#repositoryFor(task, mission);
 
     const scope: EventScope = {
       workspaceId: mission.workspaceId,
@@ -666,6 +664,17 @@ export class TaskExecutor {
    * and silently folding it in would make a review report about code the
    * reviewer was never shown.
    */
+  /**
+   * The repository a task works in: its own, or the mission's when it names none.
+   *
+   * Most tasks name none. One that does is how a mission spanning several of a
+   * project's repositories stays a single dependency graph.
+   */
+  #repositoryFor(task: MissionTask, mission: Mission): Repository | null {
+    const id = task.repositoryId ?? mission.repositoryId;
+    return id === null ? null : this.deps.repositories.get(id) ?? null;
+  }
+
   #upstreamChangeBranch(task: MissionTask, mission: Mission): string | null {
     const all = this.deps.tasks.listByMission(mission.id);
     const byKey = new Map(all.map((t) => [t.key, t]));
@@ -681,9 +690,19 @@ export class TaskExecutor {
     walk(task.key);
     if (upstream.size === 0) return null;
 
+    // Only upstream tasks in the *same* repository. A mission may span several
+    // of a project's repositories, and a branch cut in one of them does not
+    // exist in another - checking it out would fail, and matching it by name
+    // against an unrelated branch would be worse.
+    const ownRepository = task.repositoryId ?? mission.repositoryId;
     const upstreamIds = new Set(
-      [...upstream].map((key) => byKey.get(key)?.id).filter((id): id is TaskId => id !== undefined),
+      [...upstream]
+        .map((key) => byKey.get(key))
+        .filter((t): t is MissionTask => t !== undefined)
+        .filter((t) => (t.repositoryId ?? mission.repositoryId) === ownRepository)
+        .map((t) => t.id),
     );
+    if (upstreamIds.size === 0) return null;
 
     // Newest first: after a remediation cycle the fix task's ChangeSet is the
     // one that should be reviewed, not the original.

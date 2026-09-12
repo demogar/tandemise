@@ -26,6 +26,7 @@ interface TaskRow {
   status_reason: string | null;
   attempts: number;
   remediates_task_id: string | null;
+  repository_id: string | null;
   order_hint: number;
   created_at: string;
   updated_at: string;
@@ -61,6 +62,7 @@ function toRow(t: MissionTask): TaskRow {
     status_reason: t.statusReason,
     attempts: t.attempts,
     remediates_task_id: t.remediatesTaskId,
+    repository_id: t.repositoryId,
     order_hint: t.orderHint,
     created_at: t.createdAt,
     updated_at: t.updatedAt,
@@ -89,6 +91,7 @@ function fromRow(r: TaskRow, dependsOn: readonly string[]): MissionTask {
     statusReason: r.status_reason,
     attempts: r.attempts,
     remediatesTaskId: r.remediates_task_id === null ? null : asId<'TaskId'>(r.remediates_task_id),
+    repositoryId: r.repository_id === null ? null : asId<'RepositoryId'>(r.repository_id),
     orderHint: r.order_hint,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
@@ -99,7 +102,7 @@ function fromRow(r: TaskRow, dependsOn: readonly string[]): MissionTask {
 
 const COLUMNS = `id, mission_id, "key", title, objective, role_id, required_capabilities,
   input_artifacts, expected_outputs, execution_policy, approval_policy, retry_policy,
-  completion_gate, status, status_reason, attempts, remediates_task_id, order_hint,
+  completion_gate, status, status_reason, attempts, remediates_task_id, repository_id, order_hint,
   created_at, updated_at, started_at, finished_at`;
 
 export class SqliteTaskRepository implements TaskRepositoryPort {
@@ -123,7 +126,7 @@ export class SqliteTaskRepository implements TaskRepositoryPort {
       `INSERT INTO mission_tasks (${COLUMNS}) VALUES (
         :id, :mission_id, :key, :title, :objective, :role_id, :required_capabilities,
         :input_artifacts, :expected_outputs, :execution_policy, :approval_policy, :retry_policy,
-        :completion_gate, :status, :status_reason, :attempts, :remediates_task_id, :order_hint,
+        :completion_gate, :status, :status_reason, :attempts, :remediates_task_id, :repository_id, :order_hint,
         :created_at, :updated_at, :started_at, :finished_at)`,
     );
     this.#update = db.handle.prepare<TaskRow>(
@@ -133,7 +136,8 @@ export class SqliteTaskRepository implements TaskRepositoryPort {
          expected_outputs = :expected_outputs, execution_policy = :execution_policy,
          approval_policy = :approval_policy, retry_policy = :retry_policy,
          completion_gate = :completion_gate, status = :status, status_reason = :status_reason,
-         attempts = :attempts, remediates_task_id = :remediates_task_id, order_hint = :order_hint,
+         attempts = :attempts, remediates_task_id = :remediates_task_id,
+         repository_id = :repository_id, order_hint = :order_hint,
          updated_at = :updated_at, started_at = :started_at, finished_at = :finished_at
        WHERE id = :id`,
     );

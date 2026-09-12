@@ -160,6 +160,9 @@ export class ProjectionServiceImpl implements ProjectionService {
         pendingApprovalId: this.deps.approvals.pendingForTask(task.id)[0]?.id ?? null,
         runtimeName: profile?.name ?? latestRun?.runtimeProfileId ?? null,
         targetName: target?.name ?? null,
+        repositoryName: task.repositoryId === null || task.repositoryId === mission.repositoryId
+          ? null
+          : this.deps.repositories.get(task.repositoryId)?.name ?? null,
       };
     });
   }

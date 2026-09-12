@@ -2,6 +2,7 @@ import { TandemiseError, nullLogger, type Logger } from '@tandemise/shared';
 import type { TandemiseDatabase } from '../database.js';
 import type { Migration } from './types.js';
 import { migration001 } from './001_initial.js';
+import { migration002 } from './002_task_repository.js';
 
 export type { Migration } from './types.js';
 
@@ -9,7 +10,7 @@ export type { Migration } from './types.js';
  * Every migration, in order. Appending is the only legal edit: an already
  * released migration is immutable, because some installation has run it.
  */
-export const MIGRATIONS: readonly Migration[] = [migration001];
+export const MIGRATIONS: readonly Migration[] = [migration001, migration002];
 
 /** The newest schema version this binary understands. */
 export const SCHEMA_VERSION: number = MIGRATIONS.reduce((max, m) => Math.max(max, m.version), 0);

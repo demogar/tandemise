@@ -28,6 +28,9 @@ const plannedTask = z.object({
   title: z.string().trim().min(1),
   objective: z.string().trim().min(1),
   roleId: z.string().trim().min(1),
+  // Optional: a single-repository project never mentions it, and a planner that
+  // omits it means "the mission's repository".
+  repository: z.string().trim().min(1).nullish(),
   dependsOn: z.array(z.string().trim().min(1)).default([]),
   requiredCapabilities: z.array(z.string().trim().min(1)).default([]),
   inputArtifacts: z
