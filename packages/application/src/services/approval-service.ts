@@ -166,7 +166,12 @@ export class ApprovalServiceImpl implements ApprovalService {
     // A tool approval is answered while its worker is still RUNNING. The waiter
     // has already released it; touching the task status here would yank the
     // task out from under a live run.
-    if (task.status !== 'AWAITING_APPROVAL') return;
+    //
+    // An intervention is the exception: it is raised on a task that already
+    // exhausted its retries and sits BLOCKED, so requiring AWAITING_APPROVAL
+    // made "Retry once more" record an approval and then do nothing at all.
+    const interventionOnBlocked = approval.kind === 'intervention' && task.status === 'BLOCKED';
+    if (task.status !== 'AWAITING_APPROVAL' && !interventionOnBlocked) return;
 
     const scope: EventScope = {
       workspaceId: mission.workspaceId,
@@ -188,6 +193,9 @@ export class ApprovalServiceImpl implements ApprovalService {
         retryPolicy: { ...task.retryPolicy, maxAttempts: task.attempts + 1 },
       });
       this.#setTaskStatus(task, scope, 'READY', 'A human authorized one more attempt.');
+      if (mission.status === 'BLOCKED') {
+        this.#setMissionStatus(mission, scope, 'EXECUTING', `'${task.key}' was given one more attempt.`);
+      }
       return;
     }
 
