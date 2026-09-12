@@ -195,7 +195,28 @@ try {
     await sleep(1500);
   }
 
-  ok('mission reached a settled state', !!detail, detail?.mission?.status);
+  // Asserting `!!detail` was vacuous: it is true at any status, so this passed
+  // even when the wait loop simply timed out. The mission must actually have
+  // left EXECUTING under its own steam - no API call is made inside the loop
+  // other than polling, so reaching a terminal state proves the scheduler's
+  // tick loop is genuinely running.
+  const finalStatus = detail?.mission?.status;
+  const settledStatuses = ['COMPLETE', 'READY_TO_SHIP', 'RELEASED', 'FAILED', 'CANCELLED', 'BLOCKED'];
+  ok('the mission ran to a settled state without further API calls',
+     settledStatuses.includes(finalStatus), `status=${finalStatus}`);
+  const tasks = detail?.tasks ?? [];
+  const taskStates = tasks.map((t) => `${t.key}:${t.status}`).join(' ');
+  // A task still PENDING is correct when an upstream task blocked or failed -
+  // that is the DAG holding the line, not the scheduler stalling. What must not
+  // happen is a task sitting READY or RUNNING once the mission has settled.
+  const byKey = new Map(tasks.map((t) => [t.key, t]));
+  const upstreamSettledBadly = (t) =>
+    t.dependsOn.some((d) => ['BLOCKED', 'FAILED', 'CANCELLED', 'PENDING'].includes(byKey.get(d)?.status ?? ''));
+  ok('no task is left mid-flight',
+     tasks.every((t) => !['READY', 'RUNNING'].includes(t.status)), taskStates);
+  ok('every PENDING task is waiting on an upstream that did not succeed',
+     tasks.filter((t) => t.status === 'PENDING').every(upstreamSettledBadly), taskStates);
+  ok('at least one task actually ran', (detail?.tasks ?? []).some((t) => t.runCount > 0), taskStates);
   ok('events streamed over the websocket', events.length > 0, `${events.length} events`);
   ok('event sequences are monotonic',
      events.every((e, i) => i === 0 || e.sequence > events[i - 1].sequence));

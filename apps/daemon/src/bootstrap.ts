@@ -18,12 +18,15 @@ import { runtimesCoreModule } from '@tandemise/runtimes-core';
 import { claudeRuntimeModule } from '@tandemise/runtime-claude';
 import { codexRuntimeModule } from '@tandemise/runtime-codex';
 import { genericRuntimeModule } from '@tandemise/runtime-generic';
-import { executionCoreModule } from '@tandemise/execution-core';
+import {
+  executionCoreModule,
+  CLOCK as EXECUTION_CLOCK, LOGGER as EXECUTION_LOGGER, PATHS as EXECUTION_PATHS,
+} from '@tandemise/execution-core';
 import { executionLocalModule } from '@tandemise/execution-local';
 import { integrationsCoreModule } from '@tandemise/integrations-core';
 import { githubIntegrationModule } from '@tandemise/integration-github';
 import { browserIntegrationModule } from '@tandemise/browser';
-import { applicationModule, createServices, type TandemiseServices } from '@tandemise/application';
+import { applicationModule, createServices, SCHEDULER, type TandemiseServices } from '@tandemise/application';
 import * as applicationTokens from '@tandemise/application';
 
 import { SCHEMA_VERSION } from '@tandemise/persistence';
@@ -88,8 +91,26 @@ export function bootstrap(config: DaemonConfig): Bootstrapped {
 
   aliasPorts(container, log);
 
+  // `execution-core` declares its own Clock/Logger/Paths tokens because no
+  // lower-layer package owns them. They are distinct token objects from the
+  // ones bound above - identity, not description, is what a container keys on -
+  // so without these three lines git and the execution targets log into
+  // `nullLogger` and resolve paths from `~/.tandemise` instead of this
+  // daemon's configured home. Those agree by default and diverge the moment a
+  // test or a second instance overrides the home.
+  container.bind(EXECUTION_LOGGER, (r) => r.resolve(LOGGER), { source: 'bootstrap' });
+  container.bind(EXECUTION_CLOCK, (r) => r.resolve(CLOCK), { source: 'bootstrap' });
+  container.bind(EXECUTION_PATHS, (r) => r.resolve(CONFIG).paths, { source: 'bootstrap' });
+
   const services = createServices(container);
+
   const lifecycle = new LifecycleHost(log);
+  // Without this the tick loop never runs: the scheduler would only advance
+  // when an API call happened to wake it, so a mission would climb about one
+  // DAG level per request and then sit still. Registering it here is also what
+  // gives shutdown its ordering - `stop()` aborts in-flight runs before the
+  // database and process supervisor are disposed.
+  lifecycle.add(container.resolve(SCHEDULER));
 
   return { container, services, lifecycle, events, projections, log };
 }
