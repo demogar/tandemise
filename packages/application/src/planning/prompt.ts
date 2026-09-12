@@ -224,6 +224,12 @@ connected design tool, say), route the task to it by capability, and say in the
 objective which app to use and what to produce with it - do not ask a worker to
 describe in Markdown what it could make in the real tool.
 
+Some apps work asynchronously: a tool starts a run and another reports on it.
+Say in the objective that the worker must keep polling until that run has
+finished, and must record the finished result's link (a preview URL, say) in
+its artifact - an artifact written while the app is still working hands the
+person approving it nothing to look at.
+
 ${apps.map((app) => `- ${app.name} — capability: ${app.capabilities.join(', ') || 'none'}\n  ${app.detail}`).join('\n')}
 
 `;
