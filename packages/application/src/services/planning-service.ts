@@ -18,7 +18,7 @@ import type { EventRecorder, EventScope } from '../support/event-recorder.js';
 import { satisfiableCapabilities } from '../support/capabilities.js';
 import { describeIssues } from '../support/dag.js';
 import { DEFAULT_PRESET_ID, findPreset, type WorkflowPreset } from '../planning/presets.js';
-import { buildPlannerPrompt, describePlan } from '../planning/prompt.js';
+import { buildPlannerPrompt, describePlan, type ConnectedApp } from '../planning/prompt.js';
 import { parsePlanResponse } from '../planning/parse.js';
 import { materializePlan, renderPlanDocument } from '../planning/materialize.js';
 
@@ -56,6 +56,8 @@ export interface PlanningDeps {
   readonly paths: TandemisePaths;
   readonly clock: Clock;
   readonly log: Logger;
+  /** Healthy integrations in the workspace. Optional: a composition without integrations plans without them. */
+  readonly connectedApps?: (workspaceId: string) => Promise<readonly ConnectedApp[]>;
 }
 
 /**
@@ -330,6 +332,13 @@ export class PlanningServiceImpl implements PlanningService {
       knownRepositoryNames: new Set(repositories.map((r) => r.name.toLowerCase())),
     };
 
+    let apps: readonly ConnectedApp[] = [];
+    try {
+      apps = (await this.deps.connectedApps?.(workspace.id)) ?? [];
+    } catch (e) {
+      this.deps.log.warn('planning.connected_apps_unavailable', { error: errorMessage(e) });
+    }
+
     let target: ExecutionTarget;
     try {
       target = await this.#provisionPlannerTarget(mission, workspace, repository);
@@ -340,7 +349,7 @@ export class PlanningServiceImpl implements PlanningService {
     try {
       let issues: readonly PlanValidationIssue[] = [];
       for (let attempt = 1; attempt <= MAX_PLANNER_ATTEMPTS; attempt++) {
-        const prompt = this.#prompt(mission, repository, roles, preset, context, issues, attempt, repositories);
+        const prompt = this.#prompt(mission, repository, roles, preset, context, issues, attempt, repositories, apps);
         const response = await this.#runPlanner(
           selected.value.profile, prompt, target, scope, attempt, selected.value.reservation,
         );
@@ -387,8 +396,10 @@ export class PlanningServiceImpl implements PlanningService {
     issues: readonly PlanValidationIssue[],
     attempt: number,
     repositories: readonly Repository[],
+    connectedApps: readonly ConnectedApp[] = [],
   ): string {
     const base = buildPlannerPrompt({
+      connectedApps,
       mission,
       repository,
       repositories,

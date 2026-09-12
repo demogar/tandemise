@@ -23,6 +23,16 @@ export interface PlannerPromptInput {
   readonly preset: WorkflowPreset;
   readonly availableCapabilities: readonly string[];
   readonly repositoryContext: string | null;
+  /** Healthy integrations in the project, so a plan can route work to them. */
+  readonly connectedApps?: readonly ConnectedApp[];
+}
+
+export interface ConnectedApp {
+  readonly name: string;
+  /** The capabilities whose holders see this app's tools. */
+  readonly capabilities: readonly string[];
+  /** Health detail - for an MCP server, its version and tool names. */
+  readonly detail: string;
 }
 
 export function buildPlannerPrompt(input: PlannerPromptInput): string {
@@ -89,7 +99,7 @@ A task may only require capabilities this installation can actually satisfy:
 
 ${availableCapabilities.join(', ')}
 
-# The starting shape
+${renderConnectedApps(input.connectedApps ?? [])}# The starting shape
 
 The "${preset.name}" preset is a known-good plan for this kind of work. Start
 from it and adapt it to THIS mission. Adaptation is expected and encouraged:
@@ -200,6 +210,23 @@ fence, matching:
     }
   ]
 }`;
+}
+
+function renderConnectedApps(apps: readonly ConnectedApp[]): string {
+  if (apps.length === 0) return '';
+  return `# Connected apps
+
+These apps are connected to this project and working. A worker reaches an app's
+tools only if its task lists one of that app's capabilities in both
+\`requiredCapabilities\` and \`executionPolicy.capabilities\`. When the goal names
+one of these apps, or the work is what an app is for (design work and a
+connected design tool, say), route the task to it by capability, and say in the
+objective which app to use and what to produce with it - do not ask a worker to
+describe in Markdown what it could make in the real tool.
+
+${apps.map((app) => `- ${app.name} — capability: ${app.capabilities.join(', ') || 'none'}\n  ${app.detail}`).join('\n')}
+
+`;
 }
 
 function fence(content: string, lang = ''): string {
