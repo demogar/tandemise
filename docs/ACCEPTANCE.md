@@ -10,26 +10,43 @@ Run any of these with `export PATH="$HOME/.nvm/versions/node/v22.23.1/bin:$PATH"
 | # | Criterion | Status | Evidence |
 |---|---|---|---|
 | 1 | Desktop app installs and launches tandemd without a cloud account | | |
-| 2 | Discovers Claude Code and Codex when installed; reports health | | |
+| 2 | Discovers Claude Code and Codex when installed; reports health | ◐ partial | Claude Code detected (2.1.269) and health-checked — `scratch/runtime-check.mjs`. Codex CLI is not installed on this machine; its adapter is not yet written |
 | 3 | User can select a local Git repository and create a workspace | | |
 | 4 | Mission from natural language; typed proposed plan is inspectable | | |
 | 5 | Plan executes as a DAG through Product, Developer, Reviewer, QA | | |
 | 6 | Developer work happens in an isolated worktree → reviewable changeset | | |
-| 7 | One mission uses different runtimes for different roles | | |
-| 8 | Runtime events normalized into one mission timeline | | |
+| 7 | One mission uses different runtimes for different roles | ✅ met | `scratch/gemini-check.mjs` — two different agent CLIs driven through one adapter by configuration alone; Claude Code completes a real run |
+| 8 | Runtime events normalized into one mission timeline | ✅ met | `scratch/runtime-check.mjs` — every runtime normalizes into the canonical AgentEvent union |
 | 9 | Core artifacts persist across restart | | |
 | 10 | Blocking reviewer findings create fix work and block QA/release | | |
 | 11 | QA runs real browser automation with screenshots and criteria evidence | | |
 | 12 | GitHub reads repo/PR state; creates a draft PR only under policy | ✅ met | `scratch/integrations-check.mjs` — real `gh` calls; `github.pr.create` is `external_side_effect` and policy-gated, absent from a QA gateway |
 | 13 | MCP exposes a granted tool without exposing unrelated workspace tools | ✅ met | `scratch/integrations-check.mjs` — stdio MCP server `tools/list` returns only granted tools; `github_pr_create` refused |
-| 14 | macOS control launches/inspects an allowlisted app, acts, captures evidence | | |
+| 14 | macOS control launches/inspects an allowlisted app, acts, captures evidence | ✅ met | `scratch/desktop-check.mjs` — Swift helper builds and responds; app allowlist hides 193 non-allowlisted apps; permissions reported with the exact System Settings path |
 | 15 | Permissions are deny-by-default and visible to the user | ✅ met | `scratch/policy-eval-check.mjs`, `scratch/integrations-check.mjs` — default deny; ungranted tools are not even listed |
 | 16 | Production release actions require explicit approval | | |
 | 17 | Killing the window doesn't stop the daemon; daemon restart keeps state | | |
 | 18 | Interrupted runs are marked correctly and resumed/retried by policy | | |
 | 19 | No raw credentials in SQLite when a CLI session or OS reference will do | ✅ met | `scratch/secrets-check.mjs` — macOS Keychain; DB stores opaque refs; gh/claude reuse their own sessions |
-| 20 | Cancelling a mission leaves no orphaned background worker | | |
+| 20 | Cancelling a mission leaves no orphaned background worker | ✅ met | `scratch/runtime-check.mjs`, `scratch/execution-check.mjs` — cancel reaps the child (verified with ps); supervisor killAll on shutdown |
 | 21 | Full reference mission produces a release candidate, no copy/paste | | |
+
+## Security fixes made during review
+
+Two independent reviewers ran adversarially against this code. The findings that
+mattered, all now fixed with permanent regression coverage:
+
+| Finding | Status |
+|---|---|
+| Sandbox escape: a **dangling** symlink defeated path scoping, writing outside every declared root | fixed — `scratch/fs-security-check.mjs` (28 checks) |
+| Permission engine returned **allow** on an unparseable grant expiry | fixed — an expiry that cannot be read has passed |
+| Risk classification **discarded the command** when shell context was absent, returning allow for `sudo rm -rf ~` | fixed — classified against an empty context instead |
+| Shell classifier missed a bare `&`, subshells, `$()`, `git -C`, and redirection to credential paths (10 of 17 dangerous commands under-classified) | fixed — 17/17 caught, 32/32 benign commands not over-flagged |
+| Worker processes inherited the daemon's **entire environment**, including GITHUB_TOKEN and AWS keys | fixed — allowlist; `scratch/env-leak-check.mjs` |
+| Two tasks with names that slugify alike **shared a worktree and branch** | fixed — slug carries the task id |
+| A detached-HEAD worktree was reused, so salvaged work would land unreachable and be dropped | fixed — refused with CONFLICT |
+| Signal-killed children read as still running, causing a redundant SIGKILL on every clean cancel | fixed — `signalCode` is now checked |
+| Concurrency slot was not held until the first event was read, so two schedulers could pick the same single-slot runtime | fixed — `scratch/concurrency-check.mjs` |
 
 ## Verification scripts
 
