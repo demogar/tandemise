@@ -627,6 +627,17 @@ ok('a note was written to the mission timeline',
   repos.events.listByMission(mission.id, { limit: 100000 })
     .some((e) => e.body.type === 'note' && e.body.text.includes('Tandemise restarted')));
 
+// A task marked RUNNING with no run at all - an attempt that failed between
+// marking the task and recording its run - must not be stranded.
+{
+  const orphan = repos.tasks.listByMission(mission.id).find((t) => t.key !== victimTask.key && t.status === 'SUCCEEDED');
+  repos.tasks.update(orphan.id, { status: 'RUNNING', statusReason: null });
+  const orphanReport = await recovery.run();
+  ok('a task running with no run behind it is requeued',
+    repos.tasks.get(orphan.id).status === 'READY' && orphanReport.tasksRequeued >= 1, repos.tasks.get(orphan.id).statusReason);
+  repos.tasks.update(orphan.id, { status: 'SUCCEEDED', statusReason: null });
+}
+
 // The resume itself. Found in the real app: continuing an interrupted attempt
 // reused its attempt number for the new run row, (task_id, attempt) is unique,
 // and the task blocked on a constraint error the moment it resumed.

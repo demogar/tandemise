@@ -136,7 +136,10 @@ export class TaskExecutor {
       this.deps.log.error('task.attempt_failed', {
         missionId: mission.id, taskId: task.id, error: errorMessage(e),
       });
-      return this.#settleFailure(task, scope, errorMessage(e));
+      // Re-read: `task` is from before the attempt marked it RUNNING, and
+      // settling from that stale copy compared READY with READY, skipped the
+      // write, and left the row RUNNING with nothing running.
+      return this.#settleFailure(this.#requireTask(task.id), scope, errorMessage(e));
     } finally {
       for (const lease of leases.held) this.deps.leases.release(lease.id);
     }

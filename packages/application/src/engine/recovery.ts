@@ -106,6 +106,22 @@ export class RecoveryService {
       }
     }
 
+    // A task can read RUNNING with no run behind it at all: the attempt failed
+    // between marking the task and recording its run (a constraint error did
+    // exactly this), and the loop above only looks at runs. Such a task was
+    // stuck forever - no run to recover, and the scheduler never dispatches a
+    // RUNNING task. With no live, adopted run it goes back to the queue.
+    const liveTasks = new Set(this.runs.listByStatus(['STARTING', 'RUNNING']).map((r) => r.taskId as string));
+    for (const task of this.tasks.listByStatus(['RUNNING'])) {
+      if (liveTasks.has(task.id)) continue;
+      this.tasks.update(task.id, {
+        status: 'READY',
+        statusReason: 'Found marked running with no run behind it; returned to the queue.',
+      });
+      touched.add(task.missionId);
+      tasksRequeued += 1;
+    }
+
     const adoptedTasks = new Set(adopted.map((id) => this.runs.get(id as RunId)?.taskId).filter((t) => t !== undefined));
     const leasesReleased = this.#releaseDeadLeases(adoptedTasks);
     const targetsFailed = this.#failOrphanedTargets(touched);
