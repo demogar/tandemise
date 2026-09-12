@@ -1,0 +1,14 @@
+import { HttpServer } from '../../apps/daemon/dist/http/server.js';
+import { Router } from '../../apps/daemon/dist/http/router.js';
+import { nullLogger } from '../../packages/shared/dist/index.js';
+const TOKEN='x'.repeat(43);
+const r = new Router().get('/v1/ok', () => ({ok:true}));
+const http = new HttpServer({ token:TOKEN, router:r, log:nullLogger, onUpgrade(){} });
+const url = await http.listen();
+const H={authorization:`Bearer ${TOKEN}`};
+const go = async (h)=>{const res=await fetch(url+'/v1/ok',{headers:{...H,...h}});return [res.status,(await res.text()).slice(0,90)];};
+console.log('correct v1 :', await go({'x-tandemise-api-version':'v1'}));
+console.log('wrong v99  :', await go({'x-tandemise-api-version':'v99'}));
+console.log('omitted    :', await go({}));
+console.log('empty      :', await go({'x-tandemise-api-version':''}));
+process.exit(0);
