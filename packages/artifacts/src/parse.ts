@@ -62,7 +62,7 @@ export function parseArtifact(
     }]);
   }
 
-  const result = ARTIFACT_SCHEMAS[type].safeParse(document.value.frontMatter);
+  const result = ARTIFACT_SCHEMAS[type].safeParse(withoutNulls(document.value.frontMatter));
   if (!result.success) {
     return Err(result.error.issues.map((issue) => ({
       path: issue.path.join('.'),
@@ -87,4 +87,24 @@ export function formatIssues(issues: readonly ArtifactIssue[]): string {
 
 function describe(path: string, message: string): string {
   return path === '' ? message : `${message} (at \`${path}\`)`;
+}
+
+/**
+ * Drops keys whose value is null, so an optional field left empty takes its
+ * default.
+ *
+ * YAML reads `supersedes:` - exactly what the DecisionRecord template says to
+ * write for "nothing" - and `supersedes: null` as null, which a string field
+ * with a default rejects. A product owner document's decision record was
+ * refused for following its own template. A required field that is null is
+ * still reported, as missing.
+ */
+function withoutNulls(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(withoutNulls);
+  if (value === null || typeof value !== 'object') return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([, entry]) => entry !== null)
+      .map(([key, entry]) => [key, withoutNulls(entry)]),
+  );
 }
