@@ -1,6 +1,7 @@
 import type {
   ApprovalRepositoryPort, Mission, MissionRepositoryPort, MissionStatus, MissionTask,
   TaskRepositoryPort, WorkspaceRepositoryPort,
+  RepoRepositoryPort,
 } from '@tandemise/domain';
 import {
   ACTIVE_TASK_STATUSES, canTransition, isTaskFinished, isTerminalMissionStatus,
@@ -8,6 +9,7 @@ import {
 import type { Clock, Logger, MissionId, TaskId } from '@tandemise/shared';
 import { errorMessage } from '@tandemise/shared';
 import type { LifecycleComponent } from '@tandemise/kernel';
+import type { Waiter } from './waiter.js';
 import type { EventRecorder, EventScope } from '../support/event-recorder.js';
 import type { BranchIntegrationService } from './branch-integration.js';
 import type { RemediationPlanner } from './remediation.js';
@@ -22,6 +24,9 @@ export interface SchedulerDeps {
   readonly tasks: TaskRepositoryPort;
   readonly approvals: ApprovalRepositoryPort;
   readonly executor: TaskExecutor;
+  /** Repositories, so a wait polls in the right checkout. */
+  readonly repositories: RepoRepositoryPort;
+  readonly waiter: Waiter;
   readonly remediation: RemediationPlanner;
   readonly integration: BranchIntegrationService;
   readonly recorder: EventRecorder;
@@ -52,6 +57,8 @@ export class SchedulerService implements LifecycleComponent {
   readonly name = 'scheduler';
 
   readonly #active = new Map<TaskId, AbortController>();
+  /** In-flight waits, which are deliberately not workers. */
+  readonly #waiting = new Map<TaskId, AbortController>();
   readonly #inFlight = new Set<Promise<void>>();
   readonly #retryAfter = new Map<TaskId, number>();
   /** Missions whose task branches have already been merged, so it happens once. */
@@ -90,6 +97,9 @@ export class SchedulerService implements LifecycleComponent {
       this.#timer = undefined;
     }
     for (const controller of this.#active.values()) controller.abort();
+    // A wait can outlive every worker, so stopping has to cancel it too or
+    // shutdown blocks until a CI run someone else is doing finishes.
+    for (const controller of this.#waiting.values()) controller.abort();
     await this.drain();
     this.deps.log.info('scheduler.stopped');
   }
@@ -219,9 +229,61 @@ export class SchedulerService implements LifecycleComponent {
         this.#setStatus(task, scopeOf(mission), 'AWAITING_HUMAN', 'Waiting for you to do this one.');
         continue;
       }
+      // A wait holds no model and no worker slot: it is one command on an
+      // interval. Counting it against the ceiling would let a twenty-minute
+      // deploy wait block agent work that could run alongside it.
+      if (task.executor === 'wait') {
+        this.#startWait(mission, task);
+        continue;
+      }
       if (this.#active.size >= ceiling) return;
       this.#dispatch(mission, task);
     }
+  }
+
+  /**
+   * Starts a wait, outside the concurrency ceiling.
+   *
+   * Tracked in its own map so `stop()` can cancel it and so the scheduler knows
+   * a wait is in flight without treating it as a worker.
+   */
+  #startWait(mission: Mission, task: MissionTask): void {
+    const policy = task.waitPolicy;
+    if (policy === null) {
+      this.#setStatus(task, scopeOf(mission), 'BLOCKED',
+        `Task '${task.key}' is a wait step but names nothing to wait for.`);
+      return;
+    }
+
+    const controller = new AbortController();
+    this.#waiting.set(task.id, controller);
+    this.#setStatus(task, scopeOf(mission), 'AWAITING_EXTERNAL', `Waiting: ${policy.command}`);
+
+    const repository = task.repositoryId === null
+      ? (mission.repositoryId === null ? null : this.deps.repositories.get(mission.repositoryId) ?? null)
+      : this.deps.repositories.get(task.repositoryId) ?? null;
+
+    void this.deps.waiter
+      .wait(task, policy, repository, controller.signal)
+      .then((outcome) => {
+        const current = this.deps.tasks.get(task.id) ?? task;
+        if (outcome.kind === 'cancelled') return;
+        if (outcome.kind === 'passed') {
+          this.#setStatus(current, scopeOf(mission), 'SUCCEEDED', outcome.detail);
+          this.deps.tasks.update(task.id, { finishedAt: this.deps.clock.now() });
+        } else {
+          this.#setStatus(current, scopeOf(mission), 'FAILED', outcome.detail);
+          this.deps.tasks.update(task.id, { finishedAt: this.deps.clock.now() });
+        }
+        this.deps.recorder.invalidate('tasks', mission.id);
+      })
+      .catch((e: unknown) => {
+        this.#setStatus(this.deps.tasks.get(task.id) ?? task, scopeOf(mission), 'BLOCKED',
+          `The wait failed outside the poll: ${errorMessage(e)}`);
+      })
+      .finally(() => {
+        this.#waiting.delete(task.id);
+      });
   }
 
   #dispatch(mission: Mission, task: MissionTask): void {

@@ -32,6 +32,7 @@ import { ApprovalWaiter, createApprovalGate, createPolicyEngineToolGate } from '
 import { ApprovalServiceImpl } from './services/approval-service.js';
 import { ArtifactServiceImpl } from './services/artifact-service.js';
 import { WorkflowServiceImpl } from './services/workflow-service.js';
+import { Waiter } from './engine/waiter.js';
 import { IntegrationServiceImpl } from './services/integration-service.js';
 import { MissionServiceImpl } from './services/mission-service.js';
 import { PlanningServiceImpl } from './services/planning-service.js';
@@ -213,6 +214,12 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       tasks: r.resolve(t.TASK_REPOSITORY),
       approvals: r.resolve(t.APPROVAL_REPOSITORY),
       executor: r.resolve(t.TASK_EXECUTOR),
+      repositories: r.resolve(t.REPO_REPOSITORY),
+      waiter: new Waiter({
+        exec: () => r.resolve(INTEGRATION_COMMAND_EXECUTOR),
+        clock: clock(r),
+        log: log(r).child({ component: 'waiter' }),
+      }),
       remediation: r.resolve(t.REMEDIATION_PLANNER),
       integration: r.resolve(t.BRANCH_INTEGRATION_SERVICE),
       recorder: r.resolve(t.EVENT_RECORDER),

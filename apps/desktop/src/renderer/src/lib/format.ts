@@ -25,6 +25,7 @@ const TASK_TONES: Readonly<Record<TaskStatus, Tone>> = {
   READY: 'pending',
   RUNNING: 'running',
   AWAITING_HUMAN: 'blocked',
+  AWAITING_EXTERNAL: 'running',
   AWAITING_APPROVAL: 'blocked',
   BLOCKED: 'blocked',
   SUCCEEDED: 'succeeded',

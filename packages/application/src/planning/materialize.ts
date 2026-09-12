@@ -53,6 +53,7 @@ function fromPlanned(
     missionId,
     repositoryId: resolveRepository(task, byName),
     executor: task.executor ?? 'agent',
+    waitPolicy: task.waitPolicy ?? null,
     key: task.key,
     title: task.title,
     objective: task.objective,

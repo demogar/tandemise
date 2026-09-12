@@ -56,7 +56,9 @@ ok('an approval-before step is marked', tasks.find((t) => t.key === 'open_pr').a
 
 console.log('\n── it is a plan like any other');
 const validated = validateMissionPlan(compiled.value, {
-  knownRoleIds: new Set(['product', 'architecture', 'development', 'review', 'release', 'human']),
+  // Deliberately only the real role templates: `human` and `wait` are not
+  // roles, and a workflow using them must still validate.
+  knownRoleIds: new Set(['product', 'architecture', 'development', 'review', 'release', 'qa']),
   satisfiableCapabilities: new Set(compiled.value.tasks.flatMap((t) => t.requiredCapabilities)),
 });
 ok('passes the ordinary plan validator', validated.ok,
@@ -66,6 +68,46 @@ ok('materializes into tasks the scheduler runs', materialized.length === tasks.l
 ok('the executor survives materialization',
   materialized.find((t) => t.key === 'design').executor === 'human'
   && materialized.find((t) => t.key === 'build').executor === 'agent');
+
+console.log('\n── waiting on the world outside');
+const ci = tasks.find((t) => t.key === 'ci');
+ok('a wait step is its own executor', ci.executor === 'wait');
+ok('it carries the command verbatim', ci.waitPolicy.command === 'gh pr checks --watch --fail-fast', ci.waitPolicy.command);
+ok('it has an interval and a deadline', ci.waitPolicy.everyMs === 30000 && ci.waitPolicy.timeoutMs === 1800000);
+ok('a wait is never retried', ci.retryPolicy.maxAttempts === 1);
+ok('a wait needs no role', ci.roleId === 'wait');
+ok('the merge waits for CI', tasks.find((t) => t.key === 'merge').dependsOn.includes('ci'));
+ok('the whole lifecycle is one graph',
+  ['read_issue', 'design', 'build', 'review', 'open_pr', 'ci', 'merge', 'deployed', 'smoke', 'docs']
+    .every((k) => tasks.some((t) => t.key === k)), `${tasks.length} steps`);
+
+// The waiter itself: no model, one command, an exit code.
+{
+  const { Waiter } = await import('../packages/application/dist/engine/waiter.js');
+  const { nullLogger: log } = await import('../packages/shared/dist/index.js');
+  let calls = 0;
+  const waiter = new Waiter({
+    exec: () => ({ run: async () => ({ exitCode: ++calls < 3 ? 1 : 0, stdout: 'all checks passed', stderr: '', timedOut: false, durationMs: 1, command: 'x' }) }),
+    clock: { now: () => new Date().toISOString(), epochMs: () => Date.now() },
+    log,
+  });
+  const outcome = await waiter.wait({ id: 't1' }, { command: 'x', everyMs: 5, timeoutMs: 5000 }, null, new AbortController().signal);
+  ok('a wait polls until the command succeeds', outcome.kind === 'passed' && outcome.polls === 3,
+    `${outcome.kind} after ${outcome.polls} polls`);
+  ok('it reports what the command said', outcome.detail === 'all checks passed', outcome.detail);
+
+  const never = new Waiter({
+    exec: () => ({ run: async () => ({ exitCode: 1, stdout: '', stderr: '', timedOut: false, durationMs: 1, command: 'x' }) }),
+    clock: { now: () => new Date().toISOString(), epochMs: () => Date.now() }, log,
+  });
+  const timedOut = await never.wait({ id: 't2' }, { command: 'x', everyMs: 5, timeoutMs: 60 }, null, new AbortController().signal);
+  ok('it gives up at the deadline rather than forever', timedOut.kind === 'timedOut', timedOut.detail);
+
+  const controller = new AbortController();
+  const cancelling = never.wait({ id: 't3' }, { command: 'x', everyMs: 50, timeoutMs: 60_000 }, null, controller.signal);
+  setTimeout(() => controller.abort(), 30);
+  ok('stopping the mission stops the wait', (await cancelling).kind === 'cancelled');
+}
 
 console.log('\n── authoring mistakes are caught, not guessed at');
 const missingInput = compileWorkflow(wf.definition, {});
@@ -90,6 +132,18 @@ const unknownTemplate = compileWorkflow(parseWorkflowDefinition({
 }).value, {});
 ok('an undeclared {{ placeholder }} is refused', !unknownTemplate.ok,
   unknownTemplate.ok ? 'accepted' : unknownTemplate.error[0].message);
+
+const waitNoCommand = compileWorkflow(parseWorkflowDefinition({
+  name: 'x', steps: [{ key: 'a', objective: 'o', executor: 'wait' }],
+}).value, {});
+ok('a wait step with nothing to wait for is refused', !waitNoCommand.ok,
+  waitNoCommand.ok ? 'accepted' : waitNoCommand.error[0].message);
+
+const strayWaitFor = compileWorkflow(parseWorkflowDefinition({
+  name: 'x', steps: [{ key: 'a', objective: 'o', role: 'product', waitFor: 'true' }],
+}).value, {});
+ok('waitFor on a non-wait step is refused', !strayWaitFor.ok,
+  strayWaitFor.ok ? 'accepted' : strayWaitFor.error[0].message);
 
 rmSync(repo, { recursive: true, force: true });
 console.log('\n' + '─'.repeat(60));

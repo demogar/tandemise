@@ -156,3 +156,22 @@ export interface RuntimeDiscoveryView extends RuntimeDiscovery {
   /** True when a profile already exists for this adapter. */
   readonly configured: boolean;
 }
+
+/**
+ * A workflow this project can run.
+ *
+ * Covers both kinds without distinguishing them in the type: `path` is set for
+ * one the team wrote and null for a built-in, which is the only difference that
+ * matters to a caller - and the only one worth showing a user, who wants to
+ * know whether the thing they are about to run is theirs.
+ */
+export interface WorkflowSummary {
+  readonly id: string;
+  readonly name: string;
+  readonly description: string | null;
+  readonly path: string | null;
+  readonly inputs: readonly { name: string; description: string | null; required: boolean }[];
+  readonly steps: readonly { key: string; title: string; executor: 'agent' | 'human' | 'wait' }[];
+  /** Non-empty when the file exists but cannot be used. */
+  readonly issues: readonly { path: string; message: string }[];
+}

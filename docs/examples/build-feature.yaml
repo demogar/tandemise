@@ -97,3 +97,56 @@ steps:
     capabilities: [github.pr.create, repository.read, artifact.write]
     inputs: [ChangeSet, ReviewReport]
     outputs: [ReleaseCandidate]
+
+  # Nothing here holds a model. A wait step runs one command on an interval and
+  # looks at the exit code, so a twenty-minute CI run costs one command every
+  # thirty seconds instead of twenty minutes of conversation. It holds no worker
+  # slot either, so other tasks keep moving while this one watches.
+  - key: ci
+    title: Wait for CI
+    executor: wait
+    dependsOn: [open_pr]
+    objective: Wait for the checks on the pull request for issue #{{ issue }} to pass.
+    waitFor: gh pr checks --watch --fail-fast
+    everyMs: 30000
+    timeoutMs: 1800000
+
+  - key: merge
+    title: Merge
+    role: release
+    dependsOn: [ci]
+    approval: before
+    objective: |
+      Merge the pull request for issue #{{ issue }}. Squash, keeping the
+      Conventional Commit title.
+    capabilities: [github.pr.create, repository.read]
+
+  - key: deployed
+    title: Wait for the deploy
+    executor: wait
+    dependsOn: [merge]
+    objective: Wait for the deployment triggered by the merge to finish.
+    waitFor: gh run list --workflow=deploy.yml --limit 1 --json conclusion --jq '.[0].conclusion == "success"' | grep -q true
+    everyMs: 30000
+    timeoutMs: 1800000
+
+  - key: smoke
+    title: Check it in production
+    role: qa
+    dependsOn: [deployed]
+    objective: |
+      Verify issue #{{ issue }} behaves correctly against the deployed
+      environment. Report what you checked and what you saw.
+    capabilities: [web.read, shell.exec, artifact.write]
+    outputs: [QAReport]
+
+  - key: docs
+    title: Release notes
+    role: release
+    dependsOn: [smoke]
+    objective: |
+      Write the user-facing note for issue #{{ issue }}: what changed, for whom,
+      and anything they have to do.
+    capabilities: [repository.read, artifact.write]
+    inputs: [QAReport]
+    outputs: [ReleaseCandidate]

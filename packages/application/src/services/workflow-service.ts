@@ -1,6 +1,7 @@
 import type { RepoRepositoryPort } from '@tandemise/domain';
 import type { WorkspaceId } from '@tandemise/shared';
-import type { WorkflowService, WorkflowSummary } from '../services.js';
+import type { WorkflowSummary } from '@tandemise/api-contract';
+import type { WorkflowService } from '../services.js';
 import type { WorkflowSourcePort } from '../ports.js';
 import { WORKFLOW_PRESETS } from '../planning/presets.js';
 

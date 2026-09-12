@@ -81,3 +81,12 @@ a task in the wrong repository has to be re-planned rather than corrected in
 place - there is no way to move a single task to another repository from the
 mission view. Worth adding once it is clear whether people correct plans or
 simply re-plan.
+
+## A wait step polls; it is not woken
+
+A `wait` step runs a command on an interval until it exits 0. That covers CI, a
+deploy and a post-deploy check without holding a model, but it is still polling:
+a webhook arriving the instant a build finishes would be both faster and
+cheaper. Inbound webhooks need a listener the daemon does not have, and a
+tunnel or a hosted endpoint to reach it — worth doing when a workflow is waiting
+on something that pushes rather than something that can be asked.

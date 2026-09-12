@@ -29,6 +29,7 @@ export const keys = {
   runtimes: (ws?: string) => ['runtimes', ws ?? 'all'] as const,
   roles: (ws?: string) => ['roles', ws ?? 'all'] as const,
   integrations: (ws?: string) => ['integrations', ws ?? 'all'] as const,
+  workflows: (ws?: string) => ['workflows', ws ?? 'all'] as const,
   settings: ['settings'] as const,
 };
 
@@ -40,7 +41,7 @@ const TOPIC_KEYS: Readonly<Record<ProjectionTopic, readonly (readonly string[])[
   runtimes: [['runtimes'], ['home']],
   integrations: [['integrations']],
   targets: [['mission']],
-  workspaces: [['workspaces'], ['home'], ['settings']],
+  workspaces: [['workspaces'], ['home'], ['settings'], ['workflows']],
   decisions: [['mission']],
   checks: [['mission'], ['home']],
 };
@@ -137,6 +138,25 @@ export function useIntegrations() {
   const daemon = useDaemon();
   const workspaceId = useWorkspaceId();
   return useQuery({ queryKey: keys.integrations(workspaceId), queryFn: () => daemon.integrations(workspaceId) });
+}
+
+/**
+ * What this project can run.
+ *
+ * Its own workflow files come first; the built-in presets fill in behind them.
+ * Refetched on a short stale time because a workflow is a file the user edits
+ * in another window - waiting for a restart to see a change they just saved is
+ * exactly the friction that makes an authoring format feel dead.
+ */
+export function useWorkflows() {
+  const daemon = useDaemon();
+  const workspaceId = useWorkspaceId();
+  return useQuery({
+    queryKey: keys.workflows(workspaceId),
+    queryFn: () => daemon.workflows(workspaceId as string),
+    enabled: workspaceId !== undefined,
+    staleTime: 5_000,
+  });
 }
 
 export function useSettings() {

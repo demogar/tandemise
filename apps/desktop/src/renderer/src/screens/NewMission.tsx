@@ -4,22 +4,15 @@ import type { AutonomyLevel } from '@tandemise/domain';
 import { PageHeader } from '../components/PageHeader.js';
 import { Icon } from '../components/Icon.js';
 import { ErrorState, Field, Segmented } from '../components/primitives.js';
-import { useDaemonMutation } from '../lib/queries.js';
+import { useDaemonMutation, useWorkflows } from '../lib/queries.js';
 import { useWorkspace } from '../lib/workspace.js';
 import { useHotkey } from '../lib/keyboard.js';
-import { shortenPath } from '../lib/format.js';
+import { shortenPath, titleCase } from '../lib/format.js';
 
 const AUTONOMY: readonly { value: AutonomyLevel; label: string; hint: string }[] = [
   { value: 'supervised', label: 'Supervised', hint: 'Approve the plan and every action that leaves this machine.' },
   { value: 'balanced', label: 'Balanced', hint: 'Local work runs freely; external writes and releases still ask.' },
   { value: 'autonomous', label: 'Autonomous', hint: 'Only releases and financial actions stop for a human.' },
-];
-
-const PRESETS: readonly { value: string; label: string; hint: string }[] = [
-  { value: 'feature-delivery', label: 'Feature delivery', hint: 'Spec → design → build → review → QA → release candidate.' },
-  { value: 'bugfix', label: 'Bug fix', hint: 'Reproduce, fix, prove with a regression test, review.' },
-  { value: 'refactor', label: 'Refactor', hint: 'Plan the change, execute in slices, keep every check green.' },
-  { value: 'research', label: 'Research', hint: 'Investigate and produce a decision record. No code changes.' },
 ];
 
 /**
@@ -32,10 +25,17 @@ const PRESETS: readonly { value: string; label: string; hint: string }[] = [
 export function NewMission(): JSX.Element {
   const [, navigate] = useLocation();
   const workspace = useWorkspace().current;
+  const workflows = useWorkflows();
 
   const [goal, setGoal] = useState('');
   const [repositoryId, setRepositoryId] = useState<string>('');
   const [preset, setPreset] = useState('feature-delivery');
+  const [workflowInputs, setWorkflowInputs] = useState<Record<string, string>>({});
+
+  const chosen = (workflows.data ?? []).find((w) => w.id === preset) ?? null;
+  const missingInput = (chosen?.inputs ?? []).find(
+    (input) => input.required && (workflowInputs[input.name] ?? '').trim() === '',
+  );
   const [autonomy, setAutonomy] = useState<AutonomyLevel>('balanced');
   const [constraints, setConstraints] = useState('');
   const [criteria, setCriteria] = useState('');
@@ -59,7 +59,9 @@ export function NewMission(): JSX.Element {
     ['missions'],
   );
 
-  const ready = goal.trim().length >= 3 && Boolean(workspace);
+  // A workflow that declares a required input cannot start without it, and
+  // the button says so rather than failing after the click.
+  const ready = goal.trim().length >= 3 && Boolean(workspace) && missingInput === undefined;
 
   const submit = (): void => {
     if (!ready || !workspace || create.isPending) return;
@@ -73,6 +75,7 @@ export function NewMission(): JSX.Element {
         successCriteria: splitLines(criteria),
         autonomy,
         workflowPreset: preset,
+        workflowInputs,
         baseBranch: baseBranch.trim() || null,
         planNow: true,
       },
@@ -131,16 +134,67 @@ export function NewMission(): JSX.Element {
                 </select>
               </Field>
 
-              <Field label="Workflow" hint={PRESETS.find((option) => option.value === preset)?.hint}>
+              <Field
+                label="Workflow"
+                hint={chosen?.description ?? (workflows.isPending ? 'Loading…' : 'How this mission will be broken into tasks.')}
+              >
                 <select className="select" value={preset} onChange={(event) => setPreset(event.target.value)}>
-                  {PRESETS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
+                  {(workflows.data ?? []).map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.name}
+                      {option.path === null ? '' : '  ·  yours'}
                     </option>
                   ))}
                 </select>
               </Field>
             </div>
+
+            {chosen !== null && chosen.issues.length > 0 ? (
+              <div className="banner banner--warn">
+                <Icon name="alert" size={14} />
+                <span>
+                  This workflow cannot run yet — {chosen.issues[0]?.path}: {chosen.issues[0]?.message}
+                  {chosen.path ? ` (${chosen.path})` : ''}
+                </span>
+              </div>
+            ) : null}
+
+            {/* A workflow the team wrote can declare what it needs — an issue
+                number, a ticket id. Collected here rather than parsed out of the
+                sentence, so the workflow author decides what it takes. */}
+            {(chosen?.inputs ?? []).map((input) => (
+              <Field
+                key={input.name}
+                label={titleCase(input.name)}
+                hint={input.description ?? (input.required ? 'Required by this workflow.' : 'Optional.')}
+              >
+                <input
+                  className="input"
+                  value={workflowInputs[input.name] ?? ''}
+                  onChange={(event) =>
+                    setWorkflowInputs((current) => ({ ...current, [input.name]: event.target.value }))
+                  }
+                  placeholder={input.name === 'issue' ? '42' : ''}
+                />
+              </Field>
+            ))}
+
+            {/* What this will actually do, before it does it. A step someone has
+                to carry out themselves is called out, because that is the part a
+                person needs to know is coming. */}
+            {chosen !== null && chosen.steps.length > 0 ? (
+              <Field label="Steps">
+                <div className="row row--wrap" style={{ gap: 4 }}>
+                  {chosen.steps.map((step) => (
+                    <span key={step.key} className={step.executor === 'human' ? 'chip chip--you' : 'chip chip--muted'}>
+                      {step.executor === 'human' ? <Icon name="workforce" size={10} /> : null}
+                      {step.executor === 'wait' ? <Icon name="clock" size={10} /> : null}
+                      {step.title}
+                    </span>
+                  ))}
+                </div>
+              </Field>
+            ) : null}
 
             <Field label="Autonomy" hint={AUTONOMY.find((option) => option.value === autonomy)?.hint}>
               <Segmented

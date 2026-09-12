@@ -12,6 +12,7 @@ import type {
   IntegrationView, MissionDetail, MissionSummary, RepositoryProbe, RuntimeDiscoveryView,
   RuntimeView, SystemInfo, TaskView, UpdateWorkspaceRequest, UpsertRoleRequest, WorkspaceView,
   CompleteTaskRequest,
+  WorkflowSummary,
 } from '@tandemise/api-contract';
 
 /**
@@ -49,17 +50,6 @@ export interface WorkflowService {
   list(workspaceId: WorkspaceId): Promise<readonly WorkflowSummary[]>;
 }
 
-export interface WorkflowSummary {
-  readonly id: string;
-  readonly name: string;
-  readonly description: string | null;
-  /** Absolute path when it came from a file; null for a built-in preset. */
-  readonly path: string | null;
-  readonly inputs: readonly { name: string; description: string | null; required: boolean }[];
-  readonly steps: readonly { key: string; title: string; executor: 'agent' | 'human' }[];
-  /** Non-empty when the file exists but cannot be used. */
-  readonly issues: readonly { path: string; message: string }[];
-}
 
 export interface WorkspaceService {
   list(): readonly WorkspaceView[];

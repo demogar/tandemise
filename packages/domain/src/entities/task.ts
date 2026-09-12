@@ -4,14 +4,15 @@ import type { ArtifactType } from './artifact.js';
 import type { GateExpression } from '../gate.js';
 
 /** Who carries a task out (MVP.md §11). */
-export const TASK_EXECUTORS = ['agent', 'human'] as const;
+export const TASK_EXECUTORS = ['agent', 'human', 'wait'] as const;
 export type TaskExecutor = (typeof TASK_EXECUTORS)[number];
 
 export const TASK_STATUSES = [
   'PENDING',       // dependencies not yet satisfied
   'READY',         // eligible to be scheduled
   'RUNNING',
-  'AWAITING_HUMAN', // a person has to do this one
+  'AWAITING_HUMAN',    // a person has to do this one
+  'AWAITING_EXTERNAL', // polling something outside this machine
   'AWAITING_APPROVAL',
   'BLOCKED',       // needs human intervention or an unmet gate
   'SUCCEEDED',
@@ -22,7 +23,7 @@ export const TASK_STATUSES = [
 export type TaskStatus = (typeof TASK_STATUSES)[number];
 
 export const ACTIVE_TASK_STATUSES: readonly TaskStatus[] =
-  ['READY', 'RUNNING', 'AWAITING_HUMAN', 'AWAITING_APPROVAL'];
+  ['READY', 'RUNNING', 'AWAITING_HUMAN', 'AWAITING_EXTERNAL', 'AWAITING_APPROVAL'];
 export const FINISHED_TASK_STATUSES: readonly TaskStatus[] = ['SUCCEEDED', 'FAILED', 'SKIPPED', 'CANCELLED'];
 
 export function isTaskFinished(s: TaskStatus): boolean {
@@ -30,6 +31,25 @@ export function isTaskFinished(s: TaskStatus): boolean {
 }
 
 /** Where a task's work must happen (MVP.md §11). */
+/**
+ * What a `wait` step watches.
+ *
+ * A shell command rather than a typed integration on purpose: the thing being
+ * waited for is different every time - `gh pr checks`, a curl against a health
+ * endpoint, a vendor CLI - and any list this repository shipped would be the
+ * wrong list for someone. Exit code 0 means the wait is over.
+ */
+export interface WaitPolicy {
+  /** Run in the task's repository. Exit 0 ends the wait. */
+  readonly command: string;
+  readonly everyMs: number;
+  /** Give up and fail the task after this long. */
+  readonly timeoutMs: number;
+}
+
+export const DEFAULT_WAIT_EVERY_MS = 30_000;
+export const DEFAULT_WAIT_TIMEOUT_MS = 1_800_000;
+
 export const ISOLATION_MODES = ['none', 'worktree', 'docker', 'browser'] as const;
 export type IsolationMode = (typeof ISOLATION_MODES)[number];
 
@@ -77,8 +97,10 @@ export interface MissionTask {
    * than separate missions that cannot wait on each other.
    */
   readonly repositoryId: RepositoryId | null;
-  /** `human` tasks are never dispatched to a runtime; a person completes them. */
+  /** `human` and `wait` tasks are never dispatched to a runtime. */
   readonly executor: TaskExecutor;
+  /** Set only for a `wait` task: what it polls, and for how long. */
+  readonly waitPolicy: WaitPolicy | null;
   /** Stable, plan-author-supplied key (`implement_onboarding`). Unique per mission. */
   readonly key: string;
   readonly title: string;

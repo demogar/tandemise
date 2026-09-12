@@ -1,5 +1,6 @@
 import { Err, Ok, type Result } from '@tandemise/shared';
 import type { Capability } from './capability.js';
+import type { TaskExecutor, WaitPolicy } from './entities/task.js';
 import type { ArtifactType } from './entities/artifact.js';
 import { isArtifactType } from './entities/artifact.js';
 import type { ArtifactRequirement, ExecutionPolicy, ApprovalPolicy, RetryPolicy } from './entities/task.js';
@@ -43,7 +44,9 @@ export interface PlannedTask {
    * of the mission genuinely depends on, and pretending otherwise means either
    * a failed task or a plan that quietly omits a real step.
    */
-  readonly executor?: 'agent' | 'human';
+  readonly executor?: TaskExecutor;
+  /** Set only for a `wait` step. */
+  readonly waitPolicy?: WaitPolicy | null;
   readonly dependsOn: readonly string[];
   readonly requiredCapabilities: readonly Capability[];
   readonly inputArtifacts: readonly ArtifactRequirement[];
@@ -102,7 +105,12 @@ export function validateMissionPlan(
   }
 
   for (const task of plan.tasks) {
-    if (!ctx.knownRoleIds.has(task.roleId)) {
+    // Only a task that runs on a runtime needs a role template. A step a person
+    // carries out, or one that only watches something outside this machine, has
+    // no role to look up - demanding one would make every workflow containing a
+    // design checkpoint or a CI wait invalid.
+    const needsRole = (task.executor ?? 'agent') === 'agent';
+    if (needsRole && !ctx.knownRoleIds.has(task.roleId)) {
       error(task.key, `Unknown role '${task.roleId}'. Known roles: ${[...ctx.knownRoleIds].sort().join(', ')}.`);
     }
     const repository = task.repository?.trim();

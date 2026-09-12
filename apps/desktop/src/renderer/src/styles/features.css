@@ -791,3 +791,10 @@
   color: var(--accent);
   font-weight: 600;
 }
+
+/* A step you carry out yourself, in a list of steps an agent carries out. */
+.chip--you {
+  gap: 4px;
+  border-color: var(--accent-line);
+  color: var(--accent);
+}

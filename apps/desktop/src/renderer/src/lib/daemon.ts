@@ -10,6 +10,7 @@ import type {
   RuntimeView,
   SystemInfo,
   TaskView,
+  WorkflowSummary,
   WorkspaceView,
   CreateMissionRequest,
   DecideApprovalRequest,
@@ -260,6 +261,13 @@ export class DaemonClient {
 
   upsertRole(id: string, body: UpsertRoleRequest): Promise<RoleTemplate> {
     return this.#request('PUT', `/roles/${id}`, body);
+  }
+
+  // --------------------------------------------------------------- workflows
+
+  /** The project's own workflow files, then the built-in presets. */
+  workflows(workspaceId: string): Promise<readonly WorkflowSummary[]> {
+    return this.#get('/workflows', { workspaceId });
   }
 
   // ------------------------------------------------------------ integrations

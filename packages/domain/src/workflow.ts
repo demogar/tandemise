@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { ARTIFACT_TYPES } from './entities/artifact.js';
-import { ISOLATION_MODES } from './entities/task.js';
+import { DEFAULT_WAIT_EVERY_MS, DEFAULT_WAIT_TIMEOUT_MS, ISOLATION_MODES } from './entities/task.js';
 import { Err, Ok, type Result } from '@tandemise/shared';
 import type { MissionPlan, PlannedTask } from './plan.js';
 
@@ -46,7 +46,17 @@ const workflowStep = z.object({
    * work that needs it waits rather than failing, and the mission is honest
    * about what it is waiting for.
    */
-  executor: z.enum(['agent', 'human']).default('agent'),
+  executor: z.enum(['agent', 'human', 'wait']).default('agent'),
+  /**
+   * For `executor: wait` - the command that decides when the wait is over.
+   *
+   * A shell command rather than a list of supported services, because what is
+   * being waited for differs every time: `gh pr checks --watch`, a curl at a
+   * health endpoint, a vendor CLI. Exit 0 ends the wait.
+   */
+  waitFor: z.string().trim().min(1).optional(),
+  everyMs: z.number().int().min(1000).max(600_000).optional(),
+  timeoutMs: z.number().int().min(1000).optional(),
   /** Role template id. Ignored for a human step. */
   role: z.string().trim().min(1).optional(),
   dependsOn: z.array(z.string().trim().min(1)).default([]),
@@ -89,6 +99,8 @@ export interface WorkflowIssue {
 
 /** The role a human step is recorded under, so the UI can say who is waiting. */
 export const HUMAN_ROLE_ID = 'human';
+/** Likewise for a step that is only watching something outside this machine. */
+export const WAIT_ROLE_ID = 'wait';
 
 const DEFAULT_WALL_TIME_MS = 1_800_000;
 
@@ -139,6 +151,12 @@ export function compileWorkflow(
     }
     if (step.executor === 'agent' && step.role === undefined) {
       issues.push({ path: `steps.${index}.role`, message: `Step '${step.key}' runs on an agent, so it needs a role.` });
+    }
+    if (step.executor === 'wait' && step.waitFor === undefined) {
+      issues.push({ path: `steps.${index}.waitFor`, message: `Step '${step.key}' waits, so it needs a \`waitFor\` command.` });
+    }
+    if (step.executor !== 'wait' && step.waitFor !== undefined) {
+      issues.push({ path: `steps.${index}.waitFor`, message: `Step '${step.key}' sets \`waitFor\` but is not a wait step.` });
     }
   }
 
@@ -201,22 +219,32 @@ function toPlannedTask(
     issues.push({ path: `steps.${step.key}.objective`, message: `Uses {{ ${name} }}, which this workflow does not declare as an input.` });
   });
   const human = step.executor === 'human';
+  const waiting = step.executor === 'wait';
 
   return {
     key: step.key,
     title: step.title ?? step.key.replace(/_/g, ' '),
     objective,
-    roleId: human ? HUMAN_ROLE_ID : step.role ?? HUMAN_ROLE_ID,
+    roleId: human ? HUMAN_ROLE_ID : waiting ? WAIT_ROLE_ID : step.role ?? HUMAN_ROLE_ID,
     executor: step.executor,
+    waitPolicy: waiting
+      ? {
+          command: applyTemplate(step.waitFor as string, values, (name) => {
+            issues.push({ path: `steps.${step.key}.waitFor`, message: `Uses {{ ${name} }}, which this workflow does not declare as an input.` });
+          }),
+          everyMs: step.everyMs ?? DEFAULT_WAIT_EVERY_MS,
+          timeoutMs: step.timeoutMs ?? DEFAULT_WAIT_TIMEOUT_MS,
+        }
+      : null,
     repository: step.repository ?? null,
     dependsOn: step.dependsOn,
     requiredCapabilities: step.capabilities,
     inputArtifacts: step.inputs.map((type) => ({ type, required: true })),
     expectedOutputs: step.outputs,
     executionPolicy: {
-      // A person is not sandboxed. Asking for a worktree on their behalf would
-      // cut one nobody ever opens.
-      isolation: human ? 'none' : step.isolation ?? 'none',
+      // Neither a person nor a poll is sandboxed. Cutting a worktree on their
+      // behalf would leave one nobody ever opens.
+      isolation: human || waiting ? 'none' : step.isolation ?? 'none',
       maxWallTimeMs: step.maxWallTimeMs ?? DEFAULT_WALL_TIME_MS,
       capabilities: step.capabilities,
     },
@@ -227,7 +255,9 @@ function toPlannedTask(
       onCompletion: !human && step.approval === 'after',
     },
     retryPolicy: {
-      maxAttempts: human ? 1 : step.maxAttempts ?? 2,
+      // Retrying a wait means starting the clock again, which is what the
+      // timeout already decided against.
+      maxAttempts: human || waiting ? 1 : step.maxAttempts ?? 2,
       backoffMs: 5_000,
       onExhausted: 'block',
     },
