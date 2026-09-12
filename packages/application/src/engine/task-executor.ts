@@ -7,7 +7,7 @@ import type {
   RuntimeProfile, RuntimeProfileRepositoryPort, TargetKind, TaskRepositoryPort, TaskStatus,
   Workspace, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
-import { CORE_CAPABILITIES, anyCapabilityMatches } from '@tandemise/domain';
+import { ACCEPT_RESULT_OPTION, CORE_CAPABILITIES, anyCapabilityMatches } from '@tandemise/domain';
 import { isDaemonStopping } from '../support/shutdown.js';
 import { liveArtifacts, upstreamTaskIds } from '../support/lineage.js';
 import type { ContextCompiler, ExpectedArtifact } from '@tandemise/context';
@@ -1079,13 +1079,16 @@ export class TaskExecutor {
       risk: 'read',
       title: `${task.title} exhausted its retries`,
       rationale: `'${task.key}' failed its completion gate on every one of its ${task.retryPolicy.maxAttempts} attempts.`,
-      effect: 'Approving returns the task to the queue for one more attempt. Rejecting leaves the mission blocked.',
+      effect: 'Retrying returns the task to the queue for one more attempt. Accepting marks its result good enough and lets dependent work continue. Leaving it blocked stops here.',
       evidence: [
         { kind: 'text', label: 'Last measurement', value: summarize(detail, 1000) },
         { kind: 'text', label: 'Objective', value: summarize(task.objective, 600) },
       ],
       options: [
         { id: 'approve', label: 'Retry once more' },
+        // The work may be sound and the gate the thing that cannot be met;
+        // retrying cannot fix that, and leaving it blocked stops the mission.
+        { id: ACCEPT_RESULT_OPTION, label: 'Accept the result and continue' },
         { id: 'reject', label: 'Leave blocked' },
       ],
       recommendedOptionId: null,

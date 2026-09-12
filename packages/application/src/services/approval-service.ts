@@ -2,7 +2,7 @@ import type {
   Approval, ApprovalRepositoryPort, Mission, MissionRepositoryPort, MissionTask,
   RoleRepositoryPort, RunRepositoryPort, TaskRepositoryPort,
 } from '@tandemise/domain';
-import { canTransition, isAffirmative } from '@tandemise/domain';
+import { ACCEPT_RESULT_OPTION, canTransition, isAffirmative } from '@tandemise/domain';
 import type { ApprovalView, DecideApprovalRequest } from '@tandemise/api-contract';
 import type { ApprovalId, Clock, Logger } from '@tandemise/shared';
 import { TandemiseError, asId, summarize } from '@tandemise/shared';
@@ -181,6 +181,13 @@ export class ApprovalServiceImpl implements ApprovalService {
     };
 
     if (approval.kind === 'intervention') {
+      if (approval.selectedOptionId === ACCEPT_RESULT_OPTION) {
+        this.#setTaskStatus(task, scope, 'SUCCEEDED', 'A human accepted the result as it stands.');
+        if (mission.status === 'BLOCKED') {
+          this.#setMissionStatus(mission, scope, 'EXECUTING', `'${task.key}' was accepted by a human.`);
+        }
+        return;
+      }
       if (!approved) {
         this.#setTaskStatus(task, scope, 'BLOCKED', 'A human declined to retry this task.');
         this.#setMissionStatus(mission, scope, 'BLOCKED', `'${task.key}' was left blocked by a human.`);

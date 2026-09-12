@@ -68,6 +68,13 @@ export const REJECT_OPTION = 'reject';
  * dozen calls, and a card per call trains people to click without reading.
  */
 export const APPROVE_FOR_TASK_OPTION = 'approve_for_task';
+/**
+ * On a task that exhausted its retries: accept what it produced and let the
+ * mission continue. The answer when the work is sound and the gate is what
+ * cannot be met - a QA gate requiring 100% coverage of a criterion that is only
+ * checkable after a later task opens the pull request.
+ */
+export const ACCEPT_RESULT_OPTION = 'accept_result';
 
 /**
  * Whether deciding `optionId` means the request was granted.
@@ -84,7 +91,7 @@ export const APPROVE_FOR_TASK_OPTION = 'approve_for_task';
 export function isAffirmative(kind: ApprovalKind, optionId: string): boolean {
   return kind === 'choice'
     ? optionId !== REJECT_OPTION
-    : optionId === APPROVE_OPTION || optionId === APPROVE_FOR_TASK_OPTION;
+    : optionId === APPROVE_OPTION || optionId === APPROVE_FOR_TASK_OPTION || optionId === ACCEPT_RESULT_OPTION;
 }
 
 export const DEFAULT_APPROVAL_OPTIONS: readonly ApprovalOption[] = [
