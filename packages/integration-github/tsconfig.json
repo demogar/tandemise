@@ -12,13 +12,13 @@
       "path": "../../packages/shared"
     },
     {
+      "path": "../../packages/kernel"
+    },
+    {
       "path": "../../packages/domain"
     },
     {
       "path": "../../packages/integrations-core"
-    },
-    {
-      "path": "../../packages/execution-core"
     }
   ]
 }

@@ -8,7 +8,7 @@
  */
 
 export { openDatabase } from './database.js';
-export type { OpenDatabaseOptions, SqliteHandle, Stmt, TandemiseDatabase } from './database.js';
+export type { OpenDatabaseOptions, SqliteHandle, TandemiseDatabase } from './database.js';
 
 export { MIGRATIONS, SCHEMA_VERSION, migrate, schemaVersion } from './migrations/index.js';
 export type { Migration, MigrationResult } from './migrations/index.js';

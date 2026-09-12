@@ -49,7 +49,7 @@ function fromRow(r: EventRow): RunEventRecord {
 const COLUMNS = `id, workspace_id, mission_id, task_id, run_id, sequence, type,
   role_id, runtime_profile_id, body, created_at`;
 
-export interface AppendEventInput {
+interface AppendEventInput {
   id: EventId;
   workspaceId: WorkspaceId;
   missionId: MissionId;
@@ -110,11 +110,12 @@ export class SqliteEventRepository implements EventRepositoryPort {
    * Assigns the mission's next sequence number and writes the row in one
    * transaction.
    *
-   * Read-then-insert is only safe because both statements run inside the same
-   * transaction and SQLite serializes writers; the UNIQUE(mission_id, sequence)
-   * index is the backstop that turns any remaining race into a loud constraint
-   * violation rather than two events claiming the same position in the
-   * timeline.
+   * Read-then-insert is safe because the surrounding transaction is IMMEDIATE:
+   * the write lock is held before `MAX(sequence)` is read, so no other
+   * connection can commit an event between the read and the insert. The
+   * UNIQUE(mission_id, sequence) index is the backstop that would turn any
+   * remaining race into a loud constraint violation rather than two events
+   * claiming the same position in the timeline.
    */
   append(input: AppendEventInput): RunEventRecord {
     return this.#db.transaction(() => {

@@ -6,9 +6,6 @@ import { TandemiseError, nullLogger, type Logger } from '@tandemise/shared';
 /** The raw better-sqlite3 handle. Exposed so repositories can prepare statements. */
 export type SqliteHandle = Sqlite.Database;
 
-/** A prepared statement bound with named parameters. */
-export type Stmt<Params extends object, Row = unknown> = Sqlite.Statement<Params, Row>;
-
 /**
  * The database as the rest of the package sees it.
  *
@@ -35,8 +32,6 @@ export interface OpenDatabaseOptions {
   /** Filesystem path to the database file, or `:memory:` for an ephemeral one. */
   readonly path: string;
   readonly logger?: Logger;
-  /** Opens the file read-only. Used by diagnostics that must not mutate state. */
-  readonly readonly?: boolean;
 }
 
 /**
@@ -65,14 +60,14 @@ export function openDatabase(options: OpenDatabaseOptions): TandemiseDatabase {
 
   let handle: SqliteHandle;
   try {
-    handle = new Sqlite(options.path, { readonly: options.readonly ?? false });
+    handle = new Sqlite(options.path);
   } catch (cause) {
     throw new TandemiseError('INTERNAL', `Cannot open database at ${options.path}`, { cause });
   }
 
   // An in-memory database has no journal to write and cannot be shared, so WAL
   // is meaningless there; SQLite silently keeps `memory` mode either way.
-  if (!isMemory && !options.readonly) handle.pragma('journal_mode = WAL');
+  if (!isMemory) handle.pragma('journal_mode = WAL');
   handle.pragma('foreign_keys = ON');
   handle.pragma('busy_timeout = 5000');
   handle.pragma('synchronous = NORMAL');
