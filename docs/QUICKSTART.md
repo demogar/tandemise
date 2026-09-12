@@ -22,7 +22,8 @@ npm run desktop         # Electron, reads ~/.tandemise/daemon.json
 
 ## First mission
 
-1. **Settings → Workspace**: point it at a Git repository. There is a demo
+1. **Settings → Repositories**: the daemon creates a workspace on first start,
+   so all you do here is point it at a Git repository. There is a demo
    repository at `~/projects/tandemise-demo-app` (Taskly — a small task tracker
    with real tests, a typecheck, and a dev server) if you want something safe to
    aim at first.

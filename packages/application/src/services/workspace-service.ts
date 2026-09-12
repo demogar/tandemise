@@ -25,6 +25,8 @@ import type { WorkspaceService } from '../services.js';
  * "what changed?" unanswerable across an upgrade. The workspace still owns its
  * routing, which is the part that is genuinely per-installation.
  */
+const DEFAULT_WORKSPACE_NAME = 'My workspace';
+
 export class WorkspaceServiceImpl implements WorkspaceService {
   constructor(
     private readonly workspaces: WorkspaceRepositoryPort,
@@ -37,6 +39,35 @@ export class WorkspaceServiceImpl implements WorkspaceService {
 
   list(): readonly WorkspaceView[] {
     return this.workspaces.list().map((w) => this.#view(w));
+  }
+
+  /**
+   * Guarantees the daemon always has a workspace to work in.
+   *
+   * Every screen assumes one exists - Settings reads `workspaces[0]` to offer
+   * the "add a repository" action - so an empty database was a dead end: no
+   * workspace, and no way to make one. Seeding on first start is the honest fix
+   * because a workspace with no repository carries no decisions a user would
+   * want to make themselves; the interesting choice is which repository to
+   * point it at, and that stays theirs.
+   *
+   * Idempotent: a second call with any workspace present does nothing.
+   */
+  ensureDefault(): WorkspaceView | undefined {
+    const existing = this.workspaces.list();
+    if (existing.length > 0) return undefined;
+    this.#seedBuiltInRoles();
+    const workspace = this.workspaces.create({
+      id: ids.workspace(),
+      name: DEFAULT_WORKSPACE_NAME,
+      defaultRepositoryId: null,
+      autonomy: DEFAULT_AUTONOMY,
+      concurrency: DEFAULT_CONCURRENCY,
+      routing: this.#defaultRouting(),
+      defaultAutonomyLevel: 'balanced',
+      knowledge: EMPTY_KNOWLEDGE,
+    });
+    return this.view(workspace.id);
   }
 
   async create(request: CreateWorkspaceRequest): Promise<WorkspaceView> {
