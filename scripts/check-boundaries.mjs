@@ -63,6 +63,31 @@ for (const [name, spec] of Object.entries(PACKAGES)) {
   }
 }
 
+// The renderer is a sandboxed browser context (MVP.md §7.1). Every
+// `@tandemise/*` package's runtime entry reaches `@tandemise/shared`, which
+// imports `node:os` and `node:path`, so a single value import blanks the whole
+// app at load - and the type checker cannot see it, because the types are
+// fine. Types cost nothing and are allowed; runtime values the renderer needs
+// are mirrored in `lib/domain.ts`.
+{
+  const renderer = 'apps/desktop/src/renderer/src';
+  const TYPE_ONLY_RE = /^\s*(?:import|export)\s+type\s/;
+  const STATEMENT_RE = /^\s*(?:import|export)\s[^;]*?\sfrom\s+['"](@tandemise\/[^'"]+)['"]/gm;
+  let files = [];
+  try {
+    files = readdirSync(renderer, { recursive: true })
+      .map((e) => join(renderer, String(e)))
+      .filter((p) => (p.endsWith('.ts') || p.endsWith('.tsx')) && !p.endsWith('.d.ts'));
+  } catch { /* no renderer in this checkout */ }
+  for (const file of files) {
+    const src = readFileSync(file, 'utf8');
+    for (const match of src.matchAll(STATEMENT_RE)) {
+      if (TYPE_ONLY_RE.test(match[0])) continue;
+      errors.push(`${file}: renderer value-imports ${match[1]}, which pulls Node built-ins into the browser bundle; use \`import type\` or lib/domain.ts`);
+    }
+  }
+}
+
 if (errors.length) {
   console.error('Architecture boundary violations:\n' + errors.map((e) => '  ✗ ' + e).join('\n'));
   process.exit(1);

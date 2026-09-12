@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'wouter';
 import type { ApprovalView } from '@tandemise/api-contract';
 import type { Approval, ApprovalEvidence, ApprovalOption, RiskClass } from '@tandemise/domain';
-import { REJECT_OPTION } from '@tandemise/domain';
+import { REJECT_OPTION } from '../../lib/domain.js';
 import { Icon, type IconName } from '../../components/Icon.js';
 import { ConfirmDialog } from '../../components/Modal.js';
 import { ErrorState } from '../../components/primitives.js';

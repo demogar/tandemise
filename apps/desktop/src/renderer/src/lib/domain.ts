@@ -92,6 +92,9 @@ export function criteriaCoveragePercent(results: readonly CriterionResult[]): nu
   return Math.round((scored.filter((result) => result.outcome === 'PASS').length / scored.length) * 100);
 }
 
+/** Mirrors `REJECT_OPTION` in `@tandemise/domain`: the option that declines an approval or a question. */
+export const REJECT_OPTION = 'reject';
+
 /** MVP.md §7.2. Mirrors `@tandemise/api-contract`, for the same reason as above. */
 export const API_VERSION = 'v1';
 export const API_VERSION_HEADER = 'x-tandemise-api-version';
