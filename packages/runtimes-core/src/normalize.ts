@@ -31,11 +31,6 @@ function invalid(detail: string, event: unknown): Result<never, TandemiseError> 
   }));
 }
 
-/** Copies `key` from `source` onto `target` only when it carries a real number. */
-function copyNumber(target: Record<string, unknown>, source: Record<string, unknown>, key: string): void {
-  const value = num(source[key]);
-  if (value !== undefined) target[key] = value;
-}
 
 /**
  * Validates an adapter-produced value against the canonical `AgentEvent` union
@@ -102,34 +97,31 @@ export function normalizeAgentEvent(input: unknown): Result<AgentEvent, Tandemis
       return Ok({ type, approvalId: asId(id) });
     }
 
-    case 'usage': {
-      const usage: Record<string, unknown> = { type };
-      for (const key of ['inputTokens', 'outputTokens', 'cacheReadTokens', 'cacheWriteTokens']) {
-        copyNumber(usage, e, key);
-      }
-      // Subscription runtimes report no trustworthy cost; null says "unknown",
-      // which is different from "free" (MVP.md §22.2).
-      const cost = e['costUsd'];
-      if (cost === null || num(cost) !== undefined) usage['costUsd'] = cost === null ? null : num(cost);
-      return Ok(usage as unknown as AgentEvent);
-    }
+    case 'usage':
+      return Ok({
+        type,
+        inputTokens: num(e['inputTokens']),
+        outputTokens: num(e['outputTokens']),
+        cacheReadTokens: num(e['cacheReadTokens']),
+        cacheWriteTokens: num(e['cacheWriteTokens']),
+        // A subscription runtime reports no trustworthy cost. `null` says
+        // "unknown", which is not the same claim as "free" (MVP.md §22.2).
+        costUsd: e['costUsd'] === null ? null : num(e['costUsd']),
+      });
 
-    case 'checkpoint': {
-      const checkpoint: Record<string, unknown> = { type };
-      const session = str(e['externalSessionId']);
-      const label = str(e['label']);
-      if (session !== null) checkpoint['externalSessionId'] = session;
-      if (label !== null) checkpoint['label'] = label;
-      return Ok(checkpoint as unknown as AgentEvent);
-    }
+    case 'checkpoint':
+      return Ok({
+        type,
+        externalSessionId: str(e['externalSessionId']) ?? undefined,
+        label: str(e['label']) ?? undefined,
+      });
 
-    case 'completed': {
-      const completed: Record<string, unknown> = { type };
-      const resultRef = str(e['resultRef']);
-      if (resultRef !== null) completed['resultRef'] = resultRef;
-      if (e['summary'] !== undefined) completed['summary'] = summarize(e['summary'], MAX_SUMMARY_CHARS);
-      return Ok(completed as unknown as AgentEvent);
-    }
+    case 'completed':
+      return Ok({
+        type,
+        resultRef: str(e['resultRef']) ?? undefined,
+        summary: e['summary'] === undefined ? undefined : summarize(e['summary'], MAX_SUMMARY_CHARS),
+      });
 
     case 'failed': {
       const code = str(e['code']);
