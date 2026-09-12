@@ -6,6 +6,7 @@ import { migration002 } from './002_task_repository.js';
 import { migration003 } from './003_task_executor.js';
 import { migration004 } from './004_workflow_inputs.js';
 import { migration005 } from './005_task_wait.js';
+import { migration006 } from './006_task_park_statuses.js';
 
 export type { Migration } from './types.js';
 
@@ -13,7 +14,9 @@ export type { Migration } from './types.js';
  * Every migration, in order. Appending is the only legal edit: an already
  * released migration is immutable, because some installation has run it.
  */
-export const MIGRATIONS: readonly Migration[] = [migration001, migration002, migration003, migration004, migration005];
+export const MIGRATIONS: readonly Migration[] = [
+  migration001, migration002, migration003, migration004, migration005, migration006,
+];
 
 /** The newest schema version this binary understands. */
 export const SCHEMA_VERSION: number = MIGRATIONS.reduce((max, m) => Math.max(max, m.version), 0);
@@ -85,7 +88,10 @@ export function migrate(
 
   for (const migration of pending) {
     db.transaction(() => {
-      db.handle.exec(migration.up);
+      // A migration expressed entirely as logic leaves `up` empty; `exec('')`
+      // is an error rather than a no-op.
+      if (migration.up.trim().length > 0) db.handle.exec(migration.up);
+      migration.transform?.(db.handle);
       record.run({
         version: migration.version,
         name: migration.name,

@@ -11,6 +11,7 @@ export const TASK_STATUSES = [
   'PENDING',       // dependencies not yet satisfied
   'READY',         // eligible to be scheduled
   'RUNNING',
+  'AWAITING_INPUT',    // running, but blocked on a question it asked a human
   'AWAITING_HUMAN',    // a person has to do this one
   'AWAITING_EXTERNAL', // polling something outside this machine
   'AWAITING_APPROVAL',
@@ -23,7 +24,23 @@ export const TASK_STATUSES = [
 export type TaskStatus = (typeof TASK_STATUSES)[number];
 
 export const ACTIVE_TASK_STATUSES: readonly TaskStatus[] =
-  ['READY', 'RUNNING', 'AWAITING_HUMAN', 'AWAITING_EXTERNAL', 'AWAITING_APPROVAL'];
+  ['READY', 'RUNNING', 'AWAITING_INPUT', 'AWAITING_HUMAN', 'AWAITING_EXTERNAL', 'AWAITING_APPROVAL'];
+
+/**
+ * Statuses where the task is parked on something that is not this machine's to
+ * hurry: a person, or the outside world.
+ *
+ * The scheduler excludes these from the concurrency ceiling. A worker blocked
+ * on a question consumes no CPU, and counting it would let one unanswered
+ * question stall every other task in the mission - which is the opposite of
+ * what asking is for.
+ */
+export const PARKED_TASK_STATUSES: readonly TaskStatus[] =
+  ['AWAITING_INPUT', 'AWAITING_HUMAN', 'AWAITING_EXTERNAL', 'AWAITING_APPROVAL'];
+
+export function isTaskParked(s: TaskStatus): boolean {
+  return PARKED_TASK_STATUSES.includes(s);
+}
 export const FINISHED_TASK_STATUSES: readonly TaskStatus[] = ['SUCCEEDED', 'FAILED', 'SKIPPED', 'CANCELLED'];
 
 export function isTaskFinished(s: TaskStatus): boolean {
