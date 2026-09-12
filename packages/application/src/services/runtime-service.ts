@@ -69,10 +69,14 @@ export class RuntimeServiceImpl implements RuntimeService {
       executablePath: request.executablePath ?? null,
       args: request.args ?? [],
       settings: request.settings ?? {},
-      // Recorded from the adapter rather than left empty: routing reads this
-      // when the profile is a candidate, and an empty list would make a fully
-      // capable runtime look like it can do nothing.
-      capabilities: adapter.baseCapabilities,
+      // The adapter's report is a guess about a tool it did not write, so the
+      // user is allowed to correct it - they may know this install has
+      // `computer_use`, or that their generic CLI can drive a browser. Without
+      // an override the capability router could never be told otherwise, and a
+      // role requiring something the adapter under-reports would be permanently
+      // unroutable. Defaulting to the adapter (rather than to empty) keeps a
+      // fully capable runtime from looking inert.
+      capabilities: request.capabilities ?? adapter.baseCapabilities,
       enabled: request.enabled ?? true,
       maxConcurrent: request.maxConcurrent ?? 1,
       createdAt: now,
@@ -88,6 +92,7 @@ export class RuntimeServiceImpl implements RuntimeService {
     const updated = this.profiles.update(id, {
       ...(patch.name !== undefined ? { name: patch.name } : {}),
       ...(patch.executablePath !== undefined ? { executablePath: patch.executablePath } : {}),
+      ...(patch.capabilities !== undefined ? { capabilities: patch.capabilities } : {}),
       ...(patch.args !== undefined ? { args: patch.args } : {}),
       ...(patch.settings !== undefined ? { settings: patch.settings } : {}),
       ...(patch.maxConcurrent !== undefined ? { maxConcurrent: patch.maxConcurrent } : {}),

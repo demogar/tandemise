@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ARTIFACT_TYPES, AUTONOMY_LEVELS, MISSION_STATUSES } from '@tandemise/domain';
+import { ARTIFACT_TYPES, AUTONOMY_LEVELS, MISSION_STATUSES, RUNTIME_CAPABILITIES } from '@tandemise/domain';
 
 /**
  * Request schemas.
@@ -94,6 +94,17 @@ export const createRuntimeProfileRequest = z.object({
   settings: z.record(z.string(), z.unknown()).optional(),
   maxConcurrent: z.number().int().min(1).max(8).optional(),
   enabled: z.boolean().optional(),
+  /**
+   * Overrides what the adapter reports it can do.
+   *
+   * An adapter's `discover()` is a guess about a tool it did not write, and the
+   * user frequently knows better - that this Claude Code install has
+   * `computer_use`, or that a generic CLI can drive a browser. Without this the
+   * capability router has no way to be corrected: a role requiring `browser`
+   * would be permanently unroutable even though the runtime can do it.
+   * Omitted means "trust the adapter".
+   */
+  capabilities: z.array(z.enum(RUNTIME_CAPABILITIES)).optional(),
 });
 export type CreateRuntimeProfileRequest = z.infer<typeof createRuntimeProfileRequest>;
 
