@@ -28,6 +28,7 @@ import {
   BACKGROUND_PROCESS_LAUNCHER, COMMAND_EXECUTOR as TOOL_COMMAND_EXECUTOR,
 } from '@tandemise/integrations-core';
 import { githubIntegrationModule } from '@tandemise/integration-github';
+import { mcpIntegrationModule } from '@tandemise/integration-mcp';
 import { browserIntegrationModule } from '@tandemise/browser';
 import { applicationModule, createServices, SCHEDULER, type TandemiseServices,
   WORKFLOW_SOURCE,
@@ -92,6 +93,7 @@ export function bootstrap(config: DaemonConfig): Bootstrapped {
     executionLocalModule,
     integrationsCoreModule,
     githubIntegrationModule,
+    mcpIntegrationModule,
     browserIntegrationModule,
     applicationModule,
   );

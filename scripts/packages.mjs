@@ -19,6 +19,7 @@ export const LAYERS = {
   'runtime-generic': 4,
   'execution-local': 4,
   'integration-github': 4,
+  'integration-mcp': 4,
   browser: 4,
   'desktop-control': 4,
   application: 5,
@@ -27,7 +28,7 @@ export const LAYERS = {
 /** Packages that may reference a concrete third-party provider/SDK. */
 export const PROVIDER_PACKAGES = new Set([
   'runtime-claude', 'runtime-codex', 'runtime-generic',
-  'execution-local', 'integration-github', 'browser', 'desktop-control',
+  'execution-local', 'integration-github', 'integration-mcp', 'browser', 'desktop-control',
   'persistence', 'artifacts',
 ]);
 
@@ -49,6 +50,7 @@ export const PACKAGES = {
   'runtime-generic': { deps: ['shared', 'domain', 'runtimes-core'], ext: {} },
   'execution-local': { deps: ['shared', 'domain', 'kernel', 'execution-core'], ext: {} },
   'integration-github': { deps: ['shared', 'kernel', 'domain', 'integrations-core', 'execution-core'], ext: {} },
+  'integration-mcp': { deps: ['shared', 'kernel', 'domain', 'integrations-core'], ext: { zod: '^3.24.1' } },
   browser: { deps: ['shared', 'kernel', 'domain', 'integrations-core'], ext: { playwright: '^1.49.1', zod: '^3.24.1' } },
   'desktop-control': { deps: ['shared', 'domain', 'kernel', 'integrations-core'], ext: {} },
   application: {

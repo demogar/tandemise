@@ -60,6 +60,9 @@
       "path": "../../packages/integration-github"
     },
     {
+      "path": "../../packages/integration-mcp"
+    },
+    {
       "path": "../../packages/browser"
     },
     {

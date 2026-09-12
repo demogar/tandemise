@@ -90,3 +90,26 @@ a webhook arriving the instant a build finishes would be both faster and
 cheaper. Inbound webhooks need a listener the daemon does not have, and a
 tunnel or a hosted endpoint to reach it — worth doing when a workflow is waiting
 on something that pushes rather than something that can be asked.
+
+## Integrations authenticate by hand, not by OAuth
+
+An integration is configured with whatever the underlying transport already
+needs: `gh` is logged in already, and an MCP server takes its own environment.
+There is no authorize-in-a-browser flow, no token refresh, and no expiry
+handling — a credential that expires shows up as an integration going
+`unavailable` with the vendor's own error, which is honest but is not the
+one-click connect a non-engineer expects.
+
+OAuth needs three things Tandemise does not have: a loopback redirect listener
+in the daemon, refresh-token storage in the OS credential store with rotation,
+and a per-provider authorize/token endpoint description. The credential store
+and the health model are already the right shape for it; the flow is the work.
+
+## An MCP integration's `env` is config, not a secret
+
+The `mcp` transport passes `config.env` straight to the server process, and
+config lives in the database. That is correct for a project ref, a region or a
+`--read-only` flag, and wrong for an access token. Until `secretRef` is wired
+through to the spawned environment, prefer a server that reads its own
+credentials from the environment the daemon inherits, or one that is already
+authenticated the way `gh` is.
