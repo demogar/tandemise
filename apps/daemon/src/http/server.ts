@@ -5,6 +5,7 @@ import { TandemiseError, type Logger } from '@tandemise/shared';
 import { API_VERSION, API_VERSION_HEADER, AUTH_HEADER, STREAM_PATH } from '@tandemise/api-contract';
 import { HANDLED, Router, makeContext, sendError, sendJson } from './router.js';
 import { verifyBearer } from './identity.js';
+import { applyCors } from './cors.js';
 
 export interface HttpServerOptions {
   readonly token: string;
@@ -19,7 +20,7 @@ export interface HttpServerOptions {
 /**
  * The daemon's HTTP surface.
  *
- * Three security properties are enforced here and nowhere else, so they are
+ * Four security properties are enforced here and nowhere else, so they are
  * worth stating plainly (MVP.md §7.2):
  *
  *  1. **Loopback only.** The listener binds 127.0.0.1. There is no configuration
@@ -30,6 +31,11 @@ export interface HttpServerOptions {
  *     desktop can tell "daemon starting" from "daemon wedged".
  *  3. **API version is explicit.** A client sending a different version is
  *     refused rather than served a shape it may not understand.
+ *  4. **Only the desktop's own origins may read a response.** The renderer is a
+ *     browser context and therefore always cross-origin to this daemon, so it
+ *     needs an explicit CORS grant; that grant is limited to loopback and
+ *     opaque origins so a page on the open web cannot read this daemon even on
+ *     an unauthenticated route. See `cors.ts`.
  */
 export class HttpServer {
   readonly #server: Server;
@@ -112,6 +118,11 @@ export class HttpServer {
     const started = Date.now();
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
     const log = this.#opts.log.child({ method: req.method, path: url.pathname });
+
+    // Before anything can respond: the renderer is cross-origin in both dev and
+    // production, and an error the browser refuses to hand over is worse than
+    // no error at all.
+    applyCors(req, res);
 
     try {
       if (req.method === 'OPTIONS') {

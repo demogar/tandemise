@@ -9,3 +9,6 @@ build/
 release/
 coverage/
 .vite/
+
+# electron-vite writes a timestamped config next to the real one while building
+apps/desktop/electron.vite.config.*.mjs

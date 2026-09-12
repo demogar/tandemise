@@ -50,3 +50,14 @@ with zero overlapping holding windows, and four processes × 150 appends produce
 600 unique gapless sequences. Filesystem containment, the prompt-injection
 boundary, environment isolation, and the permission engine's default-deny
 posture each have their own regression suite. See `docs/ACCEPTANCE.md`.
+
+## The daemon's CORS grant is loopback-wide
+
+Any process that can serve a page on `http://localhost` can have that page read
+the daemon's unauthenticated `/v1/health` route, and attempt authenticated ones.
+The grant cannot be narrowed to the desktop's exact origin because the Vite dev
+server picks its own port, and the packaged renderer has no origin at all
+(`file://` sends `null`). Every route except health still requires the bearer
+token, which never leaves the connection file, so the exposure is liveness only.
+Narrowing this means having the daemon learn the renderer's origin at handshake
+time rather than inferring it - worth doing before any non-loopback transport.

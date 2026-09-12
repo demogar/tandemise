@@ -80,6 +80,46 @@ try {
   const system = await api('GET', '/v1/system');
   ok('system info', system.status === 200 && !!system.body?.daemonVersion, JSON.stringify(system.body?.daemonVersion ?? system.body));
 
+  // The renderer is a browser context, so every call it makes is cross-origin:
+  // `file://` sends `Origin: null` in production and the Vite dev server sends
+  // its own http origin. Without CORS headers the browser rejects the response
+  // before the renderer ever sees it, which surfaces as "failed to fetch".
+  section('cross-origin access (the desktop renderer)');
+  const ORIGINS = ['null', 'http://localhost:5173'];
+  for (const origin of ORIGINS) {
+    const pre = await fetch(`${base}/v1/system`, {
+      method: 'OPTIONS',
+      headers: {
+        origin,
+        'access-control-request-method': 'GET',
+        'access-control-request-headers': 'authorization,x-tandemise-api-version',
+      },
+    });
+    const allowOrigin = pre.headers.get('access-control-allow-origin');
+    const allowHeaders = (pre.headers.get('access-control-allow-headers') ?? '').toLowerCase();
+    ok(`preflight from ${origin} is allowed`, pre.status < 300 && allowOrigin === origin,
+      `status=${pre.status} allow-origin=${allowOrigin}`);
+    ok(`preflight from ${origin} permits our headers`,
+      allowHeaders.includes('authorization') && allowHeaders.includes('x-tandemise-api-version'),
+      allowHeaders);
+
+    const actual = await fetch(`${base}/v1/system`, {
+      headers: { origin, authorization: `Bearer ${token}`, 'x-tandemise-api-version': 'v1' },
+    });
+    ok(`response to ${origin} is readable by the browser`,
+      actual.status === 200 && actual.headers.get('access-control-allow-origin') === origin,
+      `status=${actual.status} allow-origin=${actual.headers.get('access-control-allow-origin')}`);
+    ok(`response to ${origin} varies on origin`,
+      (actual.headers.get('vary') ?? '').toLowerCase().includes('origin'),
+      actual.headers.get('vary') ?? '<none>');
+  }
+
+  // A real website must not be able to read the daemon, token or no token.
+  const evil = await fetch(`${base}/v1/health`, { headers: { origin: 'https://evil.example' } });
+  ok('an untrusted origin gets no CORS grant',
+    evil.headers.get('access-control-allow-origin') === null,
+    String(evil.headers.get('access-control-allow-origin')));
+
   section('websocket stream');
   const events = [];
   const invalidations = [];
