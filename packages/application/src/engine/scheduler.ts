@@ -1,3 +1,4 @@
+import { DaemonStopping } from '../support/shutdown.js';
 import type {
   ApprovalRepositoryPort, Mission, MissionRepositoryPort, MissionStatus, MissionTask,
   TaskRepositoryPort, WorkspaceRepositoryPort,
@@ -96,10 +97,11 @@ export class SchedulerService implements LifecycleComponent {
       clearInterval(this.#timer);
       this.#timer = undefined;
     }
-    for (const controller of this.#active.values()) controller.abort();
+    // Stopping, not cancelling: the runs are handed to the next daemon.
+    for (const controller of this.#active.values()) controller.abort(new DaemonStopping());
     // A wait can outlive every worker, so stopping has to cancel it too or
     // shutdown blocks until a CI run someone else is doing finishes.
-    for (const controller of this.#waiting.values()) controller.abort();
+    for (const controller of this.#waiting.values()) controller.abort(new DaemonStopping());
     await this.drain();
     this.deps.log.info('scheduler.stopped');
   }
@@ -214,8 +216,16 @@ export class SchedulerService implements LifecycleComponent {
     const ceiling = Math.max(1, workspace.concurrency.maxTotalWorkers);
     const now = this.deps.clock.epochMs();
 
-    const ready = this.deps.tasks
-      .listByMission(mission.id)
+    const tasks = this.deps.tasks.listByMission(mission.id);
+    // A wait lives in memory. One left AWAITING_EXTERNAL by a previous daemon
+    // has no poller, and nothing else would ever move it: adopt it again.
+    for (const task of tasks) {
+      if (task.status === 'AWAITING_EXTERNAL' && task.executor === 'wait' && !this.#waiting.has(task.id)) {
+        this.#startWait(mission, task);
+      }
+    }
+
+    const ready = tasks
       .filter((t) => t.status === 'READY')
       .filter((t) => !this.#active.has(t.id))
       .filter((t) => (this.#retryAfter.get(t.id) ?? 0) <= now)

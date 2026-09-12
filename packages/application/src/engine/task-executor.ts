@@ -8,6 +8,7 @@ import type {
   Workspace, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
 import { CORE_CAPABILITIES, anyCapabilityMatches } from '@tandemise/domain';
+import { isDaemonStopping } from '../support/shutdown.js';
 import type { ContextCompiler, ExpectedArtifact } from '@tandemise/context';
 import type { ExecutionTarget, ExecutionTargetManager } from '@tandemise/execution-core';
 import type { ApprovalFactory, GrantBuilder, PolicyEngine } from '@tandemise/policy';
@@ -285,6 +286,11 @@ export class TaskExecutor {
         runId, mcpConfigPath: toolSurface.mcpConfigPath, reservation,
       });
 
+      if (outcome.interrupted) {
+        // Back to the queue with its attempt count kept, exactly as recovery
+        // treats a run the last daemon left behind; the next start resumes it.
+        return this.#settle(running, scope, 'READY', 'Tandemise stopped mid-run; this task resumes when it starts again.');
+      }
       if (outcome.cancelled) {
         return this.#settle(running, scope, 'CANCELLED', 'Cancelled before the run finished.');
       }
@@ -470,7 +476,11 @@ export class TaskExecutor {
     }
 
     const finishedAt = deps.clock.now();
-    const status = cancelled ? 'CANCELLED' : failure === null ? 'SUCCEEDED' : 'FAILED';
+    const interrupted = isDaemonStopping(signal);
+    const session = deps.runs.get(runId)?.externalSessionId ?? null;
+    const status = interrupted
+      ? (session !== null && input.adapter.resume !== undefined ? 'RESUMABLE' : 'INTERRUPTED')
+      : cancelled ? 'CANCELLED' : failure === null ? 'SUCCEEDED' : 'FAILED';
     deps.runs.update(runId, {
       status,
       finishedAt,
@@ -486,7 +496,7 @@ export class TaskExecutor {
       durationMs: Date.parse(finishedAt) - Date.parse(startedAt),
     });
 
-    return { runId, status, failure, cancelled };
+    return { runId, status, failure, cancelled, interrupted };
   }
 
   // ------------------------------------------------------------------ decision
@@ -1162,6 +1172,8 @@ interface DriveOutcome {
   readonly status: Run['status'];
   readonly failure: RunFailure | null;
   readonly cancelled: boolean;
+  /** The daemon stopped under the run; the task goes back to the queue, not to CANCELLED. */
+  readonly interrupted: boolean;
 }
 
 interface JudgeInput {
