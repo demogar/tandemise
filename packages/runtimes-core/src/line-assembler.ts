@@ -10,6 +10,7 @@ import { TandemiseError } from '@tandemise/shared';
  * string with an explicit ceiling rather than a fixed allocation.
  */
 export class LineAssembler {
+  #overflow: string[] = [];
   #carry = '';
 
   constructor(private readonly maxLineChars = 32 * 1024 * 1024) {}
@@ -20,14 +21,32 @@ export class LineAssembler {
     const parts = combined.split('\n');
     // `split` always yields at least one element; the last is the partial line.
     this.#carry = parts.pop() ?? '';
+    const complete = parts.map(stripCarriageReturn).filter((l) => l.length > 0);
+
     if (this.#carry.length > this.maxLineChars) {
       const length = this.#carry.length;
       this.#carry = '';
+      // The complete lines in this chunk were already whole and valid; the
+      // runaway is only the trailing partial. Throwing without surrendering
+      // them lost real events - the adapter turns this into a run failure, and
+      // the last thing the worker said before going wrong is exactly what the
+      // timeline needs to show.
+      this.#overflow = complete;
       throw new TandemiseError('RUNTIME_FAILED', `Runtime emitted a single line over ${this.maxLineChars} chars`, {
-        details: { length },
+        details: { length, recoveredLines: complete.length },
       });
     }
-    return parts.map(stripCarriageReturn).filter((l) => l.length > 0);
+    return complete;
+  }
+
+  /**
+   * Lines that were complete in the chunk that overflowed. Read once by the
+   * adapter's error path so they still reach the timeline.
+   */
+  takeOverflowLines(): string[] {
+    const lines = this.#overflow;
+    this.#overflow = [];
+    return lines;
   }
 
   /** The trailing line a process may leave without a final newline. */

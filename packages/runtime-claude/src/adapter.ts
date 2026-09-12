@@ -141,7 +141,10 @@ export class ClaudeCodeAdapter implements AgentRuntimeAdapter {
 
     const sink = new NormalizingEventSink({ log, onInvalid: 'raw' });
     const mapper = new ClaudeEventMapper({
-      fileExists: existsSync,
+      // Probed against the run's working directory: a relative `file_path`
+      // resolved against the daemon's cwd would answer about the wrong file,
+      // flipping add/edit and emitting a path the UI cannot open.
+      fileExists: (path: string) => existsSync(isAbsolute(path) ? path : resolve(cwd, path)),
       onQuotaWarning: (detail) => this.#recordQuota(detail),
     });
 

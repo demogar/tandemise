@@ -8,7 +8,7 @@ import { summarize } from '@tandemise/shared';
  * recoverable from the tool input without parsing a shell command, and a
  * wrong `file.changed` is worse than a missing one.
  */
-const FILE_MUTATING_TOOLS: ReadonlySet<string> = new Set(['Write', 'Edit', 'NotebookEdit']);
+const FILE_MUTATING_TOOLS: ReadonlySet<string> = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit']);
 
 /** Result subtypes and messages worth another attempt (MVP.md §9.5). */
 const RETRYABLE_FAILURE = /rate.?limit|timeout|timed out|overload|unavailable|econnreset|enotfound|socket hang up|502|503|529/i;
