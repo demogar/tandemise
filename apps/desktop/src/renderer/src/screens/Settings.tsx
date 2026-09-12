@@ -46,7 +46,7 @@ export function Settings(): JSX.Element {
 
   return (
     <>
-      <PageHeader title="Settings" subtitle="Workspace defaults, paths, and what the daemon is doing." />
+      <PageHeader narrow title="Settings" subtitle="Workspace defaults, paths, and what the daemon is doing." />
 
       <div className="page">
         <div className="page__inner page__inner--narrow">

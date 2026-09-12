@@ -86,6 +86,7 @@ export function NewMission(): JSX.Element {
   return (
     <>
       <PageHeader
+        narrow
         title="New mission"
         crumbs={[{ label: 'Missions', href: '/missions' }, { label: 'New' }]}
         subtitle="Describe the outcome. Tandemise proposes the plan before anything runs."

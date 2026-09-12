@@ -172,7 +172,6 @@
 .topbar {
   display: flex;
   align-items: center;
-  gap: var(--s3);
   height: 74px;
   padding: 0 var(--s7);
   flex: none;
@@ -180,7 +179,21 @@
   border-bottom: 1px solid var(--border);
 }
 
-.topbar > * {
+.topbar__inner {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  width: 100%;
+}
+
+/* Keeps the title on the same measure as a `page__inner--narrow` body, so the
+ * heading sits over its content instead of floating off to the left of it. */
+.topbar--narrow .topbar__inner {
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.topbar__inner > * {
   -webkit-app-region: no-drag;
 }
 
