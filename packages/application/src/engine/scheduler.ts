@@ -437,6 +437,19 @@ export class SchedulerService implements LifecycleComponent {
       return;
     }
 
+    // A cancelled task is work that did not happen. Counting it as done marked a
+    // mission COMPLETE ("every task succeeded") while its release check had
+    // been stopped mid-run - and a COMPLETE mission can no longer be revived by
+    // retrying that task.
+    const cancelled = tasks.filter((t) => t.status === 'CANCELLED');
+    if (cancelled.length > 0) {
+      this.#setMissionStatus(
+        mission, 'BLOCKED',
+        `${cancelled.map((t) => t.key).join(', ')} ${cancelled.length === 1 ? 'was' : 'were'} cancelled before finishing. Retry or skip to finish the mission.`,
+      );
+      return;
+    }
+
     // Integration before completion: merging can insert a conflict-resolution
     // task, and a mission marked COMPLETE with unmerged work is a lie.
     if (!this.#integrated.has(mission.id)) {

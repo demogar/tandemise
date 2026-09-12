@@ -396,7 +396,7 @@ export class MissionServiceImpl implements MissionService {
 
   /** A blocked mission that just got a runnable task again goes back to work. */
   #reviveMission(mission: Mission, reason: string): void {
-    if (mission.status !== 'BLOCKED' && mission.status !== 'FAILED') return;
+    if (mission.status !== 'BLOCKED' && mission.status !== 'FAILED' && mission.status !== 'COMPLETE') return;
     this.#transition(mission, 'EXECUTING', reason);
   }
 
