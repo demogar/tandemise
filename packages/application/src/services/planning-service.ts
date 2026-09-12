@@ -4,7 +4,7 @@ import type {
   Repository, RoleRepositoryPort, RoleTemplate, RuntimeProfile, RuntimeProfileRepositoryPort,
   TaskRepositoryPort, Workspace, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
-import { CORE_CAPABILITIES, canTransition, compileWorkflow, validateMissionPlan } from '@tandemise/domain';
+import { ARTIFACT_OUT_DIR, CORE_CAPABILITIES, canTransition, compileWorkflow, validateMissionPlan } from '@tandemise/domain';
 import type { MissionDetail } from '@tandemise/api-contract';
 import type { WorkflowSourcePort } from '../ports.js';
 import type { ApprovalFactory } from '@tandemise/policy';
@@ -458,15 +458,40 @@ export class PlanningServiceImpl implements PlanningService {
     let failure: string | null = null;
     const startedAt = this.deps.clock.epochMs();
 
+    // The plan comes back in a file, not in the chat reply. Streamed messages
+    // are clipped for the timeline (16k characters), and a detailed plan for a
+    // real mission is longer than that: it arrived truncated, failed to parse
+    // twice, and the mission fell back to the generic preset.
+    const planDir = `${ARTIFACT_OUT_DIR}/planning-${scope.missionId ?? 'mission'}-${attempt}`;
+    const planFile = `${planDir}/plan.json`;
+    const fs = target.filesystem();
+    try {
+      if (await fs.exists(planDir)) await fs.remove(planDir, { recursive: true });
+      await fs.mkdir(planDir);
+      if (!(await fs.exists('.tandemise/.gitignore'))) {
+        await fs.write('.tandemise/.gitignore', '# Written by Tandemise. Agent working files never belong in the diff.\n*\n');
+      }
+    } catch (e) {
+      this.deps.log.warn('planning.plan_file_unavailable', { error: errorMessage(e) });
+    }
+    const filePrompt = `${prompt}
+
+# Where the plan goes
+
+Write the JSON object to the file \`${planFile}\` (relative to your working
+directory) with your file-writing tool, then reply with only the word DONE. A
+long plan sent as a chat reply can be cut off; the file cannot. If you have no
+way to write that file, reply with the JSON object instead.`;
+
     try {
       for await (const event of this.deps.runtimeManager.start({
         runId,
         profile,
-        prompt,
+        prompt: filePrompt,
         workingDirectory: target.workingDirectory,
-        // Planning reads; it never writes code. Handing it anything more would
-        // make "the planner edited my repository" a possible sentence.
-        grants: [CORE_CAPABILITIES.repositoryRead, CORE_CAPABILITIES.filesystemRead],
+        // Planning reads; it never writes code. Its only write is the plan file,
+        // and artifact.write alone scopes file edits to the out directory.
+        grants: [CORE_CAPABILITIES.repositoryRead, CORE_CAPABILITIES.filesystemRead, CORE_CAPABILITIES.artifactWrite],
         allowedRoots: [],
         mcpConfigPath: null,
         maxWallTimeMs: PLANNER_WALL_TIME_MS,
@@ -494,6 +519,16 @@ export class PlanningServiceImpl implements PlanningService {
     });
 
     if (failure !== null) return { ok: false, error: failure };
+    try {
+      if (await fs.exists(planFile)) {
+        const written = (await fs.read(planFile)).trim();
+        if (written.length > 0) return { ok: true, value: written };
+      }
+    } catch (e) {
+      this.deps.log.warn('planning.plan_file_unreadable', { error: errorMessage(e) });
+    } finally {
+      await fs.remove(planDir, { recursive: true }).catch(() => undefined);
+    }
     const text = chunks.join('\n').trim();
     return text.length === 0
       ? { ok: false, error: 'the planner produced no output' }
