@@ -212,6 +212,13 @@ export class SchedulerService implements LifecycleComponent {
       .sort((a, b) => a.orderHint - b.orderHint || a.key.localeCompare(b.key));
 
     for (const task of ready) {
+      // A person's task never occupies a worker slot, and is parked before the
+      // ceiling is consulted: waiting on a human is not a reason to stop
+      // dispatching the agent work that can proceed alongside it.
+      if (task.executor === 'human') {
+        this.#setStatus(task, scopeOf(mission), 'AWAITING_HUMAN', 'Waiting for you to do this one.');
+        continue;
+      }
       if (this.#active.size >= ceiling) return;
       this.#dispatch(mission, task);
     }
@@ -277,8 +284,10 @@ export class SchedulerService implements LifecycleComponent {
    * Decides what the mission as a whole is now doing.
    *
    * "Stalled" is defined structurally rather than by counting failures: if no
-   * task is READY, RUNNING or AWAITING_APPROVAL, nothing will move again
-   * without a human, whatever the individual statuses say. That covers the
+   * task is in an active status, nothing will move again without a human,
+   * whatever the individual statuses say. A task waiting on a person counts as
+   * active - the mission is not stuck, it is waiting, and calling that BLOCKED
+   * would report a problem where there is only a queue. That covers the
    * cases a status-counting rule misses - a PENDING task whose dependency is
    * blocked, a mission whose only remaining work is behind a rejected approval.
    */

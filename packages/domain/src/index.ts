@@ -1,4 +1,5 @@
 export * from './capability.js';
+export * from './workflow.js';
 export * from './gate.js';
 export * from './plan.js';
 export * from './event.js';

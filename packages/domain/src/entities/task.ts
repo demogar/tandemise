@@ -3,10 +3,15 @@ import type { Capability } from '../capability.js';
 import type { ArtifactType } from './artifact.js';
 import type { GateExpression } from '../gate.js';
 
+/** Who carries a task out (MVP.md §11). */
+export const TASK_EXECUTORS = ['agent', 'human'] as const;
+export type TaskExecutor = (typeof TASK_EXECUTORS)[number];
+
 export const TASK_STATUSES = [
   'PENDING',       // dependencies not yet satisfied
   'READY',         // eligible to be scheduled
   'RUNNING',
+  'AWAITING_HUMAN', // a person has to do this one
   'AWAITING_APPROVAL',
   'BLOCKED',       // needs human intervention or an unmet gate
   'SUCCEEDED',
@@ -16,7 +21,8 @@ export const TASK_STATUSES = [
 ] as const;
 export type TaskStatus = (typeof TASK_STATUSES)[number];
 
-export const ACTIVE_TASK_STATUSES: readonly TaskStatus[] = ['READY', 'RUNNING', 'AWAITING_APPROVAL'];
+export const ACTIVE_TASK_STATUSES: readonly TaskStatus[] =
+  ['READY', 'RUNNING', 'AWAITING_HUMAN', 'AWAITING_APPROVAL'];
 export const FINISHED_TASK_STATUSES: readonly TaskStatus[] = ['SUCCEEDED', 'FAILED', 'SKIPPED', 'CANCELLED'];
 
 export function isTaskFinished(s: TaskStatus): boolean {
@@ -71,6 +77,8 @@ export interface MissionTask {
    * than separate missions that cannot wait on each other.
    */
   readonly repositoryId: RepositoryId | null;
+  /** `human` tasks are never dispatched to a runtime; a person completes them. */
+  readonly executor: TaskExecutor;
   /** Stable, plan-author-supplied key (`implement_onboarding`). Unique per mission. */
   readonly key: string;
   readonly title: string;

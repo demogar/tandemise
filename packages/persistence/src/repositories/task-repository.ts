@@ -4,6 +4,7 @@ import type {
   RetryPolicy, TaskRepositoryPort, TaskStatus,
 } from '@tandemise/domain';
 import { DEFAULT_RETRY_POLICY, NO_APPROVAL } from '@tandemise/domain';
+import type { TaskExecutor } from '@tandemise/domain';
 import type { TandemiseDatabase } from '../database.js';
 import { parseJson, toJson } from '../json.js';
 import { applyPatch } from '../patch.js';
@@ -27,6 +28,7 @@ interface TaskRow {
   attempts: number;
   remediates_task_id: string | null;
   repository_id: string | null;
+  executor: string | null;
   order_hint: number;
   created_at: string;
   updated_at: string;
@@ -63,6 +65,10 @@ function toRow(t: MissionTask): TaskRow {
     attempts: t.attempts,
     remediates_task_id: t.remediatesTaskId,
     repository_id: t.repositoryId,
+    // Defaulted on write as well as on read: a task built before this column
+    // existed - a fixture, an older caller - is an agent task, and binding null
+    // into a NOT NULL column would fail far from the cause.
+    executor: t.executor ?? 'agent',
     order_hint: t.orderHint,
     created_at: t.createdAt,
     updated_at: t.updatedAt,
@@ -92,6 +98,7 @@ function fromRow(r: TaskRow, dependsOn: readonly string[]): MissionTask {
     attempts: r.attempts,
     remediatesTaskId: r.remediates_task_id === null ? null : asId<'TaskId'>(r.remediates_task_id),
     repositoryId: r.repository_id === null ? null : asId<'RepositoryId'>(r.repository_id),
+    executor: (r.executor ?? 'agent') as TaskExecutor,
     orderHint: r.order_hint,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
@@ -102,7 +109,7 @@ function fromRow(r: TaskRow, dependsOn: readonly string[]): MissionTask {
 
 const COLUMNS = `id, mission_id, "key", title, objective, role_id, required_capabilities,
   input_artifacts, expected_outputs, execution_policy, approval_policy, retry_policy,
-  completion_gate, status, status_reason, attempts, remediates_task_id, repository_id, order_hint,
+  completion_gate, status, status_reason, attempts, remediates_task_id, repository_id, executor, order_hint,
   created_at, updated_at, started_at, finished_at`;
 
 export class SqliteTaskRepository implements TaskRepositoryPort {
@@ -126,7 +133,7 @@ export class SqliteTaskRepository implements TaskRepositoryPort {
       `INSERT INTO mission_tasks (${COLUMNS}) VALUES (
         :id, :mission_id, :key, :title, :objective, :role_id, :required_capabilities,
         :input_artifacts, :expected_outputs, :execution_policy, :approval_policy, :retry_policy,
-        :completion_gate, :status, :status_reason, :attempts, :remediates_task_id, :repository_id, :order_hint,
+        :completion_gate, :status, :status_reason, :attempts, :remediates_task_id, :repository_id, :executor, :order_hint,
         :created_at, :updated_at, :started_at, :finished_at)`,
     );
     this.#update = db.handle.prepare<TaskRow>(
@@ -137,7 +144,7 @@ export class SqliteTaskRepository implements TaskRepositoryPort {
          approval_policy = :approval_policy, retry_policy = :retry_policy,
          completion_gate = :completion_gate, status = :status, status_reason = :status_reason,
          attempts = :attempts, remediates_task_id = :remediates_task_id,
-         repository_id = :repository_id, order_hint = :order_hint,
+         repository_id = :repository_id, executor = :executor, order_hint = :order_hint,
          updated_at = :updated_at, started_at = :started_at, finished_at = :finished_at
        WHERE id = :id`,
     );

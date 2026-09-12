@@ -9,6 +9,7 @@ import type {
   RuntimeDiscoveryView,
   RuntimeView,
   SystemInfo,
+  TaskView,
   WorkspaceView,
   CreateMissionRequest,
   DecideApprovalRequest,
@@ -194,6 +195,11 @@ export class DaemonClient {
 
   missionArtifacts(id: string): Promise<readonly ArtifactManifest[]> {
     return this.#get(`/missions/${id}/artifacts`);
+  }
+
+  /** A person reporting they have done a `human` task, with what they produced. */
+  completeTask(id: string, body: { result: string; note?: string }): Promise<TaskView> {
+    return this.#request('POST', `/tasks/${id}/complete`, body);
   }
 
   retryTask(taskId: string, body?: { runtimeProfileId?: string; note?: string }): Promise<void> {

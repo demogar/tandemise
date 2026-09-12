@@ -1,0 +1,99 @@
+# Beveloce's build-feature, as a Tandemise workflow.
+#
+# Drop this at `.tandemise/workflows/build-feature.yaml` in any repository of the
+# project and it becomes a workflow the project can run, shadowing anything
+# Tandemise ships under the same name.
+#
+# Start it with the issue number as an input; every {{ issue }} below is
+# substituted before the plan is built.
+
+name: build-feature
+description: >
+  Drive one GitHub issue from picked to PR, through design approval and the
+  repository's own gates, in an isolated worktree.
+
+inputs:
+  - name: issue
+    description: GitHub issue number, e.g. 42
+    required: true
+
+steps:
+  - key: read_issue
+    title: Read the issue
+    role: product
+    objective: |
+      Read issue #{{ issue }} with the github.issue.view tool. Restate the
+      acceptance criteria verbatim. If any criterion is ambiguous, say so
+      rather than resolving it yourself.
+    capabilities: [github.read, artifact.write]
+    outputs: [ProductSpec]
+
+  - key: plan
+    title: Plan the change
+    role: architecture
+    dependsOn: [read_issue]
+    objective: |
+      Produce the implementation plan for issue #{{ issue }}: the files, the
+      contracts, the edge cases, and the proof each acceptance criterion gets.
+      Name the repository each change lands in.
+    capabilities: [repository.read, filesystem.read, artifact.write]
+    inputs: [ProductSpec]
+    outputs: [ImplementationPlan]
+
+  # A person makes the design. Nothing downstream starts until they come back
+  # with it, and what they paste becomes the DesignBrief the build reads.
+  - key: design
+    title: Make and approve the design direction
+    executor: human
+    dependsOn: [plan]
+    objective: |
+      Make the design for issue #{{ issue }} — Figma, Canva, or whatever this
+      one needs. Come back with the URL, plus a sentence on the direction.
+
+      If this feature has no visual surface, say "no visual surface" and move on.
+    outputs: [DesignBrief]
+
+  - key: build
+    title: Build it
+    role: development
+    dependsOn: [plan, design]
+    isolation: worktree
+    objective: |
+      Implement the plan for issue #{{ issue }}. Test first: write the failing
+      test, watch it fail for the right reason, then make it pass.
+
+      Never weaken a test, a spec, or an acceptance criterion to make a gate
+      pass. If a gate is genuinely wrong, say so and stop.
+    capabilities: [repository.read, filesystem.write, shell.exec, git.write, artifact.write]
+    inputs: [ProductSpec, ImplementationPlan, DesignBrief]
+    outputs: [ChangeSet]
+    gate: checks.typecheck != FAIL && checks.lint != FAIL && checks.test != FAIL
+    maxAttempts: 3
+
+  - key: review
+    title: Review the diff
+    role: review
+    dependsOn: [build]
+    isolation: worktree
+    objective: |
+      Review the actual diff for issue #{{ issue }} against the plan and the
+      acceptance criteria. Report findings by severity with file:line evidence.
+      Do not manufacture findings to look thorough.
+    capabilities: [repository.read, filesystem.read, shell.exec, artifact.write]
+    inputs: [ImplementationPlan, ChangeSet]
+    outputs: [ReviewReport]
+
+  # The one step that leaves the machine, so a person says yes first.
+  - key: open_pr
+    title: Open the pull request
+    role: release
+    dependsOn: [review]
+    approval: before
+    objective: |
+      Open a pull request for issue #{{ issue }}. Conventional Commit title.
+      If any acceptance criterion needs manual work before merge, open it as a
+      draft and lead the body with the numbered steps and what a correct result
+      looks like for each.
+    capabilities: [github.pr.create, repository.read, artifact.write]
+    inputs: [ChangeSet, ReviewReport]
+    outputs: [ReleaseCandidate]

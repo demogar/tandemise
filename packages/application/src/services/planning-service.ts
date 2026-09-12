@@ -4,8 +4,9 @@ import type {
   Repository, RoleRepositoryPort, RoleTemplate, RuntimeProfile, RuntimeProfileRepositoryPort,
   TaskRepositoryPort, Workspace, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
-import { CORE_CAPABILITIES, canTransition, validateMissionPlan } from '@tandemise/domain';
+import { CORE_CAPABILITIES, canTransition, compileWorkflow, validateMissionPlan } from '@tandemise/domain';
 import type { MissionDetail } from '@tandemise/api-contract';
+import type { WorkflowSourcePort } from '../ports.js';
 import type { ApprovalFactory } from '@tandemise/policy';
 import type { ExecutionTarget, ExecutionTargetManager } from '@tandemise/execution-core';
 import type { RuntimeManager } from '@tandemise/runtimes-core';
@@ -34,6 +35,7 @@ const KNOWN_CAPABILITIES: readonly Capability[] = Object.values(CORE_CAPABILITIE
 export interface PlanningDeps {
   readonly workspaces: WorkspaceRepositoryPort;
   readonly repositories: RepoRepositoryPort;
+  readonly workflows: WorkflowSourcePort;
   readonly missions: MissionRepositoryPort;
   readonly tasks: TaskRepositoryPort;
   readonly roles: RoleRepositoryPort;
@@ -90,12 +92,28 @@ export class PlanningServiceImpl implements PlanningService {
     }
     const planning = this.#setStatus(mission, scope, 'PLANNING', 'Planning the mission.');
 
-    const preset = findPreset(mission.workflowPreset || DEFAULT_PRESET_ID);
     const roles = this.deps.roles.list(workspace.id);
     // A project's repositories are what its plans may target: a mission in a
     // three-repository project can put one task in each and keep them in one
     // dependency graph.
     const repositories = this.deps.repositories.listByWorkspace(workspace.id);
+
+    // A workflow the team wrote wins over anything this repository ships. It is
+    // compiled rather than proposed: the author already decided what the steps
+    // are, and asking a model to re-derive them would be both slower and less
+    // faithful than reading the file.
+    const authored = await this.#authoredWorkflow(planning, repositories, scope);
+    if (authored !== null) {
+      const tasks = materializePlan(authored, mission.id, this.deps.clock, repositories);
+      this.deps.tasks.replaceAll(mission.id, tasks);
+      await this.#storePlanDocument(planning, authored);
+      this.deps.recorder.invalidate('tasks', mission.id);
+      this.#requestApprovalOrAccept(planning, workspace,
+        { plan: authored, source: 'workflow', fallbackReason: null, issues: [] }, scope, tasks);
+      return this.deps.projections.missionDetail(mission.id);
+    }
+
+    const preset = findPreset(mission.workflowPreset || DEFAULT_PRESET_ID);
     const outcome = await this.#producePlan(
       planning, workspace, repository ?? null, roles, preset, scope, repositories,
     );
@@ -107,6 +125,45 @@ export class PlanningServiceImpl implements PlanningService {
 
     this.#requestApprovalOrAccept(planning, workspace, outcome, scope, tasks);
     return this.deps.projections.missionDetail(mission.id);
+  }
+
+  /**
+   * The project's own workflow for this mission, compiled, or null.
+   *
+   * Null means "nobody wrote one" and the planner ladder runs as before. A file
+   * that exists but does not compile is *not* null: it is reported and the
+   * mission stops, because falling back to a generic preset when someone wrote
+   * a process would run the wrong process silently.
+   */
+  async #authoredWorkflow(
+    mission: Mission,
+    repositories: readonly Repository[],
+    scope: EventScope,
+  ): Promise<MissionPlan | null> {
+    const name = mission.workflowPreset.trim();
+    if (name === '') return null;
+
+    const available = await this.deps.workflows.list(repositories.map((r: Repository) => r.path));
+    const found = available.find((w) => w.id === name);
+    if (found === undefined) return null;
+
+    if (found.definition === null) {
+      throw TandemiseError.validation(
+        `Workflow '${name}' cannot be read: ${found.issues.map((i: { path: string; message: string }) => `${i.path}: ${i.message}`).join('; ')}`,
+        { workflow: name, path: found.path },
+      );
+    }
+
+    const compiled = compileWorkflow(found.definition, mission.workflowInputs);
+    if (!compiled.ok) {
+      throw TandemiseError.validation(
+        `Workflow '${name}' cannot run: ${compiled.error.map((i: { path: string; message: string }) => `${i.path}: ${i.message}`).join('; ')}`,
+        { workflow: name, path: found.path },
+      );
+    }
+
+    this.deps.recorder.note(scope, `Running the project's own "${name}" workflow, from ${found.path}.`);
+    return compiled.value;
   }
 
   // -------------------------------------------------------------- the ladder
@@ -450,7 +507,8 @@ export class PlanningServiceImpl implements PlanningService {
 
 interface PlanOutcome {
   readonly plan: MissionPlan;
-  readonly source: 'planner' | 'preset';
+  /** `workflow` is a file the team wrote; the other two are this repo's. */
+  readonly source: 'planner' | 'preset' | 'workflow';
   /** Set only when the preset was used, and stated verbatim on the timeline. */
   readonly fallbackReason: string | null;
   readonly issues: readonly PlanValidationIssue[];

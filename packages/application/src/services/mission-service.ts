@@ -1,9 +1,12 @@
 import type {
   ApprovalRepositoryPort, Mission, MissionRepositoryPort, MissionStatus, MissionTask,
   RepoRepositoryPort, TaskRepositoryPort, WorkspaceRepositoryPort,
+  ArtifactStorePort,
 } from '@tandemise/domain';
 import { canTransition, isTaskFinished, isTerminalMissionStatus } from '@tandemise/domain';
-import type { CreateMissionRequest, MissionSummary, TaskView } from '@tandemise/api-contract';
+import type {
+  CompleteTaskRequest, CreateMissionRequest, MissionSummary, TaskView,
+} from '@tandemise/api-contract';
 import type { Clock, Logger, MissionId, RepositoryId, TaskId } from '@tandemise/shared';
 import { TandemiseError, asId, ids, slugify, summarize } from '@tandemise/shared';
 import type { MissionService, PlanningService, ProjectionService } from '../services.js';
@@ -23,6 +26,8 @@ export interface MissionDeps {
   readonly missions: MissionRepositoryPort;
   readonly tasks: TaskRepositoryPort;
   readonly approvals: ApprovalRepositoryPort;
+  /** Where a person's completed work is written, in the shape the plan declared. */
+  readonly artifactStore: ArtifactStorePort;
   readonly planning: PlanningService;
   readonly projections: ProjectionService;
   readonly scheduler: SchedulerService;
@@ -84,6 +89,7 @@ export class MissionServiceImpl implements MissionService {
       successCriteria: request.successCriteria ?? [],
       autonomy: request.autonomy ?? workspace.defaultAutonomyLevel,
       workflowPreset: request.workflowPreset ?? DEFAULT_PRESET_ID,
+      workflowInputs: request.workflowInputs ?? {},
       baseBranch: request.baseBranch ?? repository?.defaultBranch ?? null,
     });
 
@@ -232,6 +238,55 @@ export class MissionServiceImpl implements MissionService {
     this.#reviveMission(mission, `'${task.key}' was retried by the user.`);
     this.deps.recorder.invalidate('tasks', mission.id);
     this.deps.scheduler.wake();
+    return this.#taskView(mission.id, taskId);
+  }
+
+  /**
+   * A person reports that they have finished a `human` task.
+   *
+   * What they bring back is written as the artifact the step declared, so the
+   * work downstream consumes it the same way it consumes an agent's output.
+   * That is the whole trick: a design made in Figma and a design written by a
+   * model arrive at the next task in the same shape, and nothing after this
+   * point needs to care which it was.
+   */
+  async completeTask(taskId: TaskId, request: CompleteTaskRequest): Promise<TaskView> {
+    const task = this.#requireTask(taskId);
+    const mission = this.#require(task.missionId);
+
+    if (task.executor !== 'human') {
+      throw new TandemiseError('PRECONDITION_FAILED',
+        `Task '${task.key}' runs on a runtime; it is not yours to complete.`,
+        { details: { taskId, executor: task.executor } });
+    }
+    if (task.status !== 'AWAITING_HUMAN') {
+      throw new TandemiseError('PRECONDITION_FAILED',
+        `A task in ${task.status} is not waiting for you.`,
+        { details: { taskId, status: task.status } });
+    }
+
+    const scope = { ...scopeOf(mission), taskId, roleId: task.roleId };
+    for (const type of task.expectedOutputs) {
+      await this.deps.artifactStore.write({
+        workspaceId: mission.workspaceId,
+        missionId: mission.id,
+        taskId: task.id,
+        type,
+        title: task.title,
+        body: request.result,
+        summary: request.note ?? null,
+      });
+    }
+
+    const reason = request.note?.trim() || 'Completed by you.';
+    this.deps.tasks.update(taskId, {
+      status: 'SUCCEEDED',
+      statusReason: reason,
+      finishedAt: this.deps.clock.now(),
+    });
+    this.deps.recorder.record(scope, { type: 'task.status', from: task.status, to: 'SUCCEEDED', reason });
+    this.deps.recorder.invalidate('tasks', mission.id);
+    this.deps.recorder.invalidate('artifacts', mission.id);
     return this.#taskView(mission.id, taskId);
   }
 

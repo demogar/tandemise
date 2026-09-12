@@ -5,6 +5,7 @@ import {
   createRuntimeProfileRequest, createWorkspaceRequest, decideApprovalRequest, listMissionsQuery,
   missionEventsQuery, probeRepositoryRequest, retryTaskRequest, updateIntegrationRequest,
   updateRuntimeProfileRequest, updateWorkspaceRequest, upsertRoleRequest,
+  completeTaskRequest,
 } from '@tandemise/api-contract';
 import type { TandemiseServices } from '@tandemise/application';
 import { Router, formatZodIssues, type RequestContext } from './http/router.js';
@@ -85,6 +86,8 @@ export function buildRouter(services: TandemiseServices): Router {
   r.post('/v1/tasks/:id/retry', async (ctx) =>
     services.missions.retryTask(asId(ctx.params.id!), await ctx.body(retryTaskRequest)));
   r.post('/v1/tasks/:id/skip', (ctx) => services.missions.skipTask(asId(ctx.params.id!)));
+  r.post('/v1/tasks/:id/complete', async (ctx) =>
+    services.missions.completeTask(asId(ctx.params.id!), await ctx.body(completeTaskRequest)));
 
   // -------------------------------------------------------------- artifacts
   r.get('/v1/artifacts', (ctx) => {
@@ -125,6 +128,11 @@ export function buildRouter(services: TandemiseServices): Router {
   });
   r.delete('/v1/roles/:id', (ctx) =>
     services.roles.remove(ctx.params.id!, asId(required(ctx, 'workspaceId'))));
+
+  // ------------------------------------------------------------- workflows
+  // A project's own workflow files, then the built-in presets it has not
+  // overridden. The path is returned so the UI can open a broken one.
+  r.get('/v1/workflows', (ctx) => services.workflows.list(asId(required(ctx, 'workspaceId'))));
 
   // ----------------------------------------------------------- integrations
   r.get('/v1/integrations', (ctx) => {

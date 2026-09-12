@@ -62,7 +62,16 @@ export interface Mission {
   readonly successCriteria: readonly string[];
   readonly status: MissionStatus;
   readonly autonomy: AutonomyLevel;
+  /**
+   * Which workflow this mission runs.
+   *
+   * Resolved against the project's own workflow files first and the built-in
+   * presets second, so a team that writes `build-feature.yaml` gets theirs
+   * rather than one shipped in this repository.
+   */
   readonly workflowPreset: string;
+  /** Values the workflow's declared inputs were given. */
+  readonly workflowInputs: Readonly<Record<string, string>>;
   /** Branch that successful task branches are integrated into (MVP.md §11.3). */
   readonly integrationBranch: string | null;
   readonly baseBranch: string | null;
@@ -82,6 +91,7 @@ export interface MissionDraft {
   readonly successCriteria?: readonly string[];
   readonly autonomy?: AutonomyLevel;
   readonly workflowPreset?: string;
+  readonly workflowInputs?: Readonly<Record<string, string>>;
   readonly baseBranch?: string | null;
 }
 

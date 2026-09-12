@@ -1,4 +1,4 @@
-import type { ArtifactType } from '@tandemise/domain';
+import type { ArtifactType, WorkflowDefinition, WorkflowIssue } from '@tandemise/domain';
 import type { Result, Timestamp } from '@tandemise/shared';
 
 /**
@@ -75,4 +75,32 @@ export interface SystemEnvironmentPort {
  */
 export interface ProcessLivenessPort {
   isAlive(pid: number): boolean;
+}
+
+/**
+ * A workflow file found in a project's repository.
+ *
+ * Either it parsed or it did not; a file with problems is still listed, with
+ * its issues, because a workflow that silently disappears from the list is far
+ * harder to debug than one that shows up saying what is wrong with it.
+ */
+export interface LoadedWorkflow {
+  /** Filename without extension - what a mission names to run it. */
+  readonly id: string;
+  /** Absolute path, so the UI can open the file that needs fixing. */
+  readonly path: string;
+  readonly definition: WorkflowDefinition | null;
+  readonly issues: readonly WorkflowIssue[];
+}
+
+/**
+ * Where workflow files come from.
+ *
+ * A port because reading files is not the application layer's business, and
+ * because the same list has to be producible from a fixture in a test. The
+ * convention - `.tandemise/workflows/*.yaml` inside each of the project's
+ * repositories - lives in the adapter.
+ */
+export interface WorkflowSourcePort {
+  list(repositoryPaths: readonly string[]): Promise<readonly LoadedWorkflow[]>;
 }

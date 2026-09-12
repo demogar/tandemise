@@ -11,6 +11,7 @@ import type {
   CreateRuntimeProfileRequest, CreateWorkspaceRequest, DecideApprovalRequest, HomeView,
   IntegrationView, MissionDetail, MissionSummary, RepositoryProbe, RuntimeDiscoveryView,
   RuntimeView, SystemInfo, TaskView, UpdateWorkspaceRequest, UpsertRoleRequest, WorkspaceView,
+  CompleteTaskRequest,
 } from '@tandemise/api-contract';
 
 /**
@@ -24,6 +25,7 @@ import type {
 export interface TandemiseServices {
   readonly system: SystemService;
   readonly workspaces: WorkspaceService;
+  readonly workflows: WorkflowService;
   readonly missions: MissionService;
   readonly planning: PlanningService;
   readonly approvals: ApprovalService;
@@ -40,6 +42,23 @@ export interface SystemService {
   updateSettings(patch: Record<string, unknown>): Record<string, unknown>;
   /** Container bindings, registered providers, and paths - the developer pane. */
   diagnostics(): Record<string, unknown>;
+}
+
+/** The workflows a project can run: its own files, then the built-in presets. */
+export interface WorkflowService {
+  list(workspaceId: WorkspaceId): Promise<readonly WorkflowSummary[]>;
+}
+
+export interface WorkflowSummary {
+  readonly id: string;
+  readonly name: string;
+  readonly description: string | null;
+  /** Absolute path when it came from a file; null for a built-in preset. */
+  readonly path: string | null;
+  readonly inputs: readonly { name: string; description: string | null; required: boolean }[];
+  readonly steps: readonly { key: string; title: string; executor: 'agent' | 'human' }[];
+  /** Non-empty when the file exists but cannot be used. */
+  readonly issues: readonly { path: string; message: string }[];
 }
 
 export interface WorkspaceService {
@@ -65,6 +84,8 @@ export interface MissionService {
   remove(id: MissionId): Promise<void>;
   retryTask(taskId: TaskId, options: { runtimeProfileId?: string; note?: string }): Promise<TaskView>;
   skipTask(taskId: TaskId): Promise<TaskView>;
+  /** A person reports a `human` task done, with whatever they produced. */
+  completeTask(taskId: TaskId, request: CompleteTaskRequest): Promise<TaskView>;
 }
 
 export interface PlanningService {

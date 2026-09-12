@@ -31,6 +31,7 @@ import { RuntimeOverrides } from './support/runtime-overrides.js';
 import { ApprovalWaiter, createApprovalGate, createPolicyEngineToolGate } from './support/tool-policy.js';
 import { ApprovalServiceImpl } from './services/approval-service.js';
 import { ArtifactServiceImpl } from './services/artifact-service.js';
+import { WorkflowServiceImpl } from './services/workflow-service.js';
 import { IntegrationServiceImpl } from './services/integration-service.js';
 import { MissionServiceImpl } from './services/mission-service.js';
 import { PlanningServiceImpl } from './services/planning-service.js';
@@ -301,9 +302,20 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       metrics: r.resolve(t.METRICS_SERVICE),
     }), { source: SOURCE });
 
+    // Default: this installation has no workflow files. A composition root that
+    // can read the filesystem rebinds it; one that cannot - a test, an embedder
+    // - still gets the built-in presets rather than an unresolved token.
+    bind(t.WORKFLOW_SOURCE, () => ({ list: async () => [] }), { source: SOURCE });
+
+    bind(t.WORKFLOW_SERVICE, (r) => new WorkflowServiceImpl(
+      r.resolve(t.WORKFLOW_SOURCE),
+      r.resolve(t.REPO_REPOSITORY),
+    ), { source: SOURCE });
+
     bind(t.PLANNING_SERVICE, (r) => new PlanningServiceImpl({
       workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
       repositories: r.resolve(t.REPO_REPOSITORY),
+      workflows: r.resolve(t.WORKFLOW_SOURCE),
       missions: r.resolve(t.MISSION_REPOSITORY),
       tasks: r.resolve(t.TASK_REPOSITORY),
       roles: r.resolve(t.ROLE_REPOSITORY),
@@ -340,6 +352,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       missions: r.resolve(t.MISSION_REPOSITORY),
       tasks: r.resolve(t.TASK_REPOSITORY),
       approvals: r.resolve(t.APPROVAL_REPOSITORY),
+      artifactStore: r.resolve(t.ARTIFACT_STORE),
       planning: r.resolve(t.PLANNING_SERVICE),
       projections: r.resolve(t.PROJECTION_SERVICE),
       scheduler: r.resolve(t.SCHEDULER),
@@ -352,6 +365,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
     bind(t.TANDEMISE_SERVICES, (r): TandemiseServices => ({
       system: r.resolve(t.SYSTEM_SERVICE),
       workspaces: r.resolve(t.WORKSPACE_SERVICE),
+      workflows: r.resolve(t.WORKFLOW_SERVICE),
       missions: r.resolve(t.MISSION_SERVICE),
       planning: r.resolve(t.PLANNING_SERVICE),
       approvals: r.resolve(t.APPROVAL_SERVICE),

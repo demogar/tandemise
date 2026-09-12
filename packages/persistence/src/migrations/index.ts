@@ -3,6 +3,8 @@ import type { TandemiseDatabase } from '../database.js';
 import type { Migration } from './types.js';
 import { migration001 } from './001_initial.js';
 import { migration002 } from './002_task_repository.js';
+import { migration003 } from './003_task_executor.js';
+import { migration004 } from './004_workflow_inputs.js';
 
 export type { Migration } from './types.js';
 
@@ -10,7 +12,7 @@ export type { Migration } from './types.js';
  * Every migration, in order. Appending is the only legal edit: an already
  * released migration is immutable, because some installation has run it.
  */
-export const MIGRATIONS: readonly Migration[] = [migration001, migration002];
+export const MIGRATIONS: readonly Migration[] = [migration001, migration002, migration003, migration004];
 
 /** The newest schema version this binary understands. */
 export const SCHEMA_VERSION: number = MIGRATIONS.reduce((max, m) => Math.max(max, m.version), 0);

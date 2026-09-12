@@ -10,11 +10,13 @@ import type {
 import type {
   ArtifactParserPort, ArtifactTemplatePort, ProcessLivenessPort, SettingsStorePort,
   SystemEnvironmentPort,
+  WorkflowSourcePort,
 } from './ports.js';
 import type {
   ApprovalService, ArtifactService, IntegrationService, MissionService, PlanningService,
   ProjectionService, RoleService, RuntimeService, SystemService, TandemiseServices,
   WorkspaceService,
+  WorkflowService,
 } from './services.js';
 import type { ArtifactHarvester } from './engine/harvester.js';
 import type { BranchIntegrationService } from './engine/branch-integration.js';
@@ -72,6 +74,9 @@ export const CHECKPOINT_REPOSITORY = token<CheckpointRepositoryPort>('port.Check
 export const LEASE_REPOSITORY = token<LeaseRepositoryPort>('port.LeaseRepository');
 
 export const ARTIFACT_STORE = token<ArtifactStorePort>('port.ArtifactStore');
+/** Workflow files, read from the project's repositories. */
+export const WORKFLOW_SOURCE = token<WorkflowSourcePort>('port.WorkflowSource');
+export const WORKFLOW_SERVICE = token<WorkflowService>('service.Workflow');
 export const EVENT_BUS = token<EventBusPort>('port.EventBus');
 export const PROJECTION_BUS = token<ProjectionBusPort>('port.ProjectionBus');
 export const SECRET_STORE = token<SecretStorePort>('port.SecretStore');

@@ -34,6 +34,16 @@ export interface PlannedTask {
    * than a task that quietly runs in the wrong place.
    */
   readonly repository?: string | null;
+  /**
+   * Who carries the task out. Absent means an agent, which is nearly always.
+   *
+   * A `human` task never reaches a runtime: the scheduler parks it and waits
+   * for a person. Keeping it in the graph is the point - a design that has to
+   * be made in Figma, or a console someone must click through, is work the rest
+   * of the mission genuinely depends on, and pretending otherwise means either
+   * a failed task or a plan that quietly omits a real step.
+   */
+  readonly executor?: 'agent' | 'human';
   readonly dependsOn: readonly string[];
   readonly requiredCapabilities: readonly Capability[];
   readonly inputArtifacts: readonly ArtifactRequirement[];

@@ -2,12 +2,23 @@ import type { MissionDetail, TaskView } from '@tandemise/api-contract';
 import { Icon } from '../../components/Icon.js';
 import { Modal } from '../../components/Modal.js';
 import { ErrorState, StatusBadge } from '../../components/primitives.js';
+import { useState } from 'react';
 import { useDaemonMutation } from '../../lib/queries.js';
 import { dateTime, duration, taskTone, titleCase } from '../../lib/format.js';
 
 export function TaskDetail({ task, detail, onClose }: { task: TaskView; detail: MissionDetail; onClose: () => void }): JSX.Element {
   const retry = useDaemonMutation((daemon) => daemon.retryTask(task.id), ['tasks', 'missions'], detail.mission.id);
   const canRetry = task.status === 'FAILED' || task.status === 'BLOCKED';
+
+  // A task waiting on a person is the one case where the mission is not stuck
+  // and not running - it is waiting for you, and this is where you clear it.
+  const waitingOnYou = task.status === 'AWAITING_HUMAN';
+  const [result, setResult] = useState('');
+  const complete = useDaemonMutation(
+    (daemon) => daemon.completeTask(task.id, { result: result.trim() }),
+    ['tasks', 'missions', 'artifacts'],
+    detail.mission.id,
+  );
   const evaluation = detail.evaluations.find((candidate) => candidate.taskId === task.id);
 
   return (
@@ -20,6 +31,17 @@ export function TaskDetail({ task, detail, onClose }: { task: TaskView; detail: 
           <span className="dim" style={{ marginRight: 'auto', fontSize: 'var(--fs-xs)' }}>
             {task.key}
           </span>
+          {waitingOnYou ? (
+            <button
+              type="button"
+              className="btn btn--primary"
+              disabled={result.trim() === '' || complete.isPending}
+              onClick={() => complete.mutate(undefined, { onSuccess: onClose })}
+            >
+              <Icon name="check" size={13} />
+              {complete.isPending ? 'Saving…' : 'Mark done'}
+            </button>
+          ) : null}
           {canRetry ? (
             <button type="button" className="btn" disabled={retry.isPending} onClick={() => retry.mutate(undefined)}>
               <Icon name="refresh" size={13} />
@@ -33,6 +55,27 @@ export function TaskDetail({ task, detail, onClose }: { task: TaskView; detail: 
       }
     >
       <div className="stack" style={{ gap: 'var(--s4)', color: 'var(--text)' }}>
+        {waitingOnYou ? (
+          <div className="card" style={{ borderColor: 'var(--accent-line)' }}>
+            <div className="stack" style={{ gap: 'var(--s3)' }}>
+              <div style={{ fontWeight: 600 }}>This one is yours</div>
+              <p className="muted" style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{task.objective}</p>
+              <textarea
+                className="input"
+                rows={4}
+                value={result}
+                onChange={(event) => setResult(event.target.value)}
+                placeholder={
+                  task.expectedOutputs.length > 0
+                    ? `Paste what you produced — it is saved as the ${task.expectedOutputs.join(', ')} the next task reads.`
+                    : 'Describe what you did.'
+                }
+              />
+              {complete.isError ? <ErrorState error={complete.error} /> : null}
+            </div>
+          </div>
+        ) : null}
+
         <div className="row row--wrap">
           <StatusBadge status={task.status} tone={taskTone(task.status)} />
           <span className="chip">{task.roleName}</span>

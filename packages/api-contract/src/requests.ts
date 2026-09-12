@@ -64,7 +64,10 @@ export const createMissionRequest = z.object({
   constraints: z.array(z.string()).max(50).optional(),
   successCriteria: z.array(z.string()).max(50).optional(),
   autonomy: z.enum(AUTONOMY_LEVELS).optional(),
+  /** Workflow id: one of the project's own files, or a built-in preset. */
   workflowPreset: z.string().optional(),
+  /** Values for the workflow's declared inputs, e.g. `{ issue: '42' }`. */
+  workflowInputs: z.record(z.string(), z.string()).optional(),
   baseBranch: z.string().nullable().optional(),
   /** Plan immediately after creation. The common path from the UI. */
   planNow: z.boolean().optional(),
@@ -109,6 +112,21 @@ export const createRuntimeProfileRequest = z.object({
 export type CreateRuntimeProfileRequest = z.infer<typeof createRuntimeProfileRequest>;
 
 export const updateRuntimeProfileRequest = createRuntimeProfileRequest.partial().omit({ adapterId: true });
+
+/**
+ * A person reporting that they have done a `human` task.
+ *
+ * `result` is whatever they bring back - a Figma URL, the id of the account
+ * they created, a paragraph describing what they changed in a console. It is
+ * stored as the artifact the step declared it would produce, so the tasks
+ * downstream read it exactly as they would read an agent's output; nothing in
+ * the rest of the pipeline needs to know a person wrote it.
+ */
+export const completeTaskRequest = z.object({
+  result: z.string().trim().min(1).max(20_000),
+  note: z.string().trim().max(2_000).optional(),
+});
+export type CompleteTaskRequest = z.infer<typeof completeTaskRequest>;
 
 export const createIntegrationRequest = z.object({
   workspaceId: z.string().min(1),

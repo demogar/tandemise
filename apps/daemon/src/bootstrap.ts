@@ -29,7 +29,9 @@ import {
 } from '@tandemise/integrations-core';
 import { githubIntegrationModule } from '@tandemise/integration-github';
 import { browserIntegrationModule } from '@tandemise/browser';
-import { applicationModule, createServices, SCHEDULER, type TandemiseServices } from '@tandemise/application';
+import { applicationModule, createServices, SCHEDULER, type TandemiseServices,
+  WORKFLOW_SOURCE,
+} from '@tandemise/application';
 import * as applicationTokens from '@tandemise/application';
 
 import { SCHEMA_VERSION } from '@tandemise/persistence';
@@ -38,6 +40,7 @@ import { InMemoryEventBus, InMemoryProjectionBus } from './buses.js';
 import { createSecretStore } from './secrets.js';
 import { createSettingsStore, createSystemEnvironment, processLiveness } from './platform.js';
 import { createBackgroundProcessLauncher, createToolCommandExecutor } from './tool-exec.js';
+import { FileWorkflowSource } from './workflow-source.js';
 
 export const CLOCK = token<Clock>('Clock');
 export const LOGGER = token<Logger>('Logger');
@@ -116,6 +119,13 @@ export function bootstrap(config: DaemonConfig): Bootstrapped {
     { source: 'bootstrap' });
   container.bind(BACKGROUND_PROCESS_LAUNCHER, (r) =>
     createBackgroundProcessLauncher(r.resolve(PROCESS_SUPERVISOR)), { source: 'bootstrap' });
+
+  // Workflows are files in the user's own repositories, so reading them is an
+  // adapter concern and belongs here rather than in the engine.
+  // Rebound rather than bound: the application module ships a source that finds
+  // nothing, so a container without a filesystem still resolves.
+  container.rebind(WORKFLOW_SOURCE, (r) =>
+    new FileWorkflowSource(r.resolve(LOGGER).child({ component: 'workflows' })), { source: 'bootstrap' });
 
   const services = createServices(container);
 

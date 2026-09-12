@@ -52,6 +52,7 @@ function fromPlanned(
     id: ids.task(),
     missionId,
     repositoryId: resolveRepository(task, byName),
+    executor: task.executor ?? 'agent',
     key: task.key,
     title: task.title,
     objective: task.objective,
