@@ -121,6 +121,10 @@ export class ClaudeCodeAdapter implements AgentRuntimeAdapter {
     return this.#run(request, sessionRef);
   }
 
+  pid(runId: RunId): number | null {
+    return this.#children.get(runId)?.pid ?? null;
+  }
+
   /**
    * Out-of-band cancellation (MVP.md §21.1). `start`'s AbortSignal is the
    * primary path; this exists for the supervisor cancelling a run it is not

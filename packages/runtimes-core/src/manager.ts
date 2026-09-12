@@ -209,6 +209,11 @@ export class RuntimeManager {
     await this.#registry.adapter(profile.adapterId).cancel(runId);
   }
 
+  /** The OS process backing a live run, for the supervisor's process table. */
+  pid(profile: RuntimeProfile, runId: RunId): number | null {
+    return this.#registry.tryAdapter(profile.adapterId)?.pid(runId) ?? null;
+  }
+
   /** First-match-wins reasons that need no process spawn. */
   #rejectCheaply(profile: RuntimeProfile, required: readonly RuntimeCapability[]): string | null {
     if (!profile.enabled) return 'profile is disabled';

@@ -188,9 +188,16 @@ try {
   check('heartbeats were emitted for a long-running process', beats.length >= 2,
     `${beats.length} beats, last bytesOut=${beats.at(-1)?.bytesOut}`);
 
-  const big = 'x'.repeat(3_000_000);
-  const huge = await supervisor.run({ command: 'sh', args: ['-c', `printf '%s\\n' "${big}"`], cwd: repoPath });
-  check('a 3MB single line survives intact', huge.stdout.trim().length === big.length, `${huge.stdout.trim().length} chars`);
+  // Generated inside the child: a 3MB *argument* would hit ARG_MAX.
+  const huge = await supervisor.run({
+    command: 'sh', args: ['-c', "tr '\\0' 'x' < /dev/zero | head -c 3000000; echo"], cwd: repoPath,
+  });
+  const hugeLines = huge.stdout.split('\n').filter((l) => l.length > 0);
+  check('a 3MB single line survives intact as one line',
+    hugeLines.length === 1 && hugeLines[0].length === 3_000_000, `${hugeLines.length} line(s), ${hugeLines[0]?.length} chars`);
+
+  const spawnFailure = await supervisor.run({ command: 'definitely-not-a-real-binary', cwd: repoPath }).catch((e) => e);
+  check('a missing binary fails loudly', isTandemiseError(spawnFailure), spawnFailure?.message);
 
   // 8 ------------------------------------------------------------------
   section(8, 'release and cleanup');

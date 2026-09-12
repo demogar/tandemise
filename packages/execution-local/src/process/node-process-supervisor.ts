@@ -150,13 +150,7 @@ class NodeSupervisedProcess implements SupervisedProcess {
     this.startedAt = deps.clock.now();
     this.#startedMs = deps.clock.epochMs();
 
-    this.#child = nodeSpawn(spec.command, [...(spec.args ?? [])], {
-      cwd: spec.cwd,
-      env: buildProcessEnv(spec),
-      stdio: ['pipe', 'pipe', 'pipe'],
-      // Own process group, so cancellation can reach the whole tree.
-      detached: true,
-    }) as ChildProcessWithoutNullStreams;
+    this.#child = startChild(spec);
     this.pid = this.#child.pid ?? -1;
 
     const log = deps.log.child({ processId: this.id, pid: this.pid, ...this.correlation });
@@ -316,6 +310,28 @@ class NodeSupervisedProcess implements SupervisedProcess {
     }, every);
     timer.unref();
     void this.#exit.finally(() => clearInterval(timer));
+  }
+}
+
+/**
+ * `spawn` reports most failures asynchronously via an `error` event, but a few
+ * (E2BIG, EINVAL) throw synchronously. Normalising both keeps callers from
+ * having to handle a raw errno exception alongside a TandemiseError.
+ */
+function startChild(spec: ProcessSpec): ChildProcessWithoutNullStreams {
+  try {
+    return nodeSpawn(spec.command, [...(spec.args ?? [])], {
+      cwd: spec.cwd,
+      env: buildProcessEnv(spec),
+      stdio: ['pipe', 'pipe', 'pipe'],
+      // Own process group, so cancellation can reach the whole tree.
+      detached: true,
+    }) as ChildProcessWithoutNullStreams;
+  } catch (cause) {
+    throw new TandemiseError('INTERNAL', `Cannot spawn '${spec.command}': ${errorMessage(cause)}`, {
+      details: { command: spec.command, cwd: spec.cwd, argCount: spec.args?.length ?? 0 },
+      cause,
+    });
   }
 }
 

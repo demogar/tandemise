@@ -54,6 +54,14 @@ export interface AgentRuntimeAdapter {
   start(request: RunRequest): AsyncIterable<AgentEvent>;
   resume?(sessionRef: string, request: RunRequest): AsyncIterable<AgentEvent>;
   cancel(runId: RunId): Promise<void>;
+
+  /**
+   * The OS process this run is using, or null when there is none (an in-process
+   * runtime) or the run has ended. The supervisor records it so that after a
+   * daemon crash it can ask whether the child is still alive before deciding
+   * between resume and retry (MVP.md §21.1, §21.2).
+   */
+  pid(runId: RunId): number | null;
 }
 
 export interface RuntimeAdapterDescriptor extends Descriptor {

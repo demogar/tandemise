@@ -103,6 +103,10 @@ export class GenericCliAdapter implements AgentRuntimeAdapter {
     return this.#run(request);
   }
 
+  pid(runId: RunId): number | null {
+    return this.#children.get(runId)?.pid ?? null;
+  }
+
   async cancel(runId: RunId): Promise<void> {
     const child = this.#children.get(runId);
     if (child === undefined || child.exitCode !== null) return;
@@ -214,9 +218,8 @@ export function buildArgv(
   request: RunRequest,
 ): { args: string[]; stdin: string | null } {
   const viaStdin = settings.promptVia === 'stdin';
-  const values = viaStdin
-    ? { cwd: request.workingDirectory }
-    : { cwd: request.workingDirectory, prompt: request.prompt };
+  const values: Record<string, string> = { cwd: request.workingDirectory };
+  if (!viaStdin) values['prompt'] = request.prompt;
 
   const args = settings.args.map((a) => substitute(a, values));
   const mentionsPrompt = settings.args.some((a) => a.includes(PROMPT_PLACEHOLDER));

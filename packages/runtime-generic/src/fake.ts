@@ -92,6 +92,11 @@ export class FakeRuntimeAdapter implements AgentRuntimeAdapter {
     return this.#run(request, sessionRef);
   }
 
+  /** In-process by design: there is no child to supervise. */
+  pid(_runId: RunId): number | null {
+    return null;
+  }
+
   async cancel(runId: RunId): Promise<void> {
     this.#cancellations.get(runId)?.abort(new TandemiseError('CANCELLED', 'Run cancelled'));
   }
