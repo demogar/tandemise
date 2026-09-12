@@ -17,6 +17,20 @@ export interface Terminable {
   kill(signal: NodeJS.Signals): boolean;
   readonly killed: boolean;
   readonly exitCode: number | null;
+  readonly signalCode: NodeJS.Signals | null;
+}
+
+/**
+ * Whether a child has finished.
+ *
+ * Node leaves `exitCode` null for a process that died from a signal and sets
+ * `signalCode` instead, so testing `exitCode !== null` alone reports a
+ * signal-killed child as still running. The visible symptom was a redundant
+ * SIGKILL and a log line accusing a well-behaved process of ignoring SIGTERM on
+ * every clean cancellation.
+ */
+function hasExited(child: Terminable): boolean {
+  return child.exitCode !== null || child.signalCode !== null;
 }
 
 /**
@@ -66,10 +80,10 @@ export function escalateTerminationOnAbort(
   let forceTimer: NodeJS.Timeout | null = null;
 
   const onAbort = (): void => {
-    if (child.exitCode !== null) return;
+    if (hasExited(child)) return;
     child.kill('SIGTERM');
     forceTimer = setTimeout(() => {
-      if (child.exitCode === null) {
+      if (!hasExited(child)) {
         child.kill('SIGKILL');
         onForced?.();
       }

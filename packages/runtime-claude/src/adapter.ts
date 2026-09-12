@@ -7,6 +7,7 @@ import type {
 import {
   DEFAULT_TERMINATION_GRACE_MS, NormalizingEventSink, relieveBackPressure, superviseProcessStream,
 } from '@tandemise/runtimes-core';
+import { buildRuntimeEnv, withheldEnvNames } from '@tandemise/runtimes-core';
 import type { AgentRuntimeAdapter, RunRequest, SupervisedChild } from '@tandemise/runtimes-core';
 import { TandemiseError, systemClock } from '@tandemise/shared';
 import type { Clock, RunId } from '@tandemise/shared';
@@ -144,15 +145,26 @@ export class ClaudeCodeAdapter implements AgentRuntimeAdapter {
       onQuotaWarning: (detail) => this.#recordQuota(detail),
     });
 
-    log.debug('spawning claude code', { executablePath, argc: args.length, promptViaStdin: stdin !== null });
+    const childEnv = buildRuntimeEnv({
+      allowedPrefixes: ['ANTHROPIC_', 'CLAUDE_'],
+      allowedNames: ['SSH_AUTH_SOCK', 'GIT_ASKPASS', 'COLORTERM'],
+    });
+    log.debug('spawning claude code', {
+      executablePath,
+      argc: args.length,
+      promptViaStdin: stdin !== null,
+      envWithheld: withheldEnvNames(childEnv).length,
+    });
     const stream = superviseProcessStream({
       spawn: () => spawn(executablePath, args, {
         cwd,
-        // The CLI is launched under the user's own environment on purpose: that
-        // is where its authentication lives (MVP.md §10.3). Profile settings
-        // deliberately cannot inject env vars - that would invite secrets into
-        // the database, which MVP.md §P8 forbids.
-        env: process.env,
+        // The CLI authenticates from the user's own environment and keychain
+        // (MVP.md §10.3), so it needs more than an empty environment - but it
+        // needs its OWN credentials, not every credential the daemon happens to
+        // have inherited from a developer shell. Profile settings deliberately
+        // cannot inject env vars, which would invite secrets into the database
+        // (MVP.md §P8).
+        env: childEnv,
         stdio: [stdin === null ? 'ignore' : 'pipe', 'pipe', 'pipe'],
         windowsHide: true,
       }),

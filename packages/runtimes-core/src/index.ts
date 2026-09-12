@@ -30,3 +30,5 @@ export type { AbortOutcome, Terminable } from './termination.js';
 export { runtimesCoreModule, defineRuntimeModule, RUNTIMES_CORE_MODULE_NAME } from './module.js';
 /** Re-exported so a runtime plugin can name its module type without depending on the kernel. */
 export type { TandemiseModule } from '@tandemise/kernel';
+export { BASE_RUNTIME_ENV, buildRuntimeEnv, withheldEnvNames } from './runtime-env.js';
+export type { RuntimeEnvOptions } from './runtime-env.js';
