@@ -1,0 +1,143 @@
+import { z } from 'zod';
+import { ARTIFACT_TYPES, AUTONOMY_LEVELS, MISSION_STATUSES } from '@tandemise/domain';
+
+/**
+ * Request schemas.
+ *
+ * The daemon validates every request body against these before it reaches a
+ * service. Parsing at the edge means the application layer can trust its
+ * inputs, and it means a bad request produces one precise error rather than a
+ * type error three frames deep.
+ */
+
+export const createWorkspaceRequest = z.object({
+  name: z.string().min(1).max(120),
+  repositoryPath: z.string().min(1).optional(),
+});
+export type CreateWorkspaceRequest = z.infer<typeof createWorkspaceRequest>;
+
+export const updateWorkspaceRequest = z.object({
+  name: z.string().min(1).max(120).optional(),
+  defaultRepositoryId: z.string().nullable().optional(),
+  autonomy: z.object({
+    planApproval: z.enum(['ask', 'auto']),
+    localCodeChanges: z.enum(['auto', 'ask']),
+    externalWrites: z.enum(['auto', 'policy', 'ask', 'deny']),
+    productionRelease: z.enum(['ask', 'deny']),
+    financialActions: z.literal('deny'),
+  }).optional(),
+  concurrency: z.object({
+    maxTotalWorkers: z.number().int().min(1).max(16),
+    perRuntime: z.record(z.string(), z.number().int().min(0).max(16)),
+  }).optional(),
+  routing: z.record(z.string(), z.array(z.string())).optional(),
+  knowledge: z.object({
+    productVision: z.string().nullable(),
+    architecturePrinciples: z.string().nullable(),
+    codingStandards: z.string().nullable(),
+    designSystem: z.string().nullable(),
+    glossary: z.string().nullable(),
+  }).partial().optional(),
+});
+export type UpdateWorkspaceRequest = z.infer<typeof updateWorkspaceRequest>;
+
+export const addRepositoryRequest = z.object({
+  path: z.string().min(1),
+  name: z.string().min(1).max(120).optional(),
+  checks: z.object({
+    install: z.string().nullable(), typecheck: z.string().nullable(),
+    lint: z.string().nullable(), test: z.string().nullable(),
+    build: z.string().nullable(), devServer: z.string().nullable(),
+    devServerUrl: z.string().nullable(),
+  }).partial().optional(),
+});
+export type AddRepositoryRequest = z.infer<typeof addRepositoryRequest>;
+
+export const probeRepositoryRequest = z.object({ path: z.string().min(1) });
+
+export const createMissionRequest = z.object({
+  workspaceId: z.string().min(1),
+  repositoryId: z.string().min(1).nullable().optional(),
+  /** The single natural-language sentence the whole product is built around. */
+  goal: z.string().min(3).max(8000),
+  title: z.string().min(1).max(200).optional(),
+  constraints: z.array(z.string()).max(50).optional(),
+  successCriteria: z.array(z.string()).max(50).optional(),
+  autonomy: z.enum(AUTONOMY_LEVELS).optional(),
+  workflowPreset: z.string().optional(),
+  baseBranch: z.string().nullable().optional(),
+  /** Plan immediately after creation. The common path from the UI. */
+  planNow: z.boolean().optional(),
+});
+export type CreateMissionRequest = z.infer<typeof createMissionRequest>;
+
+export const listMissionsQuery = z.object({
+  workspaceId: z.string().optional(),
+  status: z.enum(MISSION_STATUSES).optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional(),
+});
+
+export const decideApprovalRequest = z.object({
+  optionId: z.string().min(1),
+  note: z.string().max(4000).optional(),
+  /** For plan approvals: an edited plan to use instead of the proposed one. */
+  editedPlan: z.unknown().optional(),
+});
+export type DecideApprovalRequest = z.infer<typeof decideApprovalRequest>;
+
+export const createRuntimeProfileRequest = z.object({
+  adapterId: z.string().min(1),
+  name: z.string().min(1).max(120),
+  workspaceId: z.string().nullable().optional(),
+  executablePath: z.string().nullable().optional(),
+  args: z.array(z.string()).optional(),
+  settings: z.record(z.string(), z.unknown()).optional(),
+  maxConcurrent: z.number().int().min(1).max(8).optional(),
+  enabled: z.boolean().optional(),
+});
+export type CreateRuntimeProfileRequest = z.infer<typeof createRuntimeProfileRequest>;
+
+export const updateRuntimeProfileRequest = createRuntimeProfileRequest.partial().omit({ adapterId: true });
+
+export const createIntegrationRequest = z.object({
+  workspaceId: z.string().min(1),
+  providerId: z.string().min(1),
+  name: z.string().min(1).max(120),
+  config: z.record(z.string(), z.unknown()).optional(),
+  enabledCapabilities: z.array(z.string()).optional(),
+  /** Raw secret; the daemon stores it in the OS credential store and keeps a ref. */
+  secret: z.string().optional(),
+});
+export type CreateIntegrationRequest = z.infer<typeof createIntegrationRequest>;
+
+export const updateIntegrationRequest = createIntegrationRequest.partial().omit({ workspaceId: true, providerId: true });
+
+export const upsertRoleRequest = z.object({
+  workspaceId: z.string().min(1),
+  id: z.string().min(1).max(60),
+  name: z.string().min(1).max(120),
+  summary: z.string().max(500),
+  instructions: z.string().max(20000),
+  defaultCapabilities: z.array(z.string()),
+  producesArtifacts: z.array(z.enum(ARTIFACT_TYPES)),
+  consumesArtifacts: z.array(z.enum(ARTIFACT_TYPES)),
+  defaultIsolation: z.enum(['none', 'worktree', 'docker', 'browser']),
+  outputContract: z.string().max(8000),
+});
+export type UpsertRoleRequest = z.infer<typeof upsertRoleRequest>;
+
+export const missionEventsQuery = z.object({
+  afterSequence: z.coerce.number().int().min(0).optional(),
+  limit: z.coerce.number().int().min(1).max(1000).optional(),
+  semanticOnly: z.coerce.boolean().optional(),
+});
+
+export const retryTaskRequest = z.object({
+  /** Override the runtime for this attempt - the manual fallback escape hatch. */
+  runtimeProfileId: z.string().optional(),
+  note: z.string().max(2000).optional(),
+});
+
+export const cancelMissionRequest = z.object({
+  reason: z.string().max(500).optional(),
+});

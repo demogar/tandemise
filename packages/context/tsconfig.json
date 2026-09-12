@@ -12,7 +12,13 @@
       "path": "../../packages/shared"
     },
     {
+      "path": "../../packages/kernel"
+    },
+    {
       "path": "../../packages/domain"
+    },
+    {
+      "path": "../../packages/policy"
     }
   ]
 }

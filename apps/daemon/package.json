@@ -11,6 +11,7 @@
     "@tandemise/shared": "0.1.0",
     "@tandemise/kernel": "0.1.0",
     "@tandemise/domain": "0.1.0",
+    "@tandemise/api-contract": "0.1.0",
     "@tandemise/policy": "0.1.0",
     "@tandemise/artifacts": "0.1.0",
     "@tandemise/persistence": "0.1.0",

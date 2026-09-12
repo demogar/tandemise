@@ -18,6 +18,9 @@
       "path": "../../packages/domain"
     },
     {
+      "path": "../../packages/api-contract"
+    },
+    {
       "path": "../../packages/policy"
     },
     {

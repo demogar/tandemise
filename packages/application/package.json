@@ -18,6 +18,7 @@
     "@tandemise/shared": "0.1.0",
     "@tandemise/kernel": "0.1.0",
     "@tandemise/domain": "0.1.0",
+    "@tandemise/api-contract": "0.1.0",
     "@tandemise/policy": "0.1.0",
     "@tandemise/runtimes-core": "0.1.0",
     "@tandemise/execution-core": "0.1.0",
