@@ -282,10 +282,13 @@ export function translate(
         cacheWriteTokens: r['cacheWriteTokens'] ?? r['cache_creation_input_tokens'],
         costUsd: r['costUsd'] ?? r['cost_usd'] ?? null,
       };
+    // The canonical field name is tried first on these two: a CLI that already
+    // speaks the vocabulary needs no mapping entry, and reading only the
+    // configured alias would silently drop what it did say.
     case 'checkpoint':
-      return { type: target, externalSessionId: session, label: r['label'] };
+      return { type: target, externalSessionId: r['externalSessionId'] ?? session, label: r['label'] };
     case 'completed':
-      return { type: target, resultRef: session, summary: text ?? r['result'] };
+      return { type: target, resultRef: r['resultRef'] ?? session, summary: r['summary'] ?? text ?? r['result'] };
     case 'failed':
       return {
         type: target,

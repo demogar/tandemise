@@ -6,7 +6,7 @@ import type { ToolCatalog } from './catalog.js';
 import type { ToolAuditSink } from './audit.js';
 import type { ApprovalGate, ToolPolicyGate } from './policy-gate.js';
 import type { IntegrationProviderRegistry } from './provider.js';
-import type { CommandExecutor } from './exec.js';
+import type { BackgroundProcessLauncher, CommandExecutor } from './exec.js';
 
 /**
  * `LOGGER` and `CLOCK` are declared here rather than imported because
@@ -28,6 +28,10 @@ export const TOOL_AUDIT_SINK = token<ToolAuditSink>('integrations/audit-sink');
 
 /** How the daemon spawns commands for CLI-transport integrations. */
 export const COMMAND_EXECUTOR = token<CommandExecutor>('integrations/command-executor');
+
+/** How the daemon starts long-lived child processes, e.g. a repository dev server. */
+export const BACKGROUND_PROCESS_LAUNCHER =
+  token<BackgroundProcessLauncher>('integrations/background-process-launcher');
 
 /**
  * The workspace's configured integrations. A thunk, not a snapshot: these are

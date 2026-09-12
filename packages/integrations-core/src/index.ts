@@ -1,4 +1,7 @@
-export type { CommandExecutor, ToolExecRequest, ToolExecResult } from './exec.js';
+export type {
+  BackgroundProcess, BackgroundProcessLauncher, BackgroundProcessSpec,
+  CommandExecutor, ToolExecRequest, ToolExecResult,
+} from './exec.js';
 
 export type {
   IntegrationTool, ToolContext, ToolEvidence, ToolExecution, ToolOutcome, ToolResult, ToolSchema,
@@ -47,7 +50,7 @@ export type { StdioTransport } from './mcp/stdio-server.js';
 export { DEFAULT_MCP_PROTOCOL_VERSION, McpStdioServer, mcpToolName, stdioTransport } from './mcp/stdio-server.js';
 
 export {
-  APPROVAL_GATE, CLOCK, COMMAND_EXECUTOR, INTEGRATION_PROVIDER_REGISTRY, INTEGRATION_SOURCE,
+  APPROVAL_GATE, BACKGROUND_PROCESS_LAUNCHER, CLOCK, COMMAND_EXECUTOR, INTEGRATION_PROVIDER_REGISTRY, INTEGRATION_SOURCE,
   LOGGER, TOOL_AUDIT_SINK, TOOL_BROKER, TOOL_CATALOG, TOOL_POLICY_GATE,
 } from './tokens.js';
 
