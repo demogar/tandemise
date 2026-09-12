@@ -1,0 +1,29 @@
+{
+  "name": "tandemise",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": { "node": ">=22.0.0" },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "tsc -b tsconfig.build.json",
+    "build:watch": "tsc -b tsconfig.build.json --watch",
+    "clean": "tsc -b tsconfig.build.json --clean && rimraf 'packages/*/dist' 'apps/*/dist'",
+    "check:boundaries": "node scripts/check-boundaries.mjs",
+    "typecheck": "tsc -b tsconfig.build.json --dry --pretty false && echo typecheck-ok",
+    "daemon": "node apps/daemon/dist/main.js",
+    "daemon:dev": "node --watch apps/daemon/dist/main.js",
+    "desktop": "npm run -w @tandemise/desktop dev",
+    "dev": "node scripts/dev.mjs",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

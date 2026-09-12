@@ -1,0 +1,10 @@
+export { token, multiToken, isMultiToken } from './token.js';
+export type { Token, MultiToken } from './token.js';
+export { Container } from './container.js';
+export type { Resolver, Factory, Lifetime, BindOptions } from './container.js';
+export { defineModule, compose } from './module.js';
+export type { TandemiseModule } from './module.js';
+export { Registry } from './registry.js';
+export type { Descriptor } from './registry.js';
+export { LifecycleHost } from './lifecycle.js';
+export type { Startable, Stoppable, LifecycleComponent } from './lifecycle.js';

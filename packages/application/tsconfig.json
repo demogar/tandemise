@@ -1,0 +1,39 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "./src",
+    "outDir": "./dist"
+  },
+  "include": [
+    "src/**/*"
+  ],
+  "references": [
+    {
+      "path": "../../packages/shared"
+    },
+    {
+      "path": "../../packages/kernel"
+    },
+    {
+      "path": "../../packages/domain"
+    },
+    {
+      "path": "../../packages/policy"
+    },
+    {
+      "path": "../../packages/runtimes-core"
+    },
+    {
+      "path": "../../packages/execution-core"
+    },
+    {
+      "path": "../../packages/integrations-core"
+    },
+    {
+      "path": "../../packages/context"
+    },
+    {
+      "path": "../../packages/evaluation"
+    }
+  ]
+}

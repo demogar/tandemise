@@ -1,0 +1,66 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "./src",
+    "outDir": "./dist"
+  },
+  "include": [
+    "src/**/*"
+  ],
+  "references": [
+    {
+      "path": "../../packages/shared"
+    },
+    {
+      "path": "../../packages/kernel"
+    },
+    {
+      "path": "../../packages/domain"
+    },
+    {
+      "path": "../../packages/policy"
+    },
+    {
+      "path": "../../packages/artifacts"
+    },
+    {
+      "path": "../../packages/persistence"
+    },
+    {
+      "path": "../../packages/runtimes-core"
+    },
+    {
+      "path": "../../packages/execution-core"
+    },
+    {
+      "path": "../../packages/integrations-core"
+    },
+    {
+      "path": "../../packages/context"
+    },
+    {
+      "path": "../../packages/evaluation"
+    },
+    {
+      "path": "../../packages/runtime-claude"
+    },
+    {
+      "path": "../../packages/runtime-codex"
+    },
+    {
+      "path": "../../packages/runtime-generic"
+    },
+    {
+      "path": "../../packages/execution-local"
+    },
+    {
+      "path": "../../packages/integration-github"
+    },
+    {
+      "path": "../../packages/browser"
+    },
+    {
+      "path": "../../packages/application"
+    }
+  ]
+}
