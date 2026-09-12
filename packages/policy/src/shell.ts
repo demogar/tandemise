@@ -149,6 +149,25 @@ interface Head {
   readonly privileged: boolean;
 }
 
+/**
+ * Git global options that consume the FOLLOWING word. `git -C /elsewhere push`
+ * has `push` in third position, so a naive "first non-flag operand" reads
+ * `/elsewhere` as the subcommand and the rule never fires. The `--opt=value`
+ * spelling needs no entry here because it stays flag-shaped.
+ */
+const GIT_VALUE_OPTIONS = new Set(['-C', '-c', '--git-dir', '--work-tree', '--namespace', '--exec-path', '--config-env']);
+
+/** The git subcommand, skipping global options and any values they consume. */
+export function gitSubcommand(args: readonly Word[]): string | undefined {
+  for (let i = 0; i < args.length; i++) {
+    const text = args[i]!.text;
+    if (GIT_VALUE_OPTIONS.has(text)) { i++; continue; }
+    if (text.startsWith('-')) continue;
+    return text;
+  }
+  return undefined;
+}
+
 /** Skips `FOO=bar`, `sudo`, `env`, `xargs`… to find the command actually being run. */
 function headOf(words: readonly Word[]): Head | undefined {
   let i = 0;
@@ -170,6 +189,10 @@ function classifyCommand(words: readonly Word[], ctx: ShellContext): ShellRiskMa
   if (!head) return [];
   const segment = words.map((w) => w.text).join(' ');
   const out: ShellRiskMatch[] = [];
+
+  // Redirection belongs to the shell rather than to the command, so it is
+  // scanned over the raw words before any rule runs.
+  out.push(...redirectionWrites(words, ctx, segment));
 
   if (head.privileged) {
     out.push({
@@ -193,7 +216,7 @@ function classifyCommand(words: readonly Word[], ctx: ShellContext): ShellRiskMa
 
 function isReadOnlyGit(head: Head): boolean {
   if (head.name !== 'git') return false;
-  const sub = firstOperand(head.args);
+  const sub = gitSubcommand(head.args);
   return sub !== undefined && READ_ONLY_GIT_SUBCOMMANDS.has(sub) && !head.args.some((a) => a.text === '-D' || a.text === '-d');
 }
 
@@ -230,7 +253,7 @@ const removeRule: Rule = (head, ctx, segment) => {
 };
 
 const gitRule: Rule = (head, ctx, segment) => {
-  const sub = firstOperand(head.args);
+  const sub = gitSubcommand(head.args);
   const flags = head.args.filter((a) => a.text.startsWith('-')).map((a) => a.text);
   const operands = head.args.filter((a) => !a.text.startsWith('-')).map((a) => a.text);
   const protectedBranches = ctx.protectedBranches ?? DEFAULT_PROTECTED_BRANCHES;
@@ -361,7 +384,41 @@ const keychainRule: Rule = (head, _ctx, segment) => {
     : [];
 };
 
+/**
+ * Commands whose operands are destinations, not just inputs. `credentialReads`
+ * already catches reading a credential; these catch *overwriting* one, which is
+ * how an agent would plant an SSH key rather than steal one.
+ */
+const writeTargetRule: Rule = (head, ctx, segment) => {
+  const out: ShellRiskMatch[] = [];
+  for (const arg of head.args) {
+    if (arg.text.startsWith('-')) continue;
+    if (!isSensitivePath(arg.text)) continue;
+    const verdict = pathVerdict(arg, ctx);
+    if (verdict.kind === 'inside') continue;
+    out.push({
+      rule: 'credential-write',
+      risk: 'destructive',
+      detail: `writes to credential material at '${arg.text}'`,
+      segment,
+    });
+  }
+  return out;
+};
+
+/** Matches a path that holds credentials or machine-wide configuration. */
+function isSensitivePath(raw: string): boolean {
+  return CREDENTIAL_PATTERNS.some((re) => re.test(raw))
+    || CONTEXTUAL_CREDENTIAL_PATTERNS.some((re) => re.test(raw));
+}
+
 const RULES: Readonly<Record<string, Rule>> = {
+  tee: writeTargetRule,
+  mv: writeTargetRule,
+  cp: writeTargetRule,
+  install: writeTargetRule,
+  chmod: writeTargetRule,
+  chown: writeTargetRule,
   ...Object.fromEntries([...REMOVERS].map((name) => [name, removeRule])),
   git: gitRule,
   dd: ddRule,
@@ -381,6 +438,37 @@ const RULES: Readonly<Record<string, Rule>> = {
 };
 
 // ------------------------------------------------------------- credentials
+
+/**
+ * Output redirection.
+ *
+ * A redirection target is written by the *shell*, not by the command, so no
+ * per-command rule can see it: `echo x > ~/.ssh/authorized_keys` is, as far as
+ * the rule table is concerned, a harmless `echo`. The words are scanned
+ * separately for `>`/`>>` and their destinations treated as writes.
+ */
+function redirectionWrites(words: readonly Word[], ctx: ShellContext, segment: string): ShellRiskMatch[] {
+  const out: ShellRiskMatch[] = [];
+  for (let i = 0; i < words.length; i++) {
+    const word = words[i]!;
+    if (word.quoted) continue;
+    const match = /^\d*>>?(.*)$/.exec(word.text);
+    if (!match) continue;
+    // `> path` (target in the next word) or `>path` (target attached).
+    const targetText = match[1] !== '' ? match[1]! : words[i + 1]?.text;
+    if (!targetText || targetText.startsWith('-')) continue;
+    if (!isSensitivePath(targetText)) continue;
+    const verdict = pathVerdict({ text: targetText, quoted: false }, ctx);
+    if (verdict.kind === 'inside') continue;
+    out.push({
+      rule: 'credential-write',
+      risk: 'destructive',
+      detail: `redirects output onto credential material at '${targetText}'`,
+      segment,
+    });
+  }
+  return out;
+}
 
 function credentialReads(head: Head, ctx: ShellContext, segment: string): ShellRiskMatch[] {
   const out: ShellRiskMatch[] = [];
@@ -442,9 +530,18 @@ function basename(command: string): string {
 }
 
 /**
- * Quote-aware split into pipelines (`;`, `&&`, `||`, newline) and then into
- * piped commands. This is not a shell parser and does not try to be one - it
- * only needs to be right about where one command ends and the next begins.
+ * Quote-aware split into pipelines and then into piped commands.
+ *
+ * This is not a shell parser and does not try to be one - it only needs to be
+ * right about where one command ends and the next begins, because every segment
+ * is classified and the worst risk wins. Getting a separator wrong is the
+ * expensive failure: an unrecognised one turns the following command into
+ * harmless-looking *arguments* of the preceding one, which is how
+ * `sleep 1 & rm -rf ~` used to classify as a `sleep`.
+ *
+ * Handled: `;` `\n` `&&` `||` `|` and a bare `&`, plus subshell `( )`, group
+ * `{ }`, command substitution `$( )` and backticks, all of which introduce a
+ * fresh command position.
  */
 function splitPipelines(command: string): Pipeline[] {
   const pipelines: Pipeline[] = [];
@@ -479,6 +576,18 @@ function splitPipelines(command: string): Pipeline[] {
     if (ch === '&' && command[i + 1] === '&') { raw = raw.slice(0, -1); endPipeline(); i++; continue; }
     if (ch === '|' && command[i + 1] === '|') { raw = raw.slice(0, -1); endPipeline(); i++; continue; }
     if (ch === '|') { endCommand(); continue; }
+    // A bare `&` backgrounds the command and starts a new one. Missing this was
+    // a real bypass, not a nicety.
+    if (ch === '&') { raw = raw.slice(0, -1); endPipeline(); continue; }
+    // `$(`, backtick, `(` and `{` all open a fresh command position; their
+    // closers end it. Treating them as separators means the inner command is
+    // classified on its own rather than absorbed as an argument.
+    if (ch === '$' && command[i + 1] === '(') { raw = raw.slice(0, -1); endPipeline(); i++; continue; }
+    if (ch === '`' || ch === '(' || ch === ')' || ch === '{' || ch === '}') {
+      raw = raw.slice(0, -1);
+      endPipeline();
+      continue;
+    }
     if (/\s/.test(ch)) { endWord(); continue; }
     current += ch;
   }

@@ -144,8 +144,22 @@ export function createPolicyEngine(options: PolicyEngineOptions = {}): PolicyEng
   };
 }
 
+/**
+ * An expiry that cannot be read has passed.
+ *
+ * `Date.parse('garbage')` is `NaN`, and every comparison against `NaN` is false,
+ * so the obvious `parsed <= now` silently turns a corrupt or empty timestamp
+ * into a grant that never expires. In a default-deny engine an unreadable
+ * authorization input must resolve to "no longer valid" - a genuinely
+ * unexpiring grant is expressed as `expiresAt: null`, which the type already
+ * distinguishes.
+ */
 function isExpired(grant: CapabilityGrant, now: Timestamp): boolean {
-  return grant.expiresAt !== null && Date.parse(grant.expiresAt) <= Date.parse(now);
+  if (grant.expiresAt === null || grant.expiresAt === undefined) return false;
+  const expiresAt = Date.parse(grant.expiresAt);
+  if (!Number.isFinite(expiresAt)) return true;
+  const reference = Date.parse(now);
+  return expiresAt <= (Number.isFinite(reference) ? reference : Date.now());
 }
 
 /**

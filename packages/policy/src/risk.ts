@@ -106,6 +106,13 @@ export function riskForCapability(capability: Capability): RiskClass {
   return best?.risk ?? 'write_reversible';
 }
 
+/**
+ * The context assumed when a caller supplies a command but no shell context.
+ * Nothing is writable and nothing is a known workspace path, so any operand the
+ * classifier examines is treated as pointing outside the sandbox.
+ */
+const NO_SHELL_CONTEXT: ShellContext = { writableRoots: [], cwd: '/' };
+
 export interface RiskClassifier {
   classify(request: RiskRequest): RiskAssessment;
 }
@@ -114,10 +121,15 @@ export function createRiskClassifier(): RiskClassifier {
   return {
     classify(request: RiskRequest): RiskAssessment {
       const base = riskForCapability(request.capability);
-      if (request.command === undefined || request.shell === undefined) {
+      if (request.command === undefined) {
         return { risk: base, reason: `capability '${request.capability}' is classified ${base}` };
       }
-      const shell = classifyShellCommand(request.command, request.shell);
+      // A command supplied without its shell context used to be discarded
+      // entirely, so a caller that forgot one optional field got a *weaker*
+      // decision than one that passed it - exactly backwards. Classify against
+      // an empty context instead: with no writable roots every path operand
+      // reads as outside the workspace, which is the conservative reading.
+      const shell = classifyShellCommand(request.command, request.shell ?? NO_SHELL_CONTEXT);
       const risk = maxRisk(base, shell.risk);
       const reason = risk === shell.risk && shell.risk !== base
         ? `shell command escalated to ${risk}: ${shell.reason}`
