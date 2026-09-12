@@ -192,6 +192,12 @@ export class RuntimeManager {
    */
   start(request: RunRequest): AsyncIterable<AgentEvent> {
     const adapter = this.#registry.adapter(request.profile.adapterId);
+    // The slot is claimed here, synchronously, rather than inside the generator.
+    // An async generator's body does not run until the first `next()`, so a
+    // caller that had started a run but not yet consumed an event still showed
+    // as idle - and two schedulers would both route to the same
+    // `maxConcurrent: 1` profile.
+    this.#claim(request.profile.id);
     return this.#tracked(request.profile.id, adapter.start(request));
   }
 
@@ -202,6 +208,7 @@ export class RuntimeManager {
         details: { adapterId: adapter.id, sessionRef },
       });
     }
+    this.#claim(request.profile.id);
     return this.#tracked(request.profile.id, adapter.resume(sessionRef, request));
   }
 
@@ -247,14 +254,27 @@ export class RuntimeManager {
     };
   }
 
-  async *#tracked(profileId: RuntimeProfileId, events: AsyncIterable<AgentEvent>): AsyncIterable<AgentEvent> {
+  #claim(profileId: RuntimeProfileId): void {
     this.#inFlight.set(profileId, this.inFlight(profileId) + 1);
+  }
+
+  #release(profileId: RuntimeProfileId): void {
+    const next = this.inFlight(profileId) - 1;
+    if (next <= 0) this.#inFlight.delete(profileId);
+    else this.#inFlight.set(profileId, next);
+  }
+
+  /**
+   * Releases the slot claimed by `start`/`resume` once the stream ends, however
+   * it ends - normal completion, an error, or the consumer abandoning the
+   * iterator, which `finally` covers because a `for await` that breaks early
+   * calls `return()` on the generator.
+   */
+  async *#tracked(profileId: RuntimeProfileId, events: AsyncIterable<AgentEvent>): AsyncIterable<AgentEvent> {
     try {
       yield* events;
     } finally {
-      const next = this.inFlight(profileId) - 1;
-      if (next <= 0) this.#inFlight.delete(profileId);
-      else this.#inFlight.set(profileId, next);
+      this.#release(profileId);
     }
   }
 }
