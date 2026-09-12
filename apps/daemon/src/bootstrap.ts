@@ -7,7 +7,10 @@ import type { EventBusPort, ProjectionBusPort } from '@tandemise/domain';
 // the rest of the system never learns (MVP.md §6.1, §26.1).
 import { persistenceModule } from '@tandemise/persistence';
 import * as persistenceTokens from '@tandemise/persistence';
-import { createArtifactsModule, ARTIFACT_STORE as ARTIFACTS_STORE_TOKEN, renderArtifactTemplate } from '@tandemise/artifacts';
+import {
+  createArtifactsModule, ARTIFACT_STORE as ARTIFACTS_STORE_TOKEN,
+  renderArtifactTemplate, parseArtifact,
+} from '@tandemise/artifacts';
 import { policyModule } from '@tandemise/policy';
 import { contextModule } from '@tandemise/context';
 import { createEvaluationModule } from '@tandemise/evaluation';
@@ -22,8 +25,11 @@ import { browserIntegrationModule } from '@tandemise/browser';
 import { applicationModule, createServices, type TandemiseServices } from '@tandemise/application';
 import * as applicationTokens from '@tandemise/application';
 
+import { SCHEMA_VERSION } from '@tandemise/persistence';
 import type { DaemonConfig } from './config.js';
 import { InMemoryEventBus, InMemoryProjectionBus } from './buses.js';
+import { createSecretStore } from './secrets.js';
+import { createSettingsStore, createSystemEnvironment, processLiveness } from './platform.js';
 
 export const CLOCK = token<Clock>('Clock');
 export const LOGGER = token<Logger>('Logger');
@@ -109,20 +115,32 @@ function aliasPorts(container: Container, log: Logger): void {
     aliased.push(name);
   }
 
-  // The artifact store and template renderer live in a provider package for the
-  // same reason, and have no persistence counterpart to match by name.
+  // The remaining ports have no persistence counterpart to match by name, so
+  // they are bound explicitly. Each one is a provider the application layer is
+  // forbidden to import directly.
   const appArtifactStore = (applicationTokens as Record<string, unknown>).ARTIFACT_STORE;
   if (isToken(appArtifactStore) && !container.has(appArtifactStore)) {
     container.bind(appArtifactStore, (r) => r.resolve(ARTIFACTS_STORE_TOKEN), { source: 'alias:ARTIFACT_STORE' });
     aliased.push('ARTIFACT_STORE');
   }
-  const appTemplates = (applicationTokens as Record<string, unknown>).ARTIFACT_TEMPLATES;
-  if (isToken(appTemplates) && !container.has(appTemplates)) {
-    container.bindValue(appTemplates as Token<unknown>, { render: renderArtifactTemplate }, { source: 'alias:ARTIFACT_TEMPLATES' });
-    aliased.push('ARTIFACT_TEMPLATES');
-  }
+  const bindDirect = (name: string, factory: (r: import('@tandemise/kernel').Resolver) => unknown): void => {
+    const t = (applicationTokens as Record<string, unknown>)[name];
+    if (!isToken(t)) { missing.push(name); return; }
+    if (container.has(t)) return;
+    container.bind(t as Token<unknown>, factory, { source: `bind:${name}` });
+    aliased.push(name);
+  };
 
-  log.debug('bootstrap.ports_aliased', { aliased, missing });
+  bindDirect('ARTIFACT_TEMPLATES', () => ({ render: renderArtifactTemplate }));
+  bindDirect('ARTIFACT_PARSER', () => ({ parse: parseArtifact }));
+  bindDirect('EVENT_BUS', (r) => r.resolve(EVENT_BUS));
+  bindDirect('PROJECTION_BUS', (r) => r.resolve(PROJECTION_BUS));
+  bindDirect('SECRET_STORE', (r) => createSecretStore({ home: r.resolve(CONFIG).home, log }));
+  bindDirect('SETTINGS_STORE', (r) => createSettingsStore(r.resolve(CONFIG).home, log));
+  bindDirect('SYSTEM_ENVIRONMENT', (r) => createSystemEnvironment(r.resolve(CONFIG), SCHEMA_VERSION));
+  bindDirect('PROCESS_LIVENESS', () => processLiveness);
+
+  log.debug('bootstrap.ports_bound', { aliased, missing });
 }
 
 function isToken(value: unknown): value is Token<unknown> {

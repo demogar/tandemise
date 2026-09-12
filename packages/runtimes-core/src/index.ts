@@ -16,6 +16,13 @@ export { normalizeAgentEvent, isTerminalEvent, MAX_SUMMARY_CHARS, MAX_TEXT_CHARS
 export { LineAssembler } from './line-assembler.js';
 
 export {
+  BACKPRESSURE_HIGH_WATER, BACKPRESSURE_LOW_WATER, relieveBackPressure, superviseProcessStream,
+} from './process-stream.js';
+export type {
+  ProcessInputStream, ProcessOutputStream, ProcessStreamOptions, SupervisedChild, SupervisedStream,
+} from './process-stream.js';
+
+export {
   DEFAULT_TERMINATION_GRACE_MS, classifyAbort, escalateTerminationOnAbort, withWallTimeBudget,
 } from './termination.js';
 export type { AbortOutcome, Terminable } from './termination.js';

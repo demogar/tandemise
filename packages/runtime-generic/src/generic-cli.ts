@@ -1,16 +1,16 @@
-import { execFile } from 'node:child_process';
-import type { ChildProcess } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import type {
   AgentEvent, AgentEventType, RuntimeCapability, RuntimeDiscovery, RuntimeHealth, RuntimeProfile,
 } from '@tandemise/domain';
-import { DEFAULT_TERMINATION_GRACE_MS, NormalizingEventSink } from '@tandemise/runtimes-core';
-import type { AgentRuntimeAdapter, RunRequest } from '@tandemise/runtimes-core';
+import {
+  DEFAULT_TERMINATION_GRACE_MS, NormalizingEventSink, relieveBackPressure, superviseProcessStream,
+} from '@tandemise/runtimes-core';
+import type { AgentRuntimeAdapter, RunRequest, SupervisedChild } from '@tandemise/runtimes-core';
 import { systemClock } from '@tandemise/shared';
 import type { Clock, RunId } from '@tandemise/shared';
 import { PROMPT_PLACEHOLDER, parseGenericCliSettings, substitute } from './generic-settings.js';
 import type { GenericCliSettings, GenericEventMap } from './generic-settings.js';
-import { relieveBackPressure, spawnStream } from './spawn-stream.js';
 
 const run = promisify(execFile);
 
@@ -38,7 +38,7 @@ export class GenericCliAdapter implements AgentRuntimeAdapter {
   readonly displayName = 'Generic CLI';
   readonly baseCapabilities: readonly RuntimeCapability[] = ['reasoning', 'tool_calling'];
 
-  readonly #children = new Map<RunId, ChildProcess>();
+  readonly #children = new Map<RunId, SupervisedChild>();
   readonly #clock: Clock;
   readonly #graceMs: number;
 
@@ -130,19 +130,24 @@ export class GenericCliAdapter implements AgentRuntimeAdapter {
     const settings = parsed.value;
     const { args, stdin } = buildArgv(settings, request);
 
-    const stream = spawnStream({
-      command: settings.command,
-      args,
-      cwd: request.workingDirectory,
+    const stream = superviseProcessStream({
+      spawn: () => spawn(settings.command, args, {
+        cwd: request.workingDirectory,
+        // Inherited on purpose: a configured CLI authenticates through the
+        // user's own environment, exactly as Claude Code does (MVP.md §10.3).
+        env: process.env,
+        stdio: [stdin === null ? 'ignore' : 'pipe', 'pipe', 'pipe'],
+        windowsHide: true,
+      }),
+      describe: settings.command,
       stdin,
       signal: request.signal,
       maxWallTimeMs: request.maxWallTimeMs,
       graceMs: this.#graceMs,
       sink,
       log,
-      onSpawned: (child) => this.#children.set(request.runId, child),
       onStdoutLine: (line) => this.#handleLine(line, settings, sink),
-      onClose: (exitCode) => {
+      onExit: (exitCode) => {
         // Reached only when the runtime produced no verdict of its own. A
         // configured CLI usually has none - the process exit *is* the result,
         // which is what makes the plain-text case usable at all - but one whose
@@ -152,6 +157,8 @@ export class GenericCliAdapter implements AgentRuntimeAdapter {
         else sink.fail('RUNTIME_FAILED', `'${settings.command}' exited with code ${exitCode}`, false);
       },
     });
+
+    this.#children.set(request.runId, stream.child);
 
     try {
       for await (const event of sink) {

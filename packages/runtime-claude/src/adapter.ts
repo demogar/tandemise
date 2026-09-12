@@ -1,16 +1,14 @@
 import { spawn } from 'node:child_process';
-import type { ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
 import type {
   AgentEvent, RuntimeCapability, RuntimeDiscovery, RuntimeHealth, RuntimeProfile,
 } from '@tandemise/domain';
 import {
-  DEFAULT_TERMINATION_GRACE_MS, LineAssembler, NormalizingEventSink,
-  classifyAbort, escalateTerminationOnAbort, withWallTimeBudget,
+  DEFAULT_TERMINATION_GRACE_MS, NormalizingEventSink, relieveBackPressure, superviseProcessStream,
 } from '@tandemise/runtimes-core';
-import type { AgentRuntimeAdapter, RunRequest } from '@tandemise/runtimes-core';
-import { TandemiseError, errorMessage, systemClock } from '@tandemise/shared';
+import type { AgentRuntimeAdapter, RunRequest, SupervisedChild } from '@tandemise/runtimes-core';
+import { TandemiseError, systemClock } from '@tandemise/shared';
 import type { Clock, RunId } from '@tandemise/shared';
 import { buildInvocation } from './cli-args.js';
 import { ClaudeEventMapper } from './event-mapper.js';
@@ -31,10 +29,6 @@ export const CLAUDE_CAPABILITIES: readonly RuntimeCapability[] = [
 
 /** A quota observation older than this no longer describes the current state. */
 const QUOTA_WARNING_TTL_MS = 15 * 60_000;
-
-/** Queue depth at which the child's stdout is paused, and where it resumes. */
-const BACKPRESSURE_HIGH_WATER = 256;
-const BACKPRESSURE_LOW_WATER = 64;
 
 interface QuotaObservation {
   readonly detail: string;
@@ -61,7 +55,7 @@ export class ClaudeCodeAdapter implements AgentRuntimeAdapter {
   readonly displayName = 'Claude Code';
   readonly baseCapabilities = CLAUDE_CAPABILITIES;
 
-  readonly #children = new Map<RunId, ChildProcess>();
+  readonly #children = new Map<RunId, SupervisedChild>();
   readonly #clock: Clock;
   readonly #graceMs: number;
   #quota: QuotaObservation | null = null;
@@ -151,103 +145,43 @@ export class ClaudeCodeAdapter implements AgentRuntimeAdapter {
     });
 
     log.debug('spawning claude code', { executablePath, argc: args.length, promptViaStdin: stdin !== null });
-    const child = spawn(executablePath, args, {
-      cwd,
-      // The CLI is launched under the user's own environment on purpose: that
-      // is where its authentication lives (MVP.md §10.3). Profile settings
-      // deliberately cannot inject env vars - that would invite secrets into
-      // the database, which MVP.md §P8 forbids.
-      env: process.env,
-      stdio: [stdin === null ? 'ignore' : 'pipe', 'pipe', 'pipe'],
-      windowsHide: true,
+    const stream = superviseProcessStream({
+      spawn: () => spawn(executablePath, args, {
+        cwd,
+        // The CLI is launched under the user's own environment on purpose: that
+        // is where its authentication lives (MVP.md §10.3). Profile settings
+        // deliberately cannot inject env vars - that would invite secrets into
+        // the database, which MVP.md §P8 forbids.
+        env: process.env,
+        stdio: [stdin === null ? 'ignore' : 'pipe', 'pipe', 'pipe'],
+        windowsHide: true,
+      }),
+      describe: executablePath,
+      stdin,
+      signal: request.signal,
+      maxWallTimeMs: request.maxWallTimeMs,
+      graceMs: this.#graceMs,
+      sink,
+      log,
+      onStdoutLine: (line) => this.#handleLine(line, sink, mapper),
+      onExit: (code, killedBy) => {
+        // Reached only when the CLI produced no `result` record of its own,
+        // which for Claude Code means it died before finishing.
+        const how = killedBy === null ? `exit code ${code}` : `signal ${killedBy}`;
+        sink.fail('RUNTIME_FAILED', `Claude Code ended without a result (${how})`, false);
+      },
     });
-    this.#children.set(request.runId, child);
-
-    const signal = withWallTimeBudget(request.signal, request.maxWallTimeMs);
-    const unsubscribe = escalateTerminationOnAbort(child, signal, this.#graceMs, () => {
-      log.warn('claude code ignored SIGTERM; sent SIGKILL', { pid: child.pid });
-    });
-
-    this.#wireStreams(child, sink, mapper, log);
-    child.on('error', (e) => sink.abort(new TandemiseError('RUNTIME_FAILED', `Failed to run ${executablePath}: ${errorMessage(e)}`, { cause: e })));
-    child.on('close', (code, killedBy) => {
-      if (!sink.terminated) {
-        if (signal.aborted) {
-          const outcome = classifyAbort(request.signal, request.maxWallTimeMs);
-          sink.fail(outcome.code, outcome.message, outcome.retryable);
-        } else {
-          const how = killedBy === null ? `exit code ${code}` : `signal ${killedBy}`;
-          sink.fail('RUNTIME_FAILED', `Claude Code ended without a result (${how})`, false);
-        }
-      }
-      sink.close();
-    });
-
-    if (stdin !== null && child.stdin !== null) child.stdin.end(stdin);
+    this.#children.set(request.runId, stream.child);
 
     try {
       for await (const event of sink) {
-        // Resume reading once the consumer has caught up. Without this the
-        // stream would stay paused forever after the first burst.
-        if (child.stdout?.isPaused() === true && sink.pending <= BACKPRESSURE_LOW_WATER) {
-          child.stdout.resume();
-        }
+        relieveBackPressure(stream.child, sink.pending);
         yield event;
       }
     } finally {
-      unsubscribe();
       this.#children.delete(request.runId);
-      // A consumer that stops iterating early (a `break`, or a thrown error
-      // downstream) must not leave a child agent running against the workspace.
-      if (child.exitCode === null) {
-        child.kill('SIGTERM');
-        void this.#waitForExit(child, this.#graceMs).then(() => {
-          if (child.exitCode === null) child.kill('SIGKILL');
-        });
-      }
+      stream.dispose();
     }
-  }
-
-  #wireStreams(
-    child: ChildProcess,
-    sink: NormalizingEventSink,
-    mapper: ClaudeEventMapper,
-    log: RunRequest['log'],
-  ): void {
-    const { stdout, stderr } = child;
-    if (stdout === null || stderr === null) {
-      sink.abort(new TandemiseError('INTERNAL', 'Claude Code was spawned without piped stdio'));
-      return;
-    }
-
-    const stdoutLines = new LineAssembler();
-    stdout.setEncoding('utf8');
-    stdout.on('data', (chunk: string) => {
-      try {
-        for (const line of stdoutLines.push(chunk)) this.#handleLine(line, sink, mapper);
-      } catch (e) {
-        sink.abort(e);
-        return;
-      }
-      if (sink.pending >= BACKPRESSURE_HIGH_WATER) stdout.pause();
-    });
-    stdout.on('end', () => {
-      const trailing = stdoutLines.flush();
-      if (trailing !== null) this.#handleLine(trailing, sink, mapper);
-    });
-
-    const stderrLines = new LineAssembler();
-    stderr.setEncoding('utf8');
-    stderr.on('data', (chunk: string) => {
-      for (const line of stderrLines.push(chunk)) {
-        log.debug('claude code stderr', { line });
-        sink.raw('stderr', line);
-      }
-    });
-    stderr.on('end', () => {
-      const trailing = stderrLines.flush();
-      if (trailing !== null) sink.raw('stderr', trailing);
-    });
   }
 
   #handleLine(line: string, sink: NormalizingEventSink, mapper: ClaudeEventMapper): void {
@@ -295,7 +229,7 @@ export class ClaudeCodeAdapter implements AgentRuntimeAdapter {
     };
   }
 
-  #waitForExit(child: ChildProcess, timeoutMs: number): Promise<void> {
+  #waitForExit(child: SupervisedChild, timeoutMs: number): Promise<void> {
     return new Promise((done) => {
       const timer = setTimeout(done, timeoutMs);
       timer.unref();
