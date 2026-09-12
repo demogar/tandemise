@@ -1,4 +1,4 @@
-import type { Logger } from '@tandemise/shared';
+import type { Clock, Logger } from '@tandemise/shared';
 import type { Integration, IntegrationHealth, IntegrationTransport } from '@tandemise/domain';
 import { Registry, multiToken, type Descriptor } from '@tandemise/kernel';
 import type { z } from 'zod';
@@ -9,6 +9,7 @@ import type { IntegrationTool } from './tool.js';
 export interface IntegrationHealthContext {
   readonly exec: CommandExecutor;
   readonly logger: Logger;
+  readonly clock: Clock;
   readonly signal: AbortSignal;
 }
 

@@ -22,7 +22,11 @@ export interface TandemiseDatabase {
   readonly handle: SqliteHandle;
   /** Filesystem path, or `:memory:`. */
   readonly path: string;
-  /** Runs `fn` in a transaction, rolling back if it throws. Nests via savepoints. */
+  /**
+   * Runs `fn` in an immediate transaction, rolling back if it throws. Nests via
+   * savepoints, so a repository that transacts internally composes inside a
+   * larger unit of work instead of committing early.
+   */
   transaction<T>(fn: () => T): T;
   close(): void;
 }
@@ -80,7 +84,19 @@ export function openDatabase(options: OpenDatabaseOptions): TandemiseDatabase {
     handle,
     path: options.path,
     transaction<T>(fn: () => T): T {
-      return handle.transaction(fn)();
+      // BEGIN IMMEDIATE, not the default BEGIN DEFERRED.
+      //
+      // Every transaction here reads before it writes - `append` reads MAX
+      // (sequence) then inserts, `update` reads the row then rewrites it. A
+      // deferred transaction starts as a reader and must upgrade to a writer on
+      // that first write, and in WAL mode SQLite refuses the upgrade with
+      // SQLITE_BUSY the moment another connection has committed since the read,
+      // *without* invoking the busy handler: retrying could deadlock, so
+      // `busy_timeout` deliberately does not apply. Taking the write lock up
+      // front makes busy_timeout apply again, so concurrent writers queue
+      // instead of failing. Verified by scratch/persistence-check.mjs, which
+      // fails with "database is locked" if this is DEFERRED.
+      return handle.transaction(fn).immediate();
     },
     close(): void {
       if (closed) return;

@@ -490,6 +490,31 @@ let threw = false;
 try { evaluateNamedGate('does_not_exist', {}); } catch { threw = true; }
 check('an unknown gate name throws NOT_FOUND', threw);
 
+// ────────────────────────────────────────────────────── 6. module composition
+
+section('modules — container wiring');
+{
+  const { Container, compose } = await import('@tandemise/kernel');
+  const { policyModule, POLICY_ENGINE, GRANT_BUILDER, APPROVAL_FACTORY, RISK_CLASSIFIER } =
+    await import('@tandemise/policy');
+  const { createArtifactsModule, ARTIFACT_STORE } = await import('@tandemise/artifacts');
+  const { contextModule, CONTEXT_COMPILER } = await import('@tandemise/context');
+  const { evaluationModule, CHECK_RUNNER, COMMAND_EXECUTOR } = await import('@tandemise/evaluation');
+
+  const container = new Container();
+  container.bind(COMMAND_EXECUTOR, () => fakeExecutor);
+  compose(
+    container,
+    policyModule,
+    createArtifactsModule({ paths: createPaths(join(tmpdir(), 'tandemise-smoke')) }),
+    contextModule,
+    evaluationModule,
+  );
+  for (const t of [POLICY_ENGINE, GRANT_BUILDER, APPROVAL_FACTORY, RISK_CLASSIFIER, ARTIFACT_STORE, CONTEXT_COMPILER, CHECK_RUNNER]) {
+    check(`${t.description} resolves from the container`, container.resolve(t) !== undefined);
+  }
+}
+
 // ───────────────────────────────────────────────────────────────── summary
 
 function ordered(haystack, needles) {

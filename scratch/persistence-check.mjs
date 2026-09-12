@@ -8,6 +8,8 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { Worker } from 'node:worker_threads';
 import { ids, systemClock } from '../packages/shared/dist/index.js';
 import { Container, compose } from '../packages/kernel/dist/index.js';
 import {
@@ -573,6 +575,124 @@ check('a newer schema is refused', guarded, guardMessage);
 console.log(`       ${guardMessage}`);
 
 await container.dispose();
+
+// ---------------------------------------------------------------------------
+// Concurrency. Everything above runs on one connection, which proves the SQL is
+// right but not that it is safe. These two claims - a lease has one winner, and
+// event sequences have no duplicates - are only meaningful across real
+// concurrent writers, so they get real ones: separate threads, separate
+// connections to the same file, released at the same instant.
+// ---------------------------------------------------------------------------
+section('concurrency (8 threads, separate connections)');
+
+const raceDir = mkdtempSync(join(tmpdir(), 'tandemise-race-'));
+const racePath = join(raceDir, 'race.db');
+const raceContainer = new Container();
+compose(raceContainer, persistenceModule({ path: racePath, clock: systemClock }));
+const raceWsId = ids.workspace();
+const raceMissionId = ids.mission();
+raceContainer.resolve(WORKSPACE_REPOSITORY).create({
+  id: raceWsId, name: 'Race', defaultRepositoryId: null,
+  autonomy: {
+    planApproval: 'ask', localCodeChanges: 'auto', externalWrites: 'policy',
+    productionRelease: 'ask', financialActions: 'deny',
+  },
+  concurrency: { maxTotalWorkers: 8, perRuntime: {} }, routing: {},
+  defaultAutonomyLevel: 'balanced',
+  knowledge: { productVision: null, architecturePrinciples: null, codingStandards: null, designSystem: null, glossary: null },
+});
+raceContainer.resolve(MISSION_REPOSITORY).create({
+  id: raceMissionId, workspaceId: raceWsId, repositoryId: null,
+  title: 'Race', goal: 'contend', constraints: [], successCriteria: [],
+});
+await raceContainer.dispose();
+
+const WORKER_SOURCE = `
+const { workerData, parentPort } = require('node:worker_threads');
+(async () => {
+  const P = await import(workerData.pkg);
+  const db = P.openDatabase({ path: workerData.dbPath });
+  const clock = { now: () => new Date().toISOString(), epochMs: () => Date.now() };
+  const leases = new P.SqliteLeaseRepository(db, clock);
+  const events = new P.SqliteEventRepository(db);
+
+  // Busy-wait to the agreed instant so the threads actually collide rather than
+  // queueing behind each other's start-up.
+  while (Date.now() < workerData.startAt) { /* spin */ }
+
+  const lease = leases.acquire(workerData.key, { runId: null, taskId: null }, 60000);
+  const appended = [];
+  for (let i = 0; i < workerData.eventsPerWorker; i++) {
+    appended.push(events.append({
+      id: workerData.idPrefix + '_' + i,
+      workspaceId: workerData.workspaceId,
+      missionId: workerData.missionId,
+      body: { type: 'note', text: workerData.idPrefix + ':' + i },
+      createdAt: clock.now(),
+    }).sequence);
+  }
+  db.close();
+  parentPort.postMessage({ leaseId: lease ? lease.id : null, sequences: appended });
+})().catch((err) => parentPort.postMessage({ error: String(err && err.stack ? err.stack : err) }));
+`;
+
+const WORKERS = 8;
+const EVENTS_PER_WORKER = 25;
+const pkgUrl = pathToFileURL(new URL('../packages/persistence/dist/index.js', import.meta.url).pathname).href;
+const startAt = Date.now() + 300;
+
+const results = await Promise.all(
+  Array.from({ length: WORKERS }, (_, i) =>
+    new Promise((resolve, reject) => {
+      const worker = new Worker(WORKER_SOURCE, {
+        eval: true,
+        workerData: {
+          pkg: pkgUrl,
+          dbPath: racePath,
+          startAt,
+          key: 'branch:contended:main',
+          workspaceId: raceWsId,
+          missionId: raceMissionId,
+          idPrefix: `evt_w${i}`,
+          eventsPerWorker: EVENTS_PER_WORKER,
+        },
+      });
+      worker.on('message', resolve);
+      worker.on('error', reject);
+    }),
+  ),
+);
+
+const errored = results.filter((r) => r.error);
+check('every worker completed without error', errored.length === 0, errored[0]?.error);
+const winners = results.filter((r) => r.leaseId !== null && r.leaseId !== undefined);
+check(
+  `exactly one of ${WORKERS} concurrent acquires won (got ${winners.length})`,
+  winners.length === 1,
+);
+
+const allSequences = results.flatMap((r) => r.sequences ?? []);
+const expectedTotal = WORKERS * EVENTS_PER_WORKER;
+check(`all ${expectedTotal} concurrent appends succeeded`, allSequences.length === expectedTotal);
+check('no two concurrent appends got the same sequence', new Set(allSequences).size === allSequences.length);
+check(
+  'sequences form an unbroken 1..n run',
+  Math.min(...allSequences) === 1 && Math.max(...allSequences) === expectedTotal,
+);
+
+const verify = new Container();
+compose(verify, persistenceModule({ path: racePath, clock: systemClock }));
+check(
+  'the log on disk holds every event exactly once',
+  verify.resolve(EVENT_REPOSITORY).listByMission(raceMissionId).length === expectedTotal,
+);
+check(
+  'one lease row for the contended key',
+  verify.resolve(LEASE_REPOSITORY).listAll().length === 1,
+);
+await verify.dispose();
+rmSync(raceDir, { recursive: true, force: true });
+
 rmSync(dir, { recursive: true, force: true });
 
 console.log(`\n${'='.repeat(60)}`);
