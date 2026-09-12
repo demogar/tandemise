@@ -46,6 +46,7 @@ enum ScreenshotOps {
                 permission: "screenRecording")
         }
 
+        try Session.requireUnlocked("screen capture")
         let target = try resolveTarget(params)
         let capture = try run(target, timeout: TimeInterval(params.clampedInt("timeoutMs", default: 15_000, min: 1_000, max: 60_000)) / 1000)
         let png = try encodePNG(capture.image)

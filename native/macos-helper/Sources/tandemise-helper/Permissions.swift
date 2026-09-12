@@ -23,6 +23,9 @@ enum Permissions {
             // bundle...). Surfacing the binary path makes "I granted it but it
             // still says no" diagnosable.
             "executablePath": .string(CommandLine.arguments.first ?? ""),
+            // Not a permission, but it fails the same ops for a different reason
+            // and belongs in the same one-shot health probe.
+            "screenLocked": .bool(Session.isScreenLocked),
         ])
     }
 

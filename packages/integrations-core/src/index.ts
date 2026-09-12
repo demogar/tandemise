@@ -1,7 +1,7 @@
 export type { CommandExecutor, ToolExecRequest, ToolExecResult } from './exec.js';
 
 export type {
-  IntegrationTool, ToolContext, ToolEvidence, ToolExecution, ToolOutcome, ToolResult,
+  IntegrationTool, ToolContext, ToolEvidence, ToolExecution, ToolOutcome, ToolResult, ToolSchema,
 } from './tool.js';
 export { defineTool, toolDescriptor } from './tool.js';
 

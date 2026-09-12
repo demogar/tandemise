@@ -54,6 +54,16 @@ export interface ToolExecution<O = unknown> {
 
 export type ToolOutcome = 'ok' | 'denied' | 'error';
 
+/**
+ * A schema whose *parsed* value is `T`, accepting anything on the way in.
+ *
+ * The input side is deliberately `unknown`: a schema with `.default()` or a
+ * transform accepts a looser shape than it produces, and pinning both sides to
+ * `T` would make every such schema unassignable. Tool bodies only ever see the
+ * parsed value.
+ */
+export type ToolSchema<T> = z.ZodType<T, z.ZodTypeDef, unknown>;
+
 /** The normalized record of one invocation, returned to every caller. */
 export interface ToolResult<O = unknown> {
   readonly tool: string;
@@ -82,8 +92,8 @@ export interface IntegrationTool<I = unknown, O = unknown> {
   readonly capability: Capability;
   readonly risk: RiskClass;
   readonly description: string;
-  readonly inputSchema: z.ZodType<I>;
-  readonly outputSchema?: z.ZodType<O>;
+  readonly inputSchema: ToolSchema<I>;
+  readonly outputSchema?: ToolSchema<O>;
   /**
    * The concrete thing this call touches - a path, a host, a repository - so a
    * grant scoped to `cli/cli` can be enforced without the policy layer knowing
@@ -111,26 +121,26 @@ export function toolDescriptor(tool: IntegrationTool): ToolDescriptor {
  * Authoring helper that fixes the input/output types from the schemas, so a
  * tool body gets a typed `input` without the author restating the type.
  */
-export function defineTool<I, O>(
+export function defineTool<S extends z.ZodTypeAny, O>(
   spec: {
     name: string;
     integrationId?: IntegrationId | null;
     capability: Capability;
     risk: RiskClass;
     description: string;
-    inputSchema: z.ZodType<I>;
-    outputSchema?: z.ZodType<O>;
-    resource?: (input: I) => string | undefined;
-    execute: (ctx: ToolContext, input: I) => Promise<ToolExecution<O>>;
+    inputSchema: S;
+    outputSchema?: ToolSchema<O>;
+    resource?: (input: z.output<S>) => string | undefined;
+    execute: (ctx: ToolContext, input: z.output<S>) => Promise<ToolExecution<O>>;
   },
-): IntegrationTool<I, O> {
+): IntegrationTool<z.output<S>, O> {
   return {
     name: spec.name,
     integrationId: spec.integrationId ?? null,
     capability: spec.capability,
     risk: spec.risk,
     description: spec.description,
-    inputSchema: spec.inputSchema,
+    inputSchema: spec.inputSchema as ToolSchema<z.output<S>>,
     ...(spec.outputSchema ? { outputSchema: spec.outputSchema } : {}),
     ...(spec.resource ? { resource: spec.resource } : {}),
     execute: spec.execute,

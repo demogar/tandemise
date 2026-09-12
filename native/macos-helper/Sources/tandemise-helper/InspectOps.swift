@@ -21,6 +21,7 @@ enum InspectOps {
 
     static func inspect(_ params: Params) throws -> JSONValue {
         try AX.requireTrusted("inspect an application's accessibility tree")
+        try Session.requireUnlocked("inspection")
         let app = try AppOps.resolveRunningApplication(params)
         let axApp = AX.application(pid: app.processIdentifier)
         let maxDepth = params.clampedInt("maxDepth", default: defaultMaxDepth, min: 1, max: maxMaxDepth)
@@ -44,7 +45,7 @@ enum InspectOps {
         }
 
         var budget = Budget(remaining: maxNodes)
-        let tree = try node(root, path: rootPath, depth: 0, maxDepth: maxDepth, budget: &budget)
+        let tree = try node(root, path: rootPath, depth: 0, maxDepth: maxDepth, ancestors: [], budget: &budget)
 
         return .object([
             "bundleId": .optionalString(app.bundleIdentifier),
@@ -70,34 +71,33 @@ enum InspectOps {
     }
 
     private static func node(_ element: AXUIElement, path: String, depth: Int, maxDepth: Int,
-                             budget: inout Budget) throws -> JSONValue {
+                             ancestors: [AXUIElement], budget: inout Budget) throws -> JSONValue {
         guard budget.take() else { return .object(["truncated": .bool(true)]) }
         var fields = try AX.describe(element, path: path.isEmpty ? nil : path)
+        let kids = try AX.acyclicChildren(element, ancestors: ancestors)
+        guard !kids.isEmpty else { return .object(fields) }
 
         if depth >= maxDepth {
-            let kids = try AX.children(element)
-            if !kids.isEmpty {
-                fields["children"] = .array([])
-                fields["truncated"] = .bool(true)
-                fields["childCount"] = .int(kids.count)
-                budget.truncated = true
-            }
+            fields["children"] = .array([])
+            fields["childCount"] = .int(kids.count)
+            fields["truncated"] = .bool(true)
+            budget.truncated = true
             return .object(fields)
         }
 
-        let kids = try AX.children(element)
+        let nested = ancestors + [element]
         var encoded: [JSONValue] = []
         encoded.reserveCapacity(kids.count)
-        for (index, child) in kids.enumerated() {
+        for (index, child) in kids {
             if budget.remaining == 0 {
                 budget.truncated = true
                 fields["truncated"] = .bool(true)
                 break
             }
             encoded.append(try node(child, path: AXPath.child(path, index), depth: depth + 1,
-                                    maxDepth: maxDepth, budget: &budget))
+                                    maxDepth: maxDepth, ancestors: nested, budget: &budget))
         }
-        if !kids.isEmpty { fields["children"] = .array(encoded) }
+        fields["children"] = .array(encoded)
         return .object(fields)
     }
 
@@ -162,6 +162,7 @@ enum InspectOps {
 
     static func find(_ params: Params) throws -> JSONValue {
         try AX.requireTrusted("search an application's accessibility tree")
+        try Session.requireUnlocked("element search")
         let selector = Selector(params)
         guard !selector.isEmpty else {
             throw HelperError.validation("find requires at least one of 'role', 'subrole', 'label', 'identifier' or 'titleContains'")
@@ -174,7 +175,7 @@ enum InspectOps {
         var budget = Budget(remaining: maxNodes)
         var matches: [(AXUIElement, String)] = []
         try search(context.root, path: "", depth: 0, maxDepth: maxDepth, selector: selector,
-                   limit: limit, budget: &budget, into: &matches)
+                   limit: limit, ancestors: [], budget: &budget, into: &matches)
 
         return .object([
             "bundleId": .optionalString(context.app.bundleIdentifier),
@@ -188,20 +189,22 @@ enum InspectOps {
     }
 
     private static func search(_ element: AXUIElement, path: String, depth: Int, maxDepth: Int,
-                               selector: Selector, limit: Int, budget: inout Budget,
-                               into matches: inout [(AXUIElement, String)]) throws {
+                               selector: Selector, limit: Int, ancestors: [AXUIElement],
+                               budget: inout Budget, into matches: inout [(AXUIElement, String)]) throws {
         guard matches.count < limit, budget.take() else { return }
         if try selector.matches(element) {
             matches.append((element, path))
             if matches.count >= limit { return }
         }
+        let kids = try AX.acyclicChildren(element, ancestors: ancestors)
         guard depth < maxDepth else {
-            if !(try AX.children(element).isEmpty) { budget.truncated = true }
+            if !kids.isEmpty { budget.truncated = true }
             return
         }
-        for (index, child) in try AX.children(element).enumerated() {
+        let nested = ancestors + [element]
+        for (index, child) in kids {
             try search(child, path: AXPath.child(path, index), depth: depth + 1, maxDepth: maxDepth,
-                       selector: selector, limit: limit, budget: &budget, into: &matches)
+                       selector: selector, limit: limit, ancestors: nested, budget: &budget, into: &matches)
             if matches.count >= limit { return }
         }
     }
@@ -223,6 +226,7 @@ enum InspectOps {
         if hasCoordinates { return try clickAtCoordinates(params) }
 
         try AX.requireTrusted("click an element")
+        try Session.requireUnlocked("clicking")
         let context = try resolveSearchRoot(params)
 
         let element: AXUIElement
@@ -250,7 +254,7 @@ enum InspectOps {
             var matches: [(AXUIElement, String)] = []
             try search(context.root, path: "", depth: 0,
                        maxDepth: params.clampedInt("maxDepth", default: maxMaxDepth, min: 1, max: maxMaxDepth),
-                       selector: selector, limit: 2, budget: &budget, into: &matches)
+                       selector: selector, limit: 2, ancestors: [], budget: &budget, into: &matches)
             guard let first = matches.first else {
                 throw HelperError.notFound("No element matches (\(selector.described)) in \(context.describedTarget)",
                                            details: ["selector": .string(selector.described)])
@@ -302,6 +306,7 @@ enum InspectOps {
         }
         let point = CGPoint(x: Double(x), y: Double(y))
         try Input.requireEventPermission("click at a coordinate")
+        try Session.requireUnlocked("clicking")
 
         let button = params.string("button") ?? "left"
         try Input.click(at: point, button: button, clickCount: params.clampedInt("clickCount", default: 1, min: 1, max: 3))

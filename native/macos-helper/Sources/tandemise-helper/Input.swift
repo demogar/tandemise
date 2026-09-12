@@ -30,6 +30,7 @@ enum Input {
     static func type(_ params: Params) throws -> JSONValue {
         let text = try params.requiredString("text")
         try requireEventPermission("type text")
+        try Session.requireUnlocked("typing")
         let source = try makeSource()
         let perKeyDelay = TimeInterval(params.clampedInt("delayMs", default: 4, min: 0, max: 500)) / 1000
 
@@ -92,6 +93,7 @@ enum Input {
             throw HelperError.validation("shortcut requires a non-empty 'keys' array, e.g. [\"CMD\", \"R\"]")
         }
         try requireEventPermission("send a keyboard shortcut")
+        try Session.requireUnlocked("keyboard shortcuts")
 
         var flags: CGEventFlags = []
         var modifierNames: [String] = []

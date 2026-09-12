@@ -62,6 +62,21 @@ enum AX {
         return raw as? [AXUIElement] ?? []
     }
 
+    /// Children with cycles removed.
+    ///
+    /// The accessibility graph is not a tree. Real apps hand back an element
+    /// that is already on the path from the root - macOS 15's Calculator lists
+    /// *itself* among its own children - and a naive depth-first walk then burns
+    /// its entire node budget re-describing the same subtree. Dropping any child
+    /// that equals an ancestor keeps the traversal finite and the paths honest.
+    static func acyclicChildren(_ element: AXUIElement, ancestors: [AXUIElement]) throws -> [(Int, AXUIElement)] {
+        try children(element).enumerated().compactMap { index, child in
+            if CFEqual(child, element) { return nil }
+            if ancestors.contains(where: { CFEqual($0, child) }) { return nil }
+            return (index, child)
+        }
+    }
+
     static func point(_ element: AXUIElement, _ name: String = kAXPositionAttribute) throws -> CGPoint? {
         guard let raw = try optionalAttribute(element, name), CFGetTypeID(raw) == AXValueGetTypeID() else { return nil }
         let axValue = unsafeDowncast(raw, to: AXValue.self)
@@ -88,7 +103,10 @@ enum AX {
 
     static func windows(of app: AXUIElement) throws -> [AXUIElement] {
         guard let raw = try optionalAttribute(app, kAXWindowsAttribute) else { return [] }
-        return raw as? [AXUIElement] ?? []
+        // A locked screen (and a few apps with no open window) makes the
+        // application element report *itself* as its own window list. Passing
+        // that on would give callers an infinitely self-nesting "window".
+        return (raw as? [AXUIElement] ?? []).filter { !CFEqual($0, app) }
     }
 
     static func actionNames(_ element: AXUIElement) throws -> [String] {

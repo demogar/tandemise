@@ -39,6 +39,7 @@ struct CGWindowRecord {
 enum WindowOps {
     static func list(_ params: Params) throws -> JSONValue {
         try AX.requireTrusted("list an application's windows")
+        try Session.requireUnlocked("window listing")
         let app = try AppOps.resolveRunningApplication(params)
         let axApp = AX.application(pid: app.processIdentifier)
         let axWindows = try AX.windows(of: axApp)
