@@ -19,6 +19,9 @@
     },
     {
       "path": "../../packages/integrations-core"
+    },
+    {
+      "path": "../../packages/execution-core"
     }
   ]
 }

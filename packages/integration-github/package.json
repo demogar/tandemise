@@ -19,6 +19,6 @@
     "@tandemise/kernel": "0.1.0",
     "@tandemise/domain": "0.1.0",
     "@tandemise/integrations-core": "0.1.0",
-    "zod": "^3.24.1"
+    "@tandemise/execution-core": "0.1.0"
   }
 }

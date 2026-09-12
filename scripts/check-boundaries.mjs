@@ -23,7 +23,11 @@ function walk(dir, out = []) {
   return out;
 }
 
-const IMPORT_RE = /(?:^|\n)\s*(?:import|export)[\s\S]*?from\s+['"]([^'"]+)['"]|(?:^|\n)\s*import\s+['"]([^'"]+)['"]/g;
+// Matches only statement-position import/export-from. `[^;]` stops the match
+// crossing a statement boundary, which previously let a string literal inside a
+// function body be mistaken for a module specifier.
+const IMPORT_RE = /^\s*(?:import|export)\s[^;]*?\sfrom\s+['"]([^'"]+)['"]/gm;
+const SIDE_EFFECT_IMPORT_RE = /^\s*import\s+['"]([^'"]+)['"]/gm;
 
 for (const [name, spec] of Object.entries(PACKAGES)) {
   const root = `packages/${name}/src`;
@@ -32,8 +36,11 @@ for (const [name, spec] of Object.entries(PACKAGES)) {
   const allowed = new Set(spec.deps.map((d) => `@tandemise/${d}`));
   for (const file of files) {
     const src = readFileSync(file, 'utf8');
-    for (const m of src.matchAll(IMPORT_RE)) {
-      const mod = m[1] ?? m[2];
+    const specifiers = [
+      ...[...src.matchAll(IMPORT_RE)].map((m) => m[1]),
+      ...[...src.matchAll(SIDE_EFFECT_IMPORT_RE)].map((m) => m[1]),
+    ];
+    for (const mod of specifiers) {
       if (!mod || mod.startsWith('.')) continue;
       if (mod.startsWith('@tandemise/')) {
         const dep = mod.slice('@tandemise/'.length);

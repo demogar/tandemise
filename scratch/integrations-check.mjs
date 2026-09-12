@@ -280,8 +280,8 @@ const prList = await qaGateway.invoke('github.pr.list', { repo: 'cli/cli', limit
 check('github.pr.list returns real pull requests',
   prList.outcome === 'ok' && Array.isArray(prList.output?.pullRequests), prList.summary);
 
-check('every invocation produced an audit record', audit.entries().length >= 8,
-  `${audit.entries().length} records`);
+check('every invocation produced an audit record', audit.entries().length === 7,
+  `${audit.entries().length} records for 7 invocations`);
 const denialAudit = audit.entries().find((e) => e.toolName === 'github.pr.create');
 check('the denial is in the audit trail with its reason',
   denialAudit?.decision === 'deny' && denialAudit.outcome === 'denied',
@@ -338,8 +338,19 @@ check('navigation reports the page title',
 
 const blockedNav = await qaGateway.invoke('browser.navigate', { url: 'https://example.com/' }, qaCtx);
 check('navigating OFF the allowlist is BLOCKED',
-  blockedNav.outcome === 'error' && blockedNav.error?.code === 'PERMISSION_DENIED',
+  blockedNav.outcome === 'denied' && blockedNav.error?.code === 'PERMISSION_DENIED',
   blockedNav.summary);
+
+// The policy gate refuses that call on the grant's resource scope, before the
+// browser is asked. Prove the browser layer refuses independently, so a policy
+// gate that allowed a broad `browser` grant would still not get off-allowlist.
+const liveSession = sessions.current(qa.id);
+let sessionRefusal = null;
+try { liveSession.assertAllowed('https://example.com/'); } catch (e) { sessionRefusal = e; }
+check('the session itself refuses an off-allowlist URL, independent of policy',
+  sessionRefusal?.code === 'PERMISSION_DENIED', sessionRefusal?.message);
+check('the session allows an on-allowlist URL',
+  (() => { liveSession.assertAllowed(fixtureUrl); return true; })());
 
 const snap = await qaGateway.invoke('browser.snapshot', {}, qaCtx);
 check('browser.snapshot returns an accessibility tree, not pixels',
@@ -373,9 +384,12 @@ if (a11y.outcome === 'ok') {
   check('  low contrast text detected', rules.has('contrast'));
 }
 
+// The `browser` grant covers `browser.evaluate` by the capability hierarchy, so
+// policy allows it; the integration-level opt-in is the lock that holds.
 const evaluated = await qaGateway.invoke('browser.evaluate', { expression: '1+1' }, qaCtx);
-check('browser.evaluate is denied without the capability',
-  evaluated.outcome === 'denied', evaluated.summary);
+check('browser.evaluate is refused unless the integration opts in',
+  evaluated.outcome === 'denied' && evaluated.error?.code === 'PERMISSION_DENIED',
+  evaluated.summary);
 
 section('4b. DevServerController');
 

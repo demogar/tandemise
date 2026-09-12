@@ -48,8 +48,8 @@ export const PACKAGES = {
   'runtime-codex': { deps: ['shared', 'domain', 'runtimes-core'], ext: {} },
   'runtime-generic': { deps: ['shared', 'domain', 'runtimes-core'], ext: {} },
   'execution-local': { deps: ['shared', 'domain', 'kernel', 'execution-core'], ext: {} },
-  'integration-github': { deps: ['shared', 'domain', 'integrations-core', 'execution-core'], ext: {} },
-  browser: { deps: ['shared', 'domain', 'integrations-core'], ext: { playwright: '^1.49.1' } },
+  'integration-github': { deps: ['shared', 'kernel', 'domain', 'integrations-core', 'execution-core'], ext: {} },
+  browser: { deps: ['shared', 'kernel', 'domain', 'integrations-core'], ext: { playwright: '^1.49.1', zod: '^3.24.1' } },
   'desktop-control': { deps: ['shared', 'domain', 'kernel', 'integrations-core'], ext: {} },
   application: {
     deps: ['shared', 'kernel', 'domain', 'api-contract', 'policy', 'runtimes-core', 'execution-core', 'integrations-core', 'context', 'evaluation'],

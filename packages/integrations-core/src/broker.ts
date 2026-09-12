@@ -143,8 +143,13 @@ export class ToolBroker {
     } catch (e) {
       const message = errorMessage(e);
       const code = e instanceof TandemiseError ? e.code : 'INTEGRATION_FAILED';
-      this.#audit(tool, ctx, { ...auditBase, outcome: 'error', outputSummary: summarize(message, 200) });
-      return this.#failed(toolName, 'error', code, message, startedAt);
+      // A tool may refuse on grounds the policy gate cannot see - an
+      // integration-level opt-in, a target that is out of bounds for reasons
+      // only the tool knows. That is still a refusal, and it should read as one
+      // to the caller and in the audit trail rather than as a malfunction.
+      const outcome = code === 'PERMISSION_DENIED' ? 'denied' : 'error';
+      this.#audit(tool, ctx, { ...auditBase, outcome, outputSummary: summarize(message, 200) });
+      return this.#failed(toolName, outcome, code, message, startedAt);
     }
   }
 
