@@ -24,6 +24,7 @@ const TASK_TONES: Readonly<Record<TaskStatus, Tone>> = {
   PENDING: 'pending',
   READY: 'pending',
   RUNNING: 'running',
+  AWAITING_INPUT: 'blocked',
   AWAITING_HUMAN: 'blocked',
   AWAITING_EXTERNAL: 'running',
   AWAITING_APPROVAL: 'blocked',
@@ -40,6 +41,22 @@ export function missionTone(status: MissionStatus): Tone {
 
 export function taskTone(status: TaskStatus): Tone {
   return TASK_TONES[status] ?? 'pending';
+}
+
+/**
+ * The short word on a task card. The parked statuses are named for who they
+ * are waiting on, because "awaiting_input" tells you a state and "Your answer"
+ * tells you it is your move.
+ */
+const TASK_BADGES: Partial<Readonly<Record<TaskStatus, string>>> = {
+  AWAITING_INPUT: 'Your answer',
+  AWAITING_HUMAN: 'Yours',
+  AWAITING_EXTERNAL: 'Waiting',
+  AWAITING_APPROVAL: 'Approval',
+};
+
+export function taskBadge(status: TaskStatus): string {
+  return TASK_BADGES[status] ?? status.toLowerCase();
 }
 
 export function healthTone(state: string): Tone {

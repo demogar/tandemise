@@ -41,6 +41,10 @@ const CAPABILITY_RISK: ReadonlyArray<readonly [Capability, RiskClass]> = [
   ['browser.navigate', 'read'],
   ['web.read', 'read'],
   ['mcp.read', 'read'],
+  // Asking the supervising human a question changes nothing and is answered by
+  // the person who would otherwise be approving it. Classifying it any higher
+  // would mean a worker needed permission to request permission.
+  ['human.ask', 'read'],
 
   // Reversible local work.
   ['filesystem.write', 'write_reversible'],
@@ -53,6 +57,9 @@ const CAPABILITY_RISK: ReadonlyArray<readonly [Capability, RiskClass]> = [
   ['browser', 'write_reversible'],
   ['desktop', 'write_reversible'],
   ['mcp', 'write_reversible'],
+  // Composing a design. The draft itself is reversible; publishing it to a
+  // vendor is a separate capability that classifies higher (see `figma.write`).
+  ['design', 'write_reversible'],
 
   // Things that escape the machine.
   ['git.push', 'external_side_effect'],

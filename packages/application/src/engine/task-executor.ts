@@ -22,6 +22,7 @@ import type { RuntimeOverrides } from '../support/runtime-overrides.js';
 import { ARTIFACT_OUT_DIR, ArtifactHarvester, type HarvestResult } from './harvester.js';
 import type { CheckService } from './checks.js';
 import type { GateService } from './gates.js';
+import { MAX_PARKED_MS, type RunDeadlines } from './run-deadline.js';
 
 /** How long a resource lease is held before the scheduler must renew it. */
 const LEASE_TTL_MS = 30 * 60_000;
@@ -70,6 +71,8 @@ export interface TaskExecutorDeps {
   readonly checks: CheckService;
   readonly gates: GateService;
   readonly recorder: EventRecorder;
+  /** Live run budgets, so a worker waiting on a person is not timed out. */
+  readonly deadlines: RunDeadlines;
   readonly paths: TandemisePaths;
   readonly clock: Clock;
   readonly log: Logger;
@@ -204,7 +207,13 @@ export class TaskExecutor {
         workingDirectory: target.workingDirectory,
         artifactRoot: deps.paths.artifacts(workspace.id),
         readOnlyPaths: repository === null ? [] : [repository.path],
-        ttlMs: task.executionPolicy.maxWallTimeMs,
+        // Wall time plus the longest the run may be parked on a person. This does
+        // not extend what the worker can do: a grant is only exercisable through
+        // the run-scoped tool socket, which is destroyed with the run, and the
+        // run's *active* time is still bounded by its deadline. A TTL of wall
+        // time alone would expire every grant while a question sat unanswered,
+        // and the worker would come back from the answer unable to act on it.
+        ttlMs: task.executionPolicy.maxWallTimeMs + MAX_PARKED_MS,
       });
       const vetted = this.#vet(requested, running, workspace, scope);
       if (vetted.blockedOn !== null) {
@@ -340,10 +349,11 @@ export class TaskExecutor {
       target: `${target.kind}:${target.workingDirectory}`,
     });
 
-    // The budget is enforced here as well as inside the adapter, because an
-    // adapter that ignores it must not be able to hold a worker slot forever.
-    const budget = AbortSignal.timeout(Math.max(1, task.executionPolicy.maxWallTimeMs));
-    const combined = AbortSignal.any([signal, budget]);
+    // The budget is enforced here, where it can be paused while the worker waits
+    // on a person, and not only inside the adapter - an adapter that ignores it
+    // must not be able to hold a worker slot forever.
+    const deadline = deps.deadlines.open(assignment.id, task.executionPolicy.maxWallTimeMs);
+    const combined = AbortSignal.any([signal, deadline.signal]);
 
     const request = {
       runId,
@@ -353,7 +363,11 @@ export class TaskExecutor {
       grants: grants.map((g) => g.capability),
       allowedRoots: allowedRoots(grants, target.workingDirectory),
       mcpConfigPath: input.mcpConfigPath,
-      maxWallTimeMs: task.executionPolicy.maxWallTimeMs,
+      // The adapter runs its own timer, which cannot be paused. Given the real
+      // budget it would kill a worker mid-question; given this it remains a
+      // backstop against a runaway adapter and never fires before the deadline
+      // above, which is the precise one.
+      maxWallTimeMs: task.executionPolicy.maxWallTimeMs + MAX_PARKED_MS,
       signal: combined,
       log: deps.log.child({ runId, taskId: task.id, missionId: mission.id, runtime: profile.adapterId }),
     };
@@ -416,17 +430,24 @@ export class TaskExecutor {
       }
     } catch (e) {
       failure = { code: 'RUNTIME_FAILED', message: errorMessage(e), retryable: true };
+    } finally {
+      deps.deadlines.close(assignment.id);
     }
 
     const cancelled = signal.aborted;
-    if (combined.aborted && failure === null) {
-      failure = cancelled
-        ? { code: 'CANCELLED', message: 'Run cancelled', retryable: false }
-        : {
-          code: 'TIMEOUT',
-          message: `Run exceeded its ${task.executionPolicy.maxWallTimeMs}ms wall-time budget`,
-          retryable: true,
-        };
+    if (deadline.expired && !cancelled) {
+      // Overrides whatever the adapter reported. From inside the adapter an
+      // exhausted budget is indistinguishable from a cancellation - its signal
+      // simply fired - so it reports CANCELLED, which is not retryable. Only
+      // this side knows the deadline is why, and a timeout is exactly the
+      // failure a retry exists for.
+      failure = {
+        code: 'TIMEOUT',
+        message: `Run exceeded its ${task.executionPolicy.maxWallTimeMs}ms wall-time budget`,
+        retryable: true,
+      };
+    } else if (combined.aborted && failure === null) {
+      failure = { code: 'CANCELLED', message: 'Run cancelled', retryable: false };
     }
 
     const finishedAt = deps.clock.now();
@@ -930,7 +951,8 @@ export class TaskExecutor {
       title: `Approve the output of ${task.title}?`,
       rationale: task.approvalPolicy.reason
         ?? `${role.name} finished '${task.key}' and its output authorizes the work that follows.`,
-      effect: 'Approving releases every task that depends on this one. Rejecting blocks the mission for review.',
+      effect: 'Approving releases every task that depends on this one. Rejecting with a note sends it back to '
+        + `${role.name} to revise, with your note as the brief; rejecting without one leaves it blocked.`,
       evidence: [
         ...(gate === null
           ? [{ kind: 'text' as const, label: 'Gate', value: 'This task declares no completion gate.' }]

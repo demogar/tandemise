@@ -62,3 +62,7 @@ export { RuntimeServiceImpl } from './services/runtime-service.js';
 export { SystemServiceImpl } from './services/system-service.js';
 export type { DiagnosticsSource } from './services/system-service.js';
 export { WorkspaceServiceImpl } from './services/workspace-service.js';
+
+export { MAX_PARKED_MS, RunDeadline, RunDeadlines } from './engine/run-deadline.js';
+export { ASK_HUMAN_TOOL, createAskHumanTool } from './tools/ask-human.js';
+export type { AskHumanDeps } from './tools/ask-human.js';

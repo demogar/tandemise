@@ -63,6 +63,22 @@ export interface ApprovalEvidence {
 export const APPROVE_OPTION = 'approve';
 export const REJECT_OPTION = 'reject';
 
+/**
+ * Whether deciding `optionId` means the request was granted.
+ *
+ * An `action` or `release` card is a yes/no question, so only `approve` is a
+ * yes. A `choice` is not: the options *are* the answer, and a worker that asked
+ * "Figma, Canva, or Claude?" must not have "Figma" read back to it as a
+ * refusal. Anything other than an explicit decline answers a choice.
+ *
+ * Keeping the rule here rather than at the decision site is what stops the two
+ * meanings drifting apart - the approval service, the tool that is blocked on
+ * the answer, and the timeline all have to agree on what the human just did.
+ */
+export function isAffirmative(kind: ApprovalKind, optionId: string): boolean {
+  return kind === 'choice' ? optionId !== REJECT_OPTION : optionId === APPROVE_OPTION;
+}
+
 export const DEFAULT_APPROVAL_OPTIONS: readonly ApprovalOption[] = [
   { id: APPROVE_OPTION, label: 'Approve', recommended: true },
   { id: REJECT_OPTION, label: 'Reject' },

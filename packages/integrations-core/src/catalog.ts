@@ -83,6 +83,41 @@ export class IntegrationToolCatalog implements ToolCatalog {
   }
 }
 
+/**
+ * Built-in tools first, then whatever the workspace's integrations publish.
+ *
+ * Order is the precedence rule: a built-in cannot be shadowed by an integration
+ * that happens to publish the same name. Without that, configuring an
+ * integration could silently replace the channel a worker uses to ask its
+ * supervisor a question with one the integration controls - a prompt-injection
+ * path straight through the trust fence (MVP.md §19.3).
+ */
+export class CompositeToolCatalog implements ToolCatalog {
+  constructor(
+    private readonly builtIn: readonly IntegrationTool[],
+    private readonly integrations: ToolCatalog,
+    private readonly log: Logger,
+  ) {}
+
+  list(): readonly IntegrationTool[] {
+    const reserved = new Set(this.builtIn.map((t) => t.name));
+    const published = this.integrations.list().filter((tool) => {
+      if (!reserved.has(tool.name)) return true;
+      this.log.warn('tool.shadows_built_in', {
+        tool: tool.name,
+        integrationId: tool.integrationId,
+        detail: 'A built-in tool of this name already exists; the integration\'s is not published.',
+      });
+      return false;
+    });
+    return [...this.builtIn, ...published];
+  }
+
+  find(name: string): IntegrationTool | undefined {
+    return this.list().find((t) => t.name === name);
+  }
+}
+
 /** A fixed set of tools. Used by the run-scoped views and by tests. */
 export class StaticToolCatalog implements ToolCatalog {
   readonly #byName: ReadonlyMap<string, IntegrationTool>;

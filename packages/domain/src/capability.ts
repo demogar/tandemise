@@ -40,6 +40,16 @@ export const CORE_CAPABILITIES = {
   githubPrCreate: 'github.pr.create',
   mcp: 'mcp',
   artifactWrite: 'artifact.write',
+  /**
+   * Ask the person supervising the mission a question, and wait for the answer.
+   *
+   * Held by every role. A worker that cannot ask has only two moves when it
+   * meets a decision that is not its to make - guess, or stop - and both push
+   * the work back onto the user that the role existed to take off them.
+   */
+  humanAsk: 'human.ask',
+  /** Produce a design in a real design tool, rather than describing one. */
+  design: 'design',
 } as const;
 
 /**

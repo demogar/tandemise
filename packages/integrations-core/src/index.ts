@@ -15,7 +15,7 @@ export type { IntegrationHealthContext, IntegrationProvider } from './provider.j
 export { INTEGRATION_PROVIDERS, IntegrationProviderRegistry } from './provider.js';
 
 export type { ToolCatalog } from './catalog.js';
-export { IntegrationToolCatalog, StaticToolCatalog } from './catalog.js';
+export { CompositeToolCatalog, IntegrationToolCatalog, StaticToolCatalog } from './catalog.js';
 
 export type {
   ApprovalGate, ToolApprovalDecision, ToolApprovalRequest, ToolPolicyDecision, ToolPolicyGate,
@@ -50,7 +50,8 @@ export type { StdioTransport } from './mcp/stdio-server.js';
 export { DEFAULT_MCP_PROTOCOL_VERSION, McpStdioServer, mcpToolName, stdioTransport } from './mcp/stdio-server.js';
 
 export {
-  APPROVAL_GATE, BACKGROUND_PROCESS_LAUNCHER, CLOCK, COMMAND_EXECUTOR, INTEGRATION_PROVIDER_REGISTRY, INTEGRATION_SOURCE,
+  APPROVAL_GATE, BACKGROUND_PROCESS_LAUNCHER, BUILT_IN_TOOLS, CLOCK, COMMAND_EXECUTOR,
+  INTEGRATION_PROVIDER_REGISTRY, INTEGRATION_SOURCE,
   LOGGER, TOOL_AUDIT_SINK, TOOL_BROKER, TOOL_CATALOG, TOOL_POLICY_GATE,
 } from './tokens.js';
 

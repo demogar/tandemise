@@ -2,6 +2,7 @@ import { PageHeader } from '../components/PageHeader.js';
 import { Empty, ErrorState, SkeletonCards } from '../components/primitives.js';
 import { ApprovalCard } from './approvals/ApprovalCard.js';
 import { useApprovals } from '../lib/queries.js';
+import type { Approval } from '@tandemise/domain';
 import { pluralize } from '../lib/format.js';
 
 export function Approvals(): JSX.Element {
@@ -50,12 +51,12 @@ export function Approvals(): JSX.Element {
               <div className="list">
                 {decided.map((view) => (
                   <div key={view.approval.id} className="list__row">
-                    <span className={`dot dot--${view.approval.status === 'APPROVED' ? 'succeeded' : 'failed'}`} />
+                    <span className={`dot dot--${outcomeTone(view.approval)}`} />
                     <div className="list__main">
                       <div className="list__title">{view.approval.title}</div>
                       <div className="list__subtitle truncate">
-                        {view.approval.status === 'APPROVED' ? 'Approved' : 'Rejected'}
-                        {view.approval.selectedOptionId ? ` · ${view.approval.selectedOptionId}` : ''}
+                        {outcomeLabel(view.approval)}
+                        {chosenLabel(view.approval) ? ` · ${chosenLabel(view.approval)}` : ''}
                         {view.approval.decisionNote ? ` · “${view.approval.decisionNote}”` : ''}
                       </div>
                     </div>
@@ -71,4 +72,40 @@ export function Approvals(): JSX.Element {
       </div>
     </>
   );
+}
+
+/**
+ * A question is answered or left to the worker; an authorization is approved or
+ * rejected; either can lapse or be withdrawn. "Rejected" for an unanswered
+ * question that simply expired would tell you that you said no to something you
+ * never saw.
+ */
+function outcomeLabel(approval: Approval): string {
+  const question = approval.kind === 'choice';
+  switch (approval.status) {
+    case 'APPROVED':
+      return question ? 'Answered' : 'Approved';
+    case 'REJECTED':
+      return question ? 'Left to the worker' : 'Rejected';
+    case 'EXPIRED':
+      return question ? 'Not answered in time' : 'Expired';
+    case 'CANCELLED':
+      return 'Withdrawn — the work ended first';
+    default:
+      return approval.status;
+  }
+}
+
+function outcomeTone(approval: Approval): string {
+  if (approval.status === 'APPROVED') return 'succeeded';
+  if (approval.status === 'REJECTED' && approval.kind !== 'choice') return 'failed';
+  return 'pending';
+}
+
+/** The option's label, not its id: "Claude Design", not "claude_design". */
+function chosenLabel(approval: Approval): string | null {
+  if (approval.selectedOptionId === null) return null;
+  // Approve and reject are already said by the outcome; repeating them is noise.
+  if (approval.kind !== 'choice' && ['approve', 'reject'].includes(approval.selectedOptionId)) return null;
+  return approval.options.find((o) => o.id === approval.selectedOptionId)?.label ?? approval.selectedOptionId;
 }

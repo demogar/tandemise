@@ -5,6 +5,7 @@ import { ErrorState, StatusBadge } from '../../components/primitives.js';
 import { useState } from 'react';
 import { useDaemonMutation } from '../../lib/queries.js';
 import { dateTime, duration, taskTone, titleCase } from '../../lib/format.js';
+import { ApprovalCard } from '../approvals/ApprovalCard.js';
 
 export function TaskDetail({ task, detail, onClose }: { task: TaskView; detail: MissionDetail; onClose: () => void }): JSX.Element {
   const retry = useDaemonMutation((daemon) => daemon.retryTask(task.id), ['tasks', 'missions'], detail.mission.id);
@@ -20,6 +21,12 @@ export function TaskDetail({ task, detail, onClose }: { task: TaskView; detail: 
     detail.mission.id,
   );
   const evaluation = detail.evaluations.find((candidate) => candidate.taskId === task.id);
+
+  // A worker blocked on a question is answered here, where you are already
+  // looking at the task, rather than by sending you to another screen for it.
+  const question = task.status === 'AWAITING_INPUT'
+    ? detail.approvals.find((a) => a.taskId === task.id && a.kind === 'choice' && a.status === 'PENDING')
+    : undefined;
 
   return (
     <Modal
@@ -55,6 +62,13 @@ export function TaskDetail({ task, detail, onClose }: { task: TaskView; detail: 
       }
     >
       <div className="stack" style={{ gap: 'var(--s4)', color: 'var(--text)' }}>
+        {question !== undefined ? (
+          <ApprovalCard
+            compact
+            view={{ approval: question, missionTitle: null, taskTitle: null, roleName: task.roleName }}
+          />
+        ) : null}
+
         {waitingOnYou ? (
           <div className="card" style={{ borderColor: 'var(--accent-line)' }}>
             <div className="stack" style={{ gap: 'var(--s3)' }}>

@@ -3,7 +3,7 @@ import type { MissionDetail, TaskView } from '@tandemise/api-contract';
 import { Icon } from '../../components/Icon.js';
 import { Empty } from '../../components/primitives.js';
 import { TaskDetail } from './TaskDetail.js';
-import { duration, pluralize, taskTone } from '../../lib/format.js';
+import { duration, pluralize, taskBadge, taskTone } from '../../lib/format.js';
 
 interface Edge {
   readonly id: string;
@@ -196,7 +196,7 @@ function TaskCard({
         <span className="taskcard__role">{task.roleName}</span>
         <div className="spacer" />
         <span className={`badge badge--${tone}`} style={{ height: 18 }}>
-          {task.status === 'AWAITING_APPROVAL' ? 'Approval' : task.status.toLowerCase()}
+          {taskBadge(task.status)}
         </span>
       </div>
 

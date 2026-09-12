@@ -163,10 +163,20 @@ export class ApprovalWaiter {
   settle(approval: Approval, approved: boolean): void {
     this.#waiting.get(approval.id)?.({
       approved,
-      reason: approval.decisionNote ?? (approved ? 'Approved.' : 'Rejected.'),
+      // The note *is* the answer when the card was a question, so it is carried
+      // verbatim rather than summarised. The generic fallbacks only apply when
+      // the person decided without writing anything.
+      reason: approval.decisionNote
+        ?? labelOf(approval) ?? (approved ? 'Approved.' : 'Rejected.'),
       approvalId: approval.id,
+      selectedOptionId: approval.selectedOptionId,
     });
   }
+}
+
+/** The chosen option's label, for a decision made by clicking and nothing else. */
+function labelOf(approval: Approval): string | undefined {
+  return approval.options.find((o) => o.id === approval.selectedOptionId)?.label;
 }
 
 function scopeOf(assignment: WorkerAssignment): EventScope {

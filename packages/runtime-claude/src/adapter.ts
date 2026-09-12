@@ -166,7 +166,15 @@ export class ClaudeCodeAdapter implements AgentRuntimeAdapter {
       allowedPrefixes: ['ANTHROPIC_', 'CLAUDE_'],
       allowedNames: ['SSH_AUTH_SOCK', 'GIT_ASKPASS', 'COLORTERM'],
       deniedNames: PARENT_SESSION_ENV,
-      ...(configDir === null ? {} : { overrides: { CLAUDE_CONFIG_DIR: configDir } }),
+      overrides: {
+        ...(configDir === null ? {} : { CLAUDE_CONFIG_DIR: configDir }),
+        // A tool call may legitimately block for as long as the run may live:
+        // `ask_human` waits on a person. Claude Code's own MCP tool timeout is
+        // an undocumented default we should not bet a worker's question on, so
+        // it is pinned to the run's wall-time backstop. Verified that Claude
+        // Code honours a blocking call across minutes, not only seconds.
+        ...(request.maxWallTimeMs > 0 ? { MCP_TOOL_TIMEOUT: String(request.maxWallTimeMs) } : {}),
+      },
     });
     log.debug('spawning claude code', {
       executablePath,

@@ -9,7 +9,8 @@ import {
   PATHS as EXECUTION_PATHS, PROCESS_SUPERVISOR,
 } from '@tandemise/execution-core';
 import {
-  APPROVAL_GATE, INTEGRATION_PROVIDER_REGISTRY, INTEGRATION_SOURCE, TOOL_BROKER, TOOL_POLICY_GATE,
+  APPROVAL_GATE, BUILT_IN_TOOLS, INTEGRATION_PROVIDER_REGISTRY, INTEGRATION_SOURCE, TOOL_BROKER,
+  TOOL_POLICY_GATE,
   COMMAND_EXECUTOR as INTEGRATION_COMMAND_EXECUTOR,
 } from '@tandemise/integrations-core';
 
@@ -29,6 +30,8 @@ import { EventRecorder } from './support/event-recorder.js';
 import { RepositoryProber } from './support/repository-prober.js';
 import { RuntimeOverrides } from './support/runtime-overrides.js';
 import { ApprovalWaiter, createApprovalGate, createPolicyEngineToolGate } from './support/tool-policy.js';
+import { createAskHumanTool } from './tools/ask-human.js';
+import { RunDeadlines } from './engine/run-deadline.js';
 import { ApprovalServiceImpl } from './services/approval-service.js';
 import { ArtifactServiceImpl } from './services/artifact-service.js';
 import { WorkflowServiceImpl } from './services/workflow-service.js';
@@ -72,6 +75,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
 
     bind(t.RUNTIME_OVERRIDES, () => new RuntimeOverrides(), { source: SOURCE });
     bind(t.APPROVAL_WAITER, () => new ApprovalWaiter(), { source: SOURCE });
+    bind(t.RUN_DEADLINES, () => new RunDeadlines(), { source: SOURCE });
 
     bind(t.EVENT_RECORDER, (r) => new EventRecorder(
       r.resolve(t.EVENT_REPOSITORY),
@@ -102,6 +106,19 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       missions: r.resolve(t.MISSION_REPOSITORY),
       waiter: r.resolve(t.APPROVAL_WAITER),
       recorder: r.resolve(t.EVENT_RECORDER),
+    }), { source: SOURCE });
+
+    // Asking the supervising human a question is a capability every worker has,
+    // so it is contributed rather than configured: there is no vendor behind it
+    // and no workspace that should be able to switch it off.
+    container.contribute(BUILT_IN_TOOLS, (r) => createAskHumanTool({
+      approvals: r.resolve(t.APPROVAL_REPOSITORY),
+      approvalFactory: r.resolve(APPROVAL_FACTORY),
+      tasks: r.resolve(t.TASK_REPOSITORY),
+      waiter: r.resolve(t.APPROVAL_WAITER),
+      deadlines: r.resolve(t.RUN_DEADLINES),
+      recorder: r.resolve(t.EVENT_RECORDER),
+      clock: clock(r),
     }), { source: SOURCE });
 
     // The tool catalog is built from the workspace's enabled integrations, and
@@ -182,6 +199,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       checks: r.resolve(t.CHECK_SERVICE),
       gates: r.resolve(t.GATE_SERVICE),
       recorder: r.resolve(t.EVENT_RECORDER),
+      deadlines: r.resolve(t.RUN_DEADLINES),
       paths: paths(r),
       clock: clock(r),
       log: log(r).child({ component: 'executor' }),
@@ -348,6 +366,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       roles: r.resolve(t.ROLE_REPOSITORY),
       scheduler: r.resolve(t.SCHEDULER),
       waiter: r.resolve(t.APPROVAL_WAITER),
+      remediation: r.resolve(t.REMEDIATION_PLANNER),
       recorder: r.resolve(t.EVENT_RECORDER),
       clock: clock(r),
       log: log(r).child({ component: 'approvals' }),

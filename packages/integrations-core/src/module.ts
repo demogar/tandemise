@@ -1,12 +1,12 @@
 import { defineModule, type Resolver } from '@tandemise/kernel';
 import { nullLogger, systemClock, type Logger } from '@tandemise/shared';
 import { ToolBroker } from './broker.js';
-import { IntegrationToolCatalog } from './catalog.js';
+import { CompositeToolCatalog, IntegrationToolCatalog } from './catalog.js';
 import { loggingAuditSink } from './audit.js';
 import { denyAllPolicyGate, denyingApprovalGate } from './policy-gate.js';
 import { INTEGRATION_PROVIDERS, IntegrationProviderRegistry } from './provider.js';
 import {
-  APPROVAL_GATE, CLOCK, INTEGRATION_PROVIDER_REGISTRY, INTEGRATION_SOURCE, LOGGER,
+  APPROVAL_GATE, BUILT_IN_TOOLS, CLOCK, INTEGRATION_PROVIDER_REGISTRY, INTEGRATION_SOURCE, LOGGER,
   TOOL_AUDIT_SINK, TOOL_BROKER, TOOL_CATALOG, TOOL_POLICY_GATE,
 } from './tokens.js';
 
@@ -29,9 +29,13 @@ export const integrationsCoreModule = defineModule('integrations-core', (contain
 
   container.bind(
     TOOL_CATALOG,
-    (r) => new IntegrationToolCatalog(
-      r.resolve(INTEGRATION_PROVIDER_REGISTRY),
-      r.tryResolve(INTEGRATION_SOURCE) ?? (() => []),
+    (r) => new CompositeToolCatalog(
+      r.resolveAll(BUILT_IN_TOOLS),
+      new IntegrationToolCatalog(
+        r.resolve(INTEGRATION_PROVIDER_REGISTRY),
+        r.tryResolve(INTEGRATION_SOURCE) ?? (() => []),
+        log(r).child({ component: 'tool-catalog' }),
+      ),
       log(r).child({ component: 'tool-catalog' }),
     ),
     { source: 'integrations-core' },

@@ -151,6 +151,8 @@
 }
 
 .taskcard[data-status='BLOCKED']::before,
+.taskcard[data-status='AWAITING_INPUT']::before,
+.taskcard[data-status='AWAITING_HUMAN']::before,
 .taskcard[data-status='AWAITING_APPROVAL']::before {
   background: var(--status-blocked);
 }

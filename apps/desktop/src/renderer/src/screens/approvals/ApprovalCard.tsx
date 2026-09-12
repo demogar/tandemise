@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Link } from 'wouter';
 import type { ApprovalView } from '@tandemise/api-contract';
-import type { ApprovalEvidence, ApprovalOption, RiskClass } from '@tandemise/domain';
+import type { Approval, ApprovalEvidence, ApprovalOption, RiskClass } from '@tandemise/domain';
+import { REJECT_OPTION } from '@tandemise/domain';
 import { Icon, type IconName } from '../../components/Icon.js';
 import { ConfirmDialog } from '../../components/Modal.js';
 import { ErrorState } from '../../components/primitives.js';
@@ -27,10 +28,12 @@ export function ApprovalCard({ view, compact = false }: { view: ApprovalView; co
   );
 
   const chosen = approval.options.find((option) => option.id === selected) ?? approval.options[0];
-  const needsConfirm = isConsequential(approval.risk) || chosen?.id === 'reject';
+  const copy = copyFor(approval, chosen?.id);
+  const needsConfirm = copy.question ? false : isConsequential(approval.risk) || chosen?.id === REJECT_OPTION;
+  const missingAnswer = copy.noteRequired && note.trim().length === 0;
 
   const submit = (): void => {
-    if (!chosen) return;
+    if (!chosen || missingAnswer) return;
     decide.mutate({ optionId: chosen.id, note });
     setConfirming(null);
   };
@@ -47,7 +50,7 @@ export function ApprovalCard({ view, compact = false }: { view: ApprovalView; co
         <div style={{ flex: 1, minWidth: 0 }}>
           <h3 className="approval__title">{approval.title}</h3>
           <div className="approval__context">
-            <span className="chip chip--muted">{titleCase(approval.kind)}</span>
+            <span className={copy.question ? 'chip chip--you' : 'chip chip--muted'}>{copy.kindLabel}</span>
             {view.missionTitle ? (
               approval.missionId ? (
                 <Link href={`/missions/${approval.missionId}`}>{view.missionTitle}</Link>
@@ -75,7 +78,7 @@ export function ApprovalCard({ view, compact = false }: { view: ApprovalView; co
 
       <div className="approval__grid">
         <Question icon="info" question="Why is this being asked?" answer={approval.rationale} />
-        <Question icon="zap" question="What changes if you approve?" answer={approval.effect} />
+        <Question icon="zap" question={copy.effectQuestion} answer={approval.effect} />
       </div>
 
       {approval.evidence.length > 0 && !compact ? (
@@ -104,7 +107,7 @@ export function ApprovalCard({ view, compact = false }: { view: ApprovalView; co
       <div className="approval__options">
         <div className="qa__q">
           <Icon name="approvals" size={12} />
-          Your options
+          {copy.question ? 'Your answer' : 'Your options'}
         </div>
         {approval.options.map((option) => (
           <button
@@ -132,8 +135,10 @@ export function ApprovalCard({ view, compact = false }: { view: ApprovalView; co
 
         <textarea
           className="textarea"
-          style={{ minHeight: 56, marginTop: 4 }}
-          placeholder="Add a note for the record (optional) — downstream roles will read it."
+          style={{ minHeight: copy.noteRequired ? 88 : 56, marginTop: 4 }}
+          placeholder={copy.notePlaceholder}
+          aria-label={copy.notePlaceholder}
+          aria-required={copy.noteRequired}
           value={note}
           onChange={(event) => setNote(event.target.value)}
         />
@@ -142,12 +147,16 @@ export function ApprovalCard({ view, compact = false }: { view: ApprovalView; co
 
         <div className="row" style={{ justifyContent: 'flex-end', marginTop: 4 }}>
           <span className="dim" style={{ fontSize: 'var(--fs-xs)', marginRight: 'auto' }}>
-            {needsConfirm ? 'You will be asked to confirm.' : 'Applies immediately.'}
+            {missingAnswer
+              ? 'Write your answer to send it.'
+              : copy.question
+                ? 'The worker is waiting, and carries on as soon as you send this.'
+                : needsConfirm ? 'You will be asked to confirm.' : 'Applies immediately.'}
           </span>
           <button
             type="button"
-            className={`btn ${chosen?.id === 'reject' ? 'btn--danger' : 'btn--primary'}`}
-            disabled={decide.isPending || !chosen}
+            className={`btn ${chosen?.id === REJECT_OPTION && !copy.question ? 'btn--danger' : 'btn--primary'}`}
+            disabled={decide.isPending || !chosen || missingAnswer}
             onClick={() => (needsConfirm && chosen ? setConfirming(chosen) : submit())}
           >
             {decide.isPending ? 'Submitting…' : (chosen?.label ?? 'Decide')}
@@ -158,7 +167,7 @@ export function ApprovalCard({ view, compact = false }: { view: ApprovalView; co
       {confirming ? (
         <ConfirmDialog
           title={`${confirming.label}?`}
-          destructive={confirming.id === 'reject' || isConsequential(approval.risk)}
+          destructive={confirming.id === REJECT_OPTION || isConsequential(approval.risk)}
           confirmLabel={confirming.label}
           busy={decide.isPending}
           onCancel={() => setConfirming(null)}
@@ -191,7 +200,9 @@ export function ApprovalPreviewCard({ view }: { view: ApprovalView }): JSX.Eleme
         <div style={{ flex: 1, minWidth: 0 }}>
           <h3 className="approval__title">{approval.title}</h3>
           <div className="approval__context">
-            <span className="chip chip--muted">{titleCase(approval.kind)}</span>
+            <span className={approval.kind === 'choice' ? 'chip chip--you' : 'chip chip--muted'}>
+              {copyFor(approval, undefined).kindLabel}
+            </span>
             {view.missionTitle ? <span>{view.missionTitle}</span> : null}
             <span className="sep">·</span>
             <span>{relativeTime(approval.createdAt)}</span>
@@ -204,10 +215,59 @@ export function ApprovalPreviewCard({ view }: { view: ApprovalView }): JSX.Eleme
       </header>
       <div className="approval__grid" style={{ paddingBottom: 'var(--s4)' }}>
         <Question icon="info" question="Why" answer={approval.rationale} />
-        <Question icon="zap" question="What changes" answer={approval.effect} />
+        <Question icon="zap" question={approval.kind === 'choice' ? 'What happens next' : 'What changes'} answer={approval.effect} />
       </div>
     </Link>
   );
+}
+
+interface CardCopy {
+  /** A worker asked something, rather than asked to be allowed something. */
+  readonly question: boolean;
+  readonly kindLabel: string;
+  readonly effectQuestion: string;
+  readonly notePlaceholder: string;
+  /** An open question is answered in the note; there is nothing to send without one. */
+  readonly noteRequired: boolean;
+}
+
+/**
+ * The words on the card depend on what is being asked.
+ *
+ * A `choice` is a worker asking you something and waiting on the answer. Asking
+ * "what changes if you approve?" of it, painting "decide without me" red, and
+ * making you confirm it as if it were destructive would all misdescribe what
+ * the click does - and an open question whose answer box says "optional" would
+ * invite sending nothing to a worker that is blocked on exactly that.
+ *
+ * Rejecting a task's output is the other case that changed: the note is no
+ * longer a comment for the record, it is the brief the revision is built from.
+ */
+function copyFor(approval: Approval, selectedId: string | undefined): CardCopy {
+  if (approval.kind === 'choice') {
+    const open = selectedId === 'answer';
+    return {
+      question: true,
+      kindLabel: 'Question',
+      effectQuestion: 'What happens when you answer?',
+      notePlaceholder: open
+        ? 'Your answer — the worker reads exactly what you write.'
+        : selectedId === REJECT_OPTION
+          ? 'Anything it should keep in mind while it decides? (optional)'
+          : 'Anything to add — a link, a detail? (optional)',
+      noteRequired: open,
+    };
+  }
+  const revisable = approval.taskId !== null && approval.kind !== 'plan' && selectedId === REJECT_OPTION;
+  return {
+    question: false,
+    kindLabel: titleCase(approval.kind),
+    effectQuestion: 'What changes if you approve?',
+    notePlaceholder: revisable
+      ? 'What should change? It goes back to be revised, using exactly what you write.'
+      : 'Add a note for the record (optional) — downstream roles will read it.',
+    noteRequired: false,
+  };
 }
 
 function Question({ icon, question, answer }: { icon: IconName; question: string; answer: string }): JSX.Element {

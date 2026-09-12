@@ -45,6 +45,13 @@ export interface ToolApprovalDecision {
   readonly approved: boolean;
   readonly reason: string;
   readonly approvalId: ApprovalId | null;
+  /**
+   * Which option the human picked, when the card offered more than yes/no.
+   *
+   * An authorization only needs `approved`. A question needs to know *what* was
+   * answered, and the answer is the option plus whatever note came with it.
+   */
+  readonly selectedOptionId?: string | null;
 }
 
 /**

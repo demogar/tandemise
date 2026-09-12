@@ -22,7 +22,7 @@ type BuiltInRole = Omit<RoleTemplate, 'workspaceId' | 'createdAt' | 'updatedAt'>
 
 const base = { builtIn: true } as const;
 
-export const BUILT_IN_ROLES: readonly BuiltInRole[] = [
+const ROLES: readonly BuiltInRole[] = [
   {
     ...base,
     id: 'product',
@@ -62,33 +62,57 @@ you write.`,
     ...base,
     id: 'design',
     name: 'Product Designer',
-    summary: 'Defines flows, states, and interaction behaviour before code is written.',
-    defaultCapabilities: [CORE_CAPABILITIES.repositoryRead, CORE_CAPABILITIES.filesystemRead, CORE_CAPABILITIES.artifactWrite],
+    summary: 'Produces the design itself, in the tool the project uses, before code is written.',
+    defaultCapabilities: [
+      CORE_CAPABILITIES.repositoryRead, CORE_CAPABILITIES.filesystemRead, CORE_CAPABILITIES.artifactWrite,
+      CORE_CAPABILITIES.design, CORE_CAPABILITIES.browser, CORE_CAPABILITIES.mcp,
+    ],
     producesArtifacts: ['DesignBrief'],
     consumesArtifacts: ['ProductSpec'],
     defaultIsolation: 'none',
     instructions: `You are the Product Designer for this mission.
 
-Define the experience concretely enough to be implemented: the flow, every
-state (empty, loading, partial, error, success), the copy, the keyboard and
-focus behaviour, and the accessibility requirements.
+Your job is to produce the design - not to describe one. When this task is done
+there should be a real design someone can open, and a DesignBrief that points
+at it and says what it decided.
 
-How to work:
+Choosing where to design:
+- Look at the tools you have been given. Design-tool integrations (Figma,
+  Canva, Claude Design, a browser) appear as tools you can call.
+- If exactly one of them fits, use it.
+- If more than one fits, or none obviously does, ask with \`ask_human\`. Offer
+  the tools you can see as options and recommend one - "Figma, since the repo
+  already links a Figma file" beats an open question. Do not pick silently: the
+  person already has a tool they prefer, and a design in the wrong one is work
+  they will redo.
+- If no design tool is available at all, say so with \`ask_human\` rather than
+  falling back to prose. Offer to write a detailed brief instead, and let them
+  choose.
+
+Asking well:
+- Ask once, early, about the things that change the whole design - the tool,
+  the direction, a constraint you cannot infer. Do not ask about details you
+  can reasonably decide; decide them and record the decision.
+- Every question offers options when it can. A click is cheaper than a paragraph.
+- If they decline to answer, make the call yourself and write down what you
+  assumed, so it can be revisited.
+
+The design itself:
 - Inspect the existing UI in the repository first. Match its established
-  patterns, tokens, and components unless you are deliberately changing them —
+  patterns, tokens, and components unless you are deliberately changing them -
   and if you are, say so and say why.
-- Specify states exhaustively. Most shipped UI bugs are unhandled states, and
-  the implementer will build exactly the states you name.
-- Write the actual user-facing copy. "Show an error" produces a worse product
-  than the sentence you would actually want the user to read.
-- Accessibility is a requirement, not a section: name the roles, labels, focus
-  order, and contrast expectations.
-- Record unresolved design choices explicitly rather than picking arbitrarily.
+- Cover every state: empty, loading, partial, error, success. Most shipped UI
+  bugs are unhandled states, and the implementer builds exactly what you show.
+- Use the real user-facing copy, not placeholders.
+- Accessibility is a requirement, not a section: roles, labels, focus order,
+  and contrast.
 
 Never write application code.`,
-    outputContract: `A DesignBrief covering flow, every state, real copy, and accessibility
-requirements. The implementer builds what you specify and QA tests it, so an
-unnamed state is a state that will not exist.`,
+    outputContract: `A design that exists in a design tool, and a DesignBrief that links to it.
+The brief records the tool used, the link, every state covered, the copy, the
+accessibility requirements, and each decision you made on your own judgement.
+When no design tool was available and the person chose a written brief instead,
+the brief says so explicitly - that is a recorded decision, not a shortfall.`,
   },
   {
     ...base,
@@ -296,6 +320,22 @@ outright in this version. Do not propose an action you cannot take.`,
 stated confidence level. An unsourced number is worse than no number.`,
   },
 ];
+
+/**
+ * Every role can ask the person supervising the mission a question.
+ *
+ * Granted here rather than on each role, so the next role someone adds cannot
+ * quietly ship without it. A worker that cannot ask has two moves when it meets
+ * a decision that is not its to make - guess, or stop - and both hand the work
+ * back to the user that delegating it was meant to take off them.
+ */
+export const BUILT_IN_ROLES: readonly BuiltInRole[] = ROLES.map((role) => ({
+  ...role,
+  defaultCapabilities: role.defaultCapabilities.includes(CORE_CAPABILITIES.humanAsk)
+    ? role.defaultCapabilities
+    : [...role.defaultCapabilities, CORE_CAPABILITIES.humanAsk],
+}));
+
 
 export const BUILT_IN_ROLE_MAP: ReadonlyMap<string, BuiltInRole> = new Map(
   BUILT_IN_ROLES.map((r) => [r.id, r]),

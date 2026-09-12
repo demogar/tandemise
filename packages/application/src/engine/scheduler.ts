@@ -4,7 +4,7 @@ import type {
   RepoRepositoryPort,
 } from '@tandemise/domain';
 import {
-  ACTIVE_TASK_STATUSES, canTransition, isTaskFinished, isTerminalMissionStatus,
+  ACTIVE_TASK_STATUSES, canTransition, isTaskFinished, isTaskParked, isTerminalMissionStatus,
 } from '@tandemise/domain';
 import type { Clock, Logger, MissionId, TaskId } from '@tandemise/shared';
 import { errorMessage } from '@tandemise/shared';
@@ -236,9 +236,28 @@ export class SchedulerService implements LifecycleComponent {
         this.#startWait(mission, task);
         continue;
       }
-      if (this.#active.size >= ceiling) return;
+      if (this.#occupiedSlots() >= ceiling) return;
       this.#dispatch(mission, task);
     }
+  }
+
+  /**
+   * Workers actually competing for the machine.
+   *
+   * A run blocked inside `ask_human` is still in `#active` - it has to be, or
+   * `stop()` and `cancelTask()` could not abort it - but it is parked on a
+   * person and consuming nothing. Counting it would let one unanswered question
+   * stall every other task in the mission, which is the opposite of what asking
+   * is for. The status is read from the row rather than tracked here, in keeping
+   * with the scheduler holding no model of its own.
+   */
+  #occupiedSlots(): number {
+    let occupied = 0;
+    for (const taskId of this.#active.keys()) {
+      const status = this.deps.tasks.get(taskId)?.status;
+      if (status === undefined || !isTaskParked(status)) occupied++;
+    }
+    return occupied;
   }
 
   /**

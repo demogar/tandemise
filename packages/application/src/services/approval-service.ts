@@ -2,7 +2,7 @@ import type {
   Approval, ApprovalRepositoryPort, Mission, MissionRepositoryPort, MissionTask,
   RoleRepositoryPort, RunRepositoryPort, TaskRepositoryPort,
 } from '@tandemise/domain';
-import { APPROVE_OPTION, canTransition } from '@tandemise/domain';
+import { canTransition, isAffirmative } from '@tandemise/domain';
 import type { ApprovalView, DecideApprovalRequest } from '@tandemise/api-contract';
 import type { ApprovalId, Clock, Logger } from '@tandemise/shared';
 import { TandemiseError, asId, summarize } from '@tandemise/shared';
@@ -10,6 +10,7 @@ import type { ApprovalService } from '../services.js';
 import type { SchedulerService } from '../engine/scheduler.js';
 import type { EventRecorder, EventScope } from '../support/event-recorder.js';
 import type { ApprovalWaiter } from '../support/tool-policy.js';
+import type { RemediationPlanner } from '../engine/remediation.js';
 import { toApprovalView } from '../support/approval-view.js';
 import { materializePlan } from '../planning/materialize.js';
 import { parsePlanResponse } from '../planning/parse.js';
@@ -22,6 +23,8 @@ export interface ApprovalDeps {
   readonly roles: RoleRepositoryPort;
   readonly scheduler: SchedulerService;
   readonly waiter: ApprovalWaiter;
+  /** Turns rejected output plus a note into the next round of the same work. */
+  readonly remediation: RemediationPlanner;
   readonly recorder: EventRecorder;
   readonly clock: Clock;
   readonly log: Logger;
@@ -74,7 +77,10 @@ export class ApprovalServiceImpl implements ApprovalService {
       );
     }
 
-    const approved = option.id === APPROVE_OPTION;
+    // A `choice` is answered, not approved: its options *are* the answer, and
+    // reading "Figma" back to the worker as a refusal would make the whole
+    // asking mechanism useless.
+    const approved = isAffirmative(approval.kind, option.id);
     const decided = this.deps.approvals.update(id, {
       status: approved ? 'APPROVED' : 'REJECTED',
       selectedOptionId: option.id,
@@ -195,7 +201,23 @@ export class ApprovalServiceImpl implements ApprovalService {
       this.#setTaskStatus(task, scope, 'SUCCEEDED', null);
       return;
     }
-    this.#setTaskStatus(task, scope, 'BLOCKED', 'A human rejected this task\'s output.');
+
+    // Rejected with a reason: that reason is the brief for the next round. The
+    // mission keeps moving instead of stopping for someone to re-plan it by
+    // hand, which is what a rejection used to require.
+    const feedback = approval.decisionNote?.trim() ?? '';
+    if (feedback.length > 0) {
+      const revision = this.deps.remediation.planRevision(task, mission, feedback);
+      if (revision.kind === 'planned') return;
+      this.#setTaskStatus(task, scope, 'BLOCKED', revision.reason);
+      this.#setMissionStatus(mission, scope, 'BLOCKED', revision.reason);
+      return;
+    }
+
+    // A bare "no" gives the worker nothing to change, so nothing is re-run on
+    // a guess. The reason says how to get a revision instead.
+    this.#setTaskStatus(task, scope, 'BLOCKED',
+      'Rejected without feedback. Reject again with a note to have it revised.');
     this.#setMissionStatus(mission, scope, 'BLOCKED', `The output of '${task.key}' was rejected.`);
   }
 
