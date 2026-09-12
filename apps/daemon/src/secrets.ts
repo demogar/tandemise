@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { chmodSync, mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { chmodSync, mkdirSync, readFileSync, renameSync, writeFileSync, existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { SecretStorePort } from '@tandemise/domain';
 import { TandemiseError, type Logger } from '@tandemise/shared';
@@ -24,18 +24,26 @@ const SERVICE = 'com.tandemise.secrets';
  */
 export function createSecretStore(opts: { home: string; log: Logger }): SecretStorePort {
   return process.platform === 'darwin'
-    ? new KeychainSecretStore(opts.log)
-    : new EncryptedFileSecretStore(opts.home, opts.log);
+    ? new KeychainSecretStore(opts.home, opts.log)
+    : new PlaintextFileSecretStore(opts.home, opts.log);
 }
 
 class KeychainSecretStore implements SecretStorePort {
   readonly backend = 'keychain' as const;
   readonly #index: FileIndex;
 
-  constructor(private readonly log: Logger) {
+  constructor(home: string, private readonly log: Logger) {
     // `security` cannot enumerate by service reliably, so the set of refs we
-    // created is tracked separately. It holds no secret values.
-    this.#index = new FileIndex(join(process.env.TANDEMISE_HOME ?? '', 'secret-refs.json'));
+    // created is tracked separately. It holds names and references, never
+    // secret values.
+    //
+    // The path comes from the caller's `home`, not from the environment:
+    // reading TANDEMISE_HOME here produced a RELATIVE path whenever the
+    // variable was unset (the normal case, since the default is ~/.tandemise),
+    // so the index landed in whatever directory the daemon happened to start
+    // in. A restart from elsewhere then saw an empty list and orphaned every
+    // Keychain item it could no longer name.
+    this.#index = new FileIndex(join(home, 'secret-refs.json'));
   }
 
   async store(name: string, value: string): Promise<string> {
@@ -76,11 +84,13 @@ class KeychainSecretStore implements SecretStorePort {
 }
 
 /**
- * Non-macOS fallback. Deliberately modest: 0600 file, no encryption beyond the
- * filesystem's. It exists so the daemon runs on Linux during development, and
- * it says so plainly rather than implying a security property it does not have.
+ * Non-macOS fallback: a 0600 file, with no encryption at all.
+ *
+ * Named for what it is. It exists so the daemon runs on Linux during
+ * development, and the warning it logs on construction says so - a class called
+ * `EncryptedFileSecretStore` that stores plaintext is worse than no abstraction.
  */
-class EncryptedFileSecretStore implements SecretStorePort {
+class PlaintextFileSecretStore implements SecretStorePort {
   readonly backend = 'file' as const;
   readonly #path: string;
 
@@ -98,9 +108,13 @@ class EncryptedFileSecretStore implements SecretStorePort {
   }
 
   #write(data: Record<string, string>): void {
-    mkdirSync(join(this.#path, '..'), { recursive: true });
-    writeFileSync(this.#path, JSON.stringify(data), { mode: 0o600 });
-    chmodSync(this.#path, 0o600);
+    mkdirSync(dirname(this.#path), { recursive: true });
+    // Write-then-rename: overwriting in place loses every stored secret if the
+    // process dies mid-write.
+    const tmp = `${this.#path}.${process.pid}.tmp`;
+    writeFileSync(tmp, JSON.stringify(data), { mode: 0o600 });
+    chmodSync(tmp, 0o600);
+    renameSync(tmp, this.#path);
   }
 
   async store(name: string, value: string): Promise<string> {

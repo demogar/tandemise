@@ -442,8 +442,11 @@ check('artifact count is a number', passingFacts['artifact.ChangeSet.count'] ===
 check('an expected but absent artifact reads false, not undefined',
   passingFacts['artifact.ReviewReport.exists'] === false);
 check('blocking findings are counted', passingFacts['review.blocking_findings'] === 0);
-check('SKIP criteria are excluded from coverage',
-  passingFacts['qa.acceptance_criteria_coverage'] === 100, String(passingFacts['qa.acceptance_criteria_coverage']));
+// A criterion QA could not verify counts AGAINST coverage. Excluding SKIPs
+// turns the fact into a pass-rate, and ready_to_ship reads it as coverage - one
+// PASS and nine SKIPs would report 100 and ship with nine criteria untested.
+check('SKIP criteria count against coverage',
+  passingFacts['qa.acceptance_criteria_coverage'] === 67, String(passingFacts['qa.acceptance_criteria_coverage']));
 check('release approval publishes `approval.release_candidate`',
   passingFacts['approval.release_candidate'] === 'APPROVED');
 check('the vocabulary documents every fact name produced',
@@ -482,7 +485,12 @@ check('an unmeasured fact is reported as "not measured"',
   shipUnmeasured.detail.includes('not measured'), shipUnmeasured.detail);
 console.log(`         → ${shipUnmeasured.detail}`);
 
-const shipFacts = { ...withoutSecurity, 'security.required_checks': 'PASS' };
+// The fixture leaves one criterion SKIPped, which is now correctly short of
+// 100% coverage - so shipping requires QA to have actually verified it.
+const shipBlockedBySkip = evaluateNamedGate('ready_to_ship', { ...withoutSecurity, 'security.required_checks': 'PASS' });
+check('ready_to_ship is blocked while a criterion is unverified', !shipBlockedBySkip.passed, shipBlockedBySkip.detail);
+
+const shipFacts = { ...withoutSecurity, 'security.required_checks': 'PASS', 'qa.acceptance_criteria_coverage': 100 };
 check('ready_to_ship passes once every condition is measured and met',
   evaluateNamedGate('ready_to_ship', shipFacts).passed);
 

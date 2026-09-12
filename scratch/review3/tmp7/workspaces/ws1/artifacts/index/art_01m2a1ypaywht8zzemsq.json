@@ -1,11 +1,11 @@
 {
-  "id": "art_01m2a0de5fcsq8s89yy5",
+  "id": "art_01m2a1ypaywht8zzemsq",
   "workspaceId": "ws1",
   "missionId": "m1",
   "taskId": null,
   "createdByRunId": null,
   "type": "Evidence",
-  "title": "shot again",
+  "title": "shot",
   "contentRef": "sha256:93bdfd977b1cf1f5df56a18285b158a3a40d41eab7591e6f2764e80c6bfab684",
   "mediaType": "application/octet-stream",
   "sha256": "93bdfd977b1cf1f5df56a18285b158a3a40d41eab7591e6f2764e80c6bfab684",
@@ -14,5 +14,5 @@
   "sourceRefs": [],
   "supersedes": null,
   "summary": null,
-  "createdAt": "2026-09-12T05:11:03.599Z"
+  "createdAt": "2026-09-12T05:37:57.599Z"
 }

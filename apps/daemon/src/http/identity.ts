@@ -107,27 +107,66 @@ export class InstanceLock {
     this.#path = join(home, 'daemon.lock');
   }
 
+  /**
+   * Claims the lock, or throws CONFLICT.
+   *
+   * The claim is made with `wx`, which is atomic: the kernel creates the file
+   * or fails with EEXIST, and exactly one of several simultaneous daemons can
+   * win. A check-then-write - `existsSync` followed by `writeFileSync` - looks
+   * equivalent and is not: four processes starting together all observed an
+   * absent file and all believed they held the lock, which would put two
+   * daemons on one SQLite file and one worktree root.
+   *
+   * Only after losing the race do we inspect the incumbent, because that is the
+   * one moment when a stale lock from a crashed daemon must be distinguished
+   * from a live one.
+   */
   acquire(): void {
     mkdirSync(dirname(this.#path), { recursive: true });
-    if (existsSync(this.#path)) {
-      const raw = readFileSync(this.#path, 'utf8').trim();
-      const pid = Number.parseInt(raw, 10);
-      if (Number.isFinite(pid) && pid > 0 && isProcessAlive(pid) && pid !== process.pid) {
-        throw new TandemiseError('CONFLICT', `Another Tandemise daemon is already running (pid ${pid}).`, {
-          details: { pid, lockFile: this.#path },
+    const stamp = JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() });
+
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        writeFileSync(this.#path, stamp, { mode: 0o600, flag: 'wx' });
+        this.#held = true;
+        return;
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+      }
+
+      const incumbent = this.#readIncumbent();
+      if (incumbent !== undefined && incumbent !== process.pid && isProcessAlive(incumbent)) {
+        throw new TandemiseError('CONFLICT', `Another Tandemise daemon is already running (pid ${incumbent}).`, {
+          details: { pid: incumbent, lockFile: this.#path },
         });
       }
-      // Stale lock from a crashed daemon - safe to take over.
-      unlinkSync(this.#path);
+      // Stale (the holder is gone, or the file is unreadable). Clear it and
+      // retry the atomic claim once - if another process wins that race, the
+      // second pass sees a live incumbent and reports the conflict correctly.
+      try { unlinkSync(this.#path); } catch { /* someone else cleared it first */ }
     }
-    writeFileSync(this.#path, String(process.pid), { mode: 0o600 });
-    this.#held = true;
+
+    throw new TandemiseError('CONFLICT', 'Could not acquire the Tandemise daemon lock.', {
+      details: { lockFile: this.#path },
+    });
+  }
+
+  /** The holder's pid, or undefined when the lock file is absent or unreadable. */
+  #readIncumbent(): number | undefined {
+    try {
+      const raw = readFileSync(this.#path, 'utf8').trim();
+      // Older daemons wrote a bare pid; both spellings are accepted.
+      const pid = raw.startsWith('{') ? (JSON.parse(raw) as { pid?: number }).pid : Number.parseInt(raw, 10);
+      return typeof pid === 'number' && Number.isFinite(pid) && pid > 0 ? pid : undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   release(): void {
     if (!this.#held) return;
     try {
-      if (existsSync(this.#path) && readFileSync(this.#path, 'utf8').trim() === String(process.pid)) {
+      if (existsSync(this.#path) && this.#readIncumbent() === process.pid) {
         unlinkSync(this.#path);
       }
     } catch { /* a failed unlock must not block shutdown */ }

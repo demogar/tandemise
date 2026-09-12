@@ -34,6 +34,17 @@ export interface HttpServerOptions {
 export class HttpServer {
   readonly #server: Server;
   readonly #opts: HttpServerOptions;
+  /**
+   * Sockets handed to the upgrade handler.
+   *
+   * Once a connection is upgraded, Node stops counting it as an HTTP
+   * connection, so `closeAllConnections()` does not touch it and
+   * `server.close()` waits for it forever. The stream server closes its own
+   * clients during a coordinated shutdown, but `close()` must not depend on
+   * that: an upgrade handler that never takes ownership would otherwise wedge
+   * shutdown permanently.
+   */
+  readonly #upgraded = new Set<Duplex>();
   #url: string | null = null;
 
   constructor(opts: HttpServerOptions) {
@@ -72,8 +83,29 @@ export class HttpServer {
   }
 
   async close(): Promise<void> {
-    await new Promise<void>((resolve) => this.#server.close(() => resolve()));
-    this.#server.closeAllConnections?.();
+    // `server.close()` stops accepting and then waits for every existing
+    // connection to end. The desktop always holds an idle keep-alive socket, so
+    // awaiting close() first meant it never resolved: shutdown stalled, the
+    // lifecycle teardown never ran, and the 15s grace timer force-exited -
+    // leaking the instance lock and every resource lease on every quit.
+    //
+    // Close the sockets first, then await. Idle ones go immediately; active
+    // ones are given the brief window a request needs to finish before being
+    // cut.
+    for (const socket of this.#upgraded) socket.destroy();
+    this.#upgraded.clear();
+    this.#server.closeIdleConnections?.();
+    // Short on purpose. By the time close() is called the scheduler has stopped
+    // and events are flushed, so there is no request worth preserving - this
+    // window exists only so a response already on the wire completes.
+    const cutoff = setTimeout(() => this.#server.closeAllConnections?.(), 500);
+    cutoff.unref();
+    try {
+      await new Promise<void>((resolve) => this.#server.close(() => resolve()));
+    } finally {
+      clearTimeout(cutoff);
+      this.#server.closeAllConnections?.();
+    }
   }
 
   async #handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -140,6 +172,8 @@ export class HttpServer {
       socket.destroy();
       return;
     }
+    this.#upgraded.add(socket);
+    socket.once('close', () => this.#upgraded.delete(socket));
     this.#opts.onUpgrade(req, socket, head);
   }
 }

@@ -18,7 +18,15 @@ import { API_VERSION } from '@tandemise/api-contract';
  */
 export class StreamServer {
   readonly #wss: WebSocketServer;
-  readonly #subscriptions = new Map<WebSocket, Set<string>>();
+  /**
+   * Per-client subscription state.
+   *
+   * `all` is explicit rather than inferred from an empty set. Overloading
+   * "empty" to mean "everything" made `{type:'unsubscribe'}` - which clears the
+   * set - silently equivalent to subscribing to every mission, the exact
+   * opposite of what the client asked for.
+   */
+  readonly #subscriptions = new Map<WebSocket, { all: boolean; missions: Set<string> }>();
   readonly #log: Logger;
   #unsubscribe: Array<() => void> = [];
 
@@ -33,7 +41,9 @@ export class StreamServer {
     this.#wss = new WebSocketServer({ noServer: true });
 
     this.#wss.on('connection', (socket: WebSocket) => {
-      this.#subscriptions.set(socket, new Set());
+      // A client that has not subscribed to anything specific sees everything;
+      // that is what the Home screen needs. It narrows by subscribing.
+      this.#subscriptions.set(socket, { all: true, missions: new Set() });
       this.#send(socket, {
         type: 'hello',
         apiVersion: API_VERSION,
@@ -88,11 +98,17 @@ export class StreamServer {
 
     switch (msg.type) {
       case 'subscribe':
-        if (msg.missionId) subs.add(msg.missionId);
+        if (msg.missionId) {
+          subs.missions.add(msg.missionId);
+          subs.all = false;
+        } else {
+          subs.all = true;
+          subs.missions.clear();
+        }
         break;
       case 'unsubscribe':
-        if (msg.missionId) subs.delete(msg.missionId);
-        else subs.clear();
+        if (msg.missionId) subs.missions.delete(msg.missionId);
+        else { subs.all = false; subs.missions.clear(); }
         break;
       case 'ping':
         this.#send(socket, { type: 'pong', t: msg.t });
@@ -103,7 +119,7 @@ export class StreamServer {
   #broadcastEvent(record: RunEventRecord): void {
     const message: ServerMessage = { type: 'event', record };
     for (const [socket, subs] of this.#subscriptions) {
-      if (subs.size > 0 && !subs.has(record.missionId)) continue;
+      if (!subs.all && !subs.missions.has(record.missionId)) continue;
       this.#send(socket, message);
     }
   }

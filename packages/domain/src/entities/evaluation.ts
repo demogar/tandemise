@@ -60,8 +60,23 @@ export function blockingFindings(evaluation: Evaluation): readonly Finding[] {
   return evaluation.findings.filter((f) => f.severity === 'blocking');
 }
 
+/**
+ * The percentage of acceptance criteria that were verified and passed.
+ *
+ * The denominator is EVERY criterion, not only the scored ones. Dividing by the
+ * scored subset turns this into a pass-rate, and `ready_to_ship` reads it as
+ * coverage: a QAReport with one PASS and nine SKIPs would report 100 and ship
+ * with nine criteria never tested. A criterion QA could not verify has not been
+ * met - it is unmeasured, and MVP.md §17.3 is explicit that unmeasured must
+ * never read as passing.
+ */
 export function criteriaCoveragePercent(results: readonly CriterionResult[]): number {
-  const scored = results.filter((r) => r.outcome !== 'SKIP');
-  if (scored.length === 0) return 0;
-  return Math.round((scored.filter((r) => r.outcome === 'PASS').length / scored.length) * 100);
+  if (results.length === 0) return 0;
+  const passed = results.filter((r) => r.outcome === 'PASS').length;
+  return Math.round((passed / results.length) * 100);
+}
+
+/** Criteria QA was unable to verify. Surfaced so a gate failure can name them. */
+export function unverifiedCriteria(results: readonly CriterionResult[]): readonly CriterionResult[] {
+  return results.filter((r) => r.outcome === 'SKIP');
 }

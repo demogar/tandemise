@@ -1,5 +1,5 @@
 import type {
-  Approval, ApprovalKind, ArtifactManifest, ArtifactType, CheckResult, CriterionResult,
+  Approval, ApprovalKind, ArtifactManifest, ArtifactType, CheckOutcome, CheckResult, CriterionResult,
   Evaluation, GateFacts, GateValue,
 } from '@tandemise/domain';
 import { blockingFindings, criteriaCoveragePercent } from '@tandemise/domain';
@@ -162,12 +162,31 @@ const APPROVAL_FACT_NAME: Readonly<Record<ApprovalKind, string>> = {
  * evaluate against: it is how the UI shows which conditions are still
  * outstanding.
  */
+/** FAIL beats SKIP beats PASS: the least reassuring measurement wins. */
+function worstOutcome(existing: GateValue, next: CheckOutcome): CheckOutcome {
+  if (existing === undefined) return next;
+  const rank = (o: GateValue): number => (o === 'FAIL' ? 2 : o === 'SKIP' ? 1 : 0);
+  return rank(existing) >= rank(next) ? (existing as CheckOutcome) : next;
+}
+
 export class GateFactBuilder {
   readonly #facts: Record<string, GateValue> = {};
 
-  /** Latest result per name wins: a re-run replaces the fact it measured. */
+  /**
+   * Folds check results into facts, worst-outcome-wins per name.
+   *
+   * The caller passes every task's latest checks for a mission, so the same
+   * name arrives more than once. Last-writer-wins let one task's PASS overwrite
+   * another task's FAIL purely because of row order - a mission-level
+   * `checks.tests` fact that reads PASS while a task's tests were failing. A
+   * gate asking "did the tests pass" means all of them, so any FAIL is decisive
+   * and SKIP only survives when nothing actually ran.
+   */
   withChecks(results: readonly CheckResult[]): this {
-    for (const result of results) this.#facts[result.name] = result.outcome;
+    for (const result of results) {
+      const existing = this.#facts[result.name];
+      this.#facts[result.name] = worstOutcome(existing, result.outcome);
+    }
     return this;
   }
 
@@ -227,10 +246,16 @@ export class GateFactBuilder {
       byName.set(name, [...(byName.get(name) ?? []), approval]);
     }
     for (const [name, group] of byName) {
+      // Ordered from least to most reassuring, so the result never depends on
+      // which row the database returned first. `group[0]` made
+      // [APPROVED, EXPIRED] read APPROVED and the reverse read EXPIRED for the
+      // same set of facts.
       this.#facts[name] = group.some((a) => a.status === 'PENDING') ? 'PENDING'
         : group.some((a) => a.status === 'REJECTED') ? 'REJECTED'
+        : group.some((a) => a.status === 'EXPIRED') ? 'EXPIRED'
+        : group.some((a) => a.status === 'CANCELLED') ? 'CANCELLED'
         : group.every((a) => a.status === 'APPROVED') ? 'APPROVED'
-        : group[0]!.status;
+        : 'PENDING';
     }
     return this;
   }

@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { TandemiseError, errorMessage, isTandemiseError, type Logger } from '@tandemise/shared';
+import { randomUUID } from 'node:crypto';
+import { TandemiseError, errorMessage, isTandemiseError, redactSecrets, type Logger } from '@tandemise/shared';
 import { API_PREFIX, API_VERSION, API_VERSION_HEADER, HTTP_STATUS_BY_CODE, type ApiErrorBody } from '@tandemise/api-contract';
 import { z } from 'zod';
 
@@ -141,12 +142,34 @@ export function sendError(res: ServerResponse, error: unknown, log: Logger): voi
     ? error
     : new TandemiseError('INTERNAL', errorMessage(error), { cause: error });
   const status = HTTP_STATUS_BY_CODE[e.code] ?? 500;
+
   if (status >= 500) {
-    log.error('http.error', { code: e.code, message: e.message, stack: e.stack });
-  } else {
-    log.debug('http.rejected', { code: e.code, message: e.message });
+    // An unexpected error's message is arbitrary text from somewhere in the
+    // process - a failed connect naming a key path, a CLI echoing a token. It
+    // is logged (redacted) but never returned: the client gets a correlation id
+    // to quote instead. Deliberate 4xx errors are authored by us and carry
+    // information the user needs to act on, so they are returned as written.
+    const correlationId = randomUUID();
+    log.error('http.error', {
+      correlationId,
+      code: e.code,
+      message: redactSecrets(e.message),
+      stack: e.stack ? redactSecrets(e.stack) : undefined,
+    });
+    sendJson(res, status, {
+      error: {
+        code: e.code,
+        message: `An internal error occurred. Quote reference ${correlationId} when reporting it; the details are in the daemon log.`,
+        details: { correlationId },
+        retryable: e.retryable,
+      },
+    } satisfies ApiErrorBody);
+    return;
   }
-  const body: ApiErrorBody = { error: e.toJSON() };
+
+  log.debug('http.rejected', { code: e.code, message: redactSecrets(e.message) });
+  const json = e.toJSON();
+  const body: ApiErrorBody = { error: { ...json, message: redactSecrets(json.message) } };
   sendJson(res, status, body);
 }
 

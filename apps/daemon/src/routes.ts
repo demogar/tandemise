@@ -7,7 +7,7 @@ import {
   updateRuntimeProfileRequest, updateWorkspaceRequest, upsertRoleRequest,
 } from '@tandemise/api-contract';
 import type { TandemiseServices } from '@tandemise/application';
-import { Router, type RequestContext } from './http/router.js';
+import { Router, formatZodIssues, type RequestContext } from './http/router.js';
 
 /**
  * The daemon's HTTP surface.
@@ -19,6 +19,17 @@ import { Router, type RequestContext } from './http/router.js';
  */
 export function buildRouter(services: TandemiseServices): Router {
   const r = new Router();
+
+  /**
+   * Parses query parameters the same way `ctx.body()` parses bodies. A raw
+   * ZodError escaping a handler is mapped to INTERNAL, which turns a mistyped
+   * `?limit=9999` into a 500 with the whole issue array in the message.
+   */
+  const query = <T>(ctx: RequestContext, schema: z.ZodType<T>): T => {
+    const parsed = schema.safeParse(Object.fromEntries(ctx.query));
+    if (!parsed.success) throw TandemiseError.validation(formatZodIssues(parsed.error));
+    return parsed.data;
+  };
 
   const required = (ctx: RequestContext, name: string): string => {
     const value = ctx.query.get(name);
@@ -52,8 +63,7 @@ export function buildRouter(services: TandemiseServices): Router {
 
   // --------------------------------------------------------------- missions
   r.get('/v1/missions', (ctx) => {
-    const q = listMissionsQuery.parse(Object.fromEntries(ctx.query));
-    return services.missions.list(q);
+    return services.missions.list(query(ctx, listMissionsQuery));
   });
   r.post('/v1/missions', async (ctx) => services.missions.create(await ctx.body(createMissionRequest)));
   r.get('/v1/missions/:id', (ctx) => services.projections.missionDetail(asId(ctx.params.id!)));
@@ -67,8 +77,7 @@ export function buildRouter(services: TandemiseServices): Router {
     services.missions.cancel(asId(ctx.params.id!), (await ctx.body(cancelMissionRequest)).reason));
 
   r.get('/v1/missions/:id/events', (ctx) => {
-    const q = missionEventsQuery.parse(Object.fromEntries(ctx.query));
-    return services.projections.missionEvents(asId(ctx.params.id!), q);
+    return services.projections.missionEvents(asId(ctx.params.id!), query(ctx, missionEventsQuery));
   });
   r.get('/v1/missions/:id/artifacts', (ctx) => services.artifacts.listByMission(asId(ctx.params.id!)));
   r.get('/v1/missions/:id/tasks', (ctx) => services.projections.missionTasks(asId(ctx.params.id!)));
@@ -103,7 +112,15 @@ export function buildRouter(services: TandemiseServices): Router {
 
   // ------------------------------------------------------------------ roles
   r.get('/v1/roles', (ctx) => services.roles.list(ctx.query.get('workspaceId') ?? undefined));
-  r.put('/v1/roles/:id', async (ctx) => services.roles.upsert(await ctx.body(upsertRoleRequest)));
+  r.put('/v1/roles/:id', async (ctx) => {
+    const body = await ctx.body(upsertRoleRequest);
+    // The path names the resource; a body disagreeing with it is a client bug,
+    // not a silent rename of a different role.
+    if (body.id !== ctx.params.id) {
+      throw TandemiseError.validation(`Role id in the path ('${ctx.params.id}') does not match the body ('${body.id}').`);
+    }
+    return services.roles.upsert(body);
+  });
   r.delete('/v1/roles/:id', (ctx) =>
     services.roles.remove(ctx.params.id!, asId(required(ctx, 'workspaceId'))));
 

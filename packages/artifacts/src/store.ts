@@ -4,6 +4,7 @@ import type {
 import { defaultMediaTypeFor } from '@tandemise/domain';
 import type { ArtifactId, Clock, TandemisePaths } from '@tandemise/shared';
 import { TandemiseError, ids, systemClock } from '@tandemise/shared';
+import { isPathInside } from '@tandemise/shared';
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -77,7 +78,9 @@ export function createFilesystemArtifactStore(options: ArtifactStoreOptions): Ar
   const resolvePath = (manifest: ArtifactManifest): string => {
     const root = rootFor(manifest.workspaceId);
     if (manifest.contentRef.startsWith(SHA_PREFIX)) return blobPath(root, manifest.contentRef.slice(SHA_PREFIX.length));
-    return join(root, manifest.contentRef);
+    const resolved = join(root, manifest.contentRef);
+    assertInsideRoot(root, resolved, manifest.contentRef);
+    return resolved;
   };
 
   return {
@@ -95,6 +98,11 @@ export function createFilesystemArtifactStore(options: ArtifactStoreOptions): Ar
         ? `${SHA_PREFIX}${sha256}`
         : join(request.missionId, request.type, `${id}${extensionFor(mediaType)}`);
       const target = contentAddressed ? blobPath(root, sha256) : join(root, contentRef);
+      // `missionId` and `type` are branded strings, which is a compile-time
+      // guarantee and not a runtime one: an upstream cast, a migration, or a
+      // future caller that builds a request by hand can still put `..` in
+      // either. The store owns its directory, so it checks rather than trusts.
+      assertInsideRoot(root, target, contentRef);
 
       if (!contentAddressed || !existsSync(target)) atomicWrite(target, bytes);
 
@@ -138,6 +146,16 @@ export function createFilesystemArtifactStore(options: ArtifactStoreOptions): Ar
       return manifest !== undefined && existsSync(resolvePath(manifest));
     },
   };
+}
+
+/** Refuses a path that escapes the artifact root, whatever produced it. */
+function assertInsideRoot(root: string, target: string, ref: string): void {
+  if (!isPathInside(root, target)) {
+    throw TandemiseError.permissionDenied(
+      `Artifact reference '${ref}' resolves outside the artifact root.`,
+      { contentRef: ref },
+    );
+  }
 }
 
 function blobPath(root: string, sha256: string): string {
