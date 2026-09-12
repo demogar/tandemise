@@ -448,6 +448,7 @@ function CustomServerDialog({ onClose, onConnect }: { onClose: () => void; onCon
   const [args, setArgs] = useState('');
   const [env, setEnv] = useState('');
   const [cwd, setCwd] = useState('');
+  const [trustReadOnly, setTrustReadOnly] = useState(false);
   // A server that runs on this machine has no sign-in to go through: it is
   // added directly, and the daemon starts it once to read its tool list.
   const add = useDaemonMutation(
@@ -462,6 +463,7 @@ function CustomServerDialog({ onClose, onConnect }: { onClose: () => void; onCon
         ...(cwd.trim() ? { cwd: cwd.trim() } : {}),
         capability,
         risk: 'external_side_effect',
+        trustAnnotations: trustReadOnly,
       },
     }),
     ['integrations'],
@@ -529,6 +531,12 @@ function CustomServerDialog({ onClose, onConnect }: { onClose: () => void; onCon
             </Field>
             <Field label="Working directory" hint="Optional.">
               <input className="input mono" value={cwd} onChange={(e) => setCwd(e.target.value)} placeholder="/path/to/server" />
+            </Field>
+            <Field
+              label="Trust its read-only labels"
+              hint="On: tools the server marks read-only run without asking, and only its other tools follow your autonomy setting. Leave off for a server you did not write or install yourself."
+            >
+              <Switch checked={trustReadOnly} onChange={setTrustReadOnly} label="Trust read-only labels" />
             </Field>
           </>
         )}
