@@ -95,6 +95,9 @@ export function permissionMode(
  */
 export const MAX_PROMPT_ARG_CHARS = 64 * 1024;
 
+/** Every tool of the run-scoped Tandemise MCP server. */
+export const TANDEMISE_MCP_RULE = 'mcp__tandemise';
+
 /** An inline MCP config with no servers: strict mode with nothing in it. */
 export const EMPTY_MCP_CONFIG = '{"mcpServers":{}}';
 
@@ -124,7 +127,16 @@ export function buildInvocation(request: RunRequest, resumeSessionRef: string | 
 
   args.push('--permission-mode', permissionMode(request.grants, settings));
 
-  const allowed = [...new Set([...allowedToolRules(request.grants), ...stringList(settings['allowedTools'])])];
+  const allowed = [...new Set([
+    ...allowedToolRules(request.grants),
+    // The run-scoped gateway only publishes tools this assignment was granted,
+    // and every call through it is decided by Tandemise's policy engine - with
+    // an approval card when the grant says ask. Without an allow rule headless
+    // Claude Code refused each one outright ("requested permissions ... but you
+    // haven't granted it yet"), so no worker could use a connected app at all.
+    ...(request.mcpConfigPath !== null ? [TANDEMISE_MCP_RULE] : []),
+    ...stringList(settings['allowedTools']),
+  ])];
   if (allowed.length > 0) args.push('--allowed-tools', allowed.join(','));
 
   const disallowed = [...new Set([...disallowedTools(request.grants), ...stringList(settings['disallowedTools'])])];

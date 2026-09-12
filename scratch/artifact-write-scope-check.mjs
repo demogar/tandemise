@@ -67,5 +67,19 @@ console.log('\n── the user\'s own MCP servers never reach a run\n');
   ok('and its MCP config is empty', flag(noTools, '--mcp-config') === '{"mcpServers":{}}');
 }
 
+console.log('\n── granted connected-app tools are callable headless\n');
+{
+  const withTools = buildInvocation({
+    runId: 'run_x', prompt: 'p', workingDirectory: '/tmp/wt', grants: ['design', 'artifact.write'], allowedRoots: [],
+    mcpConfigPath: '/tmp/mcp.json', maxWallTimeMs: 1000, signal: new AbortController().signal, log: null,
+    profile: { id: 'rt', adapterId: 'claude-code', settings: {}, args: [], executablePath: null },
+  }, null).args;
+  // Verified by hand against Claude Code 2.1.269: without this rule every
+  // mcp__tandemise__* call is refused in -p mode; with it the call goes through
+  // and Tandemise's own policy gate decides.
+  ok('the Tandemise gateway server is allowed', flag(withTools, '--allowed-tools').split(',').includes('mcp__tandemise'), flag(withTools, '--allowed-tools'));
+  ok('and only that server', flag(withTools, '--mcp-config') === '/tmp/mcp.json' && withTools.includes('--strict-mcp-config'));
+}
+
 console.log(`\n${bad === 0 ? 'ALL ARTIFACT WRITE SCOPE CHECKS PASSED' : `${bad} FAILED`}`);
 process.exit(bad === 0 ? 0 : 1);
