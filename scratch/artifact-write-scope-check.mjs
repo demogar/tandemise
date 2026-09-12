@@ -81,5 +81,13 @@ console.log('\n── granted connected-app tools are callable headless\n');
   ok('and only that server', flag(withTools, '--mcp-config') === '/tmp/mcp.json' && withTools.includes('--strict-mcp-config'));
 }
 
+console.log('\n── the user\'s personal settings stay out of workers\n');
+{
+  const isolated = invoke(['repository.read']);
+  ok('user settings are excluded by default', flag(isolated, '--setting-sources') === 'project,local', isolated.join(' '));
+  const inherited = invoke(['repository.read'], { userSettings: 'inherit' });
+  ok('a profile can opt back in', !inherited.includes('--setting-sources'));
+}
+
 console.log(`\n${bad === 0 ? 'ALL ARTIFACT WRITE SCOPE CHECKS PASSED' : `${bad} FAILED`}`);
 process.exit(bad === 0 ? 0 : 1);

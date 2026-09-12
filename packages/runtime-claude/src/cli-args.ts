@@ -127,6 +127,14 @@ export function buildInvocation(request: RunRequest, resumeSessionRef: string | 
 
   args.push('--permission-mode', permissionMode(request.grants, settings));
 
+  // The user's own settings stay out unless the profile says otherwise. Loaded
+  // by default, a worker ran the user's PreToolUse hooks (rewriting its shell
+  // commands), their SessionStart injections, every personal plugin and skill,
+  // and a memory plugin that recorded the worker's session - none of it part of
+  // the role's instructions. Project and local settings - the repository's own
+  // .claude - still apply. Verified against Claude Code 2.1.269.
+  if (settings['userSettings'] !== 'inherit') args.push('--setting-sources', 'project,local');
+
   const allowed = [...new Set([
     ...allowedToolRules(request.grants),
     // The run-scoped gateway only publishes tools this assignment was granted,

@@ -88,6 +88,16 @@ export const CLAUDE_SETTINGS_SCHEMA: readonly RuntimeSettingField[] = [
     hint: 'Passed as --model. An alias like `opus` or `haiku`, or a full model id.',
   },
   {
+    key: 'userSettings',
+    label: 'Your Claude settings',
+    kind: 'select',
+    options: [
+      { value: '', label: 'Keep them out of workers' },
+      { value: 'inherit', label: 'Let workers load them' },
+    ],
+    hint: 'Your personal hooks, plugins, skills and instructions. Kept out by default: they change how a worker behaves in ways its role never asked for, and some record what it does. The repository\u2019s own .claude settings always apply.',
+  },
+  {
     key: 'permissionMode',
     label: 'Permission mode',
     kind: 'select',
