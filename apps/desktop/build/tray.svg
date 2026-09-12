@@ -1,0 +1,18 @@
+<!--
+  Menu-bar mark, generated into `resources/trayTemplate.png`.
+
+  Same two wheels as the app icon but drawn for 22 pixels: flat black (macOS
+  recolours a template image itself), heavier strokes, and no tile behind it.
+  Separate from `icon.svg` because the app icon's gradients and tile are exactly
+  what a template image must not have.
+
+  The axle spans only the gap. Run it further and it shows through the wheels'
+  holes, which at this size makes the two read as one touching blob.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 176 176" width="176" height="176">
+  <g transform="rotate(-10 88 88)" fill="none" stroke="#000">
+    <line x1="72" y1="88" x2="97" y2="88" stroke-width="15" stroke-linecap="round"/>
+    <circle cx="42" cy="88" r="25" stroke-width="17"/>
+    <circle cx="134" cy="88" r="32" stroke-width="17"/>
+  </g>
+</svg>

@@ -1,0 +1,53 @@
+<!--
+  Tandemise app mark — the single source of truth for every icon size.
+
+  Two wheels on one axle: a tandem. Read the other way it is two nodes on an
+  edge, which is what the app actually does — one piece of work handed from one
+  worker to the next. The lead wheel carries a hub and the trailing one does
+  not, because the second rider is the interchangeable one.
+
+  Geometry notes, since they are easy to undo by accident:
+   - The wheels do not touch. Overlapping them reads as an infinity symbol.
+   - The axle spans only the gap between their outer edges. Running it through
+     the wheels puts a stick across two hollow circles.
+   - The tile is inset rather than full-bleed, which is what macOS expects of a
+     dock icon.
+
+  Regenerate with `node scripts/make-icon.mjs`.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#232838"/>
+      <stop offset="100%" stop-color="#0b0d12"/>
+    </linearGradient>
+    <linearGradient id="lead" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#aab6ff"/>
+      <stop offset="100%" stop-color="#6274f5"/>
+    </linearGradient>
+    <linearGradient id="trail" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#5e6ddb"/>
+      <stop offset="100%" stop-color="#3d4894"/>
+    </linearGradient>
+  </defs>
+
+  <g>
+    <rect x="62" y="62" width="900" height="900" rx="202" ry="202" fill="url(#tile)"/>
+    <rect x="66" y="66" width="892" height="892" rx="198" ry="198" fill="none"
+          stroke="rgba(255,255,255,0.12)" stroke-width="7"/>
+  </g>
+
+  <!-- Tilted so the mark has a direction rather than sitting flat. -->
+  <g transform="rotate(-10 512 512)">
+    <!-- Axle first, tucked under both wheels so the joins are clean. -->
+    <rect x="398" y="474" width="150" height="76" rx="38" fill="url(#trail)"/>
+
+    <!-- Trailing wheel: smaller. Two wheels of equal size read as spectacles;
+         unequal ones read as a direction of travel. -->
+    <circle cx="276" cy="512" r="122" fill="none" stroke="url(#trail)" stroke-width="66"/>
+
+    <!-- Lead wheel. No hub: at 16px a hub fills the hole and the whole mark
+         becomes a blob. Size and weight carry the difference instead. -->
+    <circle cx="716" cy="512" r="158" fill="none" stroke="url(#lead)" stroke-width="82"/>
+  </g>
+</svg>

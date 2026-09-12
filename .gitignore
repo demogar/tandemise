@@ -2,6 +2,8 @@ node_modules/
 dist/
 out/
 build/
+# ...but the desktop icon sources live there and are the real artwork.
+!apps/desktop/build/
 *.tsbuildinfo
 .DS_Store
 .env
