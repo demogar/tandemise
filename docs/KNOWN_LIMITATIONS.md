@@ -17,12 +17,6 @@ worktrees. Remove them with `git worktree remove` and `git branch -D`.
 
 ## Behaviour worth knowing
 
-**Reviewer and QA branch from the base, not from the implementation branch.**
-A reviewer's worktree is `main`, so it reviews the `ChangeSet` artifact and the
-diff it names rather than having the change checked out. The integration branch
-only exists after implementation completes. This weakens the independence story
-in MVP.md §16.1 and is the next architectural decision to make.
-
 **`checks.install` defaults to `npm install`, per worktree.** A fresh worktree
 has no `node_modules`, so the first mission on a real repository runs a full
 install for every code task — network-dependent, minutes each. Clear the

@@ -51,6 +51,17 @@ mattered, all now fixed with permanent regression coverage:
 | The permission engine had **zero callers** outside its own package, so risk was classified but never enforced | fixed — `TaskExecutor` derives grants through `GrantBuilder` and every tool call passes `PolicyEngine` |
 | `externalWrites: 'policy'` (the default) collapsed to plain allow, so a PR could open before the plan was approved | fixed — gated on plan approval |
 
+### Independence of evaluation
+
+A downstream task's worktree is cut from the most recent **upstream** ChangeSet's
+branch, not from the mission base. A reviewer therefore has the implementer's
+actual tree and can produce the real diff, rather than reviewing the ChangeSet's
+own description of it — the claim rather than the evidence. Only upstream
+changesets count: a parallel task's work is not part of what this reviewer was
+asked to evaluate, and folding it in silently would produce a review about code
+the reviewer was never shown. Proven by `scratch/review-sees-diff-check.mjs`,
+which also shows what a base-branch worktree would have contained (nothing).
+
 ### Second review pass (persistence, artifacts, context, evaluation, daemon)
 
 | Finding | Status |

@@ -178,7 +178,15 @@ export class TaskExecutor {
     // 3. Target. The row exists before the worktree does, so a crash between
     //    the two leaves a PROVISIONING record for recovery to fail cleanly.
     const kind = targetKindFor(task.executionPolicy.isolation);
-    const provisioned = await this.#provisionTarget(kind, running, mission, workspace, repository, scope);
+    // A reviewer or tester must be able to SEE the change. Basing its worktree
+    // on the base branch would hand it a tree without the work in it, leaving
+    // it to review the ChangeSet's *description* of the diff - and the whole
+    // point of an independent evaluator is that it checks the claim against the
+    // artifact rather than taking the claim (MVP.md §16.1, §17.3).
+    const upstreamBranch = this.#upstreamChangeBranch(running, mission);
+    const provisioned = await this.#provisionTarget(
+      kind, running, mission, workspace, repository, scope, upstreamBranch,
+    );
     if (!provisioned.ok) {
       return this.#settleFailure(running, scope, provisioned.reason);
     }
@@ -645,6 +653,52 @@ export class TaskExecutor {
 
   // ------------------------------------------------------------------- targets
 
+  /**
+   * The branch a downstream task should start from.
+   *
+   * Walks this task's transitive dependencies for the most recent `ChangeSet`
+   * and returns the branch it recorded. Null when nothing upstream produced
+   * code - a product or design task has nothing to check out, and the base
+   * branch is correct for it.
+   *
+   * Only *upstream* changesets count. A ChangeSet produced by a parallel task
+   * this one does not depend on is not part of what it was asked to evaluate,
+   * and silently folding it in would make a review report about code the
+   * reviewer was never shown.
+   */
+  #upstreamChangeBranch(task: MissionTask, mission: Mission): string | null {
+    const all = this.deps.tasks.listByMission(mission.id);
+    const byKey = new Map(all.map((t) => [t.key, t]));
+
+    const upstream = new Set<string>();
+    const walk = (key: string): void => {
+      for (const dep of byKey.get(key)?.dependsOn ?? []) {
+        if (upstream.has(dep)) continue;
+        upstream.add(dep);
+        walk(dep);
+      }
+    };
+    walk(task.key);
+    if (upstream.size === 0) return null;
+
+    const upstreamIds = new Set(
+      [...upstream].map((key) => byKey.get(key)?.id).filter((id): id is TaskId => id !== undefined),
+    );
+
+    // Newest first: after a remediation cycle the fix task's ChangeSet is the
+    // one that should be reviewed, not the original.
+    const changeSets = this.deps.artifacts
+      .listByMission(mission.id, 'ChangeSet')
+      .filter((a) => a.taskId !== null && upstreamIds.has(a.taskId))
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+    for (const artifact of changeSets) {
+      const branch = artifact.sourceRefs.find((r) => r.kind === 'git.branch')?.value;
+      if (branch) return branch;
+    }
+    return null;
+  }
+
   async #provisionTarget(
     kind: TargetKind,
     task: MissionTask,
@@ -652,6 +706,7 @@ export class TaskExecutor {
     workspace: Workspace,
     repository: Repository | null,
     scope: EventScope,
+    upstreamBranch: string | null,
   ): Promise<{ ok: true; target: ExecutionTarget } | { ok: false; reason: string }> {
     if (repository === null && kind !== 'local') {
       return { ok: false, reason: `Task '${task.key}' needs a ${kind} target but the mission has no repository.` };
@@ -669,7 +724,7 @@ export class TaskExecutor {
       name,
       workingDirectory: repositoryPath,
       branch: null,
-      baseBranch: mission.baseBranch,
+      baseBranch: upstreamBranch ?? mission.baseBranch,
       status: 'PROVISIONING',
       detail: null,
       createdAt: this.deps.clock.now(),
@@ -685,7 +740,7 @@ export class TaskExecutor {
         kind,
         name,
         repositoryPath,
-        baseBranch: mission.baseBranch ?? repository?.defaultBranch,
+        baseBranch: upstreamBranch ?? mission.baseBranch ?? repository?.defaultBranch,
         missionSlug: slugify(mission.title),
       });
       const record = target.describe();
