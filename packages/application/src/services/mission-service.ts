@@ -237,10 +237,51 @@ export class MissionServiceImpl implements MissionService {
     this.deps.recorder.record({ ...scopeOf(mission), taskId, roleId: task.roleId }, {
       type: 'task.status', from: task.status, to: 'READY', reason,
     });
+    this.#holdDependents(task, mission);
     this.#reviveMission(mission, `'${task.key}' was retried by the user.`);
     this.deps.recorder.invalidate('tasks', mission.id);
     this.deps.scheduler.wake();
     return this.#taskView(mission.id, taskId);
+  }
+
+  /**
+   * Sends work downstream of a retried task back to waiting for it.
+   *
+   * Retrying a task that had succeeded left its dependents where they were, so
+   * they kept running on the old result: a release task checked for a pull
+   * request while the task that opens it was still re-running, found none, and
+   * asked for approval of that. Dependents still in flight or parked go back to
+   * PENDING (a running one is stopped); finished ones are left alone - their
+   * work is done, and redoing it is the person's call.
+   */
+  #holdDependents(task: MissionTask, mission: Mission): void {
+    const all = this.deps.tasks.listByMission(mission.id);
+    const downstream = new Set<string>();
+    const stack = [task.key];
+    while (stack.length > 0) {
+      const key = stack.pop()!;
+      for (const t of all) {
+        if (t.dependsOn.includes(key) && !downstream.has(t.key)) {
+          downstream.add(t.key);
+          stack.push(t.key);
+        }
+      }
+    }
+    const reason = `Waiting again: '${task.key}' is being retried.`;
+    for (const dependent of all.filter((t) => downstream.has(t.key))) {
+      if (isTaskFinished(dependent.status) || dependent.status === 'PENDING') continue;
+      this.deps.scheduler.cancelTask(dependent.id);
+      this.deps.tasks.update(dependent.id, { status: 'PENDING', statusReason: reason });
+      for (const approval of this.deps.approvals.pendingForTask(dependent.id)) {
+        this.deps.approvals.update(approval.id, {
+          status: 'CANCELLED', decidedAt: this.deps.clock.now(), decisionNote: reason,
+        });
+      }
+      this.deps.recorder.record({ ...scopeOf(mission), taskId: dependent.id, roleId: dependent.roleId }, {
+        type: 'task.status', from: dependent.status, to: 'PENDING', reason,
+      });
+    }
+    this.deps.recorder.invalidate('approvals', mission.id);
   }
 
   /**
