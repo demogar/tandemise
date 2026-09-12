@@ -73,29 +73,33 @@ export class RoleServiceImpl implements RoleService {
   refreshBuiltIns(workspaceIds: readonly WorkspaceId[]): number {
     let refreshed = 0;
     const now = this.clock.now();
+    // Read before any global row changes: a project row identical to the
+    // global it was copied from was never edited, whatever its timestamps say.
+    // Projects seeded before seeding wrote matching timestamps depend on this.
+    const globals = new Map(this.roles.list(null).filter((r) => r.workspaceId === null).map((r) => [r.id, r]));
     const refresh = (stored: RoleTemplate, workspaceId: WorkspaceId | null): void => {
       const shipped = BUILT_IN_ROLE_MAP.get(stored.id);
       if (shipped === undefined || !stored.builtIn) return;
-      const unedited = workspaceId === null || stored.createdAt === stored.updatedAt;
+      const copiedUnchanged = workspaceId !== null
+        && globals.has(stored.id) && sameDefinition(stored, globals.get(stored.id)!);
+      const unedited = workspaceId === null || stored.createdAt === stored.updatedAt || copiedUnchanged;
       if (!unedited || sameDefinition(stored, shipped)) return;
       this.roles.upsert({
         ...shipped,
         workspaceId,
         createdAt: stored.createdAt,
-        // A scoped row keeps createdAt === updatedAt so it stays recognisably
-        // unedited for the next upgrade.
+        // A scoped row is stamped createdAt === updatedAt so it stays
+        // recognisably unedited for the next upgrade.
         updatedAt: workspaceId === null ? now : stored.createdAt,
       } as RoleTemplate);
       refreshed++;
     };
-    for (const role of this.roles.list(null)) {
-      if (role.workspaceId === null) refresh(role, null);
-    }
     for (const workspaceId of workspaceIds) {
       for (const role of this.roles.list(workspaceId)) {
         if (role.workspaceId === workspaceId) refresh(role, workspaceId);
       }
     }
+    for (const role of globals.values()) refresh(role, null);
     return refreshed;
   }
 

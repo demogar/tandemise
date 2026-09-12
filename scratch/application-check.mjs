@@ -741,6 +741,7 @@ ok('a role someone wrote is actually deleted', !services.roles.list(workspaceId)
 // the old defaults forever, so a design task could not reach Open Design.
 {
   const roleRepo = container.resolve(appTokens.ROLE_REPOSITORY);
+  const stale = ['repository.read', 'filesystem.read', 'artifact.write'];
   // The unedited test relies on seeding writing createdAt === updatedAt.
   const seededWs = await services.workspaces.create({ name: 'Seeding timestamps check' });
   const seededId = seededWs.workspace?.id ?? seededWs.id;
@@ -749,8 +750,27 @@ ok('a role someone wrote is actually deleted', !services.roles.list(workspaceId)
     `${roleRepo.list(seededId).filter((r) => r.workspaceId === seededId).length} scoped roles`);
   ok('a freshly seeded project needs no refresh', services.roles.refreshBuiltIns([seededId]) === 0);
 
+  // A project seeded under the old bug: copied from the global, never edited,
+  // but createdAt taken from the global and updatedAt set later.
+  const legacyWs = await services.workspaces.create({ name: 'Legacy seeding check' });
+  const legacyId = legacyWs.workspace?.id ?? legacyWs.id;
+  const legacyArch = roleRepo.get('architecture', legacyId);
+  const staleGlobalArch = { ...legacyArch, workspaceId: null, defaultCapabilities: stale, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' };
+  roleRepo.upsert(staleGlobalArch);
+  roleRepo.upsert({ ...staleGlobalArch, workspaceId: legacyId, updatedAt: '2026-02-01T00:00:00.000Z' });
+  const legacyFinance = roleRepo.get('finance', legacyId);
+  roleRepo.upsert({ ...legacyFinance, workspaceId: null, defaultCapabilities: stale, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' });
+  roleRepo.upsert({ ...legacyFinance, workspaceId: legacyId, defaultCapabilities: stale, instructions: 'Our own finance rules.', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-02-01T00:00:00.000Z' });
+  services.roles.refreshBuiltIns([legacyId]);
+  const legacyArchAfter = roleRepo.get('architecture', legacyId);
+  ok('a legacy-seeded project role identical to its global is upgraded despite its timestamps',
+    legacyArchAfter.workspaceId === legacyId && legacyArchAfter.defaultCapabilities.includes('planning')
+    && legacyArchAfter.createdAt === legacyArchAfter.updatedAt, JSON.stringify(legacyArchAfter.defaultCapabilities));
+  const legacyFinanceAfter = roleRepo.get('finance', legacyId);
+  ok('a legacy-seeded project role someone edited is left alone',
+    legacyFinanceAfter.instructions === 'Our own finance rules.' && legacyFinanceAfter.defaultCapabilities.length === stale.length);
+
   const shippedDesign = roleRepo.get('design', workspaceId);
-  const stale = ['repository.read', 'filesystem.read', 'artifact.write'];
   roleRepo.upsert({ ...shippedDesign, workspaceId: null, defaultCapabilities: stale, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-02T00:00:00.000Z' });
   const qa = roleRepo.get('qa', workspaceId);
   roleRepo.upsert({ ...qa, workspaceId, defaultCapabilities: stale, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' });
