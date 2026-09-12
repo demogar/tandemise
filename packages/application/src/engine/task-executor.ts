@@ -349,12 +349,16 @@ export class TaskExecutor {
     const { runId } = input;
     const startedAt = deps.clock.now();
 
+    // A run's number is its place among this task's runs, not the task's
+    // attempt count: a resumed session continues an attempt in a new run, and
+    // (task, attempt) is unique on the runs table.
+    const runNumber = Math.max(task.attempts, ...deps.runs.listByTask(task.id).map((r) => r.attempt + 1));
     deps.runs.create({
       id: runId,
       missionId: mission.id,
       taskId: task.id,
       assignmentId: assignment.id,
-      attempt: task.attempts,
+      attempt: runNumber,
       status: 'STARTING',
       roleId: task.roleId,
       runtimeProfileId: profile.id,
