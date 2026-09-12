@@ -9,6 +9,30 @@ const here = dirname(fileURLToPath(import.meta.url));
 const isDev = !app.isPackaged;
 const devServerUrl = process.env['ELECTRON_RENDERER_URL'];
 
+const APP_NAME = 'Tandemise';
+/** Built from `build/icon.svg` by `node scripts/make-icon.mjs`. */
+const appIconPath = join(here, '../../build/icon.png');
+
+/**
+ * Name and icon, before anything can read them.
+ *
+ * A packaged build takes both from the bundle, but unpackaged Electron falls
+ * back to its own: the menu bar, the dock, the About panel and every system
+ * dialog say "Electron" and show its default icon. Since this app is run
+ * unpackaged for development, setting them here is what makes the running app
+ * recognisably itself.
+ */
+app.setName(APP_NAME);
+app.setAboutPanelOptions({
+  applicationName: APP_NAME,
+  applicationVersion: app.getVersion(),
+  iconPath: appIconPath,
+});
+if (isDev && process.platform === 'darwin') {
+  const icon = nativeImage.createFromPath(appIconPath);
+  if (!icon.isEmpty()) app.dock?.setIcon(icon);
+}
+
 const connector = new DaemonConnector();
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
@@ -25,6 +49,9 @@ function createWindow(): BrowserWindow {
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     trafficLightPosition: { x: 16, y: 18 },
     backgroundColor: '#0e1014',
+    title: APP_NAME,
+    // Windows and Linux take the window icon from here; macOS uses the bundle.
+    ...(process.platform === 'darwin' ? {} : { icon: appIconPath }),
     webPreferences: {
       preload: join(here, '../preload/index.cjs'),
       contextIsolation: true,
@@ -75,13 +102,13 @@ function createTray(): void {
   const icon = nativeImage.createFromPath(join(here, '../../resources/trayTemplate.png'));
   icon.setTemplateImage(true);
   tray = new Tray(icon);
-  tray.setToolTip('Tandemise');
+  tray.setToolTip(APP_NAME);
   tray.setContextMenu(
     Menu.buildFromTemplate([
-      { label: 'Open Tandemise', click: showWindow },
+      { label: `Open ${APP_NAME}`, click: showWindow },
       { type: 'separator' },
       {
-        label: 'Quit Tandemise',
+        label: `Quit ${APP_NAME}`,
         click: () => {
           quitting = true;
           app.quit();

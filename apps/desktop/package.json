@@ -1,5 +1,7 @@
 {
   "name": "@tandemise/desktop",
+  "productName": "Tandemise",
+  "description": "A local-first desktop OS for running a software company with interchangeable AI workers.",
   "version": "0.1.0",
   "private": true,
   "type": "module",
