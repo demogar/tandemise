@@ -122,6 +122,21 @@ export class RecoveryService {
       tasksRequeued += 1;
     }
 
+    // A mission marked COMPLETE with work still queued - closed over a
+    // cancelled task, then that task retried. Nothing ticks a completed
+    // mission, so its task would sit READY forever: reopen it.
+    for (const mission of this.missions.list({ statuses: ['COMPLETE'] })) {
+      const open = this.tasks.listByMission(mission.id)
+        .filter((t) => !['SUCCEEDED', 'SKIPPED', 'FAILED', 'CANCELLED'].includes(t.status));
+      if (open.length === 0) continue;
+      const reason = `Reopened: ${open.map((t) => t.key).join(', ')} still to run.`;
+      this.missions.update(mission.id, { status: 'EXECUTING', statusReason: reason });
+      this.recorder.record({ workspaceId: mission.workspaceId, missionId: mission.id }, {
+        type: 'mission.status', from: 'COMPLETE', to: 'EXECUTING', reason,
+      });
+      touched.add(mission.id);
+    }
+
     const adoptedTasks = new Set(adopted.map((id) => this.runs.get(id as RunId)?.taskId).filter((t) => t !== undefined));
     const leasesReleased = this.#releaseDeadLeases(adoptedTasks);
     const targetsFailed = this.#failOrphanedTargets(touched);
