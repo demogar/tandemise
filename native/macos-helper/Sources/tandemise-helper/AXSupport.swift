@@ -63,18 +63,16 @@ enum AX {
     }
 
     static func point(_ element: AXUIElement, _ name: String = kAXPositionAttribute) throws -> CGPoint? {
-        guard let raw = try optionalAttribute(element, name),
-              CFGetTypeID(raw) == AXValueGetTypeID(),
-              let axValue = raw as? AXValue else { return nil }
+        guard let raw = try optionalAttribute(element, name), CFGetTypeID(raw) == AXValueGetTypeID() else { return nil }
+        let axValue = unsafeDowncast(raw, to: AXValue.self)
         var p = CGPoint.zero
         guard AXValueGetValue(axValue, .cgPoint, &p) else { return nil }
         return p
     }
 
     static func size(_ element: AXUIElement, _ name: String = kAXSizeAttribute) throws -> CGSize? {
-        guard let raw = try optionalAttribute(element, name),
-              CFGetTypeID(raw) == AXValueGetTypeID(),
-              let axValue = raw as? AXValue else { return nil }
+        guard let raw = try optionalAttribute(element, name), CFGetTypeID(raw) == AXValueGetTypeID() else { return nil }
+        let axValue = unsafeDowncast(raw, to: AXValue.self)
         var s = CGSize.zero
         guard AXValueGetValue(axValue, .cgSize, &s) else { return nil }
         return s
@@ -82,8 +80,10 @@ enum AX {
 
     static func element(_ element: AXUIElement, _ name: String) throws -> AXUIElement? {
         guard let raw = try optionalAttribute(element, name) else { return nil }
-        guard CFGetTypeID(raw) == AXUIElementGetTypeID(), let child = raw as? AXUIElement else { return nil }
-        return child
+        // A CFTypeRef cannot be conditionally downcast to a CF class in Swift
+        // (the cast always succeeds), so the type id check above is the check.
+        guard CFGetTypeID(raw) == AXUIElementGetTypeID() else { return nil }
+        return unsafeDowncast(raw, to: AXUIElement.self)
     }
 
     static func windows(of app: AXUIElement) throws -> [AXUIElement] {

@@ -76,6 +76,8 @@ struct HelperError: Error {
         case .cannotComplete:
             return HelperError("TARGET_UNAVAILABLE",
                                "The target application did not respond in time (while \(context)); it may be busy or hung")
+        case .notificationUnsupported, .notificationAlreadyRegistered, .notificationNotRegistered:
+            return .unsupported("The element does not support accessibility notifications (while \(context))")
         case .illegalArgument:
             return .validation("Illegal argument passed to the Accessibility API (while \(context))")
         case .failure, .notEnoughPrecision:
