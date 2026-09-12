@@ -60,5 +60,12 @@ console.log('\n── profile allow rules are kept alongside\n');
   ok('both rules present', flag(args, '--allowed-tools') === 'Edit(.tandemise/out/**),WebFetch', flag(args, '--allowed-tools'));
 }
 
+console.log('\n── the user\'s own MCP servers never reach a run\n');
+{
+  const noTools = invoke(['repository.read']);
+  ok('a run with no granted tools is still strict', noTools.includes('--strict-mcp-config'), noTools.join(' '));
+  ok('and its MCP config is empty', flag(noTools, '--mcp-config') === '{"mcpServers":{}}');
+}
+
 console.log(`\n${bad === 0 ? 'ALL ARTIFACT WRITE SCOPE CHECKS PASSED' : `${bad} FAILED`}`);
 process.exit(bad === 0 ? 0 : 1);

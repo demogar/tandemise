@@ -95,6 +95,9 @@ export function permissionMode(
  */
 export const MAX_PROMPT_ARG_CHARS = 64 * 1024;
 
+/** An inline MCP config with no servers: strict mode with nothing in it. */
+export const EMPTY_MCP_CONFIG = '{"mcpServers":{}}';
+
 export interface ClaudeInvocation {
   readonly args: readonly string[];
   /** Non-null when the prompt goes on stdin rather than argv. */
@@ -133,10 +136,15 @@ export function buildInvocation(request: RunRequest, resumeSessionRef: string | 
     if (!isPathInside(request.workingDirectory, root)) args.push('--add-dir', root);
   }
 
+  // Always strict. Without --strict-mcp-config the CLI merges the user's own
+  // MCP servers - their Gmail, Drive, Notion - into the run. Passing it only
+  // when Tandemise had tools to offer left every run *without* granted tools
+  // holding all of the user's personal servers, ungranted and unaudited: a
+  // design worker searched its tools and found the user's Notion connector.
   if (request.mcpConfigPath !== null) {
-    // Without --strict-mcp-config the CLI merges the user's own global servers,
-    // which would silently hand the run tools no one granted it.
     args.push('--mcp-config', request.mcpConfigPath, '--strict-mcp-config');
+  } else {
+    args.push('--mcp-config', EMPTY_MCP_CONFIG, '--strict-mcp-config');
   }
 
   if (resumeSessionRef !== null) args.push('--resume', resumeSessionRef);
