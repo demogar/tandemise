@@ -25,7 +25,6 @@ import type { WorkspaceService } from '../services.js';
  * "what changed?" unanswerable across an upgrade. The workspace still owns its
  * routing, which is the part that is genuinely per-installation.
  */
-const DEFAULT_WORKSPACE_NAME = 'My workspace';
 
 export class WorkspaceServiceImpl implements WorkspaceService {
   constructor(
