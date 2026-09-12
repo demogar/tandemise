@@ -162,6 +162,12 @@ export class TaskExecutor {
     const { profile, adapter } = selected.value;
     const attempt = task.attempts + 1;
 
+    // Captured before the transition, because moving to RUNNING clears
+    // `statusReason` - and `statusReason` is where the previous attempt's gate
+    // failure lives. Reading it after the transition is how the single
+    // highest-value feedback loop in the system silently becomes a no-op.
+    const feedback = attempt > 1 ? task.statusReason : null;
+
     const running = this.#setStatus(task, scope, 'RUNNING', null, {
       attempts: attempt,
       startedAt: task.startedAt ?? deps.clock.now(),
@@ -218,7 +224,7 @@ export class TaskExecutor {
         : RunScopedToolGateway.for(deps.toolBroker, assignment, deps.clock).names();
       await deps.harvester.prepare(target, scope);
       const prompt = await this.#compilePrompt({
-        ...ctx, task: running, workspace, role, grants, target, tools,
+        ...ctx, task: running, workspace, role, grants, target, tools, feedback,
       });
 
       // 7. Run.
@@ -541,7 +547,7 @@ export class TaskExecutor {
         artifacts: expected,
         workingDirectory: target.workingDirectory,
         completionGate: task.completionGate,
-        notes: this.#contractNotes(task, target, input.tools),
+        notes: this.#contractNotes(task, target, input.tools, input.feedback),
       },
     });
 
@@ -555,7 +561,12 @@ export class TaskExecutor {
     return compiled.prompt;
   }
 
-  #contractNotes(task: MissionTask, target: ExecutionTarget, tools: readonly string[]): readonly string[] {
+  #contractNotes(
+    task: MissionTask,
+    target: ExecutionTarget,
+    tools: readonly string[],
+    feedback: string | null,
+  ): readonly string[] {
     const notes = [
       `Write each artifact to its own file under \`${ARTIFACT_OUT_DIR}/\` in ${target.workingDirectory}. `
       + `The file name is the artifact type followed by \`.md\` — for example \`${ARTIFACT_OUT_DIR}/ProductSpec.md\`. `
@@ -575,10 +586,12 @@ export class TaskExecutor {
       );
     }
     // The retry feedback loop: the previous attempt's failure, stated verbatim.
-    if (task.attempts > 1 && task.statusReason !== null) {
+    // Quoted rather than paraphrased on purpose - the worker needs the exact
+    // condition Tandemise measured, not this system's opinion about it.
+    if (feedback !== null && feedback.trim().length > 0) {
       notes.push(
         `Your previous attempt did not satisfy this task's completion gate. `
-        + `Tandemise measured: ${task.statusReason} `
+        + `Tandemise measured: ${feedback} `
         + 'Fix exactly that before you finish; nothing else about the task has changed.',
       );
     }
@@ -964,6 +977,8 @@ interface PromptInput extends AttemptContext {
   readonly grants: readonly CapabilityGrant[];
   readonly target: ExecutionTarget;
   readonly tools: readonly string[];
+  /** The previous attempt's gate detail, verbatim, or null on a first attempt. */
+  readonly feedback: string | null;
 }
 
 interface DriveInput {

@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'wouter';
-import type { MissionSummary } from '@tandemise/api-contract';
+import type { HomeView, MissionSummary } from '@tandemise/api-contract';
 import { PageHeader } from '../components/PageHeader.js';
 import { Icon } from '../components/Icon.js';
 import { Empty, ErrorState, SectionHead, SkeletonCards, SkeletonList, StatusBadge, StatusDot } from '../components/primitives.js';
@@ -19,7 +19,7 @@ export function Home(): JSX.Element {
   return (
     <>
       <PageHeader
-        title={greeting()}
+        title={headline(data)}
         subtitle={data?.workspace ? `${data.workspace.name} workspace` : 'Your agent workforce at a glance'}
         actions={
           <button type="button" className="btn btn--primary" onClick={() => navigate('/missions/new')}>
@@ -121,7 +121,7 @@ export function Home(): JSX.Element {
                       <StatusDot tone={healthTone(runtime.health.state)} />
                       <div className="list__main">
                         <div className="list__title">{runtime.profile.name}</div>
-                        <div className="list__subtitle truncate">
+                        <div className="list__subtitle truncate" title={runtime.health.detail}>
                           {runtime.health.version ? `v${runtime.health.version}` : 'version unknown'}
                           <span className="sep">·</span>
                           {runtime.health.detail}
@@ -199,7 +199,7 @@ function MissionListRow({ summary }: { summary: MissionSummary }): JSX.Element {
       <StatusDot tone={tone} live={tone === 'running'} />
       <div className="list__main">
         <div className="list__title">{summary.mission.title}</div>
-        <div className="list__subtitle truncate">
+        <div className="list__subtitle truncate" title={summary.currentActivity ?? summary.mission.goal}>
           {summary.currentActivity ?? summary.mission.goal}
           {summary.repositoryName ? (
             <>
@@ -256,10 +256,18 @@ function describeAttention(approvals: number, blocked: number): string {
   return parts.length > 0 ? parts.join(' · ') : 'all clear';
 }
 
-function greeting(): string {
-  const hour = new Date().getHours();
-  if (hour < 5) return 'Still up';
-  if (hour < 12) return 'Good morning';
-  if (hour < 18) return 'Good afternoon';
-  return 'Good evening';
+/**
+ * The title states what the workforce needs, in priority order. A time-of-day
+ * greeting looked friendly but told the user nothing they could act on - and
+ * "Still up" at 2am read as a judgement rather than a status.
+ */
+function headline(data: HomeView | undefined): string {
+  if (!data) return 'Home';
+  const waiting = data.pendingApprovals.length;
+  const blocked = data.blockedMissions.length;
+  const running = data.activeMissions.length;
+  if (waiting > 0) return `${pluralize(waiting, 'decision')} waiting on you`;
+  if (blocked > 0) return `${pluralize(blocked, 'mission')} blocked`;
+  if (running > 0) return `${pluralize(running, 'mission')} running`;
+  return 'Nothing needs you';
 }

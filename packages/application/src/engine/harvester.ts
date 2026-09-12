@@ -79,9 +79,19 @@ export class ArtifactHarvester {
     private readonly clock: Clock,
   ) {}
 
-  /** Prepares the hand-off directory before the worker starts. */
+  /**
+   * Prepares the hand-off directory before the worker starts.
+   *
+   * The directory is emptied first. An unisolated target is the user's own
+   * checkout, which every `isolation: none` task in the mission shares - so a
+   * file left by the previous task is still sitting there, and `harvest` would
+   * collect it again and attribute this run's provenance to work it did not do.
+   * Clearing also means a retry is judged on what this attempt produced rather
+   * than on what the failed one left behind.
+   */
   async prepare(target: ExecutionTarget, scope: EventScope): Promise<void> {
     const fs = target.filesystem();
+    if (await fs.exists(ARTIFACT_OUT_DIR)) await fs.remove(ARTIFACT_OUT_DIR, { recursive: true });
     await fs.mkdir(ARTIFACT_OUT_DIR);
     await fs.write(IGNORE_FILE, IGNORE_BODY);
     await this.#excludeFromGit(target, scope);

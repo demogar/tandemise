@@ -60,7 +60,7 @@ export function Workforce(): JSX.Element {
               >
                 <div className="list__main">
                   <div className="list__title">{role.name}</div>
-                  <div className="list__subtitle truncate">{role.summary}</div>
+                  <div className="list__subtitle truncate" title={role.summary}>{role.summary}</div>
                 </div>
                 {role.builtIn ? <span className="chip chip--muted">built-in</span> : null}
               </button>

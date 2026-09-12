@@ -139,7 +139,7 @@ export function Missions(): JSX.Element {
                       <StatusDot tone={tone} live={tone === 'running'} />
                       <div className="list__main">
                         <div className="list__title">{summary.mission.title}</div>
-                        <div className="list__subtitle truncate">
+                        <div className="list__subtitle truncate" title={summary.currentActivity ?? summary.mission.goal}>
                           {summary.currentActivity ?? summary.mission.goal}
                         </div>
                       </div>

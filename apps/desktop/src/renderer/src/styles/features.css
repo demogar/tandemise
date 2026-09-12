@@ -2,18 +2,60 @@
 
 /* ------------------------------------------------------------------ plan DAG */
 
+/*
+ * The frame, not the scroller: the edge fades have to sit outside the scrolling
+ * box or they would slide away with the content they are meant to point at.
+ */
 .dag {
   position: relative;
-  overflow: auto;
-  flex: 1;
+  display: flex;
+  /* Hugs the graph instead of stretching to the window: it puts the horizontal
+   * scrollbar directly under the cards rather than stranding it at the bottom
+   * of the pane, and still shrinks to scroll when the plan is tall. */
+  flex: 0 1 auto;
   min-height: 0;
-  padding: var(--s6) var(--s7) var(--s10);
+  max-height: 100%;
+}
+
+.dag__scroll {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  padding: var(--s6) var(--s7) var(--s8);
+}
+
+.dag::before,
+.dag::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 64px;
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--duration) var(--ease);
+}
+
+.dag::before {
+  left: 0;
+  background: linear-gradient(to right, var(--canvas), transparent);
+}
+
+.dag::after {
+  right: 0;
+  background: linear-gradient(to left, var(--canvas), transparent);
+}
+
+.dag[data-overflow-start='true']::before,
+.dag[data-overflow-end='true']::after {
+  opacity: 1;
 }
 
 .dag__canvas {
   position: relative;
   display: flex;
-  gap: var(--s10);
+  gap: var(--s8);
   align-items: flex-start;
   width: max-content;
   min-width: 100%;
@@ -42,7 +84,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--s3);
-  width: 268px;
+  width: 240px;
   flex: none;
 }
 

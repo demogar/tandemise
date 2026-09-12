@@ -22,8 +22,19 @@ interface Edge {
 export function PlanPane({ detail }: { detail: MissionDetail }): JSX.Element {
   const [selected, setSelected] = useState<string | null>(null);
   const canvas = useRef<HTMLDivElement>(null);
+  const scroller = useRef<HTMLDivElement>(null);
   const cards = useRef(new Map<string, HTMLElement>());
   const [edges, setEdges] = useState<readonly Edge[]>([]);
+  // A plan wider than the window is normal; without an edge fade the only hint
+  // is a scrollbar pinned to the bottom of the pane, which nobody looks at.
+  const [overflow, setOverflow] = useState({ start: false, end: false });
+
+  const syncOverflow = useCallback(() => {
+    const element = scroller.current;
+    if (!element) return;
+    const remaining = element.scrollWidth - element.clientWidth - element.scrollLeft;
+    setOverflow({ start: element.scrollLeft > 1, end: remaining > 1 });
+  }, []);
 
   const columns = useMemo(() => groupByLevel(detail.tasks), [detail.tasks]);
   const idByKey = useMemo(() => new Map(detail.tasks.map((task) => [task.key, task.id as string])), [detail.tasks]);
@@ -64,11 +75,16 @@ export function PlanPane({ detail }: { detail: MissionDetail }): JSX.Element {
 
   useEffect(() => {
     const root = canvas.current;
-    if (!root) return;
-    const observer = new ResizeObserver(measure);
+    const element = scroller.current;
+    if (!root || !element) return;
+    const observer = new ResizeObserver(() => {
+      measure();
+      syncOverflow();
+    });
     observer.observe(root);
+    observer.observe(element);
     return () => observer.disconnect();
-  }, [measure]);
+  }, [measure, syncOverflow]);
 
   if (detail.tasks.length === 0) {
     return (
@@ -120,34 +136,36 @@ export function PlanPane({ detail }: { detail: MissionDetail }): JSX.Element {
         </div>
       ) : null}
 
-      <div className="dag">
-        <div className="dag__canvas" ref={canvas}>
-          <svg className="dag__edges" aria-hidden="true">
-            {edges.map((edge) => (
-              <path key={edge.id} d={edge.path} className={`dag__edge${edge.active ? ' dag__edge--active' : ''}`} />
-            ))}
-          </svg>
-
-          {columns.map(([level, tasks]) => (
-            <div key={level} className="dag__col">
-              <div className="dag__colhead">
-                <span>Stage {level + 1}</span>
-                <span style={{ opacity: 0.7 }}>{pluralize(tasks.length, 'task')}</span>
-              </div>
-              {tasks.map((task) => (
-                <TaskCard
-                  key={task.id}
-                  task={task}
-                  selected={task.id === selected}
-                  onSelect={() => setSelected(task.id)}
-                  register={(element) => {
-                    if (element) cards.current.set(task.id, element);
-                    else cards.current.delete(task.id);
-                  }}
-                />
+      <div className="dag" data-overflow-start={overflow.start} data-overflow-end={overflow.end}>
+        <div className="dag__scroll" ref={scroller} onScroll={syncOverflow}>
+          <div className="dag__canvas" ref={canvas}>
+            <svg className="dag__edges" aria-hidden="true">
+              {edges.map((edge) => (
+                <path key={edge.id} d={edge.path} className={`dag__edge${edge.active ? ' dag__edge--active' : ''}`} />
               ))}
-            </div>
-          ))}
+            </svg>
+
+            {columns.map(([level, tasks]) => (
+              <div key={level} className="dag__col">
+                <div className="dag__colhead">
+                  <span>Stage {level + 1}</span>
+                  <span style={{ opacity: 0.7 }}>{pluralize(tasks.length, 'task')}</span>
+                </div>
+                {tasks.map((task) => (
+                  <TaskCard
+                    key={task.id}
+                    task={task}
+                    selected={task.id === selected}
+                    onSelect={() => setSelected(task.id)}
+                    register={(element) => {
+                      if (element) cards.current.set(task.id, element);
+                      else cards.current.delete(task.id);
+                    }}
+                  />
+                ))}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 

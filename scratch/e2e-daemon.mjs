@@ -84,17 +84,17 @@ try {
   const events = [];
   const invalidations = [];
   const ws = new WebSocket(`${base.replace('http', 'ws')}/v1/stream?token=${encodeURIComponent(token)}`);
-  await new Promise((resolve, reject) => {
-    ws.once('open', resolve);
-    ws.once('error', reject);
-    setTimeout(() => reject(new Error('ws open timeout')), 5000);
-  });
   let hello;
   ws.on('message', (raw) => {
     const m = JSON.parse(raw.toString());
     if (m.type === 'hello') hello = m;
     if (m.type === 'event') events.push(m.record);
     if (m.type === 'invalidate') invalidations.push(m);
+  });
+  await new Promise((resolve, reject) => {
+    ws.once('open', resolve);
+    ws.once('error', reject);
+    setTimeout(() => reject(new Error('ws open timeout')), 5000);
   });
   await sleep(200);
   ok('stream sends hello', hello?.apiVersion === 'v1');
@@ -166,8 +166,18 @@ try {
     ok('tasks carry a DAG level', planned.body.tasks.every((t) => typeof t.level === 'number'));
   }
 
-  const started = await api('POST', `/v1/missions/${missionId}/start`);
-  ok('mission starts', started.status === 200, JSON.stringify(started.body).slice(0, 160));
+  let started = await api('POST', `/v1/missions/${missionId}/start`);
+  if (started.status === 428) {
+    // Plan approval is required by default (MVP.md §18.3) - that is the product
+    // working, not a failure. Approve it the way the user would.
+    ok('starting without plan approval is refused', true, started.body?.error?.code);
+    const planApprovalId = started.body?.error?.details?.approvalId;
+    ok('the refusal names the approval to act on', !!planApprovalId, planApprovalId);
+    const decided = await api('POST', `/v1/approvals/${planApprovalId}/decide`, { optionId: 'approve' });
+    ok('the plan approval can be decided', decided.status === 200, JSON.stringify(decided.body).slice(0, 120));
+    started = await api('POST', `/v1/missions/${missionId}/start`);
+  }
+  ok('mission starts once the plan is approved', started.status === 200, JSON.stringify(started.body).slice(0, 200));
 
   section('execution');
   const deadline = Date.now() + (REAL ? 900_000 : 180_000);

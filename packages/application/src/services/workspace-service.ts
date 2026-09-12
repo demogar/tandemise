@@ -103,7 +103,7 @@ export class WorkspaceServiceImpl implements WorkspaceService {
     // Detected commands are the default, and anything the caller states wins.
     // Detection is a convenience; a configured command is a decision.
     const checks = { ...NO_CHECKS, ...probe.detectedChecks, ...(request.checks ?? {}) };
-    return this.repositories.create({
+    const created = this.repositories.create({
       id: ids.repository(),
       workspaceId: id,
       name: request.name ?? probe.name,
@@ -112,6 +112,16 @@ export class WorkspaceServiceImpl implements WorkspaceService {
       remoteUrl: probe.remoteUrl,
       checks,
     });
+
+    // The first repository a workspace gets becomes its default. Without this a
+    // mission created without an explicit repository silently gets none, and
+    // every task that needed a worktree fails for want of a repository the user
+    // is looking straight at.
+    const workspace = this.#require(id);
+    if (workspace.defaultRepositoryId === null) {
+      this.workspaces.update(id, { defaultRepositoryId: created.id, updatedAt: this.clock.now() });
+    }
+    return created;
   }
 
   updateRepository(id: RepositoryId, patch: Partial<AddRepositoryRequest>): Repository {
