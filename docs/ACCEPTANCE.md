@@ -19,7 +19,7 @@ Run any of these with `export PATH="$HOME/.nvm/versions/node/v22.23.1/bin:$PATH"
 | 8 | Runtime events normalized into one mission timeline | ✅ met | `scratch/runtime-check.mjs` — every runtime normalizes into the canonical AgentEvent union |
 | 9 | Core artifacts persist across restart | | |
 | 10 | Blocking reviewer findings create fix work and block QA/release | | |
-| 11 | QA runs real browser automation with screenshots and criteria evidence | | |
+| 11 | QA runs real browser automation with screenshots and criteria evidence | ✅ met | `scratch/qa-e2e-check.mjs` — starts the Taskly dev server, drives three acceptance criteria through a real Chromium, captures a 24KB screenshot and a semantic accessibility tree, runs a11y checks, asserts no console errors |
 | 12 | GitHub reads repo/PR state; creates a draft PR only under policy | ✅ met | `scratch/integrations-check.mjs` — real `gh` calls; `github.pr.create` is `external_side_effect` and policy-gated, absent from a QA gateway |
 | 13 | MCP exposes a granted tool without exposing unrelated workspace tools | ✅ met | `scratch/integrations-check.mjs` — stdio MCP server `tools/list` returns only granted tools; `github_pr_create` refused |
 | 14 | macOS control launches/inspects an allowlisted app, acts, captures evidence | ✅ met | `scratch/desktop-check.mjs` — Swift helper builds and responds; app allowlist hides 193 non-allowlisted apps; permissions reported with the exact System Settings path |
@@ -63,3 +63,9 @@ mattered, all now fixed with permanent regression coverage:
 | `scratch/desktop-check.mjs` | macOS Accessibility helper |
 | `scratch/application-check.mjs` | Mission engine end to end with the deterministic runtime |
 | `scratch/e2e-daemon.mjs` | The real daemon over its real HTTP + WebSocket API |
+| `scratch/qa-e2e-check.mjs` | The QA role's path: dev server + real browser + evidence against the demo app |
+| `scratch/fs-security-check.mjs` | Filesystem containment: traversal, symlink escapes, root spelling |
+| `scratch/env-leak-check.mjs` | Worker processes do not inherit unrelated credentials |
+| `scratch/concurrency-check.mjs` | Runtime concurrency slots are held for the whole run |
+| `scratch/codex-check.mjs` | Codex adapter degrades correctly when the CLI is absent |
+| `scratch/shell-benign-check.mjs` | Shell risk classifier does not over-flag ordinary commands |

@@ -80,11 +80,11 @@ export class ArtifactHarvester {
   ) {}
 
   /** Prepares the hand-off directory before the worker starts. */
-  async prepare(target: ExecutionTarget): Promise<void> {
+  async prepare(target: ExecutionTarget, scope: EventScope): Promise<void> {
     const fs = target.filesystem();
     await fs.mkdir(ARTIFACT_OUT_DIR);
     await fs.write(IGNORE_FILE, IGNORE_BODY);
-    await this.#excludeFromGit(target);
+    await this.#excludeFromGit(target, scope);
   }
 
   /**
@@ -94,7 +94,7 @@ export class ArtifactHarvester {
    * repository has no exclude file to write, and that is not a reason to fail
    * the run before the worker has done anything.
    */
-  async #excludeFromGit(target: ExecutionTarget): Promise<void> {
+  async #excludeFromGit(target: ExecutionTarget, scope: EventScope): Promise<void> {
     try {
       const gitDir = await target.exec({ command: 'git', args: ['rev-parse', '--absolute-git-dir'] });
       if (gitDir.exitCode !== 0) return;
@@ -113,11 +113,7 @@ export class ArtifactHarvester {
         ],
       });
     } catch (e) {
-      this.recorder.note(
-        { workspaceId: target.describe().workspaceId, missionId: requireMissionId(target) },
-        `Could not add ${EXCLUDE_ENTRY} to .git/info/exclude: ${errorMessage(e)}`,
-        'warn',
-      );
+      this.recorder.note(scope, `Could not exclude ${EXCLUDE_ENTRY} from git: ${errorMessage(e)}`, 'warn');
     }
   }
 

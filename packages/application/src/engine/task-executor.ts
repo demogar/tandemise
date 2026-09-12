@@ -198,7 +198,7 @@ export class TaskExecutor {
       });
 
       // 6. Context.
-      await deps.harvester.prepare(target);
+      await deps.harvester.prepare(target, scope);
       const prompt = await this.#compilePrompt({
         ...ctx, task: running, workspace, role, grants, target,
       });

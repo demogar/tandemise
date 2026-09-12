@@ -676,7 +676,7 @@ function send(res, status, payload) {
 // A minimal RFC 6455 server: handshake, text frames out, ping/close in. Pulling
 // in `ws` for a mock the UI only reads from would be more moving parts, not fewer.
 
-const WS_GUID = '258EAFA5-E914-47DA-95CA-5AB0DC85B11F';
+const WS_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 
 server.on('upgrade', (req, socket) => {
   const url = new URL(req.url, 'http://127.0.0.1');
