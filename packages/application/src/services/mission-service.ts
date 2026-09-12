@@ -207,10 +207,17 @@ export class MissionServiceImpl implements MissionService {
     this.deps.recorder.invalidate('missions');
   }
 
-  async retryTask(taskId: TaskId, options: { runtimeProfileId?: string; note?: string }): Promise<TaskView> {
+  async retryTask(
+    taskId: TaskId,
+    options: { runtimeProfileId?: string; note?: string; addCapabilities?: readonly string[] },
+  ): Promise<TaskView> {
     const task = this.#requireTask(taskId);
     const mission = this.#require(task.missionId);
-    if (!RETRYABLE_TASK_STATUSES.includes(task.status)) {
+    const widening = (options.addCapabilities ?? []).length > 0;
+    // A worker parked on a question can be restarted with more access: that is
+    // often the question ("I can't do this with my grants").
+    const retryable = RETRYABLE_TASK_STATUSES.includes(task.status) || (widening && task.status === 'AWAITING_INPUT');
+    if (!retryable) {
       throw new TandemiseError('PRECONDITION_FAILED', `A task in ${task.status} cannot be retried.`, {
         details: { taskId, status: task.status },
       });
@@ -223,9 +230,25 @@ export class MissionServiceImpl implements MissionService {
     // of how many times this task has been tried is evidence, and erasing it
     // would let a task that always fails loop forever one manual retry at a time
     // while the timeline showed attempt 1 each round.
+    const added = [...new Set(options.addCapabilities ?? [])]
+      .filter((c) => !task.executionPolicy.capabilities.includes(c));
     const reason = options.note?.trim()
-      || `Retried by the user${options.runtimeProfileId === undefined ? '' : ' on a different runtime'}.`;
+      || `Retried by the user${options.runtimeProfileId === undefined ? '' : ' on a different runtime'}`
+        + `${added.length > 0 ? ` with more access: ${added.join(', ')}` : ''}.`;
+    if (task.status === 'AWAITING_INPUT') {
+      this.deps.scheduler.cancelTask(taskId);
+      for (const approval of this.deps.approvals.pendingForTask(taskId)) {
+        this.deps.approvals.update(approval.id, {
+          status: 'CANCELLED', decidedAt: this.deps.clock.now(), decisionNote: reason,
+        });
+      }
+    }
     this.deps.tasks.update(taskId, {
+      ...(added.length > 0
+        ? {
+          executionPolicy: { ...task.executionPolicy, capabilities: [...task.executionPolicy.capabilities, ...added] },
+        }
+        : {}),
       status: 'READY',
       statusReason: reason,
       retryPolicy: {
