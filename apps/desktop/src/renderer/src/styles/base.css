@@ -22,6 +22,54 @@ body {
   overflow: hidden;
 }
 
+/*
+ * Chrome is not a document.
+ *
+ * A native app does not let you drag a selection across its sidebar, buttons and
+ * labels, and doing so here made every click feel like it landed on a web page -
+ * a stray double-click highlights a nav item, a drag paints half the window
+ * blue. So selection is off by default and granted back to the things that are
+ * genuinely content: anything a user would reasonably want to copy out.
+ *
+ * The rule is "could you need these exact characters elsewhere?" - an artifact,
+ * a log line, a branch name, a path, an id, an error message. Not a button.
+ */
+body {
+  -webkit-user-select: none;
+  user-select: none;
+  /* A desktop window does not rubber-band, and the drag-to-scroll bounce made
+     the shell look detached from its frame. */
+  overscroll-behavior: none;
+}
+
+/*
+ * Cursor text, prose, raw output, and any monospaced value: paths, ids, branch
+ * names and commit hashes are all things people paste elsewhere.
+ */
+input,
+textarea,
+select,
+[contenteditable],
+.prose,
+.rawlog,
+.mono,
+.error-detail,
+/* An error is the thing most worth pasting into a search or a bug report. */
+.errorstate__title,
+.errorstate__body,
+.banner,
+.selectable {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* Dragging a window by its chrome should not start a selection either. */
+.titlebar,
+.sidebar {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 h1,
 h2,
 h3,

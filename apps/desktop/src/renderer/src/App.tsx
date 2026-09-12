@@ -3,6 +3,7 @@ import { Route, Router, Switch, useLocation } from 'wouter';
 import { useHashLocation } from 'wouter/use-hash-location';
 import { Sidebar } from './components/Sidebar.js';
 import { CommandPalette } from './components/CommandPalette.js';
+import { ErrorBoundary } from './components/ErrorBoundary.js';
 import { DaemonDown } from './screens/DaemonDown.js';
 import { Home } from './screens/Home.js';
 import { Missions } from './screens/Missions.js';
@@ -46,7 +47,7 @@ function ConnectedShell(): JSX.Element {
   const stream = useDaemonStream();
   const approvals = useApprovals();
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const [, navigate] = useLocation();
+  const [location, navigate] = useLocation();
 
   useHotkey('mod+k', () => setPaletteOpen((open) => !open));
   useHotkey('mod+n', () => navigate('/missions/new'));
@@ -57,21 +58,26 @@ function ConnectedShell(): JSX.Element {
     <div className="app">
       <Sidebar pendingApprovals={pending} stream={stream} />
       <main className="main">
-        <Switch>
-          <Route path="/" component={Home} />
-          <Route path="/missions" component={Missions} />
-          <Route path="/missions/new" component={NewMission} />
-          <Route path="/missions/:id/:tab?">
-            {(params) => <MissionDetail id={params.id ?? ''} tab={normalizeTab(params.tab)} />}
-          </Route>
-          <Route path="/approvals" component={Approvals} />
-          <Route path="/artifacts" component={Artifacts} />
-          <Route path="/workforce" component={Workforce} />
-          <Route path="/runtimes" component={Runtimes} />
-          <Route path="/integrations" component={Integrations} />
-          <Route path="/settings" component={Settings} />
-          <Route component={Home} />
-        </Switch>
+        {/* Per-route, and keyed by location: a screen that fails should not
+            follow you to the next one, and navigating away is the most natural
+            way to ask for a retry. */}
+        <ErrorBoundary resetKey={location}>
+          <Switch>
+            <Route path="/" component={Home} />
+            <Route path="/missions" component={Missions} />
+            <Route path="/missions/new" component={NewMission} />
+            <Route path="/missions/:id/:tab?">
+              {(params) => <MissionDetail id={params.id ?? ''} tab={normalizeTab(params.tab)} />}
+            </Route>
+            <Route path="/approvals" component={Approvals} />
+            <Route path="/artifacts" component={Artifacts} />
+            <Route path="/workforce" component={Workforce} />
+            <Route path="/runtimes" component={Runtimes} />
+            <Route path="/integrations" component={Integrations} />
+            <Route path="/settings" component={Settings} />
+            <Route component={Home} />
+          </Switch>
+        </ErrorBoundary>
       </main>
       {paletteOpen ? <CommandPalette onClose={() => setPaletteOpen(false)} /> : null}
     </div>

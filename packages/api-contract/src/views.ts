@@ -85,8 +85,16 @@ export interface RuntimeView {
   readonly profile: RuntimeProfile;
   readonly health: RuntimeHealth;
   readonly adapterDisplayName: string;
-  /** What this profile's adapter lets it configure. */
-  readonly settingsSchema: readonly RuntimeSettingField[];
+  /**
+   * What this profile's adapter lets it configure.
+   *
+   * Optional because a client is not always talking to a daemon of its own
+   * vintage - `npm run dev` deliberately reuses a daemon that is already
+   * running, so a freshly built renderer routinely meets an older one. A field
+   * added to a view is therefore absent, not empty, and code that reads it must
+   * say what it does in that case rather than trust the type.
+   */
+  readonly settingsSchema?: readonly RuntimeSettingField[];
   readonly activeRuns: number;
   readonly rolesRouted: readonly string[];
 }

@@ -491,3 +491,18 @@
   border-color: var(--accent-line);
   background: var(--accent-soft);
 }
+
+/* Error boundary detail: the raw message, readable but not shouting. */
+.error-detail {
+  margin: var(--s3) 0 var(--s4);
+  padding: var(--s3);
+  max-width: 560px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken, var(--bg));
+  color: var(--text-dim, var(--text));
+  font-size: var(--fs-xs);
+  text-align: left;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

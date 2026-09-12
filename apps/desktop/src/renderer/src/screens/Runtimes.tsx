@@ -117,6 +117,8 @@ function RuntimeCard({
   const { profile, health } = view;
   const tone = healthTone(health.state);
   const update = useDaemonMutation((daemon, body: { enabled?: boolean; maxConcurrent?: number }) => daemon.updateRuntime(profile.id, body), ['runtimes']);
+  // A daemon older than this renderer does not send the schema at all.
+  const schema = view.settingsSchema ?? [];
   const check = useDaemonMutation((daemon) => daemon.checkRuntimeHealth(profile.id), ['runtimes']);
 
   return (
@@ -191,10 +193,10 @@ function RuntimeCard({
           </Detail>
         </div>
 
-        {view.settingsSchema.length > 0 ? (
+        {schema.length > 0 ? (
           <Detail label="Settings">
             <div className="row row--wrap" style={{ gap: 4 }}>
-              {view.settingsSchema.map((field) => {
+              {schema.map((field) => {
                 const value = profile.settings[field.key];
                 const shown = typeof value === 'string' && value.length > 0 ? value : null;
                 return (
@@ -322,12 +324,13 @@ type ProfileMode = 'edit' | 'duplicate';
  */
 function ProfileModal({ view, mode, onClose }: { view: RuntimeView; mode: ProfileMode; onClose: () => void }): JSX.Element {
   const { profile } = view;
+  const schema = view.settingsSchema ?? [];
   const duplicating = mode === 'duplicate';
   const [name, setName] = useState(duplicating ? `${profile.name} (copy)` : profile.name);
   const [executablePath, setExecutablePath] = useState(profile.executablePath ?? '');
   const [settings, setSettings] = useState<Record<string, string>>(() =>
     Object.fromEntries(
-      view.settingsSchema.map((field) => {
+      schema.map((field) => {
         const value = profile.settings[field.key];
         return [field.key, typeof value === 'string' || typeof value === 'number' ? String(value) : ''];
       }),
@@ -398,7 +401,7 @@ function ProfileModal({ view, mode, onClose }: { view: RuntimeView; mode: Profil
           />
         </Field>
 
-        {view.settingsSchema.map((field) => (
+        {schema.map((field) => (
           <SettingInput
             key={field.key}
             field={field}

@@ -9,7 +9,7 @@
  * work in progress. Pass --stop-daemon to shut it down too.
  */
 import { spawn } from 'node:child_process';
-import { existsSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
@@ -39,11 +39,71 @@ function daemonIsAlive() {
   }
 }
 
+/**
+ * Whether a running daemon predates the build we just produced.
+ *
+ * Leaving the daemon up across restarts is the point - closing the window is
+ * not supposed to stop work. But a daemon started before the code it is running
+ * was rebuilt serves the *old* API shape to a freshly built desktop, and the
+ * failure that produces is remote from its cause: a screen reading a field the
+ * old daemon never sends throws during render, and React answers by unmounting
+ * the window. So a stale daemon is restarted rather than reused.
+ */
+function daemonIsStale(info) {
+  if (typeof info?.startedAt !== 'string') return true;
+  const startedAt = Date.parse(info.startedAt);
+  if (Number.isNaN(startedAt)) return true;
+  return newestBuildTime(join(root, 'apps/daemon/dist')) > startedAt;
+}
+
+function newestBuildTime(dir) {
+  let newest = 0;
+  const walk = (current) => {
+    for (const entry of readdirSync(current, { withFileTypes: true })) {
+      const full = join(current, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (entry.name.endsWith('.js')) newest = Math.max(newest, statSync(full).mtimeMs);
+    }
+  };
+  try {
+    walk(dir);
+  } catch {
+    return 0;
+  }
+  return newest;
+}
+
+async function stopDaemon(info) {
+  try {
+    process.kill(info.pid, 'SIGTERM');
+  } catch {
+    return;
+  }
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline) {
+    await sleep(150);
+    try {
+      process.kill(info.pid, 0);
+    } catch {
+      return;
+    }
+  }
+  try {
+    process.kill(info.pid, 'SIGKILL');
+  } catch { /* already gone */ }
+}
+
 console.log('▸ building…');
 await run('npx', ['tsc', '-b', 'tsconfig.build.json']);
 
 let daemon = daemonIsAlive();
 let spawned;
+
+if (daemon && daemonIsStale(daemon)) {
+  console.log(`▸ daemon at ${daemon.url} predates this build — restarting it`);
+  await stopDaemon(daemon);
+  daemon = null;
+}
 
 if (daemon) {
   console.log(`▸ daemon already running at ${daemon.url} (pid ${daemon.pid})`);
