@@ -16,7 +16,7 @@ export default defineConfig({
     plugins: [react()],
     resolve: { alias: { '@': resolve('src/renderer/src') } },
     build: {
-      outDir: 'dist/renderer',
+      outDir: resolve('dist/renderer'),
       rollupOptions: { input: resolve('src/renderer/index.html') },
     },
   },

@@ -1,7 +1,7 @@
 import type { MissionDetail } from '@tandemise/api-contract';
 import { Icon } from '../../components/Icon.js';
 import { Empty, SectionHead } from '../../components/primitives.js';
-import { criteriaCoveragePercent } from '@tandemise/domain';
+import { criteriaCoveragePercent } from '../../lib/domain.js';
 import { duration, relativeTime, titleCase } from '../../lib/format.js';
 
 /**

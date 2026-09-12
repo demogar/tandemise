@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useLocation } from 'wouter';
 import type { MissionDetail as MissionDetailView } from '@tandemise/api-contract';
 import type { MissionStatus } from '@tandemise/domain';
-import { isTerminalMissionStatus } from '@tandemise/domain';
+import { isTerminalMissionStatus } from '../../lib/domain.js';
 import { PageHeader } from '../../components/PageHeader.js';
 import { Icon, type IconName } from '../../components/Icon.js';
 import { ConfirmDialog } from '../../components/Modal.js';

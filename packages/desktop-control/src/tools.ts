@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { assertAppAllowed, bundleIdInScope, hasUnrestrictedAppScope } from './allowlist.js';
 import type { MacOSHelperClient } from './client.js';
 import type { DesktopConfig } from './config.js';
+import { clickResultSchema } from './protocol.js';
 
 /**
  * Capabilities are per-action, under one `desktop` root: a grant for `desktop`
@@ -283,6 +284,9 @@ export function desktopTools(deps: DesktopToolDeps): readonly IntegrationTool[] 
       button: z.enum(['left', 'right', 'middle']).default('left'),
       clickCount: z.number().int().min(1).max(3).default(1),
     }),
+    // Explicit, because the two arms of the result are genuinely different
+    // shapes and inference would otherwise settle on whichever it saw first.
+    outputSchema: clickResultSchema,
     resource: (input) => input.app,
     execute: async (ctx, input) => {
       gate('desktop.click', CAP.click, ctx, input.app);

@@ -17,7 +17,10 @@ export interface DevServerSpec {
 
 export interface DevServerHandle {
   readonly url: string;
+  /** -1 when an already-running server was adopted rather than started. */
   readonly pid: number;
+  /** True when the URL was already being served and no process was spawned. */
+  readonly reused: boolean;
   readonly startupLog: readonly string[];
   stop(): Promise<void>;
 }
@@ -50,6 +53,22 @@ export class DevServerController {
   ) {}
 
   async start(spec: DevServerSpec): Promise<DevServerHandle> {
+    // Something is already serving this URL - a previous mission's server, or
+    // the developer's own `npm run dev`. Spawning a second one would bind
+    // nothing, exit with EADDRINUSE, and still look "ready" because the poll
+    // cannot tell whose server answered. Adopt it instead, and do not stop what
+    // this controller did not start (MVP.md §21.3).
+    if (await responds(spec.url)) {
+      this.log.info('dev_server.reused', { url: spec.url });
+      return {
+        url: spec.url,
+        pid: -1,
+        reused: true,
+        startupLog: [],
+        stop: async () => { /* not ours to stop */ },
+      };
+    }
+
     const startupLog: string[] = [];
     const child = this.launcher.launch({
       command: spec.command,
@@ -81,6 +100,7 @@ export class DevServerController {
         return {
           url: spec.url,
           pid: child.pid,
+          reused: false,
           startupLog: [...startupLog],
           stop: () => this.stop(key),
         };

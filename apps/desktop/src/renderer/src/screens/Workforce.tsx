@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { RoleTemplate } from '@tandemise/domain';
-import { ARTIFACT_TYPES } from '@tandemise/domain';
+import { ARTIFACT_TYPES } from '../lib/domain.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { Icon } from '../components/Icon.js';
 import { Empty, ErrorState, Field, SkeletonList } from '../components/primitives.js';

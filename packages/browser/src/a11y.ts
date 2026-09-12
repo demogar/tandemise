@@ -17,6 +17,45 @@ export interface A11yReport {
 }
 
 /**
+ * The slice of the DOM the in-page checks actually use.
+ *
+ * Declared here rather than by adding `"DOM"` to this package's `lib`, because
+ * the tsconfigs are generated from `scripts/packages.mjs` and a hand-edited
+ * compiler option does not survive. It also documents the dependency exactly:
+ * these eleven members are the whole contract between Tandemise and the page.
+ */
+interface PageElement {
+  readonly tagName: string;
+  readonly id: string;
+  readonly parentElement: PageElement | null;
+  readonly children: ArrayLike<PageElement> & Iterable<PageElement>;
+  readonly childNodes: ArrayLike<PageNode> & Iterable<PageNode>;
+  readonly textContent: string | null;
+  getAttribute(name: string): string | null;
+  closest(selector: string): PageElement | null;
+}
+interface PageNode {
+  readonly nodeType: number;
+  readonly textContent: string | null;
+}
+interface PageStyle {
+  readonly display: string;
+  readonly visibility: string;
+  readonly color: string;
+  readonly backgroundColor: string;
+  readonly fontSize: string;
+  readonly fontWeight: string;
+}
+declare const document: {
+  readonly documentElement: PageElement;
+  getElementById(id: string): PageElement | null;
+  querySelector(selector: string): PageElement | null;
+  querySelectorAll(selector: string): ArrayLike<PageElement> & Iterable<PageElement>;
+};
+declare function getComputedStyle(element: PageElement): PageStyle;
+declare const CSS: { escape(value: string): string };
+
+/**
  * Cheap, dependency-free accessibility checks (MVP.md §13.2).
  *
  * Deliberately a handful of high-signal rules rather than a rules engine: this
@@ -43,20 +82,16 @@ function collectFindings(): A11yFinding[] {
   const findings: A11yFinding[] = [];
   const MAX_PER_RULE = 25;
 
-  const add = (rule: string, impact: A11yImpact, message: string, el: Element): void => {
-    if (findings.filter((f) => f.rule === rule).length >= MAX_PER_RULE) return;
-    findings.push({ rule, impact, message, selector: cssPath(el) });
-  };
-
-  const cssPath = (el: Element): string => {
+  const cssPath = (el: PageElement): string => {
     const parts: string[] = [];
-    let node: Element | null = el;
+    let node: PageElement | null = el;
     while (node && parts.length < 5) {
       let part = node.tagName.toLowerCase();
       if (node.id) { parts.unshift(`${part}#${node.id}`); break; }
-      const parent: Element | null = node.parentElement;
+      const parent: PageElement | null = node.parentElement;
       if (parent) {
-        const siblings = [...parent.children].filter((c) => c.tagName === node!.tagName);
+        const tag = node.tagName;
+        const siblings = [...parent.children].filter((c) => c.tagName === tag);
         if (siblings.length > 1) part += `:nth-of-type(${siblings.indexOf(node) + 1})`;
       }
       parts.unshift(part);
@@ -65,13 +100,18 @@ function collectFindings(): A11yFinding[] {
     return parts.join(' > ');
   };
 
-  const isHidden = (el: Element): boolean => {
+  const add = (rule: string, impact: A11yImpact, message: string, el: PageElement): void => {
+    if (findings.filter((f) => f.rule === rule).length >= MAX_PER_RULE) return;
+    findings.push({ rule, impact, message, selector: cssPath(el) });
+  };
+
+  const isHidden = (el: PageElement): boolean => {
     const style = getComputedStyle(el);
     return style.display === 'none' || style.visibility === 'hidden'
       || el.getAttribute('aria-hidden') === 'true';
   };
 
-  const accessibleName = (el: Element): string => {
+  const accessibleName = (el: PageElement): string => {
     const aria = el.getAttribute('aria-label');
     if (aria && aria.trim()) return aria.trim();
     const labelledBy = el.getAttribute('aria-labelledby');
@@ -83,9 +123,11 @@ function collectFindings(): A11yFinding[] {
     }
     if (el.id) {
       const label = document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
-      if (label?.textContent?.trim()) return label.textContent.trim();
+      const labelText = label?.textContent?.trim();
+      if (labelText) return labelText;
     }
-    if (el.closest('label')?.textContent?.trim()) return el.closest('label')!.textContent!.trim();
+    const wrapping = el.closest('label')?.textContent?.trim();
+    if (wrapping) return wrapping;
     const title = el.getAttribute('title');
     if (title && title.trim()) return title.trim();
     return (el.textContent ?? '').trim();
@@ -113,8 +155,7 @@ function collectFindings(): A11yFinding[] {
     const type = el.getAttribute('type');
     if (type === 'hidden' || type === 'submit' || type === 'button') continue;
     if (!accessibleName(el)) {
-      add('form-label', 'serious',
-        'Form control has no associated label or aria-label.', el);
+      add('form-label', 'serious', 'Form control has no associated label or aria-label.', el);
     }
   }
 
@@ -149,12 +190,14 @@ function collectFindings(): A11yFinding[] {
   const parseRgb = (value: string): [number, number, number] | null => {
     const match = /^rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)$/.exec(value);
     if (!match) return null;
+    // A translucent colour composites with whatever is behind it; guessing the
+    // result would produce contrast failures nobody can reproduce.
     if (match[4] !== undefined && Number(match[4]) < 0.99) return null;
     return [Number(match[1]), Number(match[2]), Number(match[3])];
   };
 
-  const solidBackground = (el: Element): [number, number, number] | null => {
-    let node: Element | null = el;
+  const solidBackground = (el: PageElement): [number, number, number] | null => {
+    let node: PageElement | null = el;
     while (node) {
       const rgb = parseRgb(getComputedStyle(node).backgroundColor);
       if (rgb) return rgb;
@@ -171,8 +214,11 @@ function collectFindings(): A11yFinding[] {
     return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
   };
 
-  for (const el of document.querySelectorAll('p, span, a, li, td, th, h1, h2, h3, h4, h5, h6, button, label')) {
+  const TEXT_SELECTOR = 'p, span, a, li, td, th, h1, h2, h3, h4, h5, h6, button, label';
+  for (const el of document.querySelectorAll(TEXT_SELECTOR)) {
     if (isHidden(el)) continue;
+    // Only this element's own text: an ancestor's colour says nothing about a
+    // child that overrides it.
     const ownText = [...el.childNodes]
       .filter((n) => n.nodeType === 3)
       .map((n) => (n.textContent ?? '').trim())

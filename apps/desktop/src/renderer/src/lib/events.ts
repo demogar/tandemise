@@ -1,5 +1,5 @@
 import type { RunEventRecord, TandemiseEventBody } from '@tandemise/domain';
-import { isSemanticEvent } from '@tandemise/domain';
+import { isSemanticEvent } from './domain.js';
 import type { IconName } from '../components/Icon.js';
 import { humanizeStatus, pluralize, titleCase, type Tone } from './format.js';
 

@@ -66,7 +66,16 @@ export class RemediationPlanner {
     };
 
     const existing = this.tasks.listByMission(mission.id);
-    const cycle = existing.filter((t) => t.remediatesTaskId === source.id).length + 1;
+
+    // Already acted on: a source task is remediated once, and the *re-check*
+    // task it produced is a different task with its own findings.
+    if (existing.some((t) => t.remediatesTaskId === source.id)) return { kind: 'none' };
+
+    // The bound follows the chain, not the individual task. Without that, cycle
+    // two would be counted against the re-check rather than the original, and
+    // fix -> review -> fix could run forever three tasks at a time.
+    const root = chainRoot(source, existing);
+    const cycle = existing.filter((t) => t.key.startsWith('fix_') && chainRoot(t, existing) === root).length + 1;
     if (cycle > MAX_REMEDIATION_CYCLES) {
       return this.#exhausted(source, mission, scope, blocking);
     }
@@ -224,6 +233,25 @@ export class RemediationPlanner {
       completionGate: 'artifact.ChangeSet.exists',
       executionPolicy: { ...fallback.executionPolicy, isolation: 'worktree' },
     };
+  }
+}
+
+/**
+ * The task a remediation chain started from. Each fix and re-check points at
+ * the task that produced its findings, so following `remediatesTaskId` upward
+ * lands on the original evaluation.
+ */
+function chainRoot(task: MissionTask, all: readonly MissionTask[]): string {
+  const byId = new Map(all.map((t) => [t.id, t]));
+  let current = task;
+  const seen = new Set<string>([current.id]);
+  for (;;) {
+    const parentId = current.remediatesTaskId;
+    if (parentId === null || seen.has(parentId)) return current.id;
+    const parent = byId.get(parentId);
+    if (parent === undefined) return parentId;
+    seen.add(parentId);
+    current = parent;
   }
 }
 

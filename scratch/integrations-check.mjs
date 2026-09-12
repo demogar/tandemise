@@ -425,7 +425,14 @@ const handle = await devServer.start({
   url: 'http://127.0.0.1:7311/',
   readyTimeoutMs: 15_000,
 });
-check('dev server starts and its URL responds', handle.pid > 0, `pid ${handle.pid}`);
+check('dev server starts and its URL responds',
+  handle.pid > 0 && handle.reused === false, `pid ${handle.pid}`);
+const adopted = await devServer.start({
+  command: process.execPath, args: ['-e', devScript], cwd: process.cwd(),
+  url: 'http://127.0.0.1:7311/', readyTimeoutMs: 5000,
+});
+check('an already-served URL is adopted, not double-started',
+  adopted.reused === true && adopted.pid === -1);
 await devServer.stopAll();
 const stillUp = await fetch('http://127.0.0.1:7311/').then(() => true).catch(() => false);
 check('dev server is stopped reliably', !stillUp);

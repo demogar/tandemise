@@ -18,7 +18,7 @@ import type {
   UpdateWorkspaceRequest,
   AddRepositoryRequest,
 } from '@tandemise/api-contract';
-import { API_VERSION, API_VERSION_HEADER } from '@tandemise/api-contract';
+import { API_VERSION, API_VERSION_HEADER, STREAM_PATH } from './domain.js';
 import type {
   ArtifactManifest,
   LoadedArtifact,
@@ -69,7 +69,7 @@ export class DaemonClient {
   get streamUrl(): string {
     const base = new URL(this.connection.url);
     base.protocol = base.protocol === 'https:' ? 'wss:' : 'ws:';
-    base.pathname = '/v1/stream';
+    base.pathname = STREAM_PATH;
     base.searchParams.set('token', this.connection.token);
     return base.toString();
   }
