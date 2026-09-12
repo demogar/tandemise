@@ -82,10 +82,15 @@ try {
   const beta = await provision('task beta');
 
   check('worktree directory exists', (await stat(alpha.workingDirectory)).isDirectory(), alpha.workingDirectory);
+  // The slug carries the task id, so two tasks whose names slugify identically
+  // cannot collide on a directory or a branch.
   check('worktree is under ~/.tandemise layout',
-    alpha.workingDirectory === createPaths(home).worktree(workspaceId, missionId, 'task-alpha'));
+    alpha.workingDirectory.startsWith(createPaths(home).worktrees(workspaceId, missionId)),
+    alpha.workingDirectory);
+  check('worktree directory is named for the task',
+    /\/task-alpha-[a-z0-9]{8}$/.test(alpha.workingDirectory), alpha.workingDirectory);
   check('branch follows tandemise/<mission>/<task>',
-    alpha.describe().branch === 'tandemise/demo-mission/task-alpha', alpha.describe().branch);
+    /^tandemise\/demo-mission\/task-alpha-[a-z0-9]{8}$/.test(alpha.describe().branch), alpha.describe().branch);
   check('checked-out branch matches', (await git.currentBranch(alpha.workingDirectory)) === alpha.describe().branch);
   check('base commit matches the repository', (await git.revParse(alpha.workingDirectory, 'HEAD')) === baseCommit, baseCommit);
   check('target advertises isolation', alpha.capabilities().includes('isolated-workspace'), alpha.capabilities().join(','));
@@ -225,8 +230,25 @@ try {
   check('only the main worktree remains', remaining.length === 1 && remaining[0].branch === 'main',
     remaining.map((w) => w.branch).join(','));
   check('branches survive the release',
-    (await git.branchExists(repoPath, 'tandemise/demo-mission/task-alpha')) &&
-    (await git.branchExists(repoPath, 'tandemise/demo-mission/task-beta')));
+    (await git.branchExists(repoPath, alpha.describe().branch)) &&
+    (await git.branchExists(repoPath, beta.describe().branch)),
+    `${alpha.describe().branch}, ${beta.describe().branch}`);
+
+  // Two tasks whose names slugify to the same string must not share a worktree
+  // or a branch. Before the task id was folded into the slug, the second
+  // provision silently adopted the first one's tree.
+  const collideA = await provision('implement login');
+  const collideB = await provision('Implement Login!');
+  check('same-name tasks get distinct worktrees',
+    collideA.workingDirectory !== collideB.workingDirectory,
+    `${collideA.workingDirectory} vs ${collideB.workingDirectory}`);
+  check('same-name tasks get distinct branches',
+    collideA.describe().branch !== collideB.describe().branch,
+    `${collideA.describe().branch} vs ${collideB.describe().branch}`);
+  check('both collision worktrees exist on disk',
+    (await exists(collideA.workingDirectory)) && (await exists(collideB.workingDirectory)));
+  await manager.release(collideA.describe());
+  await manager.release(collideB.describe());
 
   const local = await manager.provision({
     workspaceId, missionId, taskId: ids.task(), kind: 'local',

@@ -53,12 +53,26 @@ export class WorktreeTargetFactory implements ExecutionTargetFactory {
     this.#clock = deps.clock ?? systemClock;
   }
 
+  /**
+   * Short, stable suffix from a task id. The full branded id is long and its
+   * prefix is constant, so the tail carries the entropy.
+   */
+  static shortId(taskId: string): string {
+    return taskId.slice(-8);
+  }
+
   async provision(request: ProvisionRequest): Promise<ExecutionTarget> {
     const missionId = this.#requireMission(request);
     const { git, log } = this.deps;
     const repositoryPath = resolve(request.repositoryPath);
 
-    const slug = slugify(request.name);
+    // The slug carries the task id, not just the name. Two tasks called
+    // "implement login" and "Implement Login!" slugify identically, and without
+    // the id the second would silently adopt the first's worktree and branch -
+    // exactly the concurrent-write collision MVP.md §11.2 exists to prevent.
+    // The id is also what lets the reuse path below tell a crashed run of *this*
+    // task apart from a live run of a different one.
+    const slug = request.taskId ? `${slugify(request.name)}-${WorktreeTargetFactory.shortId(request.taskId)}` : slugify(request.name);
     const missionSlug = request.missionSlug ?? slugify(missionId);
     const branch = request.branch ?? `tandemise/${missionSlug}/${slug}`;
     const base = request.baseBranch ?? (await git.defaultBranch(repositoryPath));
@@ -72,7 +86,16 @@ export class WorktreeTargetFactory implements ExecutionTargetFactory {
     const existing = await this.#findWorktree(repositoryPath, directory);
 
     if (existing) {
-      if (existing.branch !== null && existing.branch !== branch) {
+      if (existing.branch === null) {
+        // A detached HEAD has no branch to commit onto, so release()'s salvage
+        // commit would land unreachable and then be dropped by `worktree
+        // remove` - silently losing the worker's uncommitted work. Refuse, and
+        // let a human decide, rather than reuse a tree we cannot safely release.
+        throw new TandemiseError('CONFLICT',
+          `Worktree '${directory}' has a detached HEAD; refusing to reuse it because work committed there would be unreachable.`,
+          { details: { directory, expected: branch } });
+      }
+      if (existing.branch !== branch) {
         throw new TandemiseError('CONFLICT', `Worktree '${directory}' already holds branch '${existing.branch}', not '${branch}'`, {
           details: { directory, expected: branch, actual: existing.branch },
         });
