@@ -17,11 +17,6 @@ worktrees. Remove them with `git worktree remove` and `git branch -D`.
 
 ## Behaviour worth knowing
 
-**`checks.install` defaults to `npm install`, per worktree.** A fresh worktree
-has no `node_modules`, so the first mission on a real repository runs a full
-install for every code task — network-dependent, minutes each. Clear the
-install command on the repository if you would rather manage it yourself.
-
 **Non-isolated tasks run in your actual checkout.** Product, design,
 architecture and release use `isolation: 'none'`, so they write
 `.tandemise/out/` into the repository you selected. That directory is added to

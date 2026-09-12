@@ -1,5 +1,6 @@
 import { readdir, realpath, rm, stat } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { existsSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import {
   TandemiseError,
   ids,
@@ -41,6 +42,14 @@ export interface WorktreeTargetDeps {
  * tree rather than failing or creating a second one - that is the difference
  * between a recoverable crash and a manual cleanup.
  */
+/**
+ * Directories worth carrying into a fresh worktree. Deliberately a short,
+ * well-known list rather than "everything untracked": copying a build output or
+ * a local database would be surprising, and the cost of a wrong guess is paid
+ * on every task.
+ */
+const SEEDED_DEPENDENCY_DIRS = ['node_modules', '.venv', 'vendor/bundle'] as const;
+
 export class WorktreeTargetFactory implements ExecutionTargetFactory {
   readonly id = 'worktree';
   readonly displayName = 'Git worktree';
@@ -51,6 +60,46 @@ export class WorktreeTargetFactory implements ExecutionTargetFactory {
 
   constructor(private readonly deps: WorktreeTargetDeps) {
     this.#clock = deps.clock ?? systemClock;
+  }
+
+  /**
+   * Copies installed dependencies from the source checkout into a fresh
+   * worktree.
+   *
+   * A git worktree contains only tracked files, so `node_modules` is absent and
+   * every code task would otherwise begin with a full install - minutes each,
+   * network-dependent, repeated per task. On APFS `cp -c` is a copy-on-write
+   * clone: 26MB of `node_modules` takes ~40ms and costs no disk until something
+   * diverges.
+   *
+   * A clone, not a symlink. Sharing the directory would let a worker's install
+   * mutate the user's own checkout, which is exactly the thing worktree
+   * isolation exists to prevent.
+   *
+   * Best effort throughout: a filesystem without clone support, or a source
+   * that was never installed, simply means the task runs its own install.
+   */
+  async #seedDependencies(repositoryPath: string, directory: string): Promise<void> {
+    const { log } = this.deps;
+    for (const name of SEEDED_DEPENDENCY_DIRS) {
+      const source = join(repositoryPath, name);
+      const destination = join(directory, name);
+      if (!existsSync(source) || existsSync(destination)) continue;
+      const started = Date.now();
+      try {
+        // `-c` asks for a clone and falls back to a real copy where the
+        // filesystem cannot clone; `-R` recurses; `-p` keeps modes.
+        await this.deps.supervisor.spawn({
+          command: 'cp',
+          args: ['-c', '-Rp', source, destination],
+          cwd: directory,
+          label: `seed:${name}`,
+        }).wait();
+        log.debug('worktree.dependencies_seeded', { name, directory, ms: Date.now() - started });
+      } catch (e) {
+        log.debug('worktree.dependency_seed_failed', { name, directory, error: String(e) });
+      }
+    }
   }
 
   /**
@@ -106,6 +155,7 @@ export class WorktreeTargetFactory implements ExecutionTargetFactory {
       const createBranch = !(await git.branchExists(repositoryPath, branch));
       await git.addWorktree(repositoryPath, directory, branch, base, { createBranch });
       log.info('worktree.created', { directory, branch, base, createBranch });
+      await this.#seedDependencies(repositoryPath, directory);
     }
 
     const baseCommit = await git.revParse(repositoryPath, base);
