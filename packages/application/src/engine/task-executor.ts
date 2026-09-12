@@ -1,5 +1,5 @@
 import type {
-  Approval, ApprovalRepositoryPort, ArtifactRepositoryPort, ArtifactStorePort,
+  Approval, ApprovalRepositoryPort, ArtifactRepositoryPort, ArtifactStorePort, ArtifactType,
   AssignmentRepositoryPort, CapabilityGrant, CheckResult, CheckpointRepositoryPort,
   DecisionRepositoryPort, ExecutionTargetRepositoryPort, ExecutionTargetRecord, ExternalRef,
   GateOutcome, LoadedArtifact, Mission, MissionRepositoryPort, MissionTask, RepoRepositoryPort,
@@ -539,6 +539,22 @@ export class TaskExecutor {
       return this.#settle(task, scope, 'SUCCEEDED', null);
     }
 
+    // 11(a'). An evaluator whose gate failed only because it found problems did
+    //        its job. Retrying it re-runs the same review or QA on unchanged
+    //        work and fails the same way until the budget is gone - and the fix
+    //        loop, which starts from a *succeeded* evaluator, never runs. A QA
+    //        run found a real defect and would have been re-run three times
+    //        instead of handed to a developer. So it settles SUCCEEDED and the
+    //        scheduler's remediation turns the findings into a fix and a
+    //        re-check, which downstream tasks are repointed to wait on.
+    if (runFailure === null && gate !== null && this.#foundOwnProblems(task, gate, harvest)) {
+      this.deps.recorder.note(
+        scope,
+        `'${task.key}' found blocking problems (${verdict.detail}). They go to a fix task rather than a re-run of the same check on unchanged work.`,
+      );
+      return this.#settle(task, scope, 'SUCCEEDED', `Found blocking problems: ${verdict.detail}`);
+    }
+
     // 11(b). Gate feedback into the retry. `statusReason` is the carrier: it is
     //        persisted, it is what the UI shows, and the next attempt's prompt
     //        quotes it verbatim so the worker is told exactly what it failed.
@@ -557,6 +573,21 @@ export class TaskExecutor {
     }
     this.#createInterventionApproval(task, mission, workspace, feedback);
     return this.#settle(task, scope, 'BLOCKED', feedback);
+  }
+
+  /**
+   * True when this task is the evaluator whose report failed the gate: it
+   * delivered its report, the report itself carries blocking problems, and no
+   * fix has been started for it yet (a second pass over the same findings
+   * falls back to an ordinary retry rather than looping).
+   */
+  #foundOwnProblems(task: MissionTask, gate: GateOutcome, harvest: HarvestResult): boolean {
+    const own: Array<[ArtifactType, string]> = [['QAReport', 'qa.blocking_defects'], ['ReviewReport', 'review.blocking_findings']];
+    const reported = own.some(([type, fact]) => task.expectedOutputs.includes(type)
+      && !harvest.missing.includes(type)
+      && typeof gate.facts[fact] === 'number' && (gate.facts[fact] as number) > 0);
+    if (!reported) return false;
+    return !this.deps.tasks.listByMission(task.missionId).some((t) => t.remediatesTaskId === task.id);
   }
 
   // -------------------------------------------------------------------- policy
