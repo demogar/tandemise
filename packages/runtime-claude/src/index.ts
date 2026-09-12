@@ -15,4 +15,6 @@ export {
 } from './discovery.js';
 export type { VersionProbe } from './discovery.js';
 
+export { PARENT_SESSION_ENV, resolveConfigDir } from './settings.js';
+
 export { claudeRuntimeModule } from './module.js';

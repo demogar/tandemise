@@ -1,4 +1,4 @@
-import type { Capability, RuntimeCapability, RuntimeDiscovery, RuntimeHealth, RuntimeProfile } from '@tandemise/domain';
+import type { Capability, RuntimeCapability, RuntimeDiscovery, RuntimeHealth, RuntimeProfile, RuntimeSettingField } from '@tandemise/domain';
 import type { AgentEvent } from '@tandemise/domain';
 import type { Logger, RunId } from '@tandemise/shared';
 import { multiToken } from '@tandemise/kernel';
@@ -46,6 +46,23 @@ export interface AgentRuntimeAdapter {
    * per-profile `capabilities()` is authoritative once a profile is chosen.
    */
   readonly baseCapabilities: readonly RuntimeCapability[];
+
+  /**
+   * What a profile of this adapter may configure, for the UI to render.
+   *
+   * Optional: an adapter with no settings simply omits it, and the settings
+   * form then offers nothing rather than guessing.
+   */
+  readonly settingsSchema?: readonly RuntimeSettingField[];
+
+  /**
+   * Reject settings this adapter cannot honour, before a profile is saved.
+   *
+   * Without it a malformed setting is only discovered when a run spawns, which
+   * is both far from the mistake and after a mission has already started.
+   * Throws; returning normally means accepted.
+   */
+  validateSettings?(settings: Readonly<Record<string, unknown>>): void;
 
   discover(): Promise<RuntimeDiscovery>;
   healthCheck(profile: RuntimeProfile): Promise<RuntimeHealth>;

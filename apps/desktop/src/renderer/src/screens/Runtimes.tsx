@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { RuntimeDiscoveryView, RuntimeView } from '@tandemise/api-contract';
+import type { RuntimeSettingField } from '@tandemise/domain';
 import { PageHeader } from '../components/PageHeader.js';
 import { Icon } from '../components/Icon.js';
 import { ConfirmDialog, Modal } from '../components/Modal.js';
@@ -12,6 +13,7 @@ export function Runtimes(): JSX.Element {
   const [discovered, setDiscovered] = useState<readonly RuntimeDiscoveryView[] | null>(null);
   const [addingCli, setAddingCli] = useState(false);
   const [removing, setRemoving] = useState<RuntimeView | null>(null);
+  const [editing, setEditing] = useState<{ view: RuntimeView; mode: ProfileMode } | null>(null);
 
   const discover = useDaemonMutation((daemon) => daemon.discoverRuntimes(), ['runtimes']);
   const remove = useDaemonMutation((daemon, id: string) => daemon.deleteRuntime(id), ['runtimes']);
@@ -64,7 +66,12 @@ export function Runtimes(): JSX.Element {
           ) : (
             <div className="stack" style={{ gap: 'var(--s4)' }}>
               {(runtimes.data ?? []).map((view) => (
-                <RuntimeCard key={view.profile.id} view={view} onRemove={() => setRemoving(view)} />
+                <RuntimeCard
+                  key={view.profile.id}
+                  view={view}
+                  onRemove={() => setRemoving(view)}
+                  onEdit={(mode) => setEditing({ view, mode })}
+                />
               ))}
             </div>
           )}
@@ -73,6 +80,7 @@ export function Runtimes(): JSX.Element {
 
       {discovered ? <DiscoveryModal results={discovered} onClose={() => setDiscovered(null)} /> : null}
       {addingCli ? <GenericCliModal onClose={() => setAddingCli(false)} /> : null}
+      {editing ? <ProfileModal view={editing.view} mode={editing.mode} onClose={() => setEditing(null)} /> : null}
       {removing ? (
         <ConfirmDialog
           title={`Remove ${removing.profile.name}?`}
@@ -97,7 +105,15 @@ export function Runtimes(): JSX.Element {
   );
 }
 
-function RuntimeCard({ view, onRemove }: { view: RuntimeView; onRemove: () => void }): JSX.Element {
+function RuntimeCard({
+  view,
+  onRemove,
+  onEdit,
+}: {
+  view: RuntimeView;
+  onRemove: () => void;
+  onEdit: (mode: ProfileMode) => void;
+}): JSX.Element {
   const { profile, health } = view;
   const tone = healthTone(health.state);
   const update = useDaemonMutation((daemon, body: { enabled?: boolean; maxConcurrent?: number }) => daemon.updateRuntime(profile.id, body), ['runtimes']);
@@ -120,6 +136,19 @@ function RuntimeCard({ view, onRemove }: { view: RuntimeView; onRemove: () => vo
         <button type="button" className="btn btn--ghost" disabled={check.isPending} onClick={() => check.mutate(undefined)}>
           <Icon name="refresh" size={13} />
           {check.isPending ? 'Checking…' : 'Check health'}
+        </button>
+        <button type="button" className="btn btn--ghost" onClick={() => onEdit('edit')}>
+          <Icon name="wrench" size={13} />
+          Configure
+        </button>
+        <button
+          type="button"
+          className="btn btn--ghost"
+          title={`Add a second ${view.adapterDisplayName} profile starting from this one`}
+          onClick={() => onEdit('duplicate')}
+        >
+          <Icon name="layers" size={13} />
+          Duplicate
         </button>
         <Switch checked={profile.enabled} label={`Enable ${profile.name}`} onChange={(enabled) => update.mutate({ enabled })} />
         <button type="button" className="btn btn--icon btn--ghost" aria-label="Remove runtime" onClick={onRemove}>
@@ -161,6 +190,22 @@ function RuntimeCard({ view, onRemove }: { view: RuntimeView; onRemove: () => vo
             </div>
           </Detail>
         </div>
+
+        {view.settingsSchema.length > 0 ? (
+          <Detail label="Settings">
+            <div className="row row--wrap" style={{ gap: 4 }}>
+              {view.settingsSchema.map((field) => {
+                const value = profile.settings[field.key];
+                const shown = typeof value === 'string' && value.length > 0 ? value : null;
+                return (
+                  <span key={field.key} className={shown === null ? 'chip chip--muted' : 'chip'}>
+                    {field.label}: {shown ?? 'default'}
+                  </span>
+                );
+              })}
+            </div>
+          </Detail>
+        ) : null}
 
         <Detail label="Capabilities">
           <div className="row row--wrap" style={{ gap: 4 }}>
@@ -210,7 +255,9 @@ function DiscoveryModal({ results, onClose }: { results: readonly RuntimeDiscove
     (daemon, discovery: RuntimeDiscoveryView) =>
       daemon.createRuntime({
         adapterId: discovery.adapterId,
-        name: discovery.displayName,
+        // A second profile of the same adapter would otherwise be
+        // indistinguishable from the first in every list that shows a name.
+        name: discovery.configured ? `${discovery.displayName} (2)` : discovery.displayName,
         executablePath: discovery.executablePath,
         settings: discovery.suggestedSettings as Record<string, unknown>,
         enabled: true,
@@ -235,14 +282,18 @@ function DiscoveryModal({ results, onClose }: { results: readonly RuntimeDiscove
                     : discovery.detail}
                 </div>
               </div>
-              {discovery.configured ? (
-                <span className="badge badge--succeeded">Configured</span>
-              ) : discovery.detected ? (
-                <button type="button" className="btn btn--primary" disabled={create.isPending} onClick={() => create.mutate(discovery)}>
-                  Add
-                </button>
-              ) : (
+              {!discovery.detected ? (
                 <span className="chip chip--muted">not found</span>
+              ) : (
+                <div className="row" style={{ gap: 'var(--s2)' }}>
+                  {discovery.configured ? <span className="badge badge--succeeded">Configured</span> : null}
+                  {/* Still offered once configured: a second profile of the same
+                      adapter is a normal setup, not a mistake - one login for
+                      deep work, another for review. */}
+                  <button type="button" className="btn btn--primary" disabled={create.isPending} onClick={() => create.mutate(discovery)}>
+                    {discovery.configured ? 'Add another' : 'Add'}
+                  </button>
+                </div>
               )}
             </div>
           ))
@@ -250,6 +301,149 @@ function DiscoveryModal({ results, onClose }: { results: readonly RuntimeDiscove
         {create.isError ? <ErrorState error={create.error} /> : null}
       </div>
     </Modal>
+  );
+}
+
+type ProfileMode = 'edit' | 'duplicate';
+
+/**
+ * Configure one runtime profile, or fork a second one from it.
+ *
+ * The settings fields are not written here. An adapter describes what it
+ * understands (`view.settingsSchema`) and this renders whatever it is told, so
+ * teaching Tandemise a new runtime setting never means touching the desktop -
+ * which is the same reason a profile references an `adapterId` and not a vendor
+ * (MVP.md §P2).
+ *
+ * Duplicating matters more than it looks: two profiles of the same adapter,
+ * pointed at different config directories, are two independent workers with
+ * their own logins and settings. That is what lets routing prefer one of them
+ * for review and the other for deep work.
+ */
+function ProfileModal({ view, mode, onClose }: { view: RuntimeView; mode: ProfileMode; onClose: () => void }): JSX.Element {
+  const { profile } = view;
+  const duplicating = mode === 'duplicate';
+  const [name, setName] = useState(duplicating ? `${profile.name} (copy)` : profile.name);
+  const [executablePath, setExecutablePath] = useState(profile.executablePath ?? '');
+  const [settings, setSettings] = useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      view.settingsSchema.map((field) => {
+        const value = profile.settings[field.key];
+        return [field.key, typeof value === 'string' || typeof value === 'number' ? String(value) : ''];
+      }),
+    ),
+  );
+
+  const body = {
+    name: name.trim(),
+    executablePath: executablePath.trim() === '' ? null : executablePath.trim(),
+    // Blank means "not set", which must reach the daemon as an absent key
+    // rather than as an empty string the adapter would then try to honour.
+    settings: Object.fromEntries(Object.entries(settings).filter(([, value]) => value.trim() !== '')),
+  };
+
+  const save = useDaemonMutation(
+    (daemon) =>
+      duplicating
+        ? daemon.createRuntime({
+            adapterId: profile.adapterId,
+            ...body,
+            args: [...profile.args],
+            capabilities: [...profile.capabilities],
+            maxConcurrent: profile.maxConcurrent,
+            enabled: true,
+          })
+        : daemon.updateRuntime(profile.id, body),
+    ['runtimes'],
+  );
+
+  return (
+    <Modal
+      title={duplicating ? `New profile from ${profile.name}` : `Configure ${profile.name}`}
+      onClose={onClose}
+      footer={
+        <>
+          <button type="button" className="btn btn--ghost" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="btn btn--primary"
+            disabled={name.trim() === '' || save.isPending}
+            onClick={() => save.mutate(undefined, { onSuccess: onClose })}
+          >
+            {save.isPending ? 'Saving…' : duplicating ? 'Create profile' : 'Save'}
+          </button>
+        </>
+      }
+    >
+      <div className="stack" style={{ gap: 'var(--s4)', color: 'var(--text)' }}>
+        {duplicating ? (
+          <p className="muted">
+            A second {view.adapterDisplayName} profile runs as its own worker. Give it a different config directory and it has its own login,
+            settings and MCP servers — then route roles to whichever you prefer under Workforce.
+          </p>
+        ) : null}
+
+        <Field label="Name">
+          <input className="input" value={name} onChange={(event) => setName(event.target.value)} autoFocus />
+        </Field>
+
+        <Field label="Executable" hint="Absolute path. Leave blank to resolve from PATH.">
+          <input
+            className="input mono"
+            value={executablePath}
+            onChange={(event) => setExecutablePath(event.target.value)}
+            placeholder="resolved from PATH"
+          />
+        </Field>
+
+        {view.settingsSchema.map((field) => (
+          <SettingInput
+            key={field.key}
+            field={field}
+            value={settings[field.key] ?? ''}
+            onChange={(next) => setSettings((prev) => ({ ...prev, [field.key]: next }))}
+          />
+        ))}
+
+        {save.isError ? <ErrorState error={save.error} /> : null}
+      </div>
+    </Modal>
+  );
+}
+
+function SettingInput({
+  field,
+  value,
+  onChange,
+}: {
+  field: RuntimeSettingField;
+  value: string;
+  onChange: (next: string) => void;
+}): JSX.Element {
+  return (
+    <Field label={field.label} hint={field.hint}>
+      {field.kind === 'select' ? (
+        <select className="select" value={value} onChange={(event) => onChange(event.target.value)}>
+          {(field.options ?? []).map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <input
+          className="input mono"
+          type={field.kind === 'number' ? 'number' : 'text'}
+          {...(field.min === undefined ? {} : { min: field.min })}
+          {...(field.max === undefined ? {} : { max: field.max })}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={field.placeholder ?? ''}
+        />
+      )}
+    </Field>
   );
 }
 

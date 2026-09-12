@@ -37,6 +37,19 @@ export interface RuntimeEnvOptions {
   readonly allowedPrefixes?: readonly string[];
   /** Additional exact variable names to pass through. */
   readonly allowedNames?: readonly string[];
+  /**
+   * Names removed after allowlisting, for variables a prefix would otherwise
+   * sweep in wrongly.
+   *
+   * A vendor prefix is a blunt instrument: `CLAUDE_` correctly matches a user's
+   * `CLAUDE_CONFIG_DIR`, but it also matches the private, per-session variables
+   * an agent CLI exports into its own children. When Tandemise is itself
+   * launched from inside such a session, those describe the *parent* - so the
+   * worker would inherit a live IPC socket and token, and believe it is a
+   * nested session rather than a fresh one. Denying is the narrower fix:
+   * everything else the vendor namespace carries still reaches the child.
+   */
+  readonly deniedNames?: readonly string[];
   /** Variables Tandemise sets itself. Applied last, so they win. */
   readonly overrides?: Readonly<Record<string, string>>;
   /** Source environment. Defaults to the daemon's own. */
@@ -48,13 +61,17 @@ export function buildRuntimeEnv(options: RuntimeEnvOptions = {}): NodeJS.Process
   const allowedNames = new Set<string>([...BASE_RUNTIME_ENV, ...(options.allowedNames ?? [])]);
   const prefixes = options.allowedPrefixes ?? [];
 
+  const denied = new Set(options.deniedNames ?? []);
+
   const env: NodeJS.ProcessEnv = {};
   for (const [name, value] of Object.entries(source)) {
-    if (value === undefined) continue;
+    if (value === undefined || denied.has(name)) continue;
     if (allowedNames.has(name) || prefixes.some((p) => name.startsWith(p))) {
       env[name] = value;
     }
   }
+  // Overrides are applied last and are Tandemise's own, so they are never
+  // subject to the denylist - which exists to filter the *inherited* environment.
   return { ...env, ...(options.overrides ?? {}) };
 }
 

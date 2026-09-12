@@ -60,6 +60,7 @@ export class RuntimeServiceImpl implements RuntimeService {
         { available: this.runtimes.registry.ids() },
       );
     }
+    adapter.validateSettings?.(request.settings ?? {});
     const now = this.clock.now();
     const profile: RuntimeProfile = {
       id: ids.runtimeProfile(),
@@ -88,7 +89,10 @@ export class RuntimeServiceImpl implements RuntimeService {
   }
 
   async update(id: RuntimeProfileId, patch: Partial<CreateRuntimeProfileRequest>): Promise<RuntimeProfile> {
-    this.#require(id);
+    const existing = this.#require(id);
+    if (patch.settings !== undefined) {
+      this.runtimes.registry.tryAdapter(existing.adapterId)?.validateSettings?.(patch.settings);
+    }
     const updated = this.profiles.update(id, {
       ...(patch.name !== undefined ? { name: patch.name } : {}),
       ...(patch.executablePath !== undefined ? { executablePath: patch.executablePath } : {}),
@@ -129,6 +133,7 @@ export class RuntimeServiceImpl implements RuntimeService {
       profile,
       health: await this.runtimes.health(profile, options),
       adapterDisplayName: adapter?.displayName ?? profile.adapterId,
+      settingsSchema: adapter?.settingsSchema ?? [],
       activeRuns: this.runtimes.inFlight(profile.id),
       rolesRouted: this.#rolesRouted(profile),
     };

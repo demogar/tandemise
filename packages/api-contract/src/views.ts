@@ -1,7 +1,7 @@
 import type {
   Approval, ArtifactManifest, CheckResult, Decision, Evaluation, ExecutionTargetRecord,
   Integration, Mission, MissionProgress, MissionTask, Repository, RoleTemplate, Run,
-  RunEventRecord, RuntimeHealth, RuntimeProfile, RuntimeDiscovery, Workspace,
+  RunEventRecord, RuntimeHealth, RuntimeProfile, RuntimeDiscovery, RuntimeSettingField, Workspace,
   MissionPlan, PlanValidationIssue, GateOutcome,
 } from '@tandemise/domain';
 
@@ -85,6 +85,8 @@ export interface RuntimeView {
   readonly profile: RuntimeProfile;
   readonly health: RuntimeHealth;
   readonly adapterDisplayName: string;
+  /** What this profile's adapter lets it configure. */
+  readonly settingsSchema: readonly RuntimeSettingField[];
   readonly activeRuns: number;
   readonly rolesRouted: readonly string[];
 }

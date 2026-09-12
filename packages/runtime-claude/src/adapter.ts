@@ -8,6 +8,7 @@ import {
   DEFAULT_TERMINATION_GRACE_MS, NormalizingEventSink, relieveBackPressure, superviseProcessStream,
 } from '@tandemise/runtimes-core';
 import { buildRuntimeEnv, withheldEnvNames } from '@tandemise/runtimes-core';
+import { CLAUDE_SETTINGS_SCHEMA, PARENT_SESSION_ENV, resolveConfigDir } from './settings.js';
 import type { AgentRuntimeAdapter, RunRequest, SupervisedChild } from '@tandemise/runtimes-core';
 import { TandemiseError, systemClock } from '@tandemise/shared';
 import type { Clock, RunId } from '@tandemise/shared';
@@ -66,6 +67,13 @@ export class ClaudeCodeAdapter implements AgentRuntimeAdapter {
     this.#graceMs = options.terminationGraceMs ?? DEFAULT_TERMINATION_GRACE_MS;
   }
 
+  readonly settingsSchema = CLAUDE_SETTINGS_SCHEMA;
+
+  validateSettings(settings: Readonly<Record<string, unknown>>): void {
+    // Throws a validation error the desktop renders inline on the field.
+    resolveConfigDir(settings);
+  }
+
   async discover(): Promise<RuntimeDiscovery> {
     const executablePath = findExecutable(null);
     if (executablePath === null) {
@@ -78,6 +86,7 @@ export class ClaudeCodeAdapter implements AgentRuntimeAdapter {
         capabilities: [],
         detail: 'No `claude` executable on PATH, in ~/.local/bin, ~/.claude/local, or an nvm bin directory.',
         suggestedSettings: {},
+        settingsSchema: CLAUDE_SETTINGS_SCHEMA,
       };
     }
     const { version, detail } = await probeVersion(executablePath);
@@ -90,6 +99,7 @@ export class ClaudeCodeAdapter implements AgentRuntimeAdapter {
       capabilities: version === null ? [] : CLAUDE_CAPABILITIES,
       detail,
       suggestedSettings: { permissionMode: 'default' },
+      settingsSchema: CLAUDE_SETTINGS_SCHEMA,
     };
   }
 
@@ -148,15 +158,22 @@ export class ClaudeCodeAdapter implements AgentRuntimeAdapter {
       onQuotaWarning: (detail) => this.#recordQuota(detail),
     });
 
+    // A profile may select the config directory it runs under, which is what
+    // makes two Claude profiles two independent workers rather than one account
+    // wearing two names. It is an override, so it wins over anything inherited.
+    const configDir = resolveConfigDir(request.profile.settings);
     const childEnv = buildRuntimeEnv({
       allowedPrefixes: ['ANTHROPIC_', 'CLAUDE_'],
       allowedNames: ['SSH_AUTH_SOCK', 'GIT_ASKPASS', 'COLORTERM'],
+      deniedNames: PARENT_SESSION_ENV,
+      ...(configDir === null ? {} : { overrides: { CLAUDE_CONFIG_DIR: configDir } }),
     });
     log.debug('spawning claude code', {
       executablePath,
       argc: args.length,
       promptViaStdin: stdin !== null,
       envWithheld: withheldEnvNames(childEnv).length,
+      configDir: configDir ?? '(inherited)',
     });
     const stream = superviseProcessStream({
       spawn: () => spawn(executablePath, args, {
@@ -165,8 +182,9 @@ export class ClaudeCodeAdapter implements AgentRuntimeAdapter {
         // (MVP.md §10.3), so it needs more than an empty environment - but it
         // needs its OWN credentials, not every credential the daemon happens to
         // have inherited from a developer shell. Profile settings deliberately
-        // cannot inject env vars, which would invite secrets into the database
-        // (MVP.md §P8).
+        // cannot inject arbitrary env vars, which would invite secrets into the
+        // database (MVP.md §P8) - `configDir` is the one typed exception, and a
+        // path is not a credential.
         env: childEnv,
         stdio: [stdin === null ? 'ignore' : 'pipe', 'pipe', 'pipe'],
         windowsHide: true,

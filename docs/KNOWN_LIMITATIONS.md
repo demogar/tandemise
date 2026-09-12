@@ -61,3 +61,14 @@ server picks its own port, and the packaged renderer has no origin at all
 token, which never leaves the connection file, so the exposure is liveness only.
 Narrowing this means having the daemon learn the renderer's origin at handshake
 time rather than inferring it - worth doing before any non-loopback transport.
+
+## A profile selects a config directory, not a credential
+
+`configDir` is the only environment variable a profile may set, and it is typed
+as a path rather than exposed as a free-form env map - a map is where an
+`ANTHROPIC_API_KEY` would end up, and credentials do not belong in the database
+(MVP.md §P8). Two profiles can therefore be two logins, because the credential
+lives in the config directory the profile names, but a profile still cannot
+carry a token, a base URL override, or a proxy setting of its own. Doing that
+properly means referencing the existing secret store by id rather than storing
+a value, which is worth building before any runtime needs per-profile auth.
