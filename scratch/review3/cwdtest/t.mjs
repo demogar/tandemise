@@ -1,0 +1,15 @@
+import { createSecretStore } from '../../../apps/daemon/dist/secrets.js';
+import { nullLogger } from '../../../packages/shared/dist/index.js';
+import { existsSync, readFileSync } from 'node:fs';
+const home = process.cwd() + '/HOME';
+delete process.env.TANDEMISE_HOME;
+const store = createSecretStore({ home, log: nullLogger });
+console.log('backend:', store.backend);
+const ref = await store.store('github-token', 'ghp_SUPERSECRET');
+console.log('ref returned:', ref);
+console.log('ref contains the secret value?', ref.includes('ghp_SUPERSECRET'));
+console.log('index written under home?', existsSync(home + '/secret-refs.json'));
+console.log('index written into CWD?  ', existsSync(process.cwd() + '/secret-refs.json'));
+if (existsSync(process.cwd()+'/secret-refs.json')) console.log('  cwd file:', readFileSync(process.cwd()+'/secret-refs.json','utf8').trim());
+console.log('list():', await store.list());
+await store.remove(ref);

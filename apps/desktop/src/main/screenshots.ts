@@ -53,7 +53,9 @@ export async function runScreenshotPass(window: BrowserWindow, directory: string
     await delay(shot.waitMs ?? 800);
     if (shot.script) {
       await window.webContents.executeJavaScript(shot.script);
-      await delay(400);
+      // Long enough for the entrance animation to land: capturePage otherwise
+      // returns a compositor frame from part-way through the fade.
+      await delay(1_200);
     }
     const image = await window.webContents.capturePage();
     await writeFile(join(directory, `${shot.name}.png`), image.toPNG());
