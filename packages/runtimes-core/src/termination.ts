@@ -38,9 +38,9 @@ export interface AbortOutcome {
 }
 
 /**
- * Distinguishes "the operator stopped this" from "this ran out of time". The
- * scheduler retries one and not the other, so conflating them would silently
- * re-run work a human deliberately halted.
+ * Distinguishes an operator stopping the run and the run exhausting its budget.
+ * The scheduler retries one and not the other, so conflating them would
+ * silently re-run work a human deliberately halted.
  */
 export function classifyAbort(callerSignal: AbortSignal, maxWallTimeMs: number): AbortOutcome {
   if (callerSignal.aborted) {

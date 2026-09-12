@@ -56,6 +56,9 @@
       "path": "./packages/browser"
     },
     {
+      "path": "./packages/desktop-control"
+    },
+    {
       "path": "./packages/application"
     },
     {

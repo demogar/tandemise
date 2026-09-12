@@ -15,7 +15,10 @@
       "path": "../../packages/domain"
     },
     {
-      "path": "../../packages/execution-core"
+      "path": "../../packages/kernel"
+    },
+    {
+      "path": "../../packages/integrations-core"
     }
   ]
 }

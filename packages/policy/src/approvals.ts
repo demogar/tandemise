@@ -3,7 +3,7 @@ import type {
 } from '@tandemise/domain';
 import { APPROVE_OPTION, DEFAULT_APPROVAL_OPTIONS, REJECT_OPTION } from '@tandemise/domain';
 import type {
-  ApprovalId, Clock, MissionId, Result, RunId, TaskId, WorkspaceId,
+  Clock, MissionId, Result, RunId, TaskId, WorkspaceId,
 } from '@tandemise/shared';
 import { Err, Ok, TandemiseError, ids, systemClock } from '@tandemise/shared';
 import type { PolicyDecision, PolicyRequest } from './engine.js';
@@ -70,7 +70,7 @@ export function createApprovalFactory(options: { clock?: Clock } = {}): Approval
       ?? null;
 
     return Ok({
-      id: ids.approval() as ApprovalId,
+      id: ids.approval(),
       workspaceId: draft.workspaceId,
       missionId: draft.missionId ?? null,
       taskId: draft.taskId ?? null,
@@ -93,16 +93,18 @@ export function createApprovalFactory(options: { clock?: Clock } = {}): Approval
     });
   };
 
+  const createOrThrow = (draft: ApprovalDraft): Approval => {
+    const result = create(draft);
+    if (result.ok) return result.value;
+    throw TandemiseError.validation(
+      `Approval card is incomplete and cannot be shown to a human: ${result.error.join(', ')}`,
+      { missing: result.error, title: draft.title },
+    );
+  };
+
   return {
     create,
-    createOrThrow(draft: ApprovalDraft): Approval {
-      const result = create(draft);
-      if (result.ok) return result.value;
-      throw TandemiseError.validation(
-        `Approval card is incomplete and cannot be shown to a human: ${result.error.join(', ')}`,
-        { missing: result.error, title: draft.title },
-      );
-    },
+    createOrThrow,
     forDecision(input: DecisionApprovalInput): Approval {
       const { decision, request } = input;
       const target = request.resource ?? request.command ?? request.capability;
@@ -119,7 +121,7 @@ export function createApprovalFactory(options: { clock?: Clock } = {}): Approval
         ...(input.extraEvidence ?? []),
       ];
 
-      return createOrThrowInternal({
+      return createOrThrow({
         workspaceId: input.workspaceId,
         missionId: input.missionId,
         taskId: input.taskId,
@@ -141,15 +143,6 @@ export function createApprovalFactory(options: { clock?: Clock } = {}): Approval
       });
     },
   };
-
-  function createOrThrowInternal(draft: ApprovalDraft): Approval {
-    const result = create(draft);
-    if (result.ok) return result.value;
-    throw TandemiseError.validation(
-      `Approval card is incomplete and cannot be shown to a human: ${result.error.join(', ')}`,
-      { missing: result.error },
-    );
-  }
 }
 
 function validateDraft(draft: ApprovalDraft): string[] {

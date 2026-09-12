@@ -1,5 +1,6 @@
 import type { IncomingMessage } from 'node:http';
 import type { Server } from 'node:http';
+import type { Duplex } from 'node:stream';
 import { WebSocketServer, type WebSocket } from 'ws';
 import type { Logger } from '@tandemise/shared';
 import type { EventBusPort, ProjectionBusPort, RunEventRecord } from '@tandemise/domain';
@@ -56,8 +57,8 @@ export class StreamServer {
     );
   }
 
-  handleUpgrade(req: IncomingMessage, socket: NodeJS.Socket, head: Buffer): void {
-    this.#wss.handleUpgrade(req, socket as never, head, (ws) => {
+  handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): void {
+    this.#wss.handleUpgrade(req, socket, head, (ws) => {
       this.#wss.emit('connection', ws, req);
     });
   }

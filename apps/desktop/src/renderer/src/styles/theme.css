@@ -1,0 +1,174 @@
+/*
+ * Design tokens.
+ *
+ * Dark is the default because the app sits alongside a terminal all day; light
+ * is a full peer, not an afterthought. Every colour below is a *role*, never a
+ * hue name at the call site - which is what keeps the light theme from being a
+ * pile of overrides.
+ */
+
+:root {
+  color-scheme: dark;
+
+  --canvas: #0d0f13;
+  --surface: #15171c;
+  --surface-raised: #1b1e25;
+  --surface-sunken: #0a0c0f;
+  --surface-hover: #1f232b;
+  --surface-active: #262b35;
+
+  --border: #23272f;
+  --border-strong: #333845;
+  --border-focus: #5b6bff;
+
+  --text: #e8eaef;
+  --text-secondary: #99a1af;
+  --text-tertiary: #6b7382;
+  --text-inverse: #0d0f13;
+
+  --accent: #7b8cff;
+  --accent-hover: #8d9cff;
+  --accent-text: #0d0f13;
+  --accent-soft: rgba(123, 140, 255, 0.14);
+  --accent-line: rgba(123, 140, 255, 0.38);
+
+  --status-running: #4d8dff;
+  --status-running-soft: rgba(77, 141, 255, 0.14);
+  --status-blocked: #e2a33c;
+  --status-blocked-soft: rgba(226, 163, 60, 0.14);
+  --status-failed: #f2685c;
+  --status-failed-soft: rgba(242, 104, 92, 0.14);
+  --status-succeeded: #3fb680;
+  --status-succeeded-soft: rgba(63, 182, 128, 0.14);
+  --status-pending: #7b8494;
+  --status-pending-soft: rgba(123, 132, 148, 0.13);
+
+  --risk-read: var(--status-pending);
+  --risk-write: var(--status-running);
+  --risk-external: var(--status-blocked);
+  --risk-destructive: var(--status-failed);
+  --risk-release: #b47bff;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.42);
+  --shadow-lg: 0 18px 48px rgba(0, 0, 0, 0.55);
+
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 9px;
+  --radius-lg: 13px;
+  --radius-full: 999px;
+
+  /* 4pt scale. */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 20px;
+  --s6: 24px;
+  --s7: 28px;
+  --s8: 32px;
+  --s10: 40px;
+  --s12: 48px;
+  --s16: 64px;
+
+  --font-sans:
+    ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, 'Helvetica Neue',
+    Arial, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, 'JetBrains Mono', Consolas, monospace;
+
+  --fs-micro: 10.5px;
+  --fs-xs: 11.5px;
+  --fs-sm: 12.5px;
+  --fs-base: 13.5px;
+  --fs-md: 15px;
+  --fs-lg: 18px;
+  --fs-xl: 23px;
+  --fs-2xl: 30px;
+
+  --sidebar-width: 232px;
+  --duration-fast: 120ms;
+  --duration: 160ms;
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --canvas: #f5f6f8;
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --surface-sunken: #eef0f4;
+  --surface-hover: #f1f3f7;
+  --surface-active: #e6e9f0;
+
+  --border: #e2e5ec;
+  --border-strong: #ccd1dc;
+  --border-focus: #4d5cf0;
+
+  --text: #15181f;
+  --text-secondary: #5b6270;
+  --text-tertiary: #868d9b;
+  --text-inverse: #ffffff;
+
+  --accent: #4d5cf0;
+  --accent-hover: #3f4fe6;
+  --accent-text: #ffffff;
+  --accent-soft: rgba(77, 92, 240, 0.1);
+  --accent-line: rgba(77, 92, 240, 0.32);
+
+  --status-running: #2a6fdb;
+  --status-running-soft: rgba(42, 111, 219, 0.11);
+  --status-blocked: #b4780c;
+  --status-blocked-soft: rgba(180, 120, 12, 0.12);
+  --status-failed: #d13f33;
+  --status-failed-soft: rgba(209, 63, 51, 0.1);
+  --status-succeeded: #1c8f5f;
+  --status-succeeded-soft: rgba(28, 143, 95, 0.11);
+  --status-pending: #737b8a;
+  --status-pending-soft: rgba(115, 123, 138, 0.11);
+  --risk-release: #7c43d6;
+
+  --shadow-sm: 0 1px 2px rgba(19, 23, 33, 0.07);
+  --shadow-md: 0 4px 14px rgba(19, 23, 33, 0.1);
+  --shadow-lg: 0 20px 48px rgba(19, 23, 33, 0.16);
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']):not([data-theme='light']) {
+    color-scheme: light;
+
+    --canvas: #f5f6f8;
+    --surface: #ffffff;
+    --surface-raised: #ffffff;
+    --surface-sunken: #eef0f4;
+    --surface-hover: #f1f3f7;
+    --surface-active: #e6e9f0;
+    --border: #e2e5ec;
+    --border-strong: #ccd1dc;
+    --border-focus: #4d5cf0;
+    --text: #15181f;
+    --text-secondary: #5b6270;
+    --text-tertiary: #868d9b;
+    --text-inverse: #ffffff;
+    --accent: #4d5cf0;
+    --accent-hover: #3f4fe6;
+    --accent-text: #ffffff;
+    --accent-soft: rgba(77, 92, 240, 0.1);
+    --accent-line: rgba(77, 92, 240, 0.32);
+    --status-running: #2a6fdb;
+    --status-running-soft: rgba(42, 111, 219, 0.11);
+    --status-blocked: #b4780c;
+    --status-blocked-soft: rgba(180, 120, 12, 0.12);
+    --status-failed: #d13f33;
+    --status-failed-soft: rgba(209, 63, 51, 0.1);
+    --status-succeeded: #1c8f5f;
+    --status-succeeded-soft: rgba(28, 143, 95, 0.11);
+    --status-pending: #737b8a;
+    --status-pending-soft: rgba(115, 123, 138, 0.11);
+    --risk-release: #7c43d6;
+    --shadow-sm: 0 1px 2px rgba(19, 23, 33, 0.07);
+    --shadow-md: 0 4px 14px rgba(19, 23, 33, 0.1);
+    --shadow-lg: 0 20px 48px rgba(19, 23, 33, 0.16);
+  }
+}

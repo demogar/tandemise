@@ -34,8 +34,10 @@ export interface DaemonStatus {
   readonly updatedAt: string;
 }
 
+export type Platform = 'darwin' | 'win32' | 'linux' | (string & {});
+
 export interface TandemiseBridge {
-  readonly platform: NodeJS.Platform;
+  readonly platform: Platform;
   getDaemonStatus(): Promise<DaemonStatus>;
   /** Re-runs discovery (and auto-spawn); resolves with the resulting status. */
   reconnectDaemon(): Promise<DaemonStatus>;

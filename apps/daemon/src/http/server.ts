@@ -1,4 +1,5 @@
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from 'node:http';
+import type { Duplex } from 'node:stream';
 import type { AddressInfo } from 'node:net';
 import { TandemiseError, type Logger } from '@tandemise/shared';
 import { API_VERSION, API_VERSION_HEADER, AUTH_HEADER, STREAM_PATH } from '@tandemise/api-contract';
@@ -10,7 +11,7 @@ export interface HttpServerOptions {
   readonly router: Router;
   readonly log: Logger;
   /** Invoked for an authenticated upgrade request on the stream path. */
-  readonly onUpgrade: (req: IncomingMessage, socket: NodeJS.Socket, head: Buffer) => void;
+  readonly onUpgrade: (req: IncomingMessage, socket: Duplex, head: Buffer) => void;
   /** 0 lets the OS pick, which is what MVP.md §7.2 asks for. */
   readonly port?: number;
 }
@@ -38,7 +39,7 @@ export class HttpServer {
   constructor(opts: HttpServerOptions) {
     this.#opts = opts;
     this.#server = createServer((req, res) => void this.#handle(req, res));
-    this.#server.on('upgrade', (req, socket, head) => this.#handleUpgrade(req, socket as NodeJS.Socket, head));
+    this.#server.on('upgrade', (req, socket, head) => this.#handleUpgrade(req, socket, head));
     this.#server.on('clientError', (_err, socket) => {
       socket.end('HTTP/1.1 400 Bad Request\r\n\r\n');
     });
@@ -123,7 +124,7 @@ export class HttpServer {
     }
   }
 
-  #handleUpgrade(req: IncomingMessage, socket: NodeJS.Socket, head: Buffer): void {
+  #handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): void {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
     // Browsers cannot set headers on a WebSocket handshake, so the token may
     // also arrive as a query parameter. Both paths are constant-time compared,
