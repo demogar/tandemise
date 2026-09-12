@@ -66,7 +66,7 @@ const broker = new ToolBroker({
 });
 
 const controller = new AbortController();
-const provisioner = new McpGatewayProvisioner({ broker, exec, paths, clock: systemClock, log });
+const provisioner = new McpGatewayProvisioner({ broker, exec: () => exec, paths, clock: systemClock, log });
 const surface = await provisioner.provision({
   runId: ids.run(), workspaceId, missionId, assignment,
   workingDirectory: home, signal: controller.signal,
