@@ -6,7 +6,7 @@ import { isTerminalMissionStatus } from '../../lib/domain.js';
 import { PageHeader } from '../../components/PageHeader.js';
 import { Icon, type IconName } from '../../components/Icon.js';
 import { ConfirmDialog } from '../../components/Modal.js';
-import { Empty, ErrorState, Skeleton, SkeletonList, StatusBadge } from '../../components/primitives.js';
+import { Empty, ErrorState, IdChip, Skeleton, SkeletonList, StatusBadge } from '../../components/primitives.js';
 import { PlanPane } from './PlanPane.js';
 import { TimelinePane } from './TimelinePane.js';
 import { ArtifactsPane } from './ArtifactsPane.js';
@@ -54,6 +54,7 @@ export function MissionDetail({ id, tab }: { id: string; tab: MissionTab }): JSX
       <PageHeader
         title={detail.mission.title}
         crumbs={[{ label: 'Missions', href: '/missions' }, { label: detail.mission.workflowPreset }]}
+        meta={<IdChip id={detail.mission.id} />}
         subtitle={detail.mission.goal}
         actions={
           <>

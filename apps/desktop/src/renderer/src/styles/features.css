@@ -177,6 +177,13 @@
   line-height: 1.35;
 }
 
+.taskcard__ids {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-xs);
+}
+
 .taskcard__meta {
   display: flex;
   flex-wrap: wrap;

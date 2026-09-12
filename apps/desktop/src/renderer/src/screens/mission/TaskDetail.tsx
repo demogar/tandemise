@@ -1,7 +1,7 @@
 import type { MissionDetail, TaskView } from '@tandemise/api-contract';
 import { Icon } from '../../components/Icon.js';
 import { Modal } from '../../components/Modal.js';
-import { ErrorState, StatusBadge } from '../../components/primitives.js';
+import { ErrorState, IdChip, StatusBadge } from '../../components/primitives.js';
 import { useState } from 'react';
 import { useDaemonMutation } from '../../lib/queries.js';
 import { dateTime, duration, taskTone, titleCase } from '../../lib/format.js';
@@ -35,8 +35,10 @@ export function TaskDetail({ task, detail, onClose }: { task: TaskView; detail: 
       onClose={onClose}
       footer={
         <>
-          <span className="dim" style={{ marginRight: 'auto', fontSize: 'var(--fs-xs)' }}>
+          <span className="dim" style={{ marginRight: 'auto', fontSize: 'var(--fs-xs)', display: 'inline-flex', gap: 8, alignItems: 'center' }}>
+            <IdChip id={task.id} />
             {task.key}
+            {task.latestRun ? <IdChip id={task.latestRun.id} prefix="run" /> : null}
           </span>
           {waitingOnYou ? (
             <button
