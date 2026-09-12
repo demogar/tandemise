@@ -605,7 +605,7 @@ ok('the task branches were integrated',
 head('7. recovery of a run whose process is gone');
 const victimTask = repos.tasks.listByMission(mission.id).find((t) => t.key === 'review');
 const victimRun = repos.runs.listByTask(victimTask.id)[0];
-repos.runs.update(victimRun.id, { status: 'RUNNING', pid: 999999, finishedAt: null, errorCode: null, errorMessage: null });
+repos.runs.update(victimRun.id, { status: 'RUNNING', pid: 999999, finishedAt: null, errorCode: null, errorMessage: null, externalSessionId: victimRun.externalSessionId ?? 'fake-session-for-resume' });
 repos.tasks.update(victimTask.id, { status: 'RUNNING', statusReason: null, finishedAt: null });
 repos.missions.update(mission.id, { status: 'EXECUTING', statusReason: 'simulated crash' });
 ok('a run is marked RUNNING with a dead pid',
@@ -626,6 +626,26 @@ ok('recovery reported what it did', report.tasksRequeued === 1,
 ok('a note was written to the mission timeline',
   repos.events.listByMission(mission.id, { limit: 100000 })
     .some((e) => e.body.type === 'note' && e.body.text.includes('Tandemise restarted')));
+
+// The resume itself. Found in the real app: continuing an interrupted attempt
+// reused its attempt number for the new run row, (task_id, attempt) is unique,
+// and the task blocked on a constraint error the moment it resumed.
+if (recovered.status === 'RESUMABLE') {
+  const runsBefore = repos.runs.listByTask(victimTask.id).length;
+  await scheduler.tick(); await scheduler.drain();
+  const afterResume = repos.tasks.get(victimTask.id);
+  const resumedRuns = repos.runs.listByTask(victimTask.id);
+  ok('the resumed task ran again without a constraint error',
+    resumedRuns.length === runsBefore + 1 && !/constraint/i.test(afterResume.statusReason ?? ''),
+    `${afterResume.status} ${afterResume.statusReason ?? ''}`);
+  ok('resuming continued the attempt instead of spending a new one',
+    afterResume.attempts === victimTask.attempts, `attempts ${victimTask.attempts} -> ${afterResume.attempts}`);
+  ok('each run keeps a distinct number',
+    new Set(resumedRuns.map((r) => r.attempt)).size === resumedRuns.length,
+    resumedRuns.map((r) => r.attempt).join(','));
+  ok('the resumed run carried the session it resumed',
+    resumedRuns.some((r) => r.id !== victimRun.id && r.externalSessionId === recovered.externalSessionId));
+}
 
 // ==================================================== 8. policy on the tool path
 head('8. the policy engine is on the execution path');
