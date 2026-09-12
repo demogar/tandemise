@@ -257,7 +257,7 @@ export class GitService {
 
   async #conflictedPaths(cwd: string): Promise<readonly string[]> {
     const out = await this.#git(cwd, ['diff', '--name-only', '--diff-filter=U', '-z']);
-    return out.stdout.split('\0').map((p) => p.trim()).filter((p) => p.length > 0);
+    return out.stdout.split('\0').filter((p) => p.length > 0);
   }
 
   async #git(cwd: string, args: readonly string[], options: { timeoutMs?: number } = {}): Promise<ExecResult> {

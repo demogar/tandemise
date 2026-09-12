@@ -80,7 +80,14 @@ export interface ClaudeInvocation {
  */
 export function buildInvocation(request: RunRequest, resumeSessionRef: string | null): ClaudeInvocation {
   const settings = request.profile.settings;
-  const args: string[] = ['-p', '--output-format', 'stream-json', '--verbose'];
+  const viaStdin = request.prompt.length > MAX_PROMPT_ARG_CHARS;
+
+  // The prompt sits immediately after `-p`. It cannot be appended at the end:
+  // `--allowed-tools`/`--disallowed-tools`/`--add-dir` are variadic, so a
+  // trailing positional is silently absorbed as one more of their values and
+  // the CLI then exits complaining that no prompt was given.
+  const args: string[] = viaStdin ? ['-p'] : ['-p', request.prompt];
+  args.push('--output-format', 'stream-json', '--verbose');
 
   const model = settings['model'];
   if (typeof model === 'string' && model.length > 0) args.push('--model', model);
@@ -108,10 +115,7 @@ export function buildInvocation(request: RunRequest, resumeSessionRef: string | 
   if (resumeSessionRef !== null) args.push('--resume', resumeSessionRef);
   args.push(...stringList(request.profile.args));
 
-  if (request.prompt.length <= MAX_PROMPT_ARG_CHARS) {
-    return { args: [...args, request.prompt], stdin: null };
-  }
-  return { args, stdin: request.prompt };
+  return { args, stdin: viaStdin ? request.prompt : null };
 }
 
 function stringList(value: unknown): string[] {

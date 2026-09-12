@@ -254,7 +254,7 @@ CREATE INDEX ix_runs_mission   ON runs (mission_id);
 CREATE INDEX ix_runs_status    ON runs (status);
 CREATE INDEX ix_runs_heartbeat ON runs (status, heartbeat_at);
 
--- Append-only usage history. `runs.usage` holds the latest snapshot for the run
+-- Append-only usage history. runs.usage holds the latest snapshot for the run
 -- detail view; this table is what cost/usage reporting aggregates over time,
 -- and keeping it separate means a corrected late report does not erase the
 -- earlier observation (MVP.md §22.2).
@@ -353,7 +353,7 @@ CREATE TABLE artifact_links (
 CREATE INDEX ix_artifact_links_target ON artifact_links (kind, value);
 
 -- Full-text index over the human-readable parts of the manifest. External
--- content: the index stores only terms, the rows stay in `artifacts`.
+-- content: the index stores only terms, the rows stay in artifacts.
 CREATE VIRTUAL TABLE artifacts_fts USING fts5 (
   title,
   summary,
@@ -422,7 +422,7 @@ CREATE INDEX ix_approvals_workspace_status ON approvals (workspace_id, status);
 CREATE INDEX ix_approvals_task_status      ON approvals (task_id, status);
 CREATE INDEX ix_approvals_expiry           ON approvals (status, expires_at);
 
--- Reserved by MVP.md §20.2. `@tandemise/policy` owns the shape of `definition`;
+-- Reserved by MVP.md §20.2. @tandemise/policy owns the shape of definition;
 -- this table deliberately knows only what every policy store needs - scope,
 -- ordering, and an on/off switch - so the rule language can evolve without a
 -- schema change.

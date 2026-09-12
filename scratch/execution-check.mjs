@@ -202,6 +202,9 @@ try {
   // 8 ------------------------------------------------------------------
   section(8, 'release and cleanup');
   await beta.filesystem().write('unsaved.txt', 'work in progress\n');
+  const dirtyPaths = await git.listChangedFiles(beta.workingDirectory);
+  check('NUL-separated status parses exactly one path',
+    dirtyPaths.length === 1 && dirtyPaths[0] === 'unsaved.txt', JSON.stringify(dirtyPaths));
   const retained = await manager.release(beta.describe());
   check('a dirty worktree is NOT removed', retained.released === false, retained.retainedReason);
   check('dirty worktree is still on disk', (await stat(beta.workingDirectory)).isDirectory());
@@ -224,6 +227,17 @@ try {
   check('branches survive the release',
     (await git.branchExists(repoPath, 'tandemise/demo-mission/task-alpha')) &&
     (await git.branchExists(repoPath, 'tandemise/demo-mission/task-beta')));
+
+  const local = await manager.provision({
+    workspaceId, missionId, taskId: ids.task(), kind: 'local',
+    name: 'reviewer', repositoryPath: repoPath,
+  });
+  check('local target runs in the repository itself', local.workingDirectory === repoPath, local.workingDirectory);
+  check('local target is not isolated', !local.capabilities().includes('isolated-workspace'), local.capabilities().join(','));
+  check('local target execs', (await local.exec({ command: 'git', args: ['rev-parse', '--abbrev-ref', 'HEAD'] })).stdout.trim() === 'main');
+  const localRelease = await manager.release(local.describe());
+  check('releasing a local target never deletes the checkout',
+    localRelease.released === true && (await exists(join(repoPath, 'README.md'))));
 
   await container.dispose();
   check('container disposal kills any stragglers', supervisor.liveProcesses().length === 0);

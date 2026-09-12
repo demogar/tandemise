@@ -3,13 +3,21 @@ import { redactSecrets } from './redact.js';
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 const ORDER: Record<LogLevel, number> = { debug: 10, info: 20, warn: 30, error: 40 };
 
+/**
+ * Correlation fields. The named ones are the trace hierarchy of MVP.md §22.1 and
+ * exist so that an IDE autocompletes the right spelling rather than letting
+ * `runid` and `run_id` both appear in the log stream. They accept `null`
+ * because most call sites hold a nullable id and forcing `?? undefined` at
+ * every one of them buys nothing.
+ */
 export interface LogFields {
-  workspaceId?: string;
-  missionId?: string;
-  taskId?: string;
-  runId?: string;
-  role?: string;
-  runtime?: string;
+  workspaceId?: string | null;
+  missionId?: string | null;
+  taskId?: string | null;
+  runId?: string | null;
+  role?: string | null;
+  runtime?: string | null;
+  component?: string;
   [key: string]: unknown;
 }
 

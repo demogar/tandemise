@@ -17,11 +17,17 @@ export class LineSplitter {
     for (const part of parts) emit(stripCr(part));
   }
 
-  /** Flushes the trailing partial line, if the process ended without a newline. */
-  end(emit: (line: string) => void): void {
+  /**
+   * Flushes a trailing partial line. Returns true when there was one, i.e. the
+   * stream did *not* end with a newline - the caller needs that to rebuild the
+   * original bytes exactly, which matters for NUL-separated git output.
+   */
+  end(emit: (line: string) => void): boolean {
     const tail = this.#rest + this.#decoder.end();
     this.#rest = '';
-    if (tail.length > 0) emit(stripCr(tail));
+    if (tail.length === 0) return false;
+    emit(stripCr(tail));
+    return true;
   }
 }
 

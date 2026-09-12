@@ -272,8 +272,9 @@ function fitToBudget(sections: readonly Section[], budget: number): FitResult {
 
 // ------------------------------------------------------------------- helpers
 
+/** Replaces a section's body while preserving its trust label and origin. */
 function withText(content: LabelledContent, text: string): LabelledContent {
-  return content.trust === 'trusted' ? { ...content, text } : { ...content, text };
+  return { ...content, text };
 }
 
 function artifactSummary(artifact: LoadedArtifact): string {

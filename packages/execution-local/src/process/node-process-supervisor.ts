@@ -51,6 +51,10 @@ export class NodeProcessSupervisor implements ProcessSupervisor {
   }
 
   spawn(spec: ProcessSpec): SupervisedProcess {
+    return this.#start(spec);
+  }
+
+  #start(spec: ProcessSpec): NodeSupervisedProcess {
     const proc = new NodeSupervisedProcess(spec, {
       clock: this.#clock,
       log: this.log,
@@ -65,7 +69,7 @@ export class NodeProcessSupervisor implements ProcessSupervisor {
     spec: ProcessSpec,
     onOutput?: (chunk: string, stream: OutputStream) => void,
   ): Promise<ExecResult> {
-    const proc = this.spawn(spec);
+    const proc = this.#start(spec);
     const stdout: string[] = [];
     const stderr: string[] = [];
     const collect = (target: string[], stream: OutputStream) => async (): Promise<void> => {
@@ -87,8 +91,8 @@ export class NodeProcessSupervisor implements ProcessSupervisor {
     }
     return {
       exitCode: exit.exitCode,
-      stdout: joinLines(stdout),
-      stderr: joinLines(stderr),
+      stdout: joinLines(stdout, proc.endedWithNewline('stdout')),
+      stderr: joinLines(stderr, proc.endedWithNewline('stderr')),
       timedOut: exit.timedOut,
       durationMs: exit.durationMs,
       command: formatCommand(spec.command, spec.args),
@@ -138,6 +142,7 @@ class NodeSupervisedProcess implements SupervisedProcess {
 
   #bytesOut = 0;
   #bytesErr = 0;
+  readonly #trailingPartial: Record<OutputStream, boolean> = { stdout: false, stderr: false };
   #lastOutputAt: number | null = null;
   #killedReason: string | null = null;
   #timedOut = false;
@@ -176,6 +181,15 @@ class NodeSupervisedProcess implements SupervisedProcess {
 
   wait(): Promise<ProcessExit> {
     return this.#exit;
+  }
+
+  /**
+   * False when the stream's last line had no terminator. Line-oriented output
+   * is reassembled from lines, and git's `-z` output has no newlines at all -
+   * appending one would invent a NUL-separated field that was never there.
+   */
+  endedWithNewline(stream: OutputStream): boolean {
+    return !this.#trailingPartial[stream];
   }
 
   /**
@@ -227,7 +241,7 @@ class NodeSupervisedProcess implements SupervisedProcess {
       splitter.push(chunk, (line) => queue.push(line));
     });
     const finish = (): void => {
-      splitter.end((line) => queue.push(line));
+      this.#trailingPartial[which] ||= splitter.end((line) => queue.push(line));
       queue.close();
     };
     stream.on('end', finish);
@@ -335,6 +349,7 @@ function startChild(spec: ProcessSpec): ChildProcessWithoutNullStreams {
   }
 }
 
-function joinLines(lines: readonly string[]): string {
-  return lines.length === 0 ? '' : lines.join('\n') + '\n';
+function joinLines(lines: readonly string[], trailingNewline: boolean): string {
+  if (lines.length === 0) return '';
+  return lines.join('\n') + (trailingNewline ? '\n' : '');
 }

@@ -1,4 +1,4 @@
-import { TandemiseError, asId, type Clock, type RepositoryId, type WorkspaceId } from '@tandemise/shared';
+import { TandemiseError, asId, type Clock, type WorkspaceId } from '@tandemise/shared';
 import type {
   AutonomySettings, ConcurrencySettings, RoleRouting, Workspace, WorkspaceKnowledge,
   WorkspaceRepositoryPort,
