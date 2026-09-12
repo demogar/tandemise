@@ -182,13 +182,18 @@ export class TaskExecutor {
     const { task, mission, workspace, repository, role, scope, signal } = ctx;
     const { deps } = this;
     const { profile, adapter, reservation } = selection;
-    const attempt = task.attempts + 1;
+    // Resuming a session a restart interrupted continues that attempt rather
+    // than starting a new one. Counting it spent the retry budget on restarts:
+    // a task with two attempts had used five before it had failed once, so its
+    // first real gate failure would have blocked it outright.
+    const resuming = this.#resumableSession(task.id, adapter.resume !== undefined) !== null && task.attempts > 0;
+    const attempt = resuming ? task.attempts : task.attempts + 1;
 
     // Captured before the transition, because moving to RUNNING clears
     // `statusReason` - and `statusReason` is where the previous attempt's gate
     // failure lives. Reading it after the transition is how the single
     // highest-value feedback loop in the system silently becomes a no-op.
-    const feedback = attempt > 1 ? task.statusReason : null;
+    const feedback = attempt > 1 && !resuming ? task.statusReason : null;
 
     const running = this.#setStatus(task, scope, 'RUNNING', null, {
       attempts: attempt,
