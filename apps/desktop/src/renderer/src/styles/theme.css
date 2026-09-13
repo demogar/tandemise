@@ -1,58 +1,111 @@
 /*
- * Design tokens.
+ * Design tokens - the semantic layer of the design system.
  *
- * Dark is the default because the app sits alongside a terminal all day; light
- * is a full peer, not an afterthought. Every colour below is a *role*, never a
- * hue name at the call site - which is what keeps the light theme from being a
- * pile of overrides.
+ * Every colour below is a *role*, never a hue name at the call site - which is
+ * what keeps the light theme from being a pile of overrides. Roles are built
+ * only from `palette.css`; screens and components are built only from roles.
+ * docs/DESIGN_SYSTEM.md is the contract, and `npm run check:design` holds the
+ * code to it.
+ *
+ * Each colour role is written once as `light-dark(<light>, <dark>)`. The theme
+ * is chosen by `color-scheme` alone:
+ *   - no `data-theme` (the "system" preference): `light dark`, so the OS decides
+ *   - `data-theme` stamped by an explicit choice: that scheme, in both directions
+ * Dark stays the fallback because the app sits alongside a terminal all day;
+ * light is a full peer, not an afterthought.
  */
 
 :root {
+  color-scheme: dark light;
+}
+
+:root[data-theme='dark'] {
   color-scheme: dark;
+}
 
-  --canvas: #0d0f13;
-  --surface: #15171c;
-  --surface-raised: #1b1e25;
-  --surface-sunken: #0a0c0f;
-  --surface-hover: #1f232b;
-  --surface-active: #262b35;
+:root[data-theme='light'] {
+  color-scheme: light;
+}
 
-  --border: #23272f;
-  --border-strong: #333845;
-  --border-focus: #5b6bff;
+:root {
+  /* --------------------------------------------------------------- surfaces */
+  --canvas: light-dark(var(--paper-25), var(--ink-950));
+  --surface: light-dark(var(--paper-0), var(--ink-900));
+  --surface-raised: light-dark(var(--paper-0), var(--ink-850));
+  --surface-sunken: light-dark(var(--paper-50), var(--ink-1000));
+  --surface-hover: light-dark(var(--paper-100), var(--ink-800));
+  --surface-active: light-dark(var(--paper-150), var(--ink-750));
 
-  --text: #e8eaef;
-  --text-secondary: #99a1af;
-  --text-tertiary: #6b7382;
-  --text-inverse: #0d0f13;
+  --border: light-dark(var(--paper-150), var(--ink-800));
+  --border-strong: light-dark(var(--paper-300), var(--ink-700));
+  --border-focus: light-dark(var(--indigo-500), var(--brand-mint));
 
-  --accent: #7b8cff;
-  --accent-hover: #8d9cff;
-  --accent-text: #0d0f13;
-  --accent-soft: rgba(123, 140, 255, 0.14);
-  --accent-line: rgba(123, 140, 255, 0.38);
+  /* ------------------------------------------------------------------- text */
+  --text: light-dark(var(--brand-indigo), var(--mint-50));
+  --text-secondary: light-dark(var(--brand-slate), var(--lichen-300));
+  /* The lichen anchor itself on ink; darkened on paper, where it fails 4.5:1. */
+  --text-tertiary: light-dark(var(--lichen-750), var(--brand-lichen));
+  --text-inverse: light-dark(var(--paper-0), var(--ink-950));
 
-  --status-running: #4d8dff;
-  --status-running-soft: rgba(77, 141, 255, 0.14);
-  --status-blocked: #e2a33c;
-  --status-blocked-soft: rgba(226, 163, 60, 0.14);
-  --status-failed: #f2685c;
-  --status-failed-soft: rgba(242, 104, 92, 0.14);
-  --status-succeeded: #3fb680;
-  --status-succeeded-soft: rgba(63, 182, 128, 0.14);
-  --status-pending: #7b8494;
-  --status-pending-soft: rgba(123, 132, 148, 0.13);
+  /* ----------------------------------------------------------------- accent */
+  /* Mint on ink, indigo on paper: the two ends of the brand, each where it
+     carries. Text on an accent fill takes the other end. */
+  --accent: light-dark(var(--brand-indigo), var(--brand-mint));
+  --accent-hover: light-dark(var(--indigo-600), var(--mint-100));
+  --accent-text: light-dark(var(--brand-mint), var(--brand-indigo));
+  --accent-soft: light-dark(
+    color-mix(in srgb, var(--brand-indigo) 8%, transparent),
+    color-mix(in srgb, var(--brand-mint) 12%, transparent)
+  );
+  --accent-line: light-dark(
+    color-mix(in srgb, var(--brand-indigo) 30%, transparent),
+    color-mix(in srgb, var(--brand-mint) 36%, transparent)
+  );
+
+  /* ----------------------------------------------------------------- status */
+  --status-running: light-dark(var(--signal-blue-deep), var(--signal-blue-bright));
+  --status-blocked: light-dark(var(--signal-amber-deep), var(--signal-amber-bright));
+  --status-failed: light-dark(var(--signal-red-deep), var(--signal-red-bright));
+  --status-succeeded: light-dark(var(--signal-green-deep), var(--signal-green-bright));
+  --status-pending: var(--text-tertiary);
+
+  --status-running-soft: color-mix(in srgb, var(--status-running) 13%, transparent);
+  --status-blocked-soft: color-mix(in srgb, var(--status-blocked) 13%, transparent);
+  --status-failed-soft: color-mix(in srgb, var(--status-failed) 12%, transparent);
+  --status-succeeded-soft: color-mix(in srgb, var(--status-succeeded) 13%, transparent);
+  --status-pending-soft: color-mix(in srgb, var(--status-pending) 13%, transparent);
 
   --risk-read: var(--status-pending);
   --risk-write: var(--status-running);
   --risk-external: var(--status-blocked);
   --risk-destructive: var(--status-failed);
-  --risk-release: #b47bff;
+  --risk-release: light-dark(var(--signal-violet-deep), var(--signal-violet-bright));
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.42);
-  --shadow-lg: 0 18px 48px rgba(0, 0, 0, 0.55);
+  /* ------------------------------------------------------------------ brand */
+  /* The product mark. Lead wheel, trailing wheel, axle - see Logo.tsx. */
+  --logo-lead: light-dark(var(--brand-indigo), var(--brand-mint));
+  --logo-trail: light-dark(var(--brand-slate), var(--brand-sage));
+  --logo-axle: var(--brand-lichen);
 
+  /* Identity tints: monograms and avatars for things without an icon of their
+     own. One per brand anchor, so a list of them reads as the palette. */
+  --tint-1: light-dark(var(--mint-700), var(--brand-mint));
+  --tint-2: light-dark(var(--sage-700), var(--brand-sage));
+  --tint-3: light-dark(var(--lichen-700), var(--brand-lichen));
+  --tint-4: light-dark(var(--brand-slate), var(--slate-300));
+  --tint-5: light-dark(var(--brand-indigo), var(--indigo-300));
+
+  /* ---------------------------------------------------------------- shadows */
+  /* Cast by indigo rather than black, so they do not muddy the paper.
+     (light-dark() takes colours only, hence mixing inside each branch.) */
+  --shadow-sm: 0 1px 2px
+    light-dark(color-mix(in srgb, var(--brand-indigo) 8%, transparent), color-mix(in srgb, var(--ink-1000) 45%, transparent));
+  --shadow-md: 0 4px 16px
+    light-dark(color-mix(in srgb, var(--brand-indigo) 11%, transparent), color-mix(in srgb, var(--ink-1000) 50%, transparent));
+  --shadow-lg: 0 18px 48px
+    light-dark(color-mix(in srgb, var(--brand-indigo) 18%, transparent), color-mix(in srgb, var(--ink-1000) 62%, transparent));
+
+  /* ------------------------------------------------------------------ shape */
   --radius-xs: 4px;
   --radius-sm: 6px;
   --radius-md: 9px;
@@ -72,6 +125,7 @@
   --s12: 48px;
   --s16: 64px;
 
+  /* ------------------------------------------------------------- typography */
   --font-sans:
     ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, 'Helvetica Neue',
     Arial, sans-serif;
@@ -86,89 +140,9 @@
   --fs-xl: 23px;
   --fs-2xl: 30px;
 
+  /* ----------------------------------------------------------------- layout */
   --sidebar-width: 232px;
   --duration-fast: 120ms;
   --duration: 160ms;
   --ease: cubic-bezier(0.32, 0.72, 0, 1);
-}
-
-:root[data-theme='light'] {
-  color-scheme: light;
-
-  --canvas: #f5f6f8;
-  --surface: #ffffff;
-  --surface-raised: #ffffff;
-  --surface-sunken: #eef0f4;
-  --surface-hover: #f1f3f7;
-  --surface-active: #e6e9f0;
-
-  --border: #e2e5ec;
-  --border-strong: #ccd1dc;
-  --border-focus: #4d5cf0;
-
-  --text: #15181f;
-  --text-secondary: #5b6270;
-  --text-tertiary: #868d9b;
-  --text-inverse: #ffffff;
-
-  --accent: #4d5cf0;
-  --accent-hover: #3f4fe6;
-  --accent-text: #ffffff;
-  --accent-soft: rgba(77, 92, 240, 0.1);
-  --accent-line: rgba(77, 92, 240, 0.32);
-
-  --status-running: #2a6fdb;
-  --status-running-soft: rgba(42, 111, 219, 0.11);
-  --status-blocked: #b4780c;
-  --status-blocked-soft: rgba(180, 120, 12, 0.12);
-  --status-failed: #d13f33;
-  --status-failed-soft: rgba(209, 63, 51, 0.1);
-  --status-succeeded: #1c8f5f;
-  --status-succeeded-soft: rgba(28, 143, 95, 0.11);
-  --status-pending: #737b8a;
-  --status-pending-soft: rgba(115, 123, 138, 0.11);
-  --risk-release: #7c43d6;
-
-  --shadow-sm: 0 1px 2px rgba(19, 23, 33, 0.07);
-  --shadow-md: 0 4px 14px rgba(19, 23, 33, 0.1);
-  --shadow-lg: 0 20px 48px rgba(19, 23, 33, 0.16);
-}
-
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme='dark']):not([data-theme='light']) {
-    color-scheme: light;
-
-    --canvas: #f5f6f8;
-    --surface: #ffffff;
-    --surface-raised: #ffffff;
-    --surface-sunken: #eef0f4;
-    --surface-hover: #f1f3f7;
-    --surface-active: #e6e9f0;
-    --border: #e2e5ec;
-    --border-strong: #ccd1dc;
-    --border-focus: #4d5cf0;
-    --text: #15181f;
-    --text-secondary: #5b6270;
-    --text-tertiary: #868d9b;
-    --text-inverse: #ffffff;
-    --accent: #4d5cf0;
-    --accent-hover: #3f4fe6;
-    --accent-text: #ffffff;
-    --accent-soft: rgba(77, 92, 240, 0.1);
-    --accent-line: rgba(77, 92, 240, 0.32);
-    --status-running: #2a6fdb;
-    --status-running-soft: rgba(42, 111, 219, 0.11);
-    --status-blocked: #b4780c;
-    --status-blocked-soft: rgba(180, 120, 12, 0.12);
-    --status-failed: #d13f33;
-    --status-failed-soft: rgba(209, 63, 51, 0.1);
-    --status-succeeded: #1c8f5f;
-    --status-succeeded-soft: rgba(28, 143, 95, 0.11);
-    --status-pending: #737b8a;
-    --status-pending-soft: rgba(115, 123, 138, 0.11);
-    --risk-release: #7c43d6;
-    --shadow-sm: 0 1px 2px rgba(19, 23, 33, 0.07);
-    --shadow-md: 0 4px 14px rgba(19, 23, 33, 0.1);
-    --shadow-lg: 0 20px 48px rgba(19, 23, 33, 0.16);
-  }
 }

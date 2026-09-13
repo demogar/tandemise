@@ -87,13 +87,3 @@ export function Icon({ name, size = 16, strokeWidth = 1.7, className }: IconProp
     </svg>
   );
 }
-
-/** The product mark: two interlocking rings. */
-export function Logo({ size = 22 }: { size?: number }): JSX.Element {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <circle cx="9" cy="12" r="5.4" stroke="currentColor" strokeWidth="2" />
-      <circle cx="15" cy="12" r="5.4" stroke="currentColor" strokeWidth="2" opacity="0.55" />
-    </svg>
-  );
-}

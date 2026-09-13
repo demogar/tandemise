@@ -133,7 +133,7 @@ writing code), and create a mission.
 | `apps/daemon` | `tandemd` — HTTP/WS API, composition root, lifecycle |
 | `apps/desktop` | Electron main/preload + React renderer |
 | `native/macos-helper` | Swift helper for Accessibility, screen capture, and input |
-| `docs/` | `BUILD_BRIEF.md` (engineering contract), `APPLICATION_DESIGN.md` (mission engine) |
+| `docs/` | `BUILD_BRIEF.md` (engineering contract), `APPLICATION_DESIGN.md` (mission engine), `DESIGN_SYSTEM.md` (palette, tokens, logo) |
 
 `MVP.md` is the full product and architecture specification this implements.
 

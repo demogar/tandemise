@@ -1,0 +1,74 @@
+/*
+ * Palette - the primitive layer of the design system.
+ *
+ * Everything here is a *hue*, named for what it is rather than what it is for.
+ * Only `theme.css` may read these; screens and components read the semantic
+ * roles it defines (`--accent`, `--surface`, `--status-failed`). That is the
+ * contract `scripts/check-design-system.mjs` enforces - see
+ * docs/DESIGN_SYSTEM.md.
+ *
+ * The five brand anchors are the source. Every ramp below was derived from them
+ * in OKLCH, so steps are perceptually even and the neutrals carry the brand's
+ * hue instead of reading as flat grey:
+ *
+ *   - ink    the indigo anchor, desaturated and darkened: dark-theme surfaces
+ *   - paper  the sage anchor, nearly white: light-theme surfaces
+ *   - signal status hues, pulled toward the brand so they sit in it rather
+ *            than on top of it, and contrast-checked (≥ 4.5:1) on their theme's
+ *            surfaces
+ */
+
+:root {
+  /* ---------------------------------------------------------- brand anchors */
+  --brand-mint: #c4f1be;
+  --brand-sage: #a2c3a4;
+  --brand-lichen: #869d96;
+  --brand-slate: #525b76;
+  --brand-indigo: #201e50;
+
+  /* Tints and shades of the anchors, for places the anchor itself fails
+     contrast (mint text on white, indigo on a dark surface). */
+  --mint-50: #eef9ec;
+  --mint-100: #d5fbd0;
+  --mint-700: #3a6b3d;
+  --sage-700: #4c6d4f;
+  --lichen-300: #b3c6bb;
+  --lichen-700: #526962;
+  --lichen-750: #536c69;
+  --slate-300: #a7b0cf;
+  --indigo-300: #999fdc;
+  --indigo-500: #4a4b96;
+  --indigo-600: #2f2f6a;
+  --indigo-900: #15133e;
+
+  /* ------------------------------------------------------------------- ink */
+  --ink-1000: #090917;
+  --ink-950: #0d0e1e;
+  --ink-900: #141528;
+  --ink-850: #1a1b30;
+  --ink-800: #1f2138;
+  --ink-750: #272943;
+  --ink-700: #323550;
+
+  /* ----------------------------------------------------------------- paper */
+  --paper-0: #ffffff;
+  --paper-25: #f5f9f5;
+  --paper-50: #ecf3ed;
+  --paper-100: #e5eee7;
+  --paper-150: #dbe6de;
+  --paper-200: #d0ddd5;
+  --paper-300: #bbccc4;
+
+  /* ---------------------------------------------------------------- signal */
+  /* `-bright` reads on ink, `-deep` reads on paper. */
+  --signal-blue-bright: #9badf1;
+  --signal-blue-deep: #4a5bac;
+  --signal-green-bright: #7cd591;
+  --signal-green-deep: #317a45;
+  --signal-amber-bright: #efb656;
+  --signal-amber-deep: #a06306;
+  --signal-red-bright: #f47c6b;
+  --signal-red-deep: #c13e2e;
+  --signal-violet-bright: #c39dee;
+  --signal-violet-deep: #7847a6;
+}

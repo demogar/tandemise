@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Icon, Logo } from '../components/Icon.js';
+import { Icon } from '../components/Icon.js';
+import { Logo } from '../components/Logo.js';
 import { ErrorState, Field } from '../components/primitives.js';
 import { useDaemonMutation } from '../lib/queries.js';
 import { shortenPath } from '../lib/format.js';

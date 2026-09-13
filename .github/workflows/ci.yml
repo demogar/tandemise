@@ -28,6 +28,7 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm run check:boundaries
+      - run: npm run check:design
       - run: npm run check:licenses
       - run: npm run -w @tandemise/desktop typecheck
 

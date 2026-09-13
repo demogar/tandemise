@@ -427,20 +427,53 @@ kbd {
   white-space: nowrap;
   color: var(--text-tertiary);
   background: transparent;
-  border: 1px solid var(--border, rgba(127, 127, 127, 0.25));
+  border: 1px solid var(--border);
   cursor: copy;
   user-select: all;
 }
 .idchip:hover,
 .idchip:focus-visible {
-  color: var(--text, currentColor);
-  border-color: var(--border-strong, rgba(127, 127, 127, 0.5));
+  color: var(--text);
+  border-color: var(--border-strong);
   outline: none;
 }
 .idchip[data-copied='true'] {
-  color: var(--status-succeeded, currentColor);
+  color: var(--status-succeeded);
 }
 .idchip__prefix {
   font-family: inherit;
   opacity: 0.7;
+}
+
+/* ---------------------------------------------------------------- monogram */
+/* A letter tile for things with no icon of their own; tinted by `data-tint`. */
+.monogram {
+  --monogram-tint: var(--tint-1);
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border-radius: var(--radius-md);
+  font-size: var(--fs-md);
+  font-weight: 700;
+  color: var(--monogram-tint);
+  background: color-mix(in srgb, var(--monogram-tint) 16%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--monogram-tint) 22%, transparent);
+}
+
+.monogram[data-tint='2'] {
+  --monogram-tint: var(--tint-2);
+}
+
+.monogram[data-tint='3'] {
+  --monogram-tint: var(--tint-3);
+}
+
+.monogram[data-tint='4'] {
+  --monogram-tint: var(--tint-4);
+}
+
+.monogram[data-tint='5'] {
+  --monogram-tint: var(--tint-5);
 }

@@ -34,8 +34,25 @@
   place-items: center;
   width: 22px;
   height: 22px;
-  color: var(--accent);
   flex: none;
+}
+
+/* The product mark (components/Logo.tsx). */
+.logo__lead {
+  stroke: var(--logo-lead);
+}
+
+.logo__trail {
+  stroke: var(--logo-trail);
+}
+
+.logo__axle {
+  stroke: var(--logo-axle);
+}
+
+/* Offline: the same shape with the colour drained out of it. */
+.logo--muted :is(.logo__lead, .logo__trail, .logo__axle) {
+  stroke: var(--text-tertiary);
 }
 
 .sidebar__name {
@@ -423,8 +440,8 @@
 }
 
 .wsswitch__trigger:hover {
-  background: var(--surface-raised, var(--surface));
-  border-color: var(--border-strong, var(--border));
+  background: var(--surface-raised);
+  border-color: var(--border-strong);
 }
 
 .wsswitch__body {
@@ -443,7 +460,7 @@
 
 .wsswitch__meta {
   font-size: var(--fs-micro);
-  color: var(--text-dim);
+  color: var(--text-tertiary);
 }
 
 .wsswitch__menu {
@@ -455,8 +472,8 @@
   padding: var(--s1);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  background: var(--surface-raised, var(--surface));
-  box-shadow: var(--shadow-lg, 0 16px 40px rgba(0, 0, 0, 0.45));
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-lg);
 }
 
 .wsswitch__option {
@@ -489,7 +506,7 @@
 .wsswitch__count {
   margin-left: auto;
   font-size: var(--fs-micro);
-  color: var(--text-dim);
+  color: var(--text-tertiary);
   font-variant-numeric: tabular-nums;
 }
 
@@ -524,21 +541,20 @@
   height: 60px;
   margin: 0 auto var(--s4);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg, 16px);
+  border-radius: var(--radius-lg);
   background: var(--surface);
-  color: var(--accent);
 }
 
 .onboard__title {
   margin: 0 0 var(--s2);
-  font-size: var(--fs-xl, 22px);
+  font-size: var(--fs-xl);
   font-weight: 650;
   letter-spacing: -0.02em;
 }
 
 .onboard__body {
   margin: 0 0 var(--s6);
-  color: var(--text-dim);
+  color: var(--text-secondary);
   font-size: var(--fs-sm);
   line-height: 1.6;
 }

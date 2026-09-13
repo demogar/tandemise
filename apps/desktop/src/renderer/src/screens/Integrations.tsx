@@ -569,17 +569,14 @@ function parseEnv(text: string): Record<string, string> {
   return env;
 }
 
-/** A monogram tile. Vendor logos are trademarks this app has no licence to ship. */
+/**
+ * A monogram tile. Vendor logos are trademarks this app has no licence to ship.
+ * The tint is picked from the name so a vendor keeps its colour between visits.
+ */
 function AppMark({ name }: { name: string }): JSX.Element {
-  const hue = [...name].reduce((sum, ch) => sum + ch.charCodeAt(0), 0) % 360;
+  const tint = ([...name].reduce((sum, ch) => sum + ch.charCodeAt(0), 0) % 5) + 1;
   return (
-    <span
-      aria-hidden
-      style={{
-        width: 32, height: 32, borderRadius: 8, flex: 'none', display: 'grid', placeItems: 'center',
-        fontWeight: 700, fontSize: 14, color: `hsl(${hue} 55% 38%)`, background: `hsl(${hue} 70% 92%)`,
-      }}
-    >
+    <span aria-hidden className="monogram" data-tint={tint}>
       {name.charAt(0).toUpperCase()}
     </span>
   );

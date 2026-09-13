@@ -241,7 +241,8 @@
 
 .timeline {
   position: relative;
-  padding-left: var(--s6);
+  /* The 23px node plus a gap, so an event's icon never touches its title. */
+  padding-left: var(--s8);
 }
 
 .timeline::before {
@@ -263,7 +264,7 @@
 
 .tlitem__node {
   position: absolute;
-  left: calc(var(--s6) * -1);
+  left: calc(var(--s8) * -1);
   top: 10px;
   display: grid;
   place-items: center;

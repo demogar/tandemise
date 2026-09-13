@@ -1,4 +1,3 @@
-import { IdChip } from '../../components/primitives.js';
 import type { ArtifactManifest } from '@tandemise/domain';
 import { Icon, type IconName } from '../../components/Icon.js';
 import { bytes, relativeTime, titleCase } from '../../lib/format.js';
@@ -37,8 +36,9 @@ export function ArtifactRows({
                   {artifact.summary ?? `${bytes(artifact.byteSize)} · ${artifact.mediaType}`}
                 </div>
               </div>
-              <span className="dim" style={{ fontSize: 'var(--fs-micro)', flex: 'none', display: 'inline-flex', gap: 6, alignItems: 'center' }}>
-                <IdChip id={artifact.id} />
+              {/* No id chip here: in a 320px column it left the title two
+                  letters wide, and the reader beside it already shows the id. */}
+              <span className="dim" style={{ fontSize: 'var(--fs-micro)', flex: 'none' }}>
                 {relativeTime(artifact.createdAt)}
               </span>
             </button>

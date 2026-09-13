@@ -13,34 +13,37 @@
    - The tile is inset rather than full-bleed, which is what macOS expects of a
      dock icon.
 
-  Regenerate with `node scripts/make-icon.mjs`.
+  Regenerate with `npm run icons` (scripts/make-icon.mjs).
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Colours are brand palette values only (docs/DESIGN_SYSTEM.md#logo): an
+       indigo tile, a mint lead wheel, a sage trailing wheel, a lichen axle.
+       `npm run check:design` rejects any other value in this file. -->
   <defs>
     <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#232838"/>
-      <stop offset="100%" stop-color="#0b0d12"/>
+      <stop offset="0%" stop-color="#201e50"/>
+      <stop offset="100%" stop-color="#15133e"/>
     </linearGradient>
     <linearGradient id="lead" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#aab6ff"/>
-      <stop offset="100%" stop-color="#6274f5"/>
+      <stop offset="0%" stop-color="#c4f1be"/>
+      <stop offset="100%" stop-color="#a2c3a4"/>
     </linearGradient>
     <linearGradient id="trail" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#5e6ddb"/>
-      <stop offset="100%" stop-color="#3d4894"/>
+      <stop offset="0%" stop-color="#a2c3a4"/>
+      <stop offset="100%" stop-color="#869d96"/>
     </linearGradient>
   </defs>
 
   <g>
     <rect x="62" y="62" width="900" height="900" rx="202" ry="202" fill="url(#tile)"/>
     <rect x="66" y="66" width="892" height="892" rx="198" ry="198" fill="none"
-          stroke="rgba(255,255,255,0.12)" stroke-width="7"/>
+          stroke="#c4f1be" stroke-opacity="0.14" stroke-width="7"/>
   </g>
 
   <!-- Tilted so the mark has a direction rather than sitting flat. -->
   <g transform="rotate(-10 512 512)">
     <!-- Axle first, tucked under both wheels so the joins are clean. -->
-    <rect x="398" y="474" width="150" height="76" rx="38" fill="url(#trail)"/>
+    <rect x="398" y="474" width="150" height="76" rx="38" fill="#869d96"/>
 
     <!-- Trailing wheel: smaller. Two wheels of equal size read as spectacles;
          unequal ones read as a direction of travel. -->

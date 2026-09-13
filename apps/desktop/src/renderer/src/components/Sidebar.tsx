@@ -1,5 +1,6 @@
 import { Link, useLocation } from 'wouter';
-import { Icon, Logo, type IconName } from './Icon.js';
+import { Icon, type IconName } from './Icon.js';
+import { Logo } from './Logo.js';
 import { WorkspaceSwitcher } from './WorkspaceSwitcher.js';
 import { useWorkspace } from '../lib/workspace.js';
 import { useConnection } from '../lib/connection.js';

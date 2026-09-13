@@ -1,16 +1,17 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, shell, Tray, session } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, shell, Tray, session } from 'electron';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DaemonConnector } from './daemon-connection.js';
 import { runScreenshotPass } from './screenshots.js';
 import { IPC } from '../shared/bridge.js';
+import { WINDOW_BACKGROUND } from '../shared/brand.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const isDev = !app.isPackaged;
 const devServerUrl = process.env['ELECTRON_RENDERER_URL'];
 
 const APP_NAME = 'Tandemise';
-/** Built from `build/icon.svg` by `node scripts/make-icon.mjs`. */
+/** Built from `build/icon.svg` by `npm run icons`. */
 const appIconPath = join(here, '../../build/icon.png');
 
 /**
@@ -48,7 +49,8 @@ function createWindow(): BrowserWindow {
     show: false,
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     trafficLightPosition: { x: 16, y: 18 },
-    backgroundColor: '#0e1014',
+    // The canvas colour, so the window does not flash before the first paint.
+    backgroundColor: nativeTheme.shouldUseDarkColors ? WINDOW_BACKGROUND.dark : WINDOW_BACKGROUND.light,
     title: APP_NAME,
     // Windows and Linux take the window icon from here; macOS uses the bundle.
     ...(process.platform === 'darwin' ? {} : { icon: appIconPath }),

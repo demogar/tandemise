@@ -31,7 +31,8 @@ npm run ci
 ```
 
 That builds every package, enforces the architecture boundaries
-(`npm run check:boundaries`), rejects dependencies whose license
+(`npm run check:boundaries`), holds the desktop app to its design system
+(`npm run check:design`, see `docs/DESIGN_SYSTEM.md`), rejects dependencies whose license
 does not fit Apache-2.0 (`npm run check:licenses`), typechecks the desktop app, and runs the offline
 end-to-end checks (`npm run check:offline`). The checks that need a signed-in
 runtime, a browser or macOS permissions are listed in `docs/QUICKSTART.md`.

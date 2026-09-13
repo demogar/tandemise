@@ -1,4 +1,5 @@
-import { Icon, Logo } from '../components/Icon.js';
+import { Icon } from '../components/Icon.js';
+import { Logo } from '../components/Logo.js';
 import { useConnection } from '../lib/connection.js';
 
 /**
@@ -13,9 +14,8 @@ export function DaemonDown(): JSX.Element {
   return (
     <div style={{ height: '100%', display: 'grid', placeItems: 'center', padding: 'var(--s8)', background: 'var(--canvas)' }}>
       <div style={{ maxWidth: 460, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--s4)' }}>
-        <span style={{ color: busy ? 'var(--accent)' : 'var(--text-tertiary)' }}>
-          <Logo size={34} />
-        </span>
+        {/* The mark only takes its colour while there is something to connect to. */}
+        <Logo size={34} muted={!busy} />
 
         <div>
           <h1 style={{ fontSize: 'var(--fs-lg)', fontWeight: 620, letterSpacing: '-0.015em' }}>
