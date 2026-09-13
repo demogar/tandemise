@@ -16,8 +16,8 @@ import type { ExecutionTarget, ExecutionTargetManager } from '@tandemise/executi
 import type { ApprovalFactory, GrantBuilder, PolicyEngine } from '@tandemise/policy';
 import type { ToolBroker } from '@tandemise/integrations-core';
 import { McpGatewayProvisioner, NO_TOOL_SURFACE, type RunToolSurface } from './mcp-gateway.js';
-import { onlyBusy } from '@tandemise/runtimes-core';
-import type { RuntimeManager, RuntimeSelection, SlotReservation } from '@tandemise/runtimes-core';
+import { SESSION_NOT_FOUND, onlyBusy } from '@tandemise/runtimes-core';
+import type { RunRequest, RuntimeManager, RuntimeSelection, SlotReservation } from '@tandemise/runtimes-core';
 import type { Clock, Logger, RunId, TandemisePaths, TaskId } from '@tandemise/shared';
 import { TandemiseError, errorMessage, ids, slugify, summarize } from '@tandemise/shared';
 import type { ArtifactTemplatePort } from '../ports.js';
@@ -191,7 +191,7 @@ export class TaskExecutor {
     // than starting a new one. Counting it spent the retry budget on restarts:
     // a task with two attempts had used five before it had failed once, so its
     // first real gate failure would have blocked it outright.
-    const resuming = this.#resumableSession(task.id, adapter.resume !== undefined) !== null && task.attempts > 0;
+    const resuming = this.#resumableRun(task.id, adapter.resume !== undefined) !== null && task.attempts > 0;
     const attempt = resuming ? task.attempts : task.attempts + 1;
 
     // Captured before the transition, because moving to RUNNING clears
@@ -361,7 +361,13 @@ export class TaskExecutor {
     const { deps } = this;
     const { task, mission, profile, target, assignment, prompt, grants, scope, signal } = input;
 
-    const resumeFrom = this.#resumableSession(task.id, input.adapter.resume !== undefined);
+    // Taking the handle consumes it. A stale handle that stayed RESUMABLE was
+    // the whole bug: every later attempt asked the runtime to continue the same
+    // forgotten session and failed identically, so the task could never leave
+    // BLOCKED however many times it was retried. The new run below carries the
+    // same handle, so a daemon that dies again loses nothing.
+    const source = this.#resumableRun(task.id, input.adapter.resume !== undefined);
+    const resumeFrom = source?.externalSessionId ?? null;
     const { runId } = input;
     const startedAt = deps.clock.now();
 
@@ -389,6 +395,16 @@ export class TaskExecutor {
       finishedAt: null,
       heartbeatAt: startedAt,
     });
+    // Only now, with the new run holding the handle, is the old one released:
+    // a daemon that dies between the two writes still leaves a run to resume.
+    // Consumed whether or not the resume then works - a handle that failed
+    // once is not worth a second try, and one that worked lives on above.
+    if (source !== null) {
+      deps.runs.update(source.id, {
+        status: 'INTERRUPTED',
+        errorMessage: 'Its session handle was handed to a later attempt.',
+      });
+    }
 
     const runScope: EventScope = { ...scope, runId, runtimeProfileId: profile.id };
     deps.recorder.record(runScope, {
@@ -423,63 +439,29 @@ export class TaskExecutor {
     };
 
     let usage: RunUsage = {};
-    let failure: RunFailure | null = null;
-    let started = false;
-    let lastBeat = deps.clock.epochMs();
-
+    let failure: RunFailure | null;
     try {
-      const events = resumeFrom !== null
-        ? deps.runtimeManager.resume(resumeFrom, request)
-        : deps.runtimeManager.start(request);
+      const resumed = await this.#stream(request, runScope, resumeFrom);
+      usage = resumed.usage;
+      failure = resumed.failure;
 
-      for await (const event of events) {
-        if (!started) {
-          started = true;
-          deps.runs.update(runId, {
-            status: 'RUNNING',
-            pid: deps.runtimeManager.pid(profile, runId),
-          });
-        }
-
-        // Persisted and published one at a time: the UI timeline and recovery
-        // both read the durable log, so a batched write is a lost run.
-        deps.recorder.record(runScope, event);
-
-        switch (event.type) {
-          case 'checkpoint': {
-            // Immediately, not at the end: this is the single fact that makes
-            // resuming an interrupted run possible (MVP.md §21.2).
-            if (event.externalSessionId !== undefined) {
-              deps.runs.update(runId, { externalSessionId: event.externalSessionId });
-            }
-            deps.checkpoints.append({
-              runId,
-              sequence: deps.clock.epochMs(),
-              label: event.label ?? 'checkpoint',
-              externalSessionId: event.externalSessionId ?? null,
-              payload: {},
-              createdAt: deps.clock.now(),
-            });
-            break;
-          }
-          case 'usage':
-            usage = mergeUsage(usage, event);
-            break;
-          case 'failed':
-            failure = { code: event.code, message: event.message, retryable: event.retryable };
-            break;
-          default:
-            break;
-        }
-
-        const now = deps.clock.epochMs();
-        if (now - lastBeat >= 2_000) {
-          lastBeat = now;
-          deps.runs.heartbeat(runId, deps.clock.now());
-        }
+      // A handle the runtime cannot honour says nothing about the work, only
+      // that the continuity is gone. Charging the attempt for that would spend a
+      // retry on our own optimisation - and on a task whose budget was already
+      // spent, it blocks the mission on a session id. So the same run starts
+      // over from scratch, under the same run id, with the dead handle cleared.
+      // Not after an abort: a run someone stopped is not restarted.
+      if (failure?.code === SESSION_NOT_FOUND && resumeFrom !== null && !combined.aborted) {
+        deps.runs.update(runId, { externalSessionId: null });
+        deps.recorder.note(
+          scope,
+          `The previous session for '${task.key}' could no longer be resumed, so this attempt started fresh.`,
+          'warn',
+        );
+        const fresh = await this.#stream(request, runScope, null);
+        usage = mergeUsage(usage, fresh.usage);
+        failure = fresh.failure;
       }
-    } catch (e) {
-      failure = { code: 'RUNTIME_FAILED', message: errorMessage(e), retryable: true };
     } finally {
       deps.deadlines.close(assignment.id);
     }
@@ -522,6 +504,87 @@ export class TaskExecutor {
     });
 
     return { runId, status, failure, cancelled, interrupted };
+  }
+
+  /**
+   * One pass of the runtime over one run, resumed or fresh.
+   *
+   * Separate from `#drive` because an attempt may need two of them: a resume
+   * whose session has vanished is not a failed attempt, it is a failed
+   * shortcut, and the retry belongs here rather than in the task's budget.
+   */
+  async #stream(
+    request: RunRequest,
+    runScope: EventScope,
+    resumeFrom: string | null,
+  ): Promise<{ usage: RunUsage; failure: RunFailure | null }> {
+    const { deps } = this;
+    const { runId } = request;
+    let usage: RunUsage = {};
+    let failure: RunFailure | null = null;
+    let started = false;
+    let lastBeat = deps.clock.epochMs();
+
+    try {
+      const events = resumeFrom !== null
+        ? deps.runtimeManager.resume(resumeFrom, request)
+        : deps.runtimeManager.start(request);
+
+      for await (const event of events) {
+        if (!started) {
+          started = true;
+          deps.runs.update(runId, {
+            status: 'RUNNING',
+            pid: deps.runtimeManager.pid(request.profile, runId),
+          });
+        }
+
+        // A stale handle is not recorded as a failure: the caller restarts the
+        // run and says so in a note, and a failure card followed by success
+        // would contradict it. An abort in the meantime is recorded as usual.
+        const staleSession = resumeFrom !== null && event.type === 'failed' && event.code === SESSION_NOT_FOUND;
+
+        // Persisted and published one at a time: the UI timeline and recovery
+        // both read the durable log, so a batched write is a lost run.
+        if (!staleSession) deps.recorder.record(runScope, event);
+
+        switch (event.type) {
+          case 'checkpoint': {
+            // Immediately, not at the end: this is the single fact that makes
+            // resuming an interrupted run possible (MVP.md §21.2).
+            if (event.externalSessionId !== undefined) {
+              deps.runs.update(runId, { externalSessionId: event.externalSessionId });
+            }
+            deps.checkpoints.append({
+              runId,
+              sequence: deps.clock.epochMs(),
+              label: event.label ?? 'checkpoint',
+              externalSessionId: event.externalSessionId ?? null,
+              payload: {},
+              createdAt: deps.clock.now(),
+            });
+            break;
+          }
+          case 'usage':
+            usage = mergeUsage(usage, event);
+            break;
+          case 'failed':
+            failure = { code: event.code, message: event.message, retryable: event.retryable };
+            break;
+          default:
+            break;
+        }
+
+        const now = deps.clock.epochMs();
+        if (now - lastBeat >= 2_000) {
+          lastBeat = now;
+          deps.runs.heartbeat(runId, deps.clock.now());
+        }
+      }
+    } catch (e) {
+      failure = { code: 'RUNTIME_FAILED', message: errorMessage(e), retryable: true };
+    }
+    return { usage, failure };
   }
 
   // ------------------------------------------------------------------ decision
@@ -1176,11 +1239,11 @@ export class TaskExecutor {
     return routed.flatMap((id) => all.filter((p) => p.id === id));
   }
 
-  #resumableSession(taskId: TaskId, adapterSupportsResume: boolean): string | null {
+  #resumableRun(taskId: TaskId, adapterSupportsResume: boolean): Run | null {
     if (!adapterSupportsResume) return null;
     const runs = [...this.deps.runs.listByTask(taskId)].sort((a, b) => b.startedAt.localeCompare(a.startedAt));
-    const resumable = runs.find((r) => r.status === 'RESUMABLE');
-    return resumable?.externalSessionId ?? null;
+    const resumable = runs.find((r) => r.status === 'RESUMABLE' && r.externalSessionId !== null);
+    return resumable ?? null;
   }
 
   #requireTask(id: TaskId): MissionTask {

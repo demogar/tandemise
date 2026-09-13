@@ -3,7 +3,7 @@ import { dirname, isAbsolute, resolve } from 'node:path';
 import type {
   AgentEvent, RuntimeCapability, RuntimeDiscovery, RuntimeHealth, RuntimeProfile,
 } from '@tandemise/domain';
-import { NormalizingEventSink, classifyAbort } from '@tandemise/runtimes-core';
+import { NormalizingEventSink, SESSION_NOT_FOUND, classifyAbort } from '@tandemise/runtimes-core';
 import type { AgentRuntimeAdapter, RunRequest } from '@tandemise/runtimes-core';
 import { TandemiseError, errorMessage, isPathInside, systemClock } from '@tandemise/shared';
 import type { Clock, RunId } from '@tandemise/shared';
@@ -144,6 +144,10 @@ export class FakeRuntimeAdapter implements AgentRuntimeAdapter {
       return;
     }
     if (resumeSessionRef !== null) {
+      if (script.value.resume === 'missing') {
+        sink.fail(SESSION_NOT_FOUND, `The fake runtime has no session ${resumeSessionRef}.`, true);
+        return;
+      }
       sink.push({ type: 'checkpoint', externalSessionId: resumeSessionRef, label: 'session.resumed' });
     }
 
