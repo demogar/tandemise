@@ -5,7 +5,8 @@ import type {
   AgentEvent, RuntimeCapability, RuntimeDiscovery, RuntimeHealth, RuntimeProfile,
 } from '@tandemise/domain';
 import {
-  DEFAULT_TERMINATION_GRACE_MS, NormalizingEventSink, relieveBackPressure, superviseProcessStream,
+  DEFAULT_TERMINATION_GRACE_MS, NormalizingEventSink, SESSION_NOT_FOUND,
+  relieveBackPressure, superviseProcessStream,
 } from '@tandemise/runtimes-core';
 import { buildRuntimeEnv, withheldEnvNames } from '@tandemise/runtimes-core';
 import { CLAUDE_SETTINGS_SCHEMA, PARENT_SESSION_ENV, resolveConfigDir } from './settings.js';
@@ -17,6 +18,17 @@ import { ClaudeEventMapper } from './event-mapper.js';
 import { findExecutable, probeVersion, requireExecutable } from './discovery.js';
 
 export const CLAUDE_ADAPTER_ID = 'claude-code';
+
+/**
+ * How Claude Code says it has forgotten the session we asked it to continue.
+ *
+ * It reports this on stderr and then exits with the generic
+ * `error_during_execution` result, so the code alone is indistinguishable from
+ * a model that crashed halfway through real work. Matching the sentence is the
+ * only way to tell the two apart, and getting it wrong is expensive: an
+ * unrecognised stale handle failed the task rather than restarting it.
+ */
+const SESSION_MISSING = /no conversation found with session id/i;
 
 /**
  * What Claude Code can do, before any policy is applied (MVP.md §10.5). These
@@ -149,6 +161,7 @@ export class ClaudeCodeAdapter implements AgentRuntimeAdapter {
     const { args, stdin } = buildInvocation(request, resumeSessionRef);
     const cwd = absoluteWorkingDirectory(request.workingDirectory);
 
+    let sessionMissing = false;
     const sink = new NormalizingEventSink({ log, onInvalid: 'raw' });
     const mapper = new ClaudeEventMapper({
       // Probed against the run's working directory: a relative `file_path`
@@ -205,6 +218,11 @@ export class ClaudeCodeAdapter implements AgentRuntimeAdapter {
       sink,
       log,
       onStdoutLine: (line) => this.#handleLine(line, sink, mapper),
+      // Guarded on `resumeSessionRef`: a fresh start has no session to lose, so
+      // the same sentence arriving there means something else entirely.
+      onStderrLine: (line) => {
+        if (resumeSessionRef !== null && SESSION_MISSING.test(line)) sessionMissing = true;
+      },
       onExit: (code, killedBy) => {
         // Reached only when the CLI produced no `result` record of its own,
         // which for Claude Code means it died before finishing.
@@ -215,9 +233,31 @@ export class ClaudeCodeAdapter implements AgentRuntimeAdapter {
     this.#children.set(request.runId, stream.child);
 
     try {
+      // A failure on a resume is held back until the process has closed. The CLI
+      // explains itself on stderr and gives its verdict on stdout; those are
+      // separate pipes, so the verdict can arrive first. The sink ends only on
+      // `close`, after both pipes have ended, so by then the explanation is in.
+      let heldFailure: Extract<AgentEvent, { type: 'failed' }> | null = null;
       for await (const event of sink) {
         relieveBackPressure(stream.child, sink.pending);
+        if (resumeSessionRef !== null && event.type === 'failed') {
+          heldFailure = event;
+          continue;
+        }
         yield event;
+      }
+      if (heldFailure !== null) {
+        // Never over a cancellation or timeout: that verdict is about this run,
+        // and restarting a run someone just stopped would be the wrong answer.
+        // The raw stderr line stays in the log either way.
+        yield sessionMissing && !request.signal.aborted
+          ? {
+              type: 'failed',
+              code: SESSION_NOT_FOUND,
+              message: `Claude Code no longer has session ${resumeSessionRef}.`,
+              retryable: true,
+            }
+          : heldFailure;
       }
     } finally {
       this.#children.delete(request.runId);

@@ -1,4 +1,4 @@
-export { RUNTIME_ADAPTERS, describeAdapter } from './adapter.js';
+export { RUNTIME_ADAPTERS, SESSION_NOT_FOUND, describeAdapter } from './adapter.js';
 export type { AgentRuntimeAdapter, RunRequest, RuntimeAdapterDescriptor } from './adapter.js';
 
 export { RuntimeRegistry, RUNTIME_REGISTRY } from './registry.js';

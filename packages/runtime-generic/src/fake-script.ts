@@ -24,6 +24,15 @@ export type FakeStep =
 
 export interface FakeScript {
   readonly steps: readonly FakeStep[];
+  /**
+   * How the fake answers a resume.
+   *
+   * `'missing'` makes it behave like a runtime that has forgotten the session -
+   * the one condition a caller cannot discover by inspection, only by asking.
+   * It belongs here rather than in `steps` because it is a property of the
+   * runtime's memory, not of the work the run performs.
+   */
+  readonly resume: 'ok' | 'missing';
 }
 
 const STEP_KINDS = new Set([
@@ -37,6 +46,7 @@ const STEP_KINDS = new Set([
  * something true to collect.
  */
 export const DEFAULT_FAKE_SCRIPT: FakeScript = {
+  resume: 'ok',
   steps: [
     { kind: 'checkpoint', sessionId: 'fake-session-{{runId}}', label: 'session.init' },
     { kind: 'message', text: 'Fake runtime received: {{prompt}}' },
@@ -59,13 +69,17 @@ export function parseFakeScript(value: unknown): Result<FakeScript, TandemiseErr
   if (!Array.isArray(steps)) {
     return Err(TandemiseError.validation('Fake script must have a `steps` array'));
   }
+  const resume = (value as Record<string, unknown>)['resume'] ?? 'ok';
+  if (resume !== 'ok' && resume !== 'missing') {
+    return Err(TandemiseError.validation("Fake script `resume` must be 'ok' or 'missing'"));
+  }
   const parsed: FakeStep[] = [];
   for (const [index, raw] of steps.entries()) {
     const step = parseStep(raw, index);
     if (!step.ok) return step;
     parsed.push(step.value);
   }
-  return Ok({ steps: parsed });
+  return Ok({ steps: parsed, resume });
 }
 
 function parseStep(raw: unknown, index: number): Result<FakeStep, TandemiseError> {

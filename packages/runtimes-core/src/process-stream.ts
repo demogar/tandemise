@@ -68,6 +68,12 @@ export interface ProcessStreamOptions {
   /** Called for each complete stdout line. Must not throw. */
   readonly onStdoutLine: (line: string) => void;
   /**
+   * Called for each complete stderr line, before it is recorded as raw. Must
+   * not throw. Exists because some runtimes explain themselves on stderr and
+   * then report a generic code on stdout - the explanation is the diagnosis.
+   */
+  readonly onStderrLine?: (line: string) => void;
+  /**
    * The runtime's verdict, when it gave none of its own. Not called if a
    * terminal event was already emitted, or if the run was cancelled.
    */
@@ -112,13 +118,17 @@ export function superviseProcessStream(options: ProcessStreamOptions): Supervise
   });
 
   const stderrLines = new LineAssembler();
+  const onStderrLine = (line: string): void => {
+    options.onStderrLine?.(line);
+    sink.raw('stderr', line);
+  };
   stderr.setEncoding('utf8');
   stderr.on('data', (chunk: string) => {
-    for (const line of stderrLines.push(chunk)) sink.raw('stderr', line);
+    for (const line of stderrLines.push(chunk)) onStderrLine(line);
   });
   stderr.on('end', () => {
     const trailing = stderrLines.flush();
-    if (trailing !== null) sink.raw('stderr', trailing);
+    if (trailing !== null) onStderrLine(trailing);
   });
 
   child.on('error', (e) => {
