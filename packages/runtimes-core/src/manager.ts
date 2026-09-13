@@ -34,11 +34,22 @@ export interface RuntimeRejection {
    * busy candidates should wait for a slot rather than treat it as a failure.
    */
   readonly busy?: true;
+  /**
+   * The candidate is waiting on a person (its health carries `actionRequired`).
+   * Like `busy`, a reason to wait rather than fail - just a longer wait.
+   */
+  readonly awaitingPerson?: true;
 }
 
 /** True when every candidate was capable and merely out of slots. */
 export function onlyBusy(failure: RuntimeSelectionFailure): boolean {
   return failure.rejections.length > 0 && failure.rejections.every((r) => r.busy === true);
+}
+
+/** Every candidate will be usable again without the work changing: busy, or waiting on a person. */
+export function onlyWaiting(failure: RuntimeSelectionFailure): boolean {
+  return failure.rejections.length > 0
+    && failure.rejections.every((r) => r.busy === true || r.awaitingPerson === true);
 }
 
 export interface RuntimeSelectionFailure {
@@ -210,7 +221,11 @@ export class RuntimeManager {
         degraded ??= { profile, adapter, health };
         continue;
       }
-      rejections.push({ profileId: profile.id, reason: `${health.state}: ${health.detail}` });
+      rejections.push({
+        profileId: profile.id,
+        reason: `${health.state}: ${health.actionRequired ?? health.detail}`,
+        ...(health.actionRequired === undefined ? {} : { awaitingPerson: true as const }),
+      });
     }
 
     if (degraded !== null) {

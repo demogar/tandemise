@@ -5,7 +5,7 @@ import type {
   AgentEvent, RuntimeCapability, RuntimeDiscovery, RuntimeHealth, RuntimeProfile,
 } from '@tandemise/domain';
 import {
-  DEFAULT_TERMINATION_GRACE_MS, NormalizingEventSink, SESSION_NOT_FOUND,
+  DEFAULT_TERMINATION_GRACE_MS, NormalizingEventSink, RUNTIME_SIGNED_OUT, SESSION_NOT_FOUND,
   relieveBackPressure, superviseProcessStream,
 } from '@tandemise/runtimes-core';
 import { buildRuntimeEnv, withheldEnvNames } from '@tandemise/runtimes-core';
@@ -29,6 +29,21 @@ export const CLAUDE_ADAPTER_ID = 'claude-code';
  * unrecognised stale handle failed the task rather than restarting it.
  */
 const SESSION_MISSING = /no conversation found with session id/i;
+
+/**
+ * How Claude Code says it cannot authenticate. Seen in the wild as a `result`
+ * whose subtype is, unhelpfully, `success` with `is_error: true` and the text
+ * "Failed to authenticate: OAuth session expired and could not be refreshed";
+ * the other phrasings are the CLI's prompts to log in.
+ */
+const SIGNED_OUT = /failed to authenticate|oauth (session|token).{0,20}expired|not logged in|invalid api key|please run \/login|authentication_error/i;
+
+/**
+ * How long a sign-in failure keeps a profile unavailable. Short, because the
+ * health probe cannot see a login - only a run can - so this is also how often
+ * a waiting task tries again, and the fix is usually one command away.
+ */
+const SIGNED_OUT_TTL_MS = 2 * 60_000;
 
 /**
  * What Claude Code can do, before any policy is applied (MVP.md §10.5). These
@@ -73,6 +88,8 @@ export class ClaudeCodeAdapter implements AgentRuntimeAdapter {
   readonly #clock: Clock;
   readonly #graceMs: number;
   #quota: QuotaObservation | null = null;
+  /** Per profile: two profiles can run under two config directories, two logins. */
+  readonly #signedOut = new Map<string, { readonly detail: string; readonly observedAtMs: number }>();
 
   constructor(options: ClaudeCodeAdapterOptions = {}) {
     this.#clock = options.clock ?? systemClock;
@@ -125,6 +142,10 @@ export class ClaudeCodeAdapter implements AgentRuntimeAdapter {
     }
     const { version, detail } = await probeVersion(executablePath);
     if (version === null) return this.#health(profile, 'unavailable', null, detail);
+    const signedOut = this.#currentSignOut(profile);
+    if (signedOut !== null) {
+      return { ...this.#health(profile, 'unavailable', version, signedOut), actionRequired: signedOut };
+    }
     const quota = this.#currentQuota();
     return this.#health(profile, quota?.blocking === true ? 'degraded' : 'healthy', version, detail);
   }
@@ -165,6 +186,7 @@ export class ClaudeCodeAdapter implements AgentRuntimeAdapter {
     const cwd = absoluteWorkingDirectory(request.workingDirectory);
 
     let sessionMissing = false;
+    let signedOutLine: string | null = null;
     const sink = new NormalizingEventSink({ log, onInvalid: 'raw' });
     const mapper = new ClaudeEventMapper({
       // Probed against the run's working directory: a relative `file_path`
@@ -225,6 +247,7 @@ export class ClaudeCodeAdapter implements AgentRuntimeAdapter {
       // the same sentence arriving there means something else entirely.
       onStderrLine: (line) => {
         if (resumeSessionRef !== null && SESSION_MISSING.test(line)) sessionMissing = true;
+        if (SIGNED_OUT.test(line)) signedOutLine ??= line;
       },
       onExit: (code, killedBy) => {
         // Reached only when the CLI produced no `result` record of its own,
@@ -236,32 +259,26 @@ export class ClaudeCodeAdapter implements AgentRuntimeAdapter {
     this.#children.set(request.runId, stream.child);
 
     try {
-      // A failure on a resume is held back until the process has closed. The CLI
-      // explains itself on stderr and gives its verdict on stdout; those are
-      // separate pipes, so the verdict can arrive first. The sink ends only on
-      // `close`, after both pipes have ended, so by then the explanation is in.
+      // A failure is held back until the process has closed. The CLI explains
+      // itself on stderr and gives its verdict on stdout; those are separate
+      // pipes, so the verdict can arrive first. The sink ends only on `close`,
+      // after both pipes have ended, so by then the explanation is in. Nothing
+      // but raw lines can follow a failure, so holding it reorders nothing.
       let heldFailure: Extract<AgentEvent, { type: 'failed' }> | null = null;
+      let didWork = false;
       for await (const event of sink) {
         relieveBackPressure(stream.child, sink.pending);
-        if (resumeSessionRef !== null && event.type === 'failed') {
+        if (event.type === 'failed') {
           heldFailure = event;
           continue;
         }
+        if (event.type === 'message' || event.type === 'tool.started' || event.type === 'file.changed') didWork = true;
+        if (event.type === 'completed') this.#signedOut.delete(request.profile.id);
         yield event;
       }
-      if (heldFailure !== null) {
-        // Never over a cancellation or timeout: that verdict is about this run,
-        // and restarting a run someone just stopped would be the wrong answer.
-        // The raw stderr line stays in the log either way.
-        yield sessionMissing && !request.signal.aborted
-          ? {
-              type: 'failed',
-              code: SESSION_NOT_FOUND,
-              message: `Claude Code no longer has session ${resumeSessionRef}.`,
-              retryable: true,
-            }
-          : heldFailure;
-      }
+      if (heldFailure !== null) yield this.#classifyFailure(heldFailure, request, {
+        resumeSessionRef, sessionMissing, signedOutLine, didWork, configDir: childEnv['CLAUDE_CONFIG_DIR'] ?? null,
+      });
     } finally {
       this.#children.delete(request.runId);
       stream.dispose();
@@ -279,6 +296,59 @@ export class ClaudeCodeAdapter implements AgentRuntimeAdapter {
       return;
     }
     for (const event of mapper.map(parsed)) sink.push(event);
+  }
+
+  /**
+   * Replaces the CLI's own failure code with a canonical one when the cause is
+   * something the caller should act on rather than count against the work.
+   * Never over a cancellation or timeout: that verdict is about this run, and
+   * the raw lines stay in the log either way.
+   */
+  #classifyFailure(
+    failure: Extract<AgentEvent, { type: 'failed' }>,
+    request: RunRequest,
+    seen: {
+      readonly resumeSessionRef: string | null;
+      readonly sessionMissing: boolean;
+      readonly signedOutLine: string | null;
+      readonly didWork: boolean;
+      readonly configDir: string | null;
+    },
+  ): AgentEvent {
+    if (request.signal.aborted) return failure;
+
+    // Only a run that failed before doing anything can have failed for want of
+    // a login - Claude Code authenticates before its first turn. A run that
+    // talked or used a tool got in; if sign-in words turn up afterwards they
+    // came from the work (a login page under test, an MCP server's own error),
+    // and treating them as a sign-out would refund a real failure forever.
+    const signedOut = seen.didWork ? null : SIGNED_OUT.test(failure.message) ? failure.message : seen.signedOutLine;
+    if (signedOut !== null) {
+      const where = seen.configDir === null ? 'its default config directory' : seen.configDir;
+      const detail = `Claude Code is signed out (${signedOut.trim()}). `
+        + `Sign in again for ${where}; waiting work resumes on its own once it can run.`;
+      this.#signedOut.set(request.profile.id, { detail, observedAtMs: this.#clock.epochMs() });
+      return { type: 'failed', code: RUNTIME_SIGNED_OUT, message: detail, retryable: true };
+    }
+    if (seen.sessionMissing && seen.resumeSessionRef !== null) {
+      return {
+        type: 'failed',
+        code: SESSION_NOT_FOUND,
+        message: `Claude Code no longer has session ${seen.resumeSessionRef}.`,
+        retryable: true,
+      };
+    }
+    return failure;
+  }
+
+  #currentSignOut(profile: RuntimeProfile): string | null {
+    const observed = this.#signedOut.get(profile.id);
+    if (observed === undefined) return null;
+    if (this.#clock.epochMs() - observed.observedAtMs > SIGNED_OUT_TTL_MS) {
+      this.#signedOut.delete(profile.id);
+      return null;
+    }
+    return observed.detail;
   }
 
   #recordQuota(detail: string): void {

@@ -16,7 +16,7 @@ import type { ExecutionTarget, ExecutionTargetManager } from '@tandemise/executi
 import type { ApprovalFactory, GrantBuilder, PolicyEngine } from '@tandemise/policy';
 import type { ToolBroker } from '@tandemise/integrations-core';
 import { McpGatewayProvisioner, NO_TOOL_SURFACE, type RunToolSurface } from './mcp-gateway.js';
-import { SESSION_NOT_FOUND, onlyBusy } from '@tandemise/runtimes-core';
+import { RUNTIME_SIGNED_OUT, SESSION_NOT_FOUND, onlyBusy, onlyWaiting } from '@tandemise/runtimes-core';
 import type { RunRequest, RuntimeManager, RuntimeSelection, SlotReservation } from '@tandemise/runtimes-core';
 import type { Clock, Logger, RunId, TandemisePaths, TaskId } from '@tandemise/shared';
 import { TandemiseError, errorMessage, ids, slugify, summarize } from '@tandemise/shared';
@@ -32,9 +32,29 @@ import { MAX_PARKED_MS, type RunDeadlines } from './run-deadline.js';
 /** How long a resource lease is held before the scheduler must renew it. */
 const LEASE_TTL_MS = 30 * 60_000;
 
+/**
+ * How often a task waiting on a person's action at the runtime - a sign-in - is
+ * offered again. Each offer costs only a cached health read until the runtime's
+ * own unavailability window lapses, so this bounds latency, not load.
+ */
+const AWAITING_PERSON_RETRY_MS = 15_000;
+
+/**
+ * The longest a task waits between tries after its runs keep reporting a
+ * sign-in failure. The adapter normally throttles by marking itself
+ * unavailable; this bounds the cost when one does not, without ever turning a
+ * wait for a person into a failure.
+ */
+const MAX_SIGNED_OUT_BACKOFF_MS = 10 * 60_000;
+
 export type TaskAttemptOutcome =
-  /** Admission failed for a reason that will resolve on its own. Try next tick. */
-  | { readonly kind: 'deferred'; readonly reason: string }
+  /** Admission failed for a reason that will resolve on its own. Try again shortly. */
+  | {
+      readonly kind: 'deferred';
+      readonly reason: string;
+      /** How long to wait before offering the task again; the scheduler's default when absent. */
+      readonly retryAfterMs?: number;
+    }
   | {
       readonly kind: 'settled';
       readonly status: TaskStatus;
@@ -167,6 +187,13 @@ export class TaskExecutor {
       // Every capable runtime is busy: that is contention, not a failure. The
       // task stays READY and is offered again once a slot frees up.
       if (onlyBusy(selected.error)) return { kind: 'deferred', reason: `Waiting for a runtime slot. ${detail}` };
+      // A runtime waiting on a person - signed out, most often - will run this
+      // task unchanged once they act. Blocking would make them also find and
+      // retry every task it stranded; waiting lets the work resume by itself.
+      if (onlyWaiting(selected.error)) {
+        const action = selected.error.rejections.find((r) => r.awaitingPerson === true)?.reason ?? detail;
+        return { kind: 'deferred', reason: `Waiting for you: ${action}`, retryAfterMs: AWAITING_PERSON_RETRY_MS };
+      }
       return this.#block(
         task,
         scope,
@@ -194,11 +221,12 @@ export class TaskExecutor {
     const resuming = this.#resumableRun(task.id, adapter.resume !== undefined) !== null && task.attempts > 0;
     const attempt = resuming ? task.attempts : task.attempts + 1;
 
-    // Captured before the transition, because moving to RUNNING clears
-    // `statusReason` - and `statusReason` is where the previous attempt's gate
-    // failure lives. Reading it after the transition is how the single
-    // highest-value feedback loop in the system silently becomes a no-op.
-    const feedback = attempt > 1 && !resuming ? task.statusReason : null;
+    // The previous attempt's measured failure, read from its own column rather
+    // than `statusReason`: that is the line a person reads, and any wait between
+    // the failure and this retry - a busy runtime, a sign-in - rewrote it. The
+    // retry was then told it had "failed" because it was queued, and the single
+    // highest-value feedback loop in the system silently became a no-op.
+    const feedback = attempt > 1 && !resuming ? task.retryFeedback ?? null : null;
 
     const running = this.#setStatus(task, scope, 'RUNNING', null, {
       attempts: attempt,
@@ -314,6 +342,19 @@ export class TaskExecutor {
           return { kind: 'settled', status: current.status, reason: current.statusReason };
         }
         return this.#settle(running, scope, 'CANCELLED', 'Cancelled before the run finished.');
+      }
+
+      if (outcome.failure?.code === RUNTIME_SIGNED_OUT) {
+        // Nothing about the work was tried, so nothing about it is judged: the
+        // attempt is handed back and the task waits for the runtime. The adapter
+        // has already marked the profile unavailable; dropping the cached health
+        // makes routing see that now rather than after the cache lapses.
+        deps.runtimeManager.invalidateHealth(profile.id);
+        const reason = `Waiting for you: ${outcome.failure.message}`;
+        // Only the row's line changes; `retryFeedback` keeps what the last real
+        // attempt failed on, for the attempt that eventually runs.
+        this.#setStatus(running, scope, 'READY', reason, { attempts: task.attempts });
+        return { kind: 'deferred', reason, retryAfterMs: this.#signedOutBackoff(task.id) };
       }
 
       // 8/9. Commit first, then harvest, so every artifact carries the commit
@@ -485,7 +526,11 @@ export class TaskExecutor {
     const finishedAt = deps.clock.now();
     const interrupted = isDaemonStopping(signal);
     const session = deps.runs.get(runId)?.externalSessionId ?? null;
-    const status = interrupted
+    // A signed-out runtime never reached the session it was asked to continue,
+    // so a resume that failed that way hands the handle on intact: after the
+    // sign-in the work continues where the restart left it, not from scratch.
+    const resumeUntouched = failure?.code === RUNTIME_SIGNED_OUT && resumeFrom !== null;
+    const status = interrupted || resumeUntouched
       ? (session !== null && input.adapter.resume !== undefined ? 'RESUMABLE' : 'INTERRUPTED')
       : cancelled ? 'CANCELLED' : failure === null ? 'SUCCEEDED' : 'FAILED';
     deps.runs.update(runId, {
@@ -630,12 +675,12 @@ export class TaskExecutor {
       return this.#settle(task, scope, 'SUCCEEDED', `Found blocking problems: ${verdict.detail}`);
     }
 
-    // 11(b). Gate feedback into the retry. `statusReason` is the carrier: it is
-    //        persisted, it is what the UI shows, and the next attempt's prompt
-    //        quotes it verbatim so the worker is told exactly what it failed.
+    // 11(b). Gate feedback into the retry. Shown on the row, and kept in
+    //        `retryFeedback` so the next attempt's prompt can quote it verbatim
+    //        however long the task waits - even past a block and a manual retry.
     const feedback = verdict.detail;
     if (task.attempts < task.retryPolicy.maxAttempts) {
-      this.#setStatus(task, scope, 'READY', feedback);
+      this.#setStatus(task, scope, 'READY', feedback, { retryFeedback: feedback });
       return {
         kind: 'settled',
         status: 'READY',
@@ -644,10 +689,10 @@ export class TaskExecutor {
       };
     }
     if (task.retryPolicy.onExhausted === 'fail') {
-      return this.#settle(task, scope, 'FAILED', feedback);
+      return this.#settle(task, scope, 'FAILED', feedback, { retryFeedback: feedback });
     }
     this.#createInterventionApproval(task, mission, workspace, feedback);
-    return this.#settle(task, scope, 'BLOCKED', feedback);
+    return this.#settle(task, scope, 'BLOCKED', feedback, { retryFeedback: feedback });
   }
 
   /**
@@ -1188,6 +1233,9 @@ export class TaskExecutor {
       status,
       statusReason: reason,
       ...(finished ? { finishedAt: this.deps.clock.now() } : {}),
+      // A success answers whatever the last failure said; nothing is owed to a
+      // later attempt of this task any more.
+      ...(status === 'SUCCEEDED' ? { retryFeedback: null } : {}),
       ...extra,
     });
     this.deps.recorder.record(scope, {
@@ -1200,17 +1248,25 @@ export class TaskExecutor {
     return updated;
   }
 
-  #settle(task: MissionTask, scope: EventScope, status: TaskStatus, reason: string | null): TaskAttemptOutcome {
-    this.#setStatus(task, scope, status, reason);
+  #settle(
+    task: MissionTask,
+    scope: EventScope,
+    status: TaskStatus,
+    reason: string | null,
+    extra: Partial<MissionTask> = {},
+  ): TaskAttemptOutcome {
+    this.#setStatus(task, scope, status, reason, extra);
     return { kind: 'settled', status, reason };
   }
 
   #settleFailure(task: MissionTask, scope: EventScope, reason: string): TaskAttemptOutcome {
     if (task.attempts < task.retryPolicy.maxAttempts) {
-      this.#setStatus(task, scope, 'READY', reason);
+      this.#setStatus(task, scope, 'READY', reason, { retryFeedback: reason });
       return { kind: 'settled', status: 'READY', reason, retryAfterMs: task.retryPolicy.backoffMs };
     }
-    return this.#settle(task, scope, task.retryPolicy.onExhausted === 'fail' ? 'FAILED' : 'BLOCKED', reason);
+    return this.#settle(
+      task, scope, task.retryPolicy.onExhausted === 'fail' ? 'FAILED' : 'BLOCKED', reason, { retryFeedback: reason },
+    );
   }
 
   #block(task: MissionTask, scope: EventScope, reason: string): TaskAttemptOutcome {
@@ -1237,6 +1293,14 @@ export class TaskExecutor {
     // Routing is an ordered preference list, so it is walked in order and a
     // profile it does not mention is not a candidate at all.
     return routed.flatMap((id) => all.filter((p) => p.id === id));
+  }
+
+  /** Doubles with each consecutive signed-out run of this task, up to a ceiling. */
+  #signedOutBackoff(taskId: TaskId): number {
+    const runs = [...this.deps.runs.listByTask(taskId)].sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+    const streak = runs.findIndex((r) => r.errorCode !== RUNTIME_SIGNED_OUT);
+    const consecutive = streak === -1 ? runs.length : streak;
+    return Math.min(AWAITING_PERSON_RETRY_MS * 2 ** Math.max(0, consecutive - 1), MAX_SIGNED_OUT_BACKOFF_MS);
   }
 
   #resumableRun(taskId: TaskId, adapterSupportsResume: boolean): Run | null {

@@ -62,6 +62,13 @@ export interface RuntimeHealth {
   readonly checkedAt: Timestamp;
   /** Set when the runtime reported a quota/rate limit (MVP.md §22.2). */
   readonly quotaWarning: string | null;
+  /**
+   * Set when the runtime cannot run until a person does something - sign in
+   * again, typically - and says what. Distinct from a plain `unavailable`: the
+   * work waiting on this runtime should wait, not fail, because nothing about
+   * the work is wrong and the fix is one action away.
+   */
+  readonly actionRequired?: string;
 }
 
 /** What an adapter found on the machine, before the user configures a profile. */

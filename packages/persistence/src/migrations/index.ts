@@ -7,6 +7,7 @@ import { migration003 } from './003_task_executor.js';
 import { migration004 } from './004_workflow_inputs.js';
 import { migration005 } from './005_task_wait.js';
 import { migration006 } from './006_task_park_statuses.js';
+import { migration007 } from './007_task_retry_feedback.js';
 
 export type { Migration } from './types.js';
 
@@ -15,7 +16,7 @@ export type { Migration } from './types.js';
  * released migration is immutable, because some installation has run it.
  */
 export const MIGRATIONS: readonly Migration[] = [
-  migration001, migration002, migration003, migration004, migration005, migration006,
+  migration001, migration002, migration003, migration004, migration005, migration006, migration007,
 ];
 
 /** The newest schema version this binary understands. */

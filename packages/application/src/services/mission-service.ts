@@ -251,6 +251,12 @@ export class MissionServiceImpl implements MissionService {
         : {}),
       status: 'READY',
       statusReason: reason,
+      // The retry's prompt quotes what the last attempt failed on. A note the
+      // person wrote is added to it, never swapped in: "Retried by the user"
+      // in its place told the worker nothing about what to do differently.
+      retryFeedback: [task.retryFeedback, options.note?.trim() ? `When retrying, the person said: ${options.note.trim()}` : null]
+        .filter((part): part is string => typeof part === 'string' && part.length > 0)
+        .join('\n\n') || null,
       retryPolicy: {
         ...task.retryPolicy,
         maxAttempts: Math.max(task.retryPolicy.maxAttempts, task.attempts + 1),

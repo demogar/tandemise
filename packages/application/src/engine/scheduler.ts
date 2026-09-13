@@ -363,7 +363,7 @@ export class SchedulerService implements LifecycleComponent {
     if (outcome.kind === 'deferred') {
       // Contention, not failure. Hold the slot open for a moment so a pair of
       // tasks fighting over one resource do not spin against each other.
-      this.#retryAfter.set(task.id, this.deps.clock.epochMs() + 1_000);
+      this.#retryAfter.set(task.id, this.deps.clock.epochMs() + (outcome.retryAfterMs ?? 1_000));
       // Said once, on the row: a READY task that never starts, with no reason
       // anywhere, is indistinguishable from a hung scheduler.
       const waiting = this.deps.tasks.get(task.id);
