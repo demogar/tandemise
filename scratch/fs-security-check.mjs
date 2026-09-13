@@ -43,6 +43,13 @@ await allows('a symlink that stays inside is followed', async () => {
   if ((await fs_.read('linked/inner.txt')) !== 'inner') throw new Error('bad content');
 });
 
+// Tasks sharing one checkout each prepare `.tandemise/out/<task>` at the same
+// moment; whichever loses the race to create `.tandemise` must not fail.
+await allows('concurrent mkdirs of sibling dirs under a shared new parent', () =>
+  Promise.all(Array.from({ length: 16 }, (_, i) => fs_.mkdir(`race/shared/t${i}`))));
+await allows('concurrent mkdirs of the same new dir', () =>
+  Promise.all(Array.from({ length: 16 }, () => fs_.mkdir('race2/same/leaf'))));
+
 console.log('\n── lexical traversal');
 await denies('../ escape is denied', () => fs_.write('../OUTSIDE/pwned.txt', 'x'));
 await denies('deep ../ escape is denied', () => fs_.write('a/b/../../../OUTSIDE/pwned.txt', 'x'));

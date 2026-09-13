@@ -165,7 +165,12 @@ export class ScopedFileSystem implements FileSystemHandle {
       cursor = parent;
     }
     for (const dir of missing) {
-      await fs.mkdir(dir);
+      // Another caller may create the same level between the scan and here
+      // (tasks sharing a checkout prepare `.tandemise/` at once). Losing that
+      // race is fine: the containment check below still vets what is there.
+      await fs.mkdir(dir).catch((e: NodeJS.ErrnoException) => {
+        if (e.code !== 'EEXIST') throw e;
+      });
       const check = await resolveThroughLinks(dir, roots, dir);
       if (!this.#inside(check, roots)) {
         throw denied(dir, this.roots, 'resolves outside the target roots');
