@@ -6,12 +6,13 @@ const ref = (n) => ({ path: `../${n}` });
 function writePkg(dir, name, spec, isApp) {
   mkdirSync(`${dir}/src`, { recursive: true });
   const deps = Object.fromEntries([
-    ...spec.deps.map((d) => [`@tandemise/${d}`, '0.1.0']),
+    ...spec.deps.map((d) => [`@tandemise/${d}`, '*']),
     ...Object.entries(spec.ext ?? {}),
   ]);
   const pkg = {
     name: `@tandemise/${name}`,
     version: '0.1.0',
+    license: 'Apache-2.0',
     private: true,
     type: 'module',
     main: './dist/index.js',

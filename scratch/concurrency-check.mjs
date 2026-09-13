@@ -4,8 +4,8 @@
  * so a slot that is not yet claimed lets two schedulers pick the same
  * maxConcurrent:1 profile.
  */
-import { RuntimeManager, RuntimeRegistry } from '/Users/you/projects/tandemise/packages/runtimes-core/dist/index.js';
-import { createLogger, ids, systemClock } from '/Users/you/projects/tandemise/packages/shared/dist/index.js';
+import { RuntimeManager, RuntimeRegistry } from '@tandemise/runtimes-core';
+import { createLogger, ids, systemClock } from '@tandemise/shared';
 
 let bad = 0;
 const ok = (n, c, d='') => { if (c) console.log(`  ok   ${n}${d?'  '+d:''}`); else { bad++; console.log(`  FAIL ${n}${d?'  '+d:''}`); } };

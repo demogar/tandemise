@@ -4,7 +4,7 @@
  * nothing — it just fails in the direction that trains the user to click
  * "approve" without reading.
  */
-import { classifyShellCommand, createPolicyEngine } from '/Users/you/projects/tandemise/packages/policy/dist/index.js';
+import { classifyShellCommand, createPolicyEngine } from '@tandemise/policy';
 
 const ctx = { writableRoots: ['/wt'], cwd: '/wt' };
 let bad = 0;

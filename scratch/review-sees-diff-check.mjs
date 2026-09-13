@@ -11,8 +11,8 @@ import { mkdtempSync, writeFileSync, existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { GitService, NodeProcessSupervisor, WorktreeTargetFactory, WorkspaceProvisioner } from '/Users/you/projects/tandemise/packages/execution-local/dist/index.js';
-import { createLogger, createPaths, ids, systemClock } from '/Users/you/projects/tandemise/packages/shared/dist/index.js';
+import { GitService, NodeProcessSupervisor, WorktreeTargetFactory, WorkspaceProvisioner } from '@tandemise/execution-local';
+import { createLogger, createPaths, ids, systemClock } from '@tandemise/shared';
 
 let bad = 0;
 const ok = (n,c,d='') => { if(c) console.log(`  ok   ${n}${d?'  '+d:''}`); else { bad++; console.log(`  FAIL ${n}${d?'  '+d:''}`); } };

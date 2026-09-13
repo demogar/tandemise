@@ -1,6 +1,7 @@
 {
   "name": "@tandemise/runtime-codex",
   "version": "0.1.0",
+  "license": "Apache-2.0",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
@@ -15,9 +16,9 @@
     "build": "tsc -b"
   },
   "dependencies": {
-    "@tandemise/shared": "0.1.0",
-    "@tandemise/kernel": "0.1.0",
-    "@tandemise/domain": "0.1.0",
-    "@tandemise/runtimes-core": "0.1.0"
+    "@tandemise/shared": "*",
+    "@tandemise/kernel": "*",
+    "@tandemise/domain": "*",
+    "@tandemise/runtimes-core": "*"
   }
 }

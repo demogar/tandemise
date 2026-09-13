@@ -2,6 +2,16 @@
   "name": "tandemise",
   "private": true,
   "version": "0.1.0",
+  "description": "A local-first operating system for running a software company with interchangeable AI workers.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/demogar/tandemise.git"
+  },
+  "homepage": "https://github.com/demogar/tandemise#readme",
+  "bugs": {
+    "url": "https://github.com/demogar/tandemise/issues"
+  },
   "type": "module",
   "engines": {
     "node": ">=22.0.0"
@@ -20,7 +30,10 @@
     "daemon:dev": "node --watch apps/daemon/dist/main.js",
     "desktop": "npm run -w @tandemise/desktop dev",
     "dev": "node scripts/dev.mjs",
-    "test": "vitest run"
+    "test": "npm run check:offline",
+    "check:offline": "node scripts/run-checks.mjs",
+    "ci": "npm run build && npm run check:boundaries && npm run check:licenses && npm run -w @tandemise/desktop typecheck && npm run check:offline",
+    "check:licenses": "node scripts/check-licenses.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

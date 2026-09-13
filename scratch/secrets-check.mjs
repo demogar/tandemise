@@ -1,5 +1,5 @@
-import { createSecretStore } from '/Users/you/projects/tandemise/apps/daemon/dist/secrets.js';
-import { createLogger } from '/Users/you/projects/tandemise/packages/shared/dist/index.js';
+import { createSecretStore } from '../apps/daemon/dist/secrets.js';
+import { createLogger } from '@tandemise/shared';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

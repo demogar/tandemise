@@ -9,7 +9,7 @@
 import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, existsSync, readFileSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ScopedFileSystem } from '/Users/you/projects/tandemise/packages/execution-core/dist/index.js';
+import { ScopedFileSystem } from '@tandemise/execution-core';
 
 let pass = 0; const fails = [];
 const ok = (n, c, d = '') => { if (c) { pass++; console.log(`  ok   ${n}${d ? `  ${d}` : ''}`); } else { fails.push(n); console.log(`  FAIL ${n}${d ? `  ${d}` : ''}`); } };
@@ -76,7 +76,10 @@ symlinkSync(join(wt, 'loop-a'), join(wt, 'loop-b'));
 await denies('a symlink cycle is denied rather than hanging', () => fs_.read('loop-a'));
 
 console.log('\n── root spelling (macOS /tmp is itself a symlink)');
-const given = base;
+// Elsewhere /tmp is a real directory, so reach the root through a symlink instead.
+const aliasDir = mkdtempSync(join(tmpdir(), 'tdm-fssec-alias-'));
+if (realpathSync(base) === base) symlinkSync(base, join(aliasDir, 'root'));
+const given = realpathSync(base) === base ? join(aliasDir, 'root') : base;
 const canonical = realpathSync(base);
 ok('the two spellings really do differ', given !== canonical, `${given} vs ${canonical}`);
 const byGiven = new ScopedFileSystem(join(given, 'worktree'));

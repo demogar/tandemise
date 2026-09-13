@@ -7,7 +7,7 @@
  * just the body, but the label and origin, which are rendered in a heading that
  * sits outside the fence.
  */
-import { renderWithTrustBoundaries, trusted, untrusted } from '/Users/you/projects/tandemise/packages/policy/dist/index.js';
+import { renderWithTrustBoundaries, trusted, untrusted } from '@tandemise/policy';
 
 let bad = 0;
 const ok = (n, c, d='') => { if (c) console.log(`  ok   ${n}${d?'  '+d:''}`); else { bad++; console.log(`  FAIL ${n}${d?'  '+d:''}`); } };

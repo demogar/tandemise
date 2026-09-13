@@ -1,0 +1,41 @@
+name: Bug report
+description: Something in Tandemise does not work as expected
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Create a mission ...
+        2. ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Tandemise version or commit
+    validations:
+      required: true
+  - type: input
+    id: runtime
+    attributes:
+      label: Agent runtime(s) and version
+      placeholder: Claude Code 2.x, Codex CLI ...
+  - type: input
+    id: env
+    attributes:
+      label: macOS and Node versions
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Daemon logs, task or run ids. Redact secrets.
+      render: text

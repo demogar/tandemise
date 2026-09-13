@@ -1,5 +1,8 @@
 # Tandemise
 
+[![CI](https://github.com/demogar/tandemise/actions/workflows/ci.yml/badge.svg)](https://github.com/demogar/tandemise/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+
 *A local-first operating system for running a software company with
 interchangeable AI workers, tools, and machines.*
 
@@ -133,3 +136,13 @@ writing code), and create a mission.
 | `docs/` | `BUILD_BRIEF.md` (engineering contract), `APPLICATION_DESIGN.md` (mission engine) |
 
 `MVP.md` is the full product and architecture specification this implements.
+
+## Contributing
+
+Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) for the
+workflow (Conventional Commit PR titles, squash merges, automated releases) and
+[SECURITY.md](SECURITY.md) for reporting vulnerabilities.
+
+## License
+
+Tandemise is licensed under the [Apache License 2.0](LICENSE).

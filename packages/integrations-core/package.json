@@ -1,6 +1,7 @@
 {
   "name": "@tandemise/integrations-core",
   "version": "0.1.0",
+  "license": "Apache-2.0",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
@@ -15,10 +16,10 @@
     "build": "tsc -b"
   },
   "dependencies": {
-    "@tandemise/shared": "0.1.0",
-    "@tandemise/domain": "0.1.0",
-    "@tandemise/kernel": "0.1.0",
-    "@tandemise/policy": "0.1.0",
+    "@tandemise/shared": "*",
+    "@tandemise/domain": "*",
+    "@tandemise/kernel": "*",
+    "@tandemise/policy": "*",
     "zod": "^3.24.1"
   }
 }

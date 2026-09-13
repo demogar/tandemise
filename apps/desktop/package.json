@@ -3,6 +3,7 @@
   "productName": "Tandemise",
   "description": "A local-first desktop OS for running a software company with interchangeable AI workers.",
   "version": "0.1.0",
+  "license": "Apache-2.0",
   "private": true,
   "type": "module",
   "main": "./dist/main/index.js",
@@ -14,9 +15,9 @@
     "dev:mock": "node mock/server.mjs"
   },
   "dependencies": {
-    "@tandemise/api-contract": "0.1.0",
-    "@tandemise/domain": "0.1.0",
-    "@tandemise/shared": "0.1.0",
+    "@tandemise/api-contract": "*",
+    "@tandemise/domain": "*",
+    "@tandemise/shared": "*",
     "@tanstack/react-query": "^5.102.8",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

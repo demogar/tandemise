@@ -3,7 +3,7 @@
  * §19.1, §32 "credential leakage"). The daemon is routinely started from a
  * developer shell carrying tokens for entirely unrelated services.
  */
-import { buildRuntimeEnv, withheldEnvNames, BASE_RUNTIME_ENV } from '/Users/you/projects/tandemise/packages/runtimes-core/dist/index.js';
+import { buildRuntimeEnv, withheldEnvNames, BASE_RUNTIME_ENV } from '@tandemise/runtimes-core';
 
 let bad = 0;
 const ok = (n, c, d='') => { if (c) console.log(`  ok   ${n}${d?'  '+d:''}`); else { bad++; console.log(`  FAIL ${n}${d?'  '+d:''}`); } };
