@@ -605,7 +605,7 @@ ok('the task branches were integrated',
 head('7. recovery of a run whose process is gone');
 const victimTask = repos.tasks.listByMission(mission.id).find((t) => t.key === 'review');
 const victimRun = repos.runs.listByTask(victimTask.id)[0];
-repos.runs.update(victimRun.id, { status: 'RUNNING', pid: 999999, finishedAt: null, errorCode: null, errorMessage: null });
+repos.runs.update(victimRun.id, { status: 'RUNNING', pid: 999999, finishedAt: null, errorCode: null, errorMessage: null, externalSessionId: victimRun.externalSessionId ?? 'fake-session-for-resume' });
 repos.tasks.update(victimTask.id, { status: 'RUNNING', statusReason: null, finishedAt: null });
 repos.missions.update(mission.id, { status: 'EXECUTING', statusReason: 'simulated crash' });
 ok('a run is marked RUNNING with a dead pid',
@@ -626,6 +626,37 @@ ok('recovery reported what it did', report.tasksRequeued === 1,
 ok('a note was written to the mission timeline',
   repos.events.listByMission(mission.id, { limit: 100000 })
     .some((e) => e.body.type === 'note' && e.body.text.includes('Tandemise restarted')));
+
+// A task marked RUNNING with no run at all - an attempt that failed between
+// marking the task and recording its run - must not be stranded.
+{
+  const orphan = repos.tasks.listByMission(mission.id).find((t) => t.key !== victimTask.key && t.status === 'SUCCEEDED');
+  repos.tasks.update(orphan.id, { status: 'RUNNING', statusReason: null });
+  const orphanReport = await recovery.run();
+  ok('a task running with no run behind it is requeued',
+    repos.tasks.get(orphan.id).status === 'READY' && orphanReport.tasksRequeued >= 1, repos.tasks.get(orphan.id).statusReason);
+  repos.tasks.update(orphan.id, { status: 'SUCCEEDED', statusReason: null });
+}
+
+// The resume itself. Found in the real app: continuing an interrupted attempt
+// reused its attempt number for the new run row, (task_id, attempt) is unique,
+// and the task blocked on a constraint error the moment it resumed.
+if (recovered.status === 'RESUMABLE') {
+  const runsBefore = repos.runs.listByTask(victimTask.id).length;
+  await scheduler.tick(); await scheduler.drain();
+  const afterResume = repos.tasks.get(victimTask.id);
+  const resumedRuns = repos.runs.listByTask(victimTask.id);
+  ok('the resumed task ran again without a constraint error',
+    resumedRuns.length === runsBefore + 1 && !/constraint/i.test(afterResume.statusReason ?? ''),
+    `${afterResume.status} ${afterResume.statusReason ?? ''}`);
+  ok('resuming continued the attempt instead of spending a new one',
+    afterResume.attempts === victimTask.attempts, `attempts ${victimTask.attempts} -> ${afterResume.attempts}`);
+  ok('each run keeps a distinct number',
+    new Set(resumedRuns.map((r) => r.attempt)).size === resumedRuns.length,
+    resumedRuns.map((r) => r.attempt).join(','));
+  ok('the resumed run carried the session it resumed',
+    resumedRuns.some((r) => r.id !== victimRun.id && r.externalSessionId === recovered.externalSessionId));
+}
 
 // ==================================================== 8. policy on the tool path
 head('8. the policy engine is on the execution path');
@@ -716,6 +747,60 @@ services.roles.upsert({
 ok('a role someone wrote can be created', services.roles.list(workspaceId).some((r) => r.id === 'house_scribe'));
 services.roles.remove('house_scribe', workspaceId);
 ok('a role someone wrote is actually deleted', !services.roles.list(workspaceId).some((r) => r.id === 'house_scribe'));
+
+// Found in the real app: roles seeded before the Designer gained `design` kept
+// the old defaults forever, so a design task could not reach Open Design.
+{
+  const roleRepo = container.resolve(appTokens.ROLE_REPOSITORY);
+  const stale = ['repository.read', 'filesystem.read', 'artifact.write'];
+  // The unedited test relies on seeding writing createdAt === updatedAt.
+  const seededWs = await services.workspaces.create({ name: 'Seeding timestamps check' });
+  const seededId = seededWs.workspace?.id ?? seededWs.id;
+  ok('a freshly seeded project role reads as unedited',
+    roleRepo.list(seededId).filter((r) => r.workspaceId === seededId).every((r) => r.createdAt === r.updatedAt),
+    `${roleRepo.list(seededId).filter((r) => r.workspaceId === seededId).length} scoped roles`);
+  ok('a freshly seeded project needs no refresh', services.roles.refreshBuiltIns([seededId]) === 0);
+
+  // A project seeded under the old bug: copied from the global, never edited,
+  // but createdAt taken from the global and updatedAt set later.
+  const legacyWs = await services.workspaces.create({ name: 'Legacy seeding check' });
+  const legacyId = legacyWs.workspace?.id ?? legacyWs.id;
+  const legacyArch = roleRepo.get('architecture', legacyId);
+  const staleGlobalArch = { ...legacyArch, workspaceId: null, defaultCapabilities: stale, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' };
+  roleRepo.upsert(staleGlobalArch);
+  roleRepo.upsert({ ...staleGlobalArch, workspaceId: legacyId, updatedAt: '2026-02-01T00:00:00.000Z' });
+  const legacyFinance = roleRepo.get('finance', legacyId);
+  roleRepo.upsert({ ...legacyFinance, workspaceId: null, defaultCapabilities: stale, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' });
+  roleRepo.upsert({ ...legacyFinance, workspaceId: legacyId, defaultCapabilities: stale, instructions: 'Our own finance rules.', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-02-01T00:00:00.000Z' });
+  services.roles.refreshBuiltIns([legacyId]);
+  const legacyArchAfter = roleRepo.get('architecture', legacyId);
+  ok('a legacy-seeded project role identical to its global is upgraded despite its timestamps',
+    legacyArchAfter.workspaceId === legacyId && legacyArchAfter.defaultCapabilities.includes('planning')
+    && legacyArchAfter.createdAt === legacyArchAfter.updatedAt, JSON.stringify(legacyArchAfter.defaultCapabilities));
+  const legacyFinanceAfter = roleRepo.get('finance', legacyId);
+  ok('a legacy-seeded project role someone edited is left alone',
+    legacyFinanceAfter.instructions === 'Our own finance rules.' && legacyFinanceAfter.defaultCapabilities.length === stale.length);
+
+  const shippedDesign = roleRepo.get('design', workspaceId);
+  roleRepo.upsert({ ...shippedDesign, workspaceId: null, defaultCapabilities: stale, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-02T00:00:00.000Z' });
+  const qa = roleRepo.get('qa', workspaceId);
+  roleRepo.upsert({ ...qa, workspaceId, defaultCapabilities: stale, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' });
+  const reviewer = roleRepo.get('review', workspaceId);
+  roleRepo.upsert({ ...reviewer, workspaceId, defaultCapabilities: stale, instructions: 'Our house review rules.', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-05T00:00:00.000Z' });
+
+  const refreshed = services.roles.refreshBuiltIns([workspaceId]);
+  ok('stale, unedited built-ins are brought up to the shipped definition', refreshed >= 2, `refreshed=${refreshed}`);
+  ok('a stale global built-in regains its shipped capabilities',
+    roleRepo.list(null).find((r) => r.id === 'design' && r.workspaceId === null)?.defaultCapabilities.includes('design'));
+  const qaAfter = roleRepo.get('qa', workspaceId);
+  ok('an unedited project built-in is refreshed and still reads as unedited',
+    qaAfter.defaultCapabilities.includes('browser') && qaAfter.createdAt === qaAfter.updatedAt);
+  const reviewAfter = roleRepo.get('review', workspaceId);
+  ok('a built-in someone edited is left exactly as they left it',
+    reviewAfter.instructions === 'Our house review rules.' && reviewAfter.defaultCapabilities.length === stale.length);
+  ok('refreshing again changes nothing', services.roles.refreshBuiltIns([workspaceId]) === 0);
+  services.roles.remove('review', workspaceId);
+}
 
 ok('artifacts are searchable', services.artifacts.search(workspaceId, 'clear').length > 0,
   `${services.artifacts.search(workspaceId, 'clear').length} hits`);

@@ -1,15 +1,27 @@
 import type { MissionDetail, TaskView } from '@tandemise/api-contract';
 import { Icon } from '../../components/Icon.js';
 import { Modal } from '../../components/Modal.js';
-import { ErrorState, StatusBadge } from '../../components/primitives.js';
+import { ErrorState, IdChip, StatusBadge } from '../../components/primitives.js';
 import { useState } from 'react';
-import { useDaemonMutation } from '../../lib/queries.js';
+import { useDaemonMutation, useRoles } from '../../lib/queries.js';
 import { dateTime, duration, taskTone, titleCase } from '../../lib/format.js';
 import { ApprovalCard } from '../approvals/ApprovalCard.js';
 
 export function TaskDetail({ task, detail, onClose }: { task: TaskView; detail: MissionDetail; onClose: () => void }): JSX.Element {
   const retry = useDaemonMutation((daemon) => daemon.retryTask(task.id), ['tasks', 'missions'], detail.mission.id);
   const canRetry = task.status === 'FAILED' || task.status === 'BLOCKED';
+
+  // What the role allows that this task was not planned with. A worker that
+  // stops because its grants are too narrow is asking for exactly this.
+  const role = useRoles().data?.find((r) => r.id === task.roleId);
+  const missing = (role?.defaultCapabilities ?? []).filter((c) => !task.executionPolicy.capabilities.includes(c));
+  const [extra, setExtra] = useState<readonly string[]>([]);
+  const widen = useDaemonMutation(
+    (daemon) => daemon.retryTask(task.id, { addCapabilities: extra }),
+    ['tasks', 'missions', 'approvals'],
+    detail.mission.id,
+  );
+  const canWiden = missing.length > 0 && ['FAILED', 'BLOCKED', 'AWAITING_INPUT', 'SUCCEEDED', 'CANCELLED'].includes(task.status);
 
   // A task waiting on a person is the one case where the mission is not stuck
   // and not running - it is waiting for you, and this is where you clear it.
@@ -35,8 +47,10 @@ export function TaskDetail({ task, detail, onClose }: { task: TaskView; detail: 
       onClose={onClose}
       footer={
         <>
-          <span className="dim" style={{ marginRight: 'auto', fontSize: 'var(--fs-xs)' }}>
+          <span className="dim" style={{ marginRight: 'auto', fontSize: 'var(--fs-xs)', display: 'inline-flex', gap: 8, alignItems: 'center' }}>
+            <IdChip id={task.id} />
             {task.key}
+            {task.latestRun ? <IdChip id={task.latestRun.id} prefix="run" /> : null}
           </span>
           {waitingOnYou ? (
             <button
@@ -67,6 +81,35 @@ export function TaskDetail({ task, detail, onClose }: { task: TaskView; detail: 
             compact
             view={{ approval: question, missionTitle: null, taskTitle: null, roleName: task.roleName, revisable: false }}
           />
+        ) : null}
+
+        {canWiden ? (
+          <details className="card">
+            <summary style={{ cursor: 'pointer', fontWeight: 600 }}>Retry with more access</summary>
+            <div className="stack" style={{ gap: 'var(--s2)', marginTop: 'var(--s3)' }}>
+              <p className="muted" style={{ margin: 0 }}>
+                What the {task.roleName} role may do that this task was not planned with. Anything that leaves this
+                machine still follows your autonomy setting.
+              </p>
+              {missing.map((capability) => (
+                <label key={capability} className="row" style={{ gap: 'var(--s2)' }}>
+                  <input
+                    type="checkbox"
+                    checked={extra.includes(capability)}
+                    onChange={(e) => setExtra(e.target.checked ? [...extra, capability] : extra.filter((c) => c !== capability))}
+                  />
+                  <span className="mono">{capability}</span>
+                </label>
+              ))}
+              <div>
+                <button type="button" className="btn" disabled={extra.length === 0 || widen.isPending} onClick={() => widen.mutate(undefined, { onSuccess: onClose })}>
+                  <Icon name="refresh" size={13} />
+                  {widen.isPending ? 'Retrying…' : `Retry with ${extra.length || ''} more`.trim()}
+                </button>
+              </div>
+              {widen.isError ? <ErrorState error={widen.error} /> : null}
+            </div>
+          </details>
         ) : null}
 
         {waitingOnYou ? (

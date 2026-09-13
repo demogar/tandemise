@@ -82,6 +82,10 @@ export interface MissionService {
 export interface PlanningService {
   /** Runs the planner role, validates the result, and stores the plan. */
   plan(id: MissionId): Promise<MissionDetail>;
+  /** Moves the mission to PLANNING and plans in the background; resolves at once. */
+  begin(id: MissionId): Promise<MissionDetail>;
+  /** Re-plans missions a previous daemon left in PLANNING. */
+  resumeInterrupted(): readonly MissionId[];
 }
 
 export interface ApprovalService {
@@ -110,6 +114,8 @@ export interface RoleService {
   list(workspaceId?: string): readonly RoleTemplate[];
   upsert(request: UpsertRoleRequest): RoleTemplate;
   remove(id: string, workspaceId: WorkspaceId): void;
+  /** Upgrades unedited built-in roles to the shipped definition; returns how many changed. */
+  refreshBuiltIns(workspaceIds: readonly WorkspaceId[]): number;
 }
 
 export interface IntegrationService {

@@ -3,7 +3,7 @@ import { Link, useLocation } from 'wouter';
 import type { MissionStatus } from '@tandemise/domain';
 import { PageHeader } from '../components/PageHeader.js';
 import { Icon } from '../components/Icon.js';
-import { Empty, ErrorState, SkeletonList, StatusBadge, StatusDot } from '../components/primitives.js';
+import { Empty, ErrorState, IdChip, SkeletonList, StatusBadge, StatusDot } from '../components/primitives.js';
 import { useMissions } from '../lib/queries.js';
 import { useListNavigation } from '../lib/keyboard.js';
 import { missionTone, pluralize, relativeTime } from '../lib/format.js';
@@ -138,7 +138,10 @@ export function Missions(): JSX.Element {
                     >
                       <StatusDot tone={tone} live={tone === 'running'} />
                       <div className="list__main">
-                        <div className="list__title">{summary.mission.title}</div>
+                        <div className="list__title" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                          <span className="truncate">{summary.mission.title}</span>
+                          <IdChip id={summary.mission.id} />
+                        </div>
                         <div className="list__subtitle truncate" title={summary.currentActivity ?? summary.mission.goal}>
                           {summary.currentActivity ?? summary.mission.goal}
                         </div>

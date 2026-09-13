@@ -66,11 +66,17 @@ export function buildRouter(services: TandemiseServices): Router {
   r.get('/v1/missions', (ctx) => {
     return services.missions.list(query(ctx, listMissionsQuery));
   });
-  r.post('/v1/missions', async (ctx) => services.missions.create(await ctx.body(createMissionRequest)));
+  // Answered with the full MissionDetail, the same shape as GET: the desktop
+  // navigates to `detail.mission.id`, and a bare Mission made that throw, so
+  // "Plan mission" created the mission and left the user on the empty form.
+  r.post('/v1/missions', async (ctx) => {
+    const mission = await services.missions.create(await ctx.body(createMissionRequest));
+    return services.projections.missionDetail(mission.id);
+  });
   r.get('/v1/missions/:id', (ctx) => services.projections.missionDetail(asId(ctx.params.id!)));
   r.delete('/v1/missions/:id', (ctx) => services.missions.remove(asId(ctx.params.id!)));
 
-  r.post('/v1/missions/:id/plan', (ctx) => services.planning.plan(asId(ctx.params.id!)));
+  r.post('/v1/missions/:id/plan', (ctx) => services.planning.begin(asId(ctx.params.id!)));
   r.post('/v1/missions/:id/start', (ctx) => services.missions.start(asId(ctx.params.id!)));
   r.post('/v1/missions/:id/pause', (ctx) => services.missions.pause(asId(ctx.params.id!)));
   r.post('/v1/missions/:id/resume', (ctx) => services.missions.resume(asId(ctx.params.id!)));

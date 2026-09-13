@@ -2,7 +2,7 @@ import type {
   Approval, ApprovalRepositoryPort, Mission, MissionRepositoryPort, MissionTask,
   RoleRepositoryPort, RunRepositoryPort, TaskRepositoryPort,
 } from '@tandemise/domain';
-import { canTransition, isAffirmative } from '@tandemise/domain';
+import { ACCEPT_RESULT_OPTION, canTransition, isAffirmative } from '@tandemise/domain';
 import type { ApprovalView, DecideApprovalRequest } from '@tandemise/api-contract';
 import type { ApprovalId, Clock, Logger } from '@tandemise/shared';
 import { TandemiseError, asId, summarize } from '@tandemise/shared';
@@ -166,7 +166,12 @@ export class ApprovalServiceImpl implements ApprovalService {
     // A tool approval is answered while its worker is still RUNNING. The waiter
     // has already released it; touching the task status here would yank the
     // task out from under a live run.
-    if (task.status !== 'AWAITING_APPROVAL') return;
+    //
+    // An intervention is the exception: it is raised on a task that already
+    // exhausted its retries and sits BLOCKED, so requiring AWAITING_APPROVAL
+    // made "Retry once more" record an approval and then do nothing at all.
+    const interventionOnBlocked = approval.kind === 'intervention' && task.status === 'BLOCKED';
+    if (task.status !== 'AWAITING_APPROVAL' && !interventionOnBlocked) return;
 
     const scope: EventScope = {
       workspaceId: mission.workspaceId,
@@ -176,6 +181,13 @@ export class ApprovalServiceImpl implements ApprovalService {
     };
 
     if (approval.kind === 'intervention') {
+      if (approval.selectedOptionId === ACCEPT_RESULT_OPTION) {
+        this.#setTaskStatus(task, scope, 'SUCCEEDED', 'A human accepted the result as it stands.');
+        if (mission.status === 'BLOCKED') {
+          this.#setMissionStatus(mission, scope, 'EXECUTING', `'${task.key}' was accepted by a human.`);
+        }
+        return;
+      }
       if (!approved) {
         this.#setTaskStatus(task, scope, 'BLOCKED', 'A human declined to retry this task.');
         this.#setMissionStatus(mission, scope, 'BLOCKED', `'${task.key}' was left blocked by a human.`);
@@ -188,6 +200,9 @@ export class ApprovalServiceImpl implements ApprovalService {
         retryPolicy: { ...task.retryPolicy, maxAttempts: task.attempts + 1 },
       });
       this.#setTaskStatus(task, scope, 'READY', 'A human authorized one more attempt.');
+      if (mission.status === 'BLOCKED') {
+        this.#setMissionStatus(mission, scope, 'EXECUTING', `'${task.key}' was given one more attempt.`);
+      }
       return;
     }
 

@@ -48,10 +48,59 @@ export class RoleServiceImpl implements RoleService {
       // An edited built-in keeps the flag: the UI shows it as a customized
       // built-in, and `remove` restores the shipped definition.
       builtIn: BUILT_IN_ROLE_MAP.has(request.id),
-      createdAt: existing?.createdAt ?? now,
+      // Only this project's own row has a createdAt to keep; `get` may have
+      // returned the global one.
+      createdAt: existing?.workspaceId === workspaceId ? existing.createdAt : now,
       updatedAt: now,
     };
     return this.roles.upsert(role);
+  }
+
+  /**
+   * Brings built-in roles nobody has edited up to the shipped definition.
+   *
+   * Built-ins are copied into the database, so a new default in code - the
+   * Designer gaining the `design` capability that reaches a connected design
+   * app - never reached an install seeded before it. The design task was
+   * granted three read capabilities, told "this session has no Open Design
+   * tools", and wrote a Markdown brief instead.
+   *
+   * Only untouched rows move: a global built-in row is never edited (an edit
+   * writes a project-scoped copy), and a project-scoped built-in counts as
+   * untouched while it still carries its seeding timestamp. A role someone
+   * sharpened is theirs and stays exactly as they left it.
+   */
+  refreshBuiltIns(workspaceIds: readonly WorkspaceId[]): number {
+    let refreshed = 0;
+    const now = this.clock.now();
+    // Read before any global row changes: a project row identical to the
+    // global it was copied from was never edited, whatever its timestamps say.
+    // Projects seeded before seeding wrote matching timestamps depend on this.
+    const globals = new Map(this.roles.list(null).filter((r) => r.workspaceId === null).map((r) => [r.id, r]));
+    const refresh = (stored: RoleTemplate, workspaceId: WorkspaceId | null): void => {
+      const shipped = BUILT_IN_ROLE_MAP.get(stored.id);
+      if (shipped === undefined || !stored.builtIn) return;
+      const copiedUnchanged = workspaceId !== null
+        && globals.has(stored.id) && sameDefinition(stored, globals.get(stored.id)!);
+      const unedited = workspaceId === null || stored.createdAt === stored.updatedAt || copiedUnchanged;
+      if (!unedited || sameDefinition(stored, shipped)) return;
+      this.roles.upsert({
+        ...shipped,
+        workspaceId,
+        createdAt: stored.createdAt,
+        // A scoped row is stamped createdAt === updatedAt so it stays
+        // recognisably unedited for the next upgrade.
+        updatedAt: workspaceId === null ? now : stored.createdAt,
+      } as RoleTemplate);
+      refreshed++;
+    };
+    for (const workspaceId of workspaceIds) {
+      for (const role of this.roles.list(workspaceId)) {
+        if (role.workspaceId === workspaceId) refresh(role, workspaceId);
+      }
+    }
+    for (const role of globals.values()) refresh(role, null);
+    return refreshed;
   }
 
   remove(id: string, workspaceId: WorkspaceId): void {
@@ -63,10 +112,19 @@ export class RoleServiceImpl implements RoleService {
     const builtIn = BUILT_IN_ROLE_MAP.get(id);
     if (builtIn !== undefined) {
       // Restore rather than delete. The presets name this id.
-      const now = this.clock.now();
-      this.roles.upsert({ ...builtIn, workspaceId, createdAt: scoped.createdAt, updatedAt: now });
+      // Restored reads as unedited again (updatedAt === createdAt), so later
+      // upgrades to the shipped role reach it.
+      this.roles.upsert({ ...builtIn, workspaceId, createdAt: scoped.createdAt, updatedAt: scoped.createdAt });
       return;
     }
     this.roles.remove(id, workspaceId);
   }
+}
+
+function sameDefinition(stored: RoleTemplate, shipped: Omit<RoleTemplate, 'workspaceId' | 'createdAt' | 'updatedAt'> | RoleTemplate): boolean {
+  const pick = (r: typeof shipped) => JSON.stringify([
+    r.name, r.summary, r.instructions, [...r.defaultCapabilities].sort(), [...r.producesArtifacts].sort(),
+    [...r.consumesArtifacts].sort(), r.defaultIsolation, r.outputContract,
+  ]);
+  return pick(stored) === pick(shipped);
 }

@@ -132,7 +132,15 @@ export interface MissionTask {
   readonly retryPolicy: RetryPolicy;
   readonly completionGate: GateExpression | null;
   readonly status: TaskStatus;
+  /** What a person reads about the task's current state. Changes whenever it waits. */
   readonly statusReason: string | null;
+  /**
+   * What the next attempt is told about the last one - a failed gate's
+   * measurement. Separate from `statusReason` because it must survive every
+   * wait between the failure and the retry. Optional: a freshly planned task
+   * has none, and every builder of a task need not say so.
+   */
+  readonly retryFeedback?: string | null;
   readonly attempts: number;
   /** Present when this task was generated to fix findings from another task. */
   readonly remediatesTaskId: TaskId | null;

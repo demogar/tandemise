@@ -106,7 +106,39 @@ export class RecoveryService {
       }
     }
 
-    const leasesReleased = this.#releaseDeadLeases();
+    // A task can read RUNNING with no run behind it at all: the attempt failed
+    // between marking the task and recording its run (a constraint error did
+    // exactly this), and the loop above only looks at runs. Such a task was
+    // stuck forever - no run to recover, and the scheduler never dispatches a
+    // RUNNING task. With no live, adopted run it goes back to the queue.
+    const liveTasks = new Set(this.runs.listByStatus(['STARTING', 'RUNNING']).map((r) => r.taskId as string));
+    for (const task of this.tasks.listByStatus(['RUNNING'])) {
+      if (liveTasks.has(task.id)) continue;
+      this.tasks.update(task.id, {
+        status: 'READY',
+        statusReason: 'Found marked running with no run behind it; returned to the queue.',
+      });
+      touched.add(task.missionId);
+      tasksRequeued += 1;
+    }
+
+    // A mission marked COMPLETE with work still queued - closed over a
+    // cancelled task, then that task retried. Nothing ticks a completed
+    // mission, so its task would sit READY forever: reopen it.
+    for (const mission of this.missions.list({ statuses: ['COMPLETE'] })) {
+      const open = this.tasks.listByMission(mission.id)
+        .filter((t) => !['SUCCEEDED', 'SKIPPED', 'FAILED', 'CANCELLED'].includes(t.status));
+      if (open.length === 0) continue;
+      const reason = `Reopened: ${open.map((t) => t.key).join(', ')} still to run.`;
+      this.missions.update(mission.id, { status: 'EXECUTING', statusReason: reason });
+      this.recorder.record({ workspaceId: mission.workspaceId, missionId: mission.id }, {
+        type: 'mission.status', from: 'COMPLETE', to: 'EXECUTING', reason,
+      });
+      touched.add(mission.id);
+    }
+
+    const adoptedTasks = new Set(adopted.map((id) => this.runs.get(id as RunId)?.taskId).filter((t) => t !== undefined));
+    const leasesReleased = this.#releaseDeadLeases(adoptedTasks);
     const targetsFailed = this.#failOrphanedTargets(touched);
 
     for (const missionId of touched) {
@@ -156,7 +188,7 @@ export class RecoveryService {
     }
   }
 
-  #releaseDeadLeases(): number {
+  #releaseDeadLeases(adoptedTasks: ReadonlySet<string>): number {
     let released = 0;
     const now = this.clock.now();
     const expired = new Set(this.leases.listExpired(now).map((l) => l.id));
@@ -169,11 +201,16 @@ export class RecoveryService {
         && this.liveness.isAlive(holder.pid);
 
       if (holderAlive) continue;
-      if (lease.holderRunId === null && !expired.has(lease.id)) {
-        // Held by a task rather than a run and not yet expired: this daemon has
-        // no process to check, so the TTL is the only safe arbiter.
+      if (lease.holderRunId === null && !expired.has(lease.id)
+        && lease.holderTaskId !== null && adoptedTasks.has(lease.holderTaskId)) {
+        // Held by a task whose worker outlived the last daemon and was adopted
+        // above: that worker is still using the resource.
         continue;
       }
+      // Any other task-held lease belonged to the previous daemon's executor,
+      // and the instance lock means that daemon is gone. Waiting out the TTL
+      // stranded the task that held it - and every task sharing its checkout -
+      // for up to half an hour after a restart, READY but never dispatched.
       this.leases.release(lease.id);
       released += 1;
     }

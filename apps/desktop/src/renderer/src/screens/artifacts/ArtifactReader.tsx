@@ -1,6 +1,6 @@
 import { Icon } from '../../components/Icon.js';
 import { Markdown } from '../../components/Markdown.js';
-import { Empty, ErrorState, Skeleton } from '../../components/primitives.js';
+import { Empty, ErrorState, IdChip, Skeleton } from '../../components/primitives.js';
 import { useArtifact } from '../../lib/queries.js';
 import { bytes, dateTime, titleCase } from '../../lib/format.js';
 
@@ -35,6 +35,7 @@ export function ArtifactReader({ id }: { id: string | null }): JSX.Element {
         <h1 className="reader__title">{manifest.title}</h1>
         <div className="reader__meta">
           <span className="chip">{titleCase(manifest.type)}</span>
+          <IdChip id={manifest.id} />
           <span>{dateTime(manifest.createdAt)}</span>
           <span className="sep">·</span>
           <span>{bytes(manifest.byteSize)}</span>

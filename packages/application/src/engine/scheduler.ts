@@ -1,3 +1,7 @@
+import { DaemonStopping } from '../support/shutdown.js';
+
+/** The reason a task carries when it is blocked only by a dead dependency. */
+const DEPENDENCY_BLOCK_PREFIX = 'Blocked by ';
 import type {
   ApprovalRepositoryPort, Mission, MissionRepositoryPort, MissionStatus, MissionTask,
   TaskRepositoryPort, WorkspaceRepositoryPort,
@@ -96,10 +100,11 @@ export class SchedulerService implements LifecycleComponent {
       clearInterval(this.#timer);
       this.#timer = undefined;
     }
-    for (const controller of this.#active.values()) controller.abort();
+    // Stopping, not cancelling: the runs are handed to the next daemon.
+    for (const controller of this.#active.values()) controller.abort(new DaemonStopping());
     // A wait can outlive every worker, so stopping has to cancel it too or
     // shutdown blocks until a CI run someone else is doing finishes.
-    for (const controller of this.#waiting.values()) controller.abort();
+    for (const controller of this.#waiting.values()) controller.abort(new DaemonStopping());
     await this.drain();
     this.deps.log.info('scheduler.stopped');
   }
@@ -184,7 +189,20 @@ export class SchedulerService implements LifecycleComponent {
     const scope = scopeOf(mission);
 
     for (const task of tasks) {
-      if (task.status !== 'PENDING') continue;
+      // Blocked only because an upstream task had died - and that task has
+      // since been retried. Without this, retrying a cancelled or failed task
+      // left everything downstream BLOCKED forever: the retried task would
+      // succeed and the mission would still never finish.
+      if (task.status === 'BLOCKED' && task.statusReason?.startsWith(DEPENDENCY_BLOCK_PREFIX)) {
+        const upstream = task.dependsOn.map((key) => byKey.get(key)).filter((d) => d !== undefined);
+        if (upstream.every((d) => d.status !== 'FAILED' && d.status !== 'CANCELLED')) {
+          this.#setStatus(task, scope, 'PENDING', null);
+        } else {
+          continue;
+        }
+      } else if (task.status !== 'PENDING') {
+        continue;
+      }
 
       const missing = task.dependsOn.filter((key) => !byKey.has(key));
       if (missing.length > 0) {
@@ -196,7 +214,7 @@ export class SchedulerService implements LifecycleComponent {
       if (dead.length > 0) {
         this.#setStatus(
           task, scope, 'BLOCKED',
-          `Blocked by ${dead.map((d) => `${d.key} (${d.status})`).join(', ')}.`,
+          `${DEPENDENCY_BLOCK_PREFIX}${dead.map((d) => `${d.key} (${d.status})`).join(', ')}.`,
         );
         continue;
       }
@@ -214,8 +232,16 @@ export class SchedulerService implements LifecycleComponent {
     const ceiling = Math.max(1, workspace.concurrency.maxTotalWorkers);
     const now = this.deps.clock.epochMs();
 
-    const ready = this.deps.tasks
-      .listByMission(mission.id)
+    const tasks = this.deps.tasks.listByMission(mission.id);
+    // A wait lives in memory. One left AWAITING_EXTERNAL by a previous daemon
+    // has no poller, and nothing else would ever move it: adopt it again.
+    for (const task of tasks) {
+      if (task.status === 'AWAITING_EXTERNAL' && task.executor === 'wait' && !this.#waiting.has(task.id)) {
+        this.#startWait(mission, task);
+      }
+    }
+
+    const ready = tasks
       .filter((t) => t.status === 'READY')
       .filter((t) => !this.#active.has(t.id))
       .filter((t) => (this.#retryAfter.get(t.id) ?? 0) <= now)
@@ -337,7 +363,14 @@ export class SchedulerService implements LifecycleComponent {
     if (outcome.kind === 'deferred') {
       // Contention, not failure. Hold the slot open for a moment so a pair of
       // tasks fighting over one resource do not spin against each other.
-      this.#retryAfter.set(task.id, this.deps.clock.epochMs() + 1_000);
+      this.#retryAfter.set(task.id, this.deps.clock.epochMs() + (outcome.retryAfterMs ?? 1_000));
+      // Said once, on the row: a READY task that never starts, with no reason
+      // anywhere, is indistinguishable from a hung scheduler.
+      const waiting = this.deps.tasks.get(task.id);
+      if (waiting !== undefined && waiting.status === 'READY' && waiting.statusReason !== outcome.reason) {
+        this.deps.tasks.update(task.id, { statusReason: outcome.reason });
+        this.deps.recorder.invalidate('tasks', mission.id);
+      }
       return;
     }
     if (outcome.retryAfterMs !== undefined) {
@@ -400,6 +433,19 @@ export class SchedulerService implements LifecycleComponent {
       this.#setMissionStatus(
         mission, 'FAILED',
         `${failed.length} task(s) failed: ${failed.map((t) => t.key).join(', ')}.`,
+      );
+      return;
+    }
+
+    // A cancelled task is work that did not happen. Counting it as done marked a
+    // mission COMPLETE ("every task succeeded") while its release check had
+    // been stopped mid-run - and a COMPLETE mission can no longer be revived by
+    // retrying that task.
+    const cancelled = tasks.filter((t) => t.status === 'CANCELLED');
+    if (cancelled.length > 0) {
+      this.#setMissionStatus(
+        mission, 'BLOCKED',
+        `${cancelled.map((t) => t.key).join(', ')} ${cancelled.length === 1 ? 'was' : 'were'} cancelled before finishing. Retry or skip to finish the mission.`,
       );
       return;
     }

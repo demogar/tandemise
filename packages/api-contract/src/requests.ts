@@ -190,6 +190,12 @@ export const retryTaskRequest = z.object({
   /** Override the runtime for this attempt - the manual fallback escape hatch. */
   runtimeProfileId: z.string().optional(),
   note: z.string().max(2000).optional(),
+  /**
+   * Capabilities to add before retrying. Still narrowed to the role's own
+   * defaults when grants are built, so this widens a task within what its role
+   * may do - never beyond it.
+   */
+  addCapabilities: z.array(z.string().trim().min(1).max(100)).max(20).optional(),
 });
 
 export const cancelMissionRequest = z.object({

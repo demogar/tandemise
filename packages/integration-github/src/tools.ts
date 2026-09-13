@@ -246,19 +246,39 @@ export function githubTools(
     resource: repoOf,
     execute: async (ctx, input) => {
       const repo = repoOf(input);
-      // `gh pr checks` signals the *result* through its exit code: 1 when a
-      // check failed, 8 while checks are pending. Neither is a tool failure -
-      // "CI is red" is exactly the answer the caller asked for.
-      const checks = await ghJson(ctx, [
-        'pr', 'checks', String(input.number), ...repoArgs(repo),
-        '--json', 'name,state,bucket,workflow,link',
-      ], z.array(z.object({
-        name: z.string(),
-        state: z.string(),
-        bucket: z.string(),
-        workflow: z.string().nullable().default(null),
-        link: z.string().nullable().default(null),
-      })), { tolerateExitCodes: [1, 8] });
+      // Read through `gh pr view --json statusCheckRollup`, not `gh pr checks
+      // --json`: that flag only exists in newer gh releases, and on gh 2.39 the
+      // tool failed every call with "gh returned output that is not JSON" - a
+      // release task could not tell whether CI was green.
+      const view = await ghJson(ctx, [
+        'pr', 'view', String(input.number), ...repoArgs(repo), '--json', 'statusCheckRollup',
+      ], z.object({
+        statusCheckRollup: z.array(z.object({
+          __typename: z.string().optional(),
+          name: z.string().optional(),
+          context: z.string().optional(),
+          status: z.string().nullable().optional(),
+          conclusion: z.string().nullable().optional(),
+          state: z.string().nullable().optional(),
+          workflowName: z.string().nullable().optional(),
+          detailsUrl: z.string().nullable().optional(),
+          targetUrl: z.string().nullable().optional(),
+        }).passthrough()).nullable().default([]),
+      }));
+      const checks = (view.statusCheckRollup ?? []).map((c) => {
+        const result = (c.conclusion ?? c.state ?? '').toUpperCase();
+        const done = c.__typename === 'StatusContext' ? result !== 'PENDING' && result !== 'EXPECTED' : c.status === 'COMPLETED';
+        const bucket = !done ? 'pending'
+          : ['SUCCESS', 'NEUTRAL', 'SKIPPED'].includes(result) ? 'pass'
+            : 'fail';
+        return {
+          name: c.name ?? c.context ?? 'check',
+          state: done ? result || 'COMPLETED' : (c.status ?? result ?? 'PENDING').toUpperCase(),
+          bucket,
+          workflow: c.workflowName ?? null,
+          link: c.detailsUrl ?? c.targetUrl ?? null,
+        };
+      });
       const failing = checks.filter((c) => c.bucket === 'fail').length;
       const pending = checks.filter((c) => c.bucket === 'pending').length;
       return {

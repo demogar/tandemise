@@ -410,3 +410,37 @@ kbd {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* A copyable record id. Quiet until pointed at: it is for referring to a
+   record, not for reading. */
+.idchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: var(--radius-xs);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1;
+  letter-spacing: 0;
+  white-space: nowrap;
+  color: var(--text-tertiary);
+  background: transparent;
+  border: 1px solid var(--border, rgba(127, 127, 127, 0.25));
+  cursor: copy;
+  user-select: all;
+}
+.idchip:hover,
+.idchip:focus-visible {
+  color: var(--text, currentColor);
+  border-color: var(--border-strong, rgba(127, 127, 127, 0.5));
+  outline: none;
+}
+.idchip[data-copied='true'] {
+  color: var(--status-succeeded, currentColor);
+}
+.idchip__prefix {
+  font-family: inherit;
+  opacity: 0.7;
+}

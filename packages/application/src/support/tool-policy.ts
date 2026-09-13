@@ -2,7 +2,7 @@ import type {
   Approval, ApprovalRepositoryPort, AssignmentRepositoryPort, MissionRepositoryPort,
   TaskRepositoryPort, WorkerAssignment, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
-import { DEFAULT_AUTONOMY } from '@tandemise/domain';
+import { APPROVE_FOR_TASK_OPTION, APPROVE_OPTION, DEFAULT_AUTONOMY, REJECT_OPTION } from '@tandemise/domain';
 import type { ApprovalFactory, PolicyEngine } from '@tandemise/policy';
 import type {
   ApprovalGate, ToolApprovalDecision, ToolApprovalRequest, ToolPolicyDecision, ToolPolicyGate,
@@ -90,6 +90,10 @@ export interface ApprovalGateDeps {
  * approval story at all.
  */
 export function createApprovalGate(deps: ApprovalGateDeps): ApprovalGate {
+  // Capabilities a person allowed for the rest of one assignment - one task's
+  // attempt. In memory on purpose: it dies with the run it was given to, and a
+  // restart asks again rather than trusting a yes nobody can see.
+  const standing = new Map<string, Set<string>>();
   return {
     async requestApproval(request: ToolApprovalRequest, signal: AbortSignal): Promise<ToolApprovalDecision> {
       const assignment = deps.assignments.get(request.assignmentId);
@@ -99,6 +103,11 @@ export function createApprovalGate(deps: ApprovalGateDeps): ApprovalGate {
           reason: `No worker assignment '${request.assignmentId}' is known.`,
           approvalId: null,
         };
+      }
+      // Never for a release or a destructive action: those are asked every time.
+      const stickable = request.risk !== 'release' && request.risk !== 'destructive' && request.risk !== 'financial';
+      if (stickable && standing.get(assignment.id)?.has(request.capability)) {
+        return { approved: true, reason: `Allowed for the rest of this task (${request.capability}).`, approvalId: null };
       }
       const task = deps.tasks.get(assignment.taskId);
       const approval = deps.approvalFactory.createOrThrow({
@@ -118,12 +127,26 @@ export function createApprovalGate(deps: ApprovalGateDeps): ApprovalGate {
             ? []
             : [{ kind: 'text' as const, label: 'Resource', value: request.resource }]),
         ],
+        ...(stickable
+          ? {
+            options: [
+              { id: APPROVE_OPTION, label: 'Allow once', recommended: true },
+              { id: APPROVE_FOR_TASK_OPTION, label: `Allow ${request.capability} for the rest of this task` },
+              { id: REJECT_OPTION, label: 'Reject' },
+            ],
+          }
+          : {}),
       });
       deps.approvals.create(approval);
       deps.recorder.record(scopeOf(assignment), { type: 'approval.requested', approvalId: approval.id });
       deps.recorder.invalidate('approvals', assignment.missionId);
 
       const decided = await deps.waiter.wait(approval.id, signal);
+      if (decided.approved && decided.selectedOptionId === APPROVE_FOR_TASK_OPTION) {
+        const allowed = standing.get(assignment.id) ?? new Set<string>();
+        allowed.add(request.capability);
+        standing.set(assignment.id, allowed);
+      }
       return decided;
     },
   };

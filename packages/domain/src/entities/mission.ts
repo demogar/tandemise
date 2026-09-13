@@ -32,7 +32,9 @@ const TRANSITIONS: Record<MissionStatus, readonly MissionStatus[]> = {
   READY_TO_SHIP: ['RELEASED', 'EXECUTING', 'COMPLETE', 'BLOCKED', 'PAUSED', 'CANCELLED'],
   RELEASED: ['OBSERVING', 'COMPLETE'],
   OBSERVING: ['COMPLETE'],
-  COMPLETE: [],
+  // Reopened when a person retries one of its tasks: finished is not the same
+  // as final, and a mission marked complete in error must be recoverable.
+  COMPLETE: ['EXECUTING'],
   BLOCKED: ['EXECUTING', 'REVIEWING', 'QA', 'PLANNING', 'READY_TO_SHIP', 'PAUSED', 'CANCELLED', 'FAILED'],
   PAUSED: ['EXECUTING', 'REVIEWING', 'QA', 'PLANNING', 'READY_TO_SHIP', 'CANCELLED'],
   FAILED: ['PLANNING', 'EXECUTING', 'CANCELLED'],

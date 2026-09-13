@@ -38,7 +38,20 @@ export function parseArtifact(
   source: string,
 ): Result<ParsedArtifact, readonly ArtifactIssue[]> {
   if (!hasSchema(type)) {
-    return Err([{ path: '', message: `Artifact type '${type}' has no front-matter schema.` }]);
+    // Evidence, FinanceReport and MissionPlan have no front-matter contract by
+    // design, so there is nothing to validate but presence. Refusing them made
+    // `artifact.FinanceReport.exists` and `artifact.Evidence.exists` gates
+    // impossible to pass: a finance run wrote its report and was blocked anyway.
+    const document = parseFrontMatterDocument(source);
+    const body = document.ok ? document.value.body : source.trim();
+    if (body.trim() === '') {
+      return Err([{ path: '', message: 'Artifact body is empty.' }]);
+    }
+    return Ok({
+      type: type as SchemaBackedArtifactType,
+      frontMatter: (document.ok ? document.value.frontMatter : {}) as ParsedArtifact['frontMatter'],
+      body,
+    });
   }
 
   const document = parseFrontMatterDocument(source);
@@ -49,7 +62,7 @@ export function parseArtifact(
     }]);
   }
 
-  const result = ARTIFACT_SCHEMAS[type].safeParse(document.value.frontMatter);
+  const result = ARTIFACT_SCHEMAS[type].safeParse(withoutNulls(document.value.frontMatter));
   if (!result.success) {
     return Err(result.error.issues.map((issue) => ({
       path: issue.path.join('.'),
@@ -74,4 +87,24 @@ export function formatIssues(issues: readonly ArtifactIssue[]): string {
 
 function describe(path: string, message: string): string {
   return path === '' ? message : `${message} (at \`${path}\`)`;
+}
+
+/**
+ * Drops keys whose value is null, so an optional field left empty takes its
+ * default.
+ *
+ * YAML reads `supersedes:` - exactly what the DecisionRecord template says to
+ * write for "nothing" - and `supersedes: null` as null, which a string field
+ * with a default rejects. A product owner document's decision record was
+ * refused for following its own template. A required field that is null is
+ * still reported, as missing.
+ */
+function withoutNulls(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(withoutNulls);
+  if (value === null || typeof value !== 'object') return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([, entry]) => entry !== null)
+      .map(([key, entry]) => [key, withoutNulls(entry)]),
+  );
 }

@@ -206,7 +206,7 @@ export class DaemonClient {
     return this.#request('POST', `/tasks/${id}/complete`, body);
   }
 
-  retryTask(taskId: string, body?: { runtimeProfileId?: string; note?: string }): Promise<void> {
+  retryTask(taskId: string, body?: { runtimeProfileId?: string; note?: string; addCapabilities?: readonly string[] }): Promise<void> {
     return this.#request('POST', `/tasks/${taskId}/retry`, body ?? {});
   }
 

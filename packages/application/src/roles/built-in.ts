@@ -340,6 +340,24 @@ const CONNECTED_APPS: Readonly<Record<string, readonly string[]>> = {
 };
 
 /**
+ * Which roles may take work to the code host: push a branch, open a pull
+ * request, comment on one.
+ *
+ * Not a connected app - `gh` is already signed in on the machine - so kept
+ * apart from the table above. A decision, not a side effect: a delivery
+ * workflow ends at a pull request and a review ends at comments on it, so
+ * development and release may push and open one, and development and review
+ * may comment. Before this only release reached outside the machine through
+ * git. Every one of these is an external write, so the "writes that leave this
+ * machine" autonomy setting still decides whether each call asks first.
+ */
+const CODE_HOST: Readonly<Record<string, readonly string[]>> = {
+  development: [CORE_CAPABILITIES.gitPush, CORE_CAPABILITIES.githubRead, CORE_CAPABILITIES.githubPrCreate, 'github.pr.comment'],
+  review: [CORE_CAPABILITIES.githubRead, 'github.pr.comment'],
+  release: [CORE_CAPABILITIES.gitPush, CORE_CAPABILITIES.githubPrCreate, 'github.pr.comment'],
+};
+
+/**
  * Every role can ask the person supervising the mission a question.
  *
  * Granted here rather than on each role, so the next role someone adds cannot
@@ -353,6 +371,7 @@ export const BUILT_IN_ROLES: readonly BuiltInRole[] = ROLES.map((role) => ({
     ...role.defaultCapabilities,
     CORE_CAPABILITIES.humanAsk,
     ...(CONNECTED_APPS[role.id] ?? []),
+    ...(CODE_HOST[role.id] ?? []),
   ]),
 }));
 

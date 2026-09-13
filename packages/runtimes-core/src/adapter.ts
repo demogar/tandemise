@@ -18,6 +18,18 @@ import type { Descriptor } from '@tandemise/kernel';
 export const SESSION_NOT_FOUND = 'SESSION_NOT_FOUND';
 
 /**
+ * The failure code an adapter emits when its runtime could not authenticate -
+ * an expired or revoked login, a missing API key.
+ *
+ * Canonical for the same reason as {@link SESSION_NOT_FOUND}: the caller acts
+ * on it. Every attempt made while signed out fails in seconds for a reason the
+ * task cannot influence, so spending the task's retries on it blocks good work
+ * on a login. An adapter that emits this should also report the profile as
+ * `unavailable` with `actionRequired` until it sees the runtime work again.
+ */
+export const RUNTIME_SIGNED_OUT = 'RUNTIME_SIGNED_OUT';
+
+/**
  * Everything an adapter needs to execute one attempt (MVP.md §10.1).
  *
  * Note what is *absent*: no credentials, no repository handle, no mission. The
@@ -40,6 +52,24 @@ export interface RunRequest {
   /** Aborting must terminate the child process, not merely stop iteration. */
   readonly signal: AbortSignal;
   readonly log: Logger;
+  /**
+   * The slot `RuntimeManager.select` reserved for this run. Passing it hands
+   * the slot to the run instead of claiming a second one; omitting it claims
+   * afresh, which is right for a run that was never routed.
+   */
+  readonly reservation?: SlotReservation;
+}
+
+/**
+ * A concurrency slot held between routing and `start()`.
+ *
+ * Routing and starting are separated by real work - provisioning a worktree
+ * takes seconds - so a slot that was only observed free at routing time is a
+ * slot two tasks can both be given.
+ */
+export interface SlotReservation {
+  /** Returns the slot if no run took it over. Idempotent. */
+  release(): void;
 }
 
 /**

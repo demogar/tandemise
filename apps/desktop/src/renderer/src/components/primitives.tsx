@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { Icon, type IconName } from './Icon.js';
 import { describeError } from '../lib/daemon.js';
 import { humanizeStatus, type Tone } from '../lib/format.js';
@@ -167,5 +167,41 @@ export function SectionHead({ title, meta, action }: { title: string; meta?: str
       {meta ? <span className="section__meta">{meta}</span> : null}
       {action ? <div className="section__action">{action}</div> : null}
     </div>
+  );
+}
+
+/**
+ * A record's identifier, shown so a person can point at exactly this mission,
+ * task, approval or artifact - in a bug report, in a message to an agent - and
+ * copied whole on click. Titles repeat and change; ids do not.
+ *
+ * A span, not a button: it sits inside clickable cards that are themselves
+ * buttons, and a nested button is invalid markup.
+ */
+export function IdChip({ id, prefix }: { id: string; prefix?: string }): JSX.Element {
+  const [copied, setCopied] = useState(false);
+  const copy = (event: MouseEvent | KeyboardEvent): void => {
+    event.stopPropagation();
+    event.preventDefault();
+    void navigator.clipboard.writeText(id).then(() => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1200);
+    }).catch(() => undefined);
+  };
+  return (
+    <span
+      role="button"
+      tabIndex={0}
+      className="idchip"
+      data-copied={copied}
+      title={`${id} (click to copy)`}
+      onClick={copy}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') copy(event);
+      }}
+    >
+      {prefix ? <span className="idchip__prefix">{prefix}</span> : null}
+      {copied ? 'copied' : id}
+    </span>
   );
 }

@@ -1,6 +1,6 @@
 import { defineModule, type Container, type Resolver, type TandemiseModule } from '@tandemise/kernel';
 import type { Clock, Logger, TandemisePaths } from '@tandemise/shared';
-import { createPaths, nullLogger, systemClock } from '@tandemise/shared';
+import { asId, createPaths, nullLogger, systemClock } from '@tandemise/shared';
 import { APPROVAL_FACTORY, GRANT_BUILDER, POLICY_ENGINE } from '@tandemise/policy';
 import { CONTEXT_COMPILER } from '@tandemise/context';
 import { RUNTIME_MANAGER, RUNTIME_REGISTRY } from '@tandemise/runtimes-core';
@@ -153,6 +153,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       r.resolve(t.ARTIFACT_PARSER),
       r.resolve(t.EVENT_RECORDER),
       clock(r),
+      r.resolve(t.TASK_REPOSITORY),
     ), { source: SOURCE });
 
     bind(t.METRICS_SERVICE, (r) => new MetricsService(
@@ -384,6 +385,15 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       paths: paths(r),
       clock: clock(r),
       log: log(r).child({ component: 'planning' }),
+      // Resolved per plan, not at construction: the integration service is
+      // composed after planning, and a plan should see what is connected now.
+      connectedApps: async (workspaceId) => (await r.resolve(t.INTEGRATION_SERVICE).list(asId(workspaceId)))
+        .filter((view) => view.integration.enabled !== false && view.health.state === 'healthy')
+        .map((view) => ({
+          name: view.integration.name,
+          capabilities: [...new Set(view.availableCapabilities.map((c) => c.capability))],
+          detail: view.health.detail,
+        })),
     }), { source: SOURCE });
 
     bind(t.APPROVAL_SERVICE, (r) => new ApprovalServiceImpl({

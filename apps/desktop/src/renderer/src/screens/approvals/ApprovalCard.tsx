@@ -5,7 +5,7 @@ import type { Approval, ApprovalEvidence, ApprovalOption, RiskClass } from '@tan
 import { REJECT_OPTION } from '../../lib/domain.js';
 import { Icon, type IconName } from '../../components/Icon.js';
 import { ConfirmDialog } from '../../components/Modal.js';
-import { ErrorState } from '../../components/primitives.js';
+import { ErrorState, IdChip } from '../../components/primitives.js';
 import { useDaemonMutation } from '../../lib/queries.js';
 import { relativeTime, titleCase } from '../../lib/format.js';
 
@@ -57,6 +57,8 @@ export function ApprovalCard({ view, compact = false }: { view: ApprovalView; co
           <h3 className="approval__title">{approval.title}</h3>
           <div className="approval__context">
             <span className={copy.question ? 'chip chip--you' : 'chip chip--muted'}>{copy.kindLabel}</span>
+            <IdChip id={approval.id} />
+            {approval.taskId ? <IdChip id={approval.taskId} prefix="task" /> : null}
             {view.missionTitle ? (
               approval.missionId ? (
                 <Link href={`/missions/${approval.missionId}`}>{view.missionTitle}</Link>

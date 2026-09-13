@@ -206,8 +206,17 @@ try {
 
   ws.send(JSON.stringify({ type: 'subscribe', missionId }));
 
-  const planned = await api('POST', `/v1/missions/${missionId}/plan`);
-  ok('planning returns a mission detail', planned.status === 200, `status=${planned.status}`);
+  const planning = await api('POST', `/v1/missions/${missionId}/plan`);
+  ok('planning returns a mission detail', planning.status === 200, `status=${planning.status}`);
+  ok('planning answers at once, with the mission in PLANNING', planning.body?.mission?.status === 'PLANNING',
+    planning.body?.mission?.status);
+  // Planning runs in the background; its outcome is read, not awaited.
+  let planned = planning;
+  for (const until = Date.now() + (REAL ? 900_000 : 120_000); Date.now() < until;) {
+    planned = await api('GET', `/v1/missions/${missionId}`);
+    if (planned.body?.mission?.status !== 'PLANNING') break;
+    await new Promise((r) => setTimeout(r, 500));
+  }
   const taskCount = planned.body?.tasks?.length ?? 0;
   ok('plan produced tasks', taskCount > 0, `tasks=${taskCount}`);
   if (taskCount > 0) {

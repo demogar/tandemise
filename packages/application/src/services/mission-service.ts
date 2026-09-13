@@ -107,7 +107,9 @@ export class MissionServiceImpl implements MissionService {
     this.deps.recorder.invalidate('missions', id);
 
     if (request.planNow === true) {
-      await this.deps.planning.plan(id);
+      // In the background: the caller gets the mission back in PLANNING, not a
+      // request held open for as long as a model takes to think.
+      await this.deps.planning.begin(id);
       return this.#require(id);
     }
     return withBranch;
@@ -205,10 +207,17 @@ export class MissionServiceImpl implements MissionService {
     this.deps.recorder.invalidate('missions');
   }
 
-  async retryTask(taskId: TaskId, options: { runtimeProfileId?: string; note?: string }): Promise<TaskView> {
+  async retryTask(
+    taskId: TaskId,
+    options: { runtimeProfileId?: string; note?: string; addCapabilities?: readonly string[] },
+  ): Promise<TaskView> {
     const task = this.#requireTask(taskId);
     const mission = this.#require(task.missionId);
-    if (!RETRYABLE_TASK_STATUSES.includes(task.status)) {
+    const widening = (options.addCapabilities ?? []).length > 0;
+    // A worker parked on a question can be restarted with more access: that is
+    // often the question ("I can't do this with my grants").
+    const retryable = RETRYABLE_TASK_STATUSES.includes(task.status) || (widening && task.status === 'AWAITING_INPUT');
+    if (!retryable) {
       throw new TandemiseError('PRECONDITION_FAILED', `A task in ${task.status} cannot be retried.`, {
         details: { taskId, status: task.status },
       });
@@ -221,11 +230,33 @@ export class MissionServiceImpl implements MissionService {
     // of how many times this task has been tried is evidence, and erasing it
     // would let a task that always fails loop forever one manual retry at a time
     // while the timeline showed attempt 1 each round.
+    const added = [...new Set(options.addCapabilities ?? [])]
+      .filter((c) => !task.executionPolicy.capabilities.includes(c));
     const reason = options.note?.trim()
-      || `Retried by the user${options.runtimeProfileId === undefined ? '' : ' on a different runtime'}.`;
+      || `Retried by the user${options.runtimeProfileId === undefined ? '' : ' on a different runtime'}`
+        + `${added.length > 0 ? ` with more access: ${added.join(', ')}` : ''}.`;
+    if (task.status === 'AWAITING_INPUT') {
+      this.deps.scheduler.cancelTask(taskId);
+      for (const approval of this.deps.approvals.pendingForTask(taskId)) {
+        this.deps.approvals.update(approval.id, {
+          status: 'CANCELLED', decidedAt: this.deps.clock.now(), decisionNote: reason,
+        });
+      }
+    }
     this.deps.tasks.update(taskId, {
+      ...(added.length > 0
+        ? {
+          executionPolicy: { ...task.executionPolicy, capabilities: [...task.executionPolicy.capabilities, ...added] },
+        }
+        : {}),
       status: 'READY',
       statusReason: reason,
+      // The retry's prompt quotes what the last attempt failed on. A note the
+      // person wrote is added to it, never swapped in: "Retried by the user"
+      // in its place told the worker nothing about what to do differently.
+      retryFeedback: [task.retryFeedback, options.note?.trim() ? `When retrying, the person said: ${options.note.trim()}` : null]
+        .filter((part): part is string => typeof part === 'string' && part.length > 0)
+        .join('\n\n') || null,
       retryPolicy: {
         ...task.retryPolicy,
         maxAttempts: Math.max(task.retryPolicy.maxAttempts, task.attempts + 1),
@@ -235,10 +266,51 @@ export class MissionServiceImpl implements MissionService {
     this.deps.recorder.record({ ...scopeOf(mission), taskId, roleId: task.roleId }, {
       type: 'task.status', from: task.status, to: 'READY', reason,
     });
+    this.#holdDependents(task, mission);
     this.#reviveMission(mission, `'${task.key}' was retried by the user.`);
     this.deps.recorder.invalidate('tasks', mission.id);
     this.deps.scheduler.wake();
     return this.#taskView(mission.id, taskId);
+  }
+
+  /**
+   * Sends work downstream of a retried task back to waiting for it.
+   *
+   * Retrying a task that had succeeded left its dependents where they were, so
+   * they kept running on the old result: a release task checked for a pull
+   * request while the task that opens it was still re-running, found none, and
+   * asked for approval of that. Dependents still in flight or parked go back to
+   * PENDING (a running one is stopped); finished ones are left alone - their
+   * work is done, and redoing it is the person's call.
+   */
+  #holdDependents(task: MissionTask, mission: Mission): void {
+    const all = this.deps.tasks.listByMission(mission.id);
+    const downstream = new Set<string>();
+    const stack = [task.key];
+    while (stack.length > 0) {
+      const key = stack.pop()!;
+      for (const t of all) {
+        if (t.dependsOn.includes(key) && !downstream.has(t.key)) {
+          downstream.add(t.key);
+          stack.push(t.key);
+        }
+      }
+    }
+    const reason = `Waiting again: '${task.key}' is being retried.`;
+    for (const dependent of all.filter((t) => downstream.has(t.key))) {
+      if (isTaskFinished(dependent.status) || dependent.status === 'PENDING') continue;
+      this.deps.scheduler.cancelTask(dependent.id);
+      this.deps.tasks.update(dependent.id, { status: 'PENDING', statusReason: reason });
+      for (const approval of this.deps.approvals.pendingForTask(dependent.id)) {
+        this.deps.approvals.update(approval.id, {
+          status: 'CANCELLED', decidedAt: this.deps.clock.now(), decisionNote: reason,
+        });
+      }
+      this.deps.recorder.record({ ...scopeOf(mission), taskId: dependent.id, roleId: dependent.roleId }, {
+        type: 'task.status', from: dependent.status, to: 'PENDING', reason,
+      });
+    }
+    this.deps.recorder.invalidate('approvals', mission.id);
   }
 
   /**
@@ -309,6 +381,15 @@ export class MissionServiceImpl implements MissionService {
     this.deps.recorder.record({ ...scopeOf(mission), taskId, roleId: task.roleId }, {
       type: 'task.status', from: task.status, to: 'SKIPPED', reason,
     });
+    // A skipped task has nothing left to decide, so its open cards are
+    // withdrawn - otherwise an intervention for work nobody is doing anymore
+    // stays in the inbox asking to retry it.
+    for (const approval of this.deps.approvals.pendingForTask(taskId)) {
+      this.deps.approvals.update(approval.id, {
+        status: 'CANCELLED', decidedAt: this.deps.clock.now(), decisionNote: reason,
+      });
+    }
+    this.deps.recorder.invalidate('approvals', mission.id);
     // A skipped task counts as satisfied for its dependents, so downstream work
     // that was waiting on it can proceed - that is the point of skipping.
     this.#reviveMission(mission, `'${task.key}' was skipped by the user.`);
@@ -321,7 +402,7 @@ export class MissionServiceImpl implements MissionService {
 
   /** A blocked mission that just got a runnable task again goes back to work. */
   #reviveMission(mission: Mission, reason: string): void {
-    if (mission.status !== 'BLOCKED' && mission.status !== 'FAILED') return;
+    if (mission.status !== 'BLOCKED' && mission.status !== 'FAILED' && mission.status !== 'COMPLETE') return;
     this.#transition(mission, 'EXECUTING', reason);
   }
 

@@ -245,7 +245,9 @@ while (Date.now() < budget && !['SUCCEEDED', 'FAILED', 'BLOCKED'].includes(repo.
 const settled = repo.tasks.get(asId('t1'));
 ok('the task is not stuck on the dead session', settled.status === 'SUCCEEDED',
   `${settled.status}: ${settled.statusReason ?? ''}`);
-ok('the attempt was not spent on the lost handle', settled.attempts === 2,
+// A resume continues the interrupted attempt rather than starting a new one,
+// and falling back to a fresh start must not change that.
+ok('the attempt was not spent on the lost handle', settled.attempts === 1,
   `attempts=${settled.attempts} of maxAttempts=2`);
 ok('the resumable run was consumed, so a retry cannot repeat it',
   repo.runs.get(deadRun.id).status !== 'RESUMABLE', repo.runs.get(deadRun.id).status);

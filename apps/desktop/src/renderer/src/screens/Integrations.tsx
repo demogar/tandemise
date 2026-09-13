@@ -4,7 +4,7 @@ import type { ConnectionAttemptView, ConnectorView, IntegrationView } from '@tan
 import { PageHeader } from '../components/PageHeader.js';
 import { Icon } from '../components/Icon.js';
 import { ConfirmDialog, Modal } from '../components/Modal.js';
-import { ErrorState, Field, SkeletonList, StatusDot, Switch } from '../components/primitives.js';
+import { ErrorState, Field, Segmented, SkeletonList, StatusDot, Switch } from '../components/primitives.js';
 import { useConnectors, useDaemonMutation, useIntegrations } from '../lib/queries.js';
 import { useDaemon } from '../lib/connection.js';
 import { useWorkspace } from '../lib/workspace.js';
@@ -439,12 +439,41 @@ function ConnectDialog({ target, onClose }: { target: ConnectTarget; onClose: ()
 }
 
 function CustomServerDialog({ onClose, onConnect }: { onClose: () => void; onConnect: (target: ConnectTarget) => void }): JSX.Element {
+  const workspaceId = useWorkspace().current?.workspace.id ?? '';
+  const [mode, setMode] = useState<'hosted' | 'command'>('hosted');
   const [url, setUrl] = useState('');
   const [name, setName] = useState('');
   const [capability, setCapability] = useState(AUDIENCES[0]!.capability);
+  const [command, setCommand] = useState('');
+  const [args, setArgs] = useState('');
+  const [env, setEnv] = useState('');
+  const [cwd, setCwd] = useState('');
+  const [trustReadOnly, setTrustReadOnly] = useState(false);
+  // A server that runs on this machine has no sign-in to go through: it is
+  // added directly, and the daemon starts it once to read its tool list.
+  const add = useDaemonMutation(
+    (daemon) => daemon.createIntegration({
+      workspaceId,
+      providerId: 'mcp',
+      name: name.trim(),
+      config: {
+        command: command.trim(),
+        args: lines(args),
+        env: parseEnv(env),
+        ...(cwd.trim() ? { cwd: cwd.trim() } : {}),
+        capability,
+        risk: 'external_side_effect',
+        trustAnnotations: trustReadOnly,
+      },
+    }),
+    ['integrations'],
+  );
+
+  const nameValid = /^[a-z0-9][a-z0-9_-]*$/.test(name.trim());
   // Same rule as the daemon: https, or plain http only to a server on this machine.
-  const valid = /^(https:\/\/\S+|http:\/\/(127\.0\.0\.1|localhost)[:/]\S*)$/.test(url.trim())
-    && /^[a-z0-9][a-z0-9_-]*$/.test(name.trim());
+  const valid = nameValid && (mode === 'hosted'
+    ? /^(https:\/\/\S+|http:\/\/(127\.0\.0\.1|localhost)[:/]\S*)$/.test(url.trim())
+    : command.trim().length > 0 && lines(env).every((line) => /^[A-Za-z_][A-Za-z0-9_]*=/.test(line)));
 
   return (
     <Modal
@@ -456,21 +485,61 @@ function CustomServerDialog({ onClose, onConnect }: { onClose: () => void; onCon
           <button
             type="button"
             className="btn btn--primary"
-            disabled={!valid}
-            onClick={() => onConnect({ kind: 'custom', url: url.trim(), name: name.trim(), capability })}
+            disabled={!valid || add.isPending || !workspaceId}
+            onClick={() => {
+              if (mode === 'hosted') onConnect({ kind: 'custom', url: url.trim(), name: name.trim(), capability });
+              else add.mutate(undefined, { onSuccess: onClose });
+            }}
           >
-            Connect
+            {mode === 'command' ? (add.isPending ? 'Starting it…' : 'Add server') : 'Connect'}
           </button>
         </>
       }
     >
       <div className="stack" style={{ gap: 'var(--s4)', color: 'var(--text)' }}>
-        <p className="muted" style={{ margin: 0 }}>
-          Any hosted MCP server that signs in with OAuth. You will be sent to its sign-in page, like the apps above.
-        </p>
-        <Field label="Server URL">
-          <input className="input mono" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://mcp.example.com/mcp" />
-        </Field>
+        <Segmented
+          value={mode}
+          onChange={setMode}
+          options={[
+            { value: 'hosted', label: 'Hosted (sign in)' },
+            { value: 'command', label: 'Run a command' },
+          ]}
+        />
+        {mode === 'hosted' ? (
+          <>
+            <p className="muted" style={{ margin: 0 }}>
+              Any hosted MCP server that signs in with OAuth. You will be sent to its sign-in page, like the apps above.
+            </p>
+            <Field label="Server URL">
+              <input className="input mono" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://mcp.example.com/mcp" />
+            </Field>
+          </>
+        ) : (
+          <>
+            <p className="muted" style={{ margin: 0 }}>
+              A server Tandemise starts on this machine and talks to over stdio - the kind an MCP client config
+              lists as <span className="mono">command</span> and <span className="mono">args</span>.
+            </p>
+            <Field label="Command" hint="An absolute path is safest: the daemon may not share your shell's PATH.">
+              <input className="input mono" value={command} onChange={(e) => setCommand(e.target.value)} placeholder="/usr/local/bin/node" />
+            </Field>
+            <Field label="Arguments" hint="One per line, exactly as the server's install instructions give them.">
+              <textarea className="textarea mono" rows={4} value={args} onChange={(e) => setArgs(e.target.value)} placeholder={'/path/to/cli.js\nmcp\n--daemon-url\nhttp://127.0.0.1:7456'} />
+            </Field>
+            <Field label="Environment" hint="KEY=value, one per line. Stored in Tandemise's database, not your keychain - never put a token here.">
+              <textarea className="textarea mono" rows={2} value={env} onChange={(e) => setEnv(e.target.value)} placeholder="OD_DATA_DIR=/path/to/.od" />
+            </Field>
+            <Field label="Working directory" hint="Optional.">
+              <input className="input mono" value={cwd} onChange={(e) => setCwd(e.target.value)} placeholder="/path/to/server" />
+            </Field>
+            <Field
+              label="Trust its read-only labels"
+              hint="On: tools the server marks read-only run without asking, and only its other tools follow your autonomy setting. Leave off for a server you did not write or install yourself."
+            >
+              <Switch checked={trustReadOnly} onChange={setTrustReadOnly} label="Trust read-only labels" />
+            </Field>
+          </>
+        )}
         <Field label="Short name" hint="Lowercase. Its tools appear to workers as name.tool.">
           <input className="input mono" value={name} onChange={(e) => setName(e.target.value)} placeholder="example" />
         </Field>
@@ -481,9 +550,23 @@ function CustomServerDialog({ onClose, onConnect }: { onClose: () => void; onCon
             ))}
           </select>
         </Field>
+        {add.isError ? <ErrorState error={add.error} /> : null}
       </div>
     </Modal>
   );
+}
+
+function lines(text: string): string[] {
+  return text.split('\n').map((line) => line.trim()).filter((line) => line.length > 0);
+}
+
+function parseEnv(text: string): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const line of lines(text)) {
+    const at = line.indexOf('=');
+    if (at > 0) env[line.slice(0, at)] = line.slice(at + 1);
+  }
+  return env;
 }
 
 /** A monogram tile. Vendor logos are trademarks this app has no licence to ship. */

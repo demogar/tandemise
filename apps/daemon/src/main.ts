@@ -39,7 +39,31 @@ export async function startDaemon(overrides: Parameters<typeof loadConfig>[0] = 
   // before the scheduler can dispatch anything (MVP.md §21.2).
   await container.resolve(RECOVERY_SERVICE).run();
 
+  // Before anything is planned or dispatched: a task is granted from its role,
+  // so a stale built-in would withhold capabilities the shipped role now has.
+  const workspaceIds = services.workspaces.list().map((view) => view.workspace.id);
+  const refreshedRoles = services.roles.refreshBuiltIns(workspaceIds);
+  if (refreshedRoles > 0) log.info('roles.built_ins_refreshed', { count: refreshedRoles });
+
+  // An MCP server's tools are learned by checking its health, and that list
+  // lives in memory. Until something asked - usually someone opening the
+  // Integrations screen - every connected server published nothing after a
+  // restart, and the first design task after one ran without Open Design.
+  // Checked before the scheduler starts, bounded so a slow server cannot hold
+  // the daemon hostage.
+  const warmed = await Promise.race([
+    services.integrations.list().then((views) => views.length),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), INTEGRATION_WARM_TIMEOUT_MS).unref()),
+  ]).catch((e: unknown) => {
+    log.warn('integrations.warm_failed', { error: e instanceof Error ? e.message : String(e) });
+    return null;
+  });
+  log.info('integrations.warmed', { integrations: warmed, timedOut: warmed === null });
+
   await lifecycle.start();
+  // After the lifecycle, so a re-plan has the runtimes and targets it needs.
+  const replanned = services.planning.resumeInterrupted();
+  if (replanned.length > 0) log.info('planning.resumed', { missions: replanned });
 
   const token = loadOrCreateToken(config.home);
   const router = buildRouter(services);
@@ -87,6 +111,9 @@ export async function startDaemon(overrides: Parameters<typeof loadConfig>[0] = 
   installShutdownHandlers({ log, shutdown: stop });
   return { url, stop };
 }
+
+/** The longest startup waits for connected servers to report their tools. */
+const INTEGRATION_WARM_TIMEOUT_MS = 20_000;
 
 /** True when this module is the process entry point rather than an import. */
 function isEntryPoint(): boolean {

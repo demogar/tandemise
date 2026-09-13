@@ -12,12 +12,15 @@ export function PageHeader({
   subtitle,
   crumbs,
   actions,
+  meta,
   narrow = false,
 }: {
   title: string;
   subtitle?: ReactNode;
   crumbs?: readonly Crumb[];
   actions?: ReactNode;
+  /** Beside the crumbs: the record's id, so the page can be pointed at. */
+  meta?: ReactNode;
   /** Match a `page__inner--narrow` body, so the title sits over its content. */
   narrow?: boolean;
 }): JSX.Element {
@@ -27,6 +30,7 @@ export function PageHeader({
         <div className="topbar__titles">
           {crumbs && crumbs.length > 0 ? (
             <div className="topbar__eyebrow">
+              {meta ? <span style={{ order: 99, marginLeft: 6 }}>{meta}</span> : null}
               {crumbs.map((crumb, index) => (
                 <span key={`${crumb.label}-${index}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                   {index > 0 ? <Icon name="chevronRight" size={11} /> : null}

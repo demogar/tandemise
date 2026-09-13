@@ -1,5 +1,5 @@
 import type {
-  Approval, ApprovalRepositoryPort, ArtifactRepositoryPort, ArtifactStorePort,
+  Approval, ApprovalRepositoryPort, ArtifactRepositoryPort, ArtifactStorePort, ArtifactType,
   AssignmentRepositoryPort, CapabilityGrant, CheckResult, CheckpointRepositoryPort,
   DecisionRepositoryPort, ExecutionTargetRepositoryPort, ExecutionTargetRecord, ExternalRef,
   GateOutcome, LoadedArtifact, Mission, MissionRepositoryPort, MissionTask, RepoRepositoryPort,
@@ -7,20 +7,24 @@ import type {
   RuntimeProfile, RuntimeProfileRepositoryPort, TargetKind, TaskRepositoryPort, TaskStatus,
   Workspace, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
+import { ACCEPT_RESULT_OPTION, CORE_CAPABILITIES, anyCapabilityMatches } from '@tandemise/domain';
+import { isDaemonStopping } from '../support/shutdown.js';
+import { liveArtifacts, upstreamTaskIds } from '../support/lineage.js';
+import { githubSlug } from '../support/repository-slug.js';
 import type { ContextCompiler, ExpectedArtifact } from '@tandemise/context';
 import type { ExecutionTarget, ExecutionTargetManager } from '@tandemise/execution-core';
 import type { ApprovalFactory, GrantBuilder, PolicyEngine } from '@tandemise/policy';
 import type { ToolBroker } from '@tandemise/integrations-core';
 import { McpGatewayProvisioner, NO_TOOL_SURFACE, type RunToolSurface } from './mcp-gateway.js';
-import type { RunRequest, RuntimeManager } from '@tandemise/runtimes-core';
-import { SESSION_NOT_FOUND } from '@tandemise/runtimes-core';
+import { RUNTIME_SIGNED_OUT, SESSION_NOT_FOUND, onlyBusy, onlyWaiting } from '@tandemise/runtimes-core';
+import type { RunRequest, RuntimeManager, RuntimeSelection, SlotReservation } from '@tandemise/runtimes-core';
 import type { Clock, Logger, RunId, TandemisePaths, TaskId } from '@tandemise/shared';
 import { TandemiseError, errorMessage, ids, slugify, summarize } from '@tandemise/shared';
 import type { ArtifactTemplatePort } from '../ports.js';
 import type { EventRecorder, EventScope } from '../support/event-recorder.js';
 import { runtimeCapabilitiesFor } from '../support/capabilities.js';
 import type { RuntimeOverrides } from '../support/runtime-overrides.js';
-import { ARTIFACT_OUT_DIR, ArtifactHarvester, type HarvestResult } from './harvester.js';
+import { ArtifactHarvester, outDirFor, type HarvestResult } from './harvester.js';
 import type { CheckService } from './checks.js';
 import type { GateService } from './gates.js';
 import { MAX_PARKED_MS, type RunDeadlines } from './run-deadline.js';
@@ -28,9 +32,29 @@ import { MAX_PARKED_MS, type RunDeadlines } from './run-deadline.js';
 /** How long a resource lease is held before the scheduler must renew it. */
 const LEASE_TTL_MS = 30 * 60_000;
 
+/**
+ * How often a task waiting on a person's action at the runtime - a sign-in - is
+ * offered again. Each offer costs only a cached health read until the runtime's
+ * own unavailability window lapses, so this bounds latency, not load.
+ */
+const AWAITING_PERSON_RETRY_MS = 15_000;
+
+/**
+ * The longest a task waits between tries after its runs keep reporting a
+ * sign-in failure. The adapter normally throttles by marking itself
+ * unavailable; this bounds the cost when one does not, without ever turning a
+ * wait for a person into a failure.
+ */
+const MAX_SIGNED_OUT_BACKOFF_MS = 10 * 60_000;
+
 export type TaskAttemptOutcome =
-  /** Admission failed for a reason that will resolve on its own. Try next tick. */
-  | { readonly kind: 'deferred'; readonly reason: string }
+  /** Admission failed for a reason that will resolve on its own. Try again shortly. */
+  | {
+      readonly kind: 'deferred';
+      readonly reason: string;
+      /** How long to wait before offering the task again; the scheduler's default when absent. */
+      readonly retryAfterMs?: number;
+    }
   | {
       readonly kind: 'settled';
       readonly status: TaskStatus;
@@ -134,7 +158,10 @@ export class TaskExecutor {
       this.deps.log.error('task.attempt_failed', {
         missionId: mission.id, taskId: task.id, error: errorMessage(e),
       });
-      return this.#settleFailure(task, scope, errorMessage(e));
+      // Re-read: `task` is from before the attempt marked it RUNNING, and
+      // settling from that stale copy compared READY with READY, skipped the
+      // write, and left the row RUNNING with nothing running.
+      return this.#settleFailure(this.#requireTask(task.id), scope, errorMessage(e));
     } finally {
       for (const lease of leases.held) this.deps.leases.release(lease.id);
     }
@@ -143,7 +170,7 @@ export class TaskExecutor {
   // --------------------------------------------------------------- the attempt
 
   async #run(ctx: AttemptContext): Promise<TaskAttemptOutcome> {
-    const { task, mission, workspace, repository, role, scope, signal } = ctx;
+    const { task, workspace, scope } = ctx;
     const { deps } = this;
 
     // 2. Routing. A role with an explicit routing policy is never given a
@@ -157,20 +184,49 @@ export class TaskExecutor {
     const selected = await deps.runtimeManager.select(candidates, required);
     if (!selected.ok) {
       const detail = selected.error.rejections.map((r) => `${r.profileId}: ${r.reason}`).join('; ');
+      // Every capable runtime is busy: that is contention, not a failure. The
+      // task stays READY and is offered again once a slot frees up.
+      if (onlyBusy(selected.error)) return { kind: 'deferred', reason: `Waiting for a runtime slot. ${detail}` };
+      // A runtime waiting on a person - signed out, most often - will run this
+      // task unchanged once they act. Blocking would make them also find and
+      // retry every task it stranded; waiting lets the work resume by itself.
+      if (onlyWaiting(selected.error)) {
+        const action = selected.error.rejections.find((r) => r.awaitingPerson === true)?.reason ?? detail;
+        return { kind: 'deferred', reason: `Waiting for you: ${action}`, retryAfterMs: AWAITING_PERSON_RETRY_MS };
+      }
       return this.#block(
         task,
         scope,
         `No healthy runtime satisfies [${required.join(', ')}] for role '${task.roleId}'. ${detail}`,
       );
     }
-    const { profile, adapter } = selected.value;
-    const attempt = task.attempts + 1;
+    // Routing reserved the slot; it passes to the run in #drive, and is given
+    // back here on every path that never gets that far - a failed provision,
+    // a vetting block - so an attempt that never ran cannot hold a worker.
+    try {
+      return await this.#runRouted(ctx, selected.value);
+    } finally {
+      selected.value.reservation.release();
+    }
+  }
 
-    // Captured before the transition, because moving to RUNNING clears
-    // `statusReason` - and `statusReason` is where the previous attempt's gate
-    // failure lives. Reading it after the transition is how the single
-    // highest-value feedback loop in the system silently becomes a no-op.
-    const feedback = attempt > 1 ? task.statusReason : null;
+  async #runRouted(ctx: AttemptContext, selection: RuntimeSelection): Promise<TaskAttemptOutcome> {
+    const { task, mission, workspace, repository, role, scope, signal } = ctx;
+    const { deps } = this;
+    const { profile, adapter, reservation } = selection;
+    // Resuming a session a restart interrupted continues that attempt rather
+    // than starting a new one. Counting it spent the retry budget on restarts:
+    // a task with two attempts had used five before it had failed once, so its
+    // first real gate failure would have blocked it outright.
+    const resuming = this.#resumableRun(task.id, adapter.resume !== undefined) !== null && task.attempts > 0;
+    const attempt = resuming ? task.attempts : task.attempts + 1;
+
+    // The previous attempt's measured failure, read from its own column rather
+    // than `statusReason`: that is the line a person reads, and any wait between
+    // the failure and this retry - a busy runtime, a sign-in - rewrote it. The
+    // retry was then told it had "failed" because it was queued, and the single
+    // highest-value feedback loop in the system silently became a no-op.
+    const feedback = attempt > 1 && !resuming ? task.retryFeedback ?? null : null;
 
     const running = this.#setStatus(task, scope, 'RUNNING', null, {
       attempts: attempt,
@@ -208,6 +264,10 @@ export class TaskExecutor {
         workingDirectory: target.workingDirectory,
         artifactRoot: deps.paths.artifacts(workspace.id),
         readOnlyPaths: repository === null ? [] : [repository.path],
+        // The repository this task works in, as the code host names it. Without
+        // it every github.* grant carried an empty scope and was denied: a
+        // task that had pushed its branch could not open its pull request.
+        allowedRepositories: [githubSlug(repository?.remoteUrl ?? null)].filter((s): s is string => s !== null),
         // Wall time plus the longest the run may be parked on a person. This does
         // not extend what the worker can do: a grant is only exercisable through
         // the run-scoped tool socket, which is destroyed with the run, and the
@@ -257,7 +317,7 @@ export class TaskExecutor {
         workingDirectory: target.workingDirectory,
         signal,
       });
-      await deps.harvester.prepare(target, scope);
+      await deps.harvester.prepare(target, scope, running);
       const prompt = await this.#compilePrompt({
         ...ctx, task: running, workspace, role, grants, target, tools: toolSurface.toolNames, feedback,
       });
@@ -265,11 +325,36 @@ export class TaskExecutor {
       // 7. Run.
       const outcome = await this.#drive({
         task: running, mission, profile, adapter, target, assignment, prompt, grants, scope, signal,
-        runId, mcpConfigPath: toolSurface.mcpConfigPath,
+        runId, mcpConfigPath: toolSurface.mcpConfigPath, reservation,
       });
 
+      if (outcome.interrupted) {
+        // Back to the queue with its attempt count kept, exactly as recovery
+        // treats a run the last daemon left behind; the next start resumes it.
+        return this.#settle(running, scope, 'READY', 'Tandemise stopped mid-run; this task resumes when it starts again.');
+      }
       if (outcome.cancelled) {
+        // Cancelled so that something else could happen - a retry with more
+        // access requeues the task and stops its run. The run ends after that
+        // decision, and settling it CANCELLED here overwrote the retry.
+        const current = deps.tasks.get(running.id);
+        if (current !== undefined && current.status !== 'RUNNING' && current.status !== 'AWAITING_INPUT') {
+          return { kind: 'settled', status: current.status, reason: current.statusReason };
+        }
         return this.#settle(running, scope, 'CANCELLED', 'Cancelled before the run finished.');
+      }
+
+      if (outcome.failure?.code === RUNTIME_SIGNED_OUT) {
+        // Nothing about the work was tried, so nothing about it is judged: the
+        // attempt is handed back and the task waits for the runtime. The adapter
+        // has already marked the profile unavailable; dropping the cached health
+        // makes routing see that now rather than after the cache lapses.
+        deps.runtimeManager.invalidateHealth(profile.id);
+        const reason = `Waiting for you: ${outcome.failure.message}`;
+        // Only the row's line changes; `retryFeedback` keeps what the last real
+        // attempt failed on, for the attempt that eventually runs.
+        this.#setStatus(running, scope, 'READY', reason, { attempts: task.attempts });
+        return { kind: 'deferred', reason, retryAfterMs: this.#signedOutBackoff(task.id) };
       }
 
       // 8/9. Commit first, then harvest, so every artifact carries the commit
@@ -327,12 +412,16 @@ export class TaskExecutor {
     const { runId } = input;
     const startedAt = deps.clock.now();
 
+    // A run's number is its place among this task's runs, not the task's
+    // attempt count: a resumed session continues an attempt in a new run, and
+    // (task, attempt) is unique on the runs table.
+    const runNumber = Math.max(task.attempts, ...deps.runs.listByTask(task.id).map((r) => r.attempt + 1));
     deps.runs.create({
       id: runId,
       missionId: mission.id,
       taskId: task.id,
       assignmentId: assignment.id,
-      attempt: task.attempts,
+      attempt: runNumber,
       status: 'STARTING',
       roleId: task.roleId,
       runtimeProfileId: profile.id,
@@ -387,6 +476,7 @@ export class TaskExecutor {
       maxWallTimeMs: task.executionPolicy.maxWallTimeMs + MAX_PARKED_MS,
       signal: combined,
       log: deps.log.child({ runId, taskId: task.id, missionId: mission.id, runtime: profile.adapterId }),
+      reservation: input.reservation,
     };
 
     let usage: RunUsage = {};
@@ -434,7 +524,15 @@ export class TaskExecutor {
     }
 
     const finishedAt = deps.clock.now();
-    const status = cancelled ? 'CANCELLED' : failure === null ? 'SUCCEEDED' : 'FAILED';
+    const interrupted = isDaemonStopping(signal);
+    const session = deps.runs.get(runId)?.externalSessionId ?? null;
+    // A signed-out runtime never reached the session it was asked to continue,
+    // so a resume that failed that way hands the handle on intact: after the
+    // sign-in the work continues where the restart left it, not from scratch.
+    const resumeUntouched = failure?.code === RUNTIME_SIGNED_OUT && resumeFrom !== null;
+    const status = interrupted || resumeUntouched
+      ? (session !== null && input.adapter.resume !== undefined ? 'RESUMABLE' : 'INTERRUPTED')
+      : cancelled ? 'CANCELLED' : failure === null ? 'SUCCEEDED' : 'FAILED';
     deps.runs.update(runId, {
       status,
       finishedAt,
@@ -450,7 +548,7 @@ export class TaskExecutor {
       durationMs: Date.parse(finishedAt) - Date.parse(startedAt),
     });
 
-    return { runId, status, failure, cancelled };
+    return { runId, status, failure, cancelled, interrupted };
   }
 
   /**
@@ -561,12 +659,28 @@ export class TaskExecutor {
       return this.#settle(task, scope, 'SUCCEEDED', null);
     }
 
-    // 11(b). Gate feedback into the retry. `statusReason` is the carrier: it is
-    //        persisted, it is what the UI shows, and the next attempt's prompt
-    //        quotes it verbatim so the worker is told exactly what it failed.
+    // 11(a'). An evaluator whose gate failed only because it found problems did
+    //        its job. Retrying it re-runs the same review or QA on unchanged
+    //        work and fails the same way until the budget is gone - and the fix
+    //        loop, which starts from a *succeeded* evaluator, never runs. A QA
+    //        run found a real defect and would have been re-run three times
+    //        instead of handed to a developer. So it settles SUCCEEDED and the
+    //        scheduler's remediation turns the findings into a fix and a
+    //        re-check, which downstream tasks are repointed to wait on.
+    if (runFailure === null && gate !== null && this.#foundOwnProblems(task, gate, harvest)) {
+      this.deps.recorder.note(
+        scope,
+        `'${task.key}' found blocking problems (${verdict.detail}). They go to a fix task rather than a re-run of the same check on unchanged work.`,
+      );
+      return this.#settle(task, scope, 'SUCCEEDED', `Found blocking problems: ${verdict.detail}`);
+    }
+
+    // 11(b). Gate feedback into the retry. Shown on the row, and kept in
+    //        `retryFeedback` so the next attempt's prompt can quote it verbatim
+    //        however long the task waits - even past a block and a manual retry.
     const feedback = verdict.detail;
     if (task.attempts < task.retryPolicy.maxAttempts) {
-      this.#setStatus(task, scope, 'READY', feedback);
+      this.#setStatus(task, scope, 'READY', feedback, { retryFeedback: feedback });
       return {
         kind: 'settled',
         status: 'READY',
@@ -575,10 +689,25 @@ export class TaskExecutor {
       };
     }
     if (task.retryPolicy.onExhausted === 'fail') {
-      return this.#settle(task, scope, 'FAILED', feedback);
+      return this.#settle(task, scope, 'FAILED', feedback, { retryFeedback: feedback });
     }
     this.#createInterventionApproval(task, mission, workspace, feedback);
-    return this.#settle(task, scope, 'BLOCKED', feedback);
+    return this.#settle(task, scope, 'BLOCKED', feedback, { retryFeedback: feedback });
+  }
+
+  /**
+   * True when this task is the evaluator whose report failed the gate: it
+   * delivered its report, the report itself carries blocking problems, and no
+   * fix has been started for it yet (a second pass over the same findings
+   * falls back to an ordinary retry rather than looping).
+   */
+  #foundOwnProblems(task: MissionTask, gate: GateOutcome, harvest: HarvestResult): boolean {
+    const own: Array<[ArtifactType, string]> = [['QAReport', 'qa.blocking_defects'], ['ReviewReport', 'review.blocking_findings']];
+    const reported = own.some(([type, fact]) => task.expectedOutputs.includes(type)
+      && !harvest.missing.includes(type)
+      && typeof gate.facts[fact] === 'number' && (gate.facts[fact] as number) > 0);
+    if (!reported) return false;
+    return !this.deps.tasks.listByMission(task.missionId).some((t) => t.remediatesTaskId === task.id);
   }
 
   // -------------------------------------------------------------------- policy
@@ -643,7 +772,7 @@ export class TaskExecutor {
     const expected: readonly ExpectedArtifact[] = task.expectedOutputs.map((type) => ({
       type,
       template: this.deps.templates.render(type) ?? `(no template is defined for ${type}; write clear Markdown.)`,
-      destination: `${ARTIFACT_OUT_DIR}/${type}.md`,
+      destination: `${outDirFor(task)}/${type}.md`,
     }));
 
     const compiled = this.deps.contextCompiler.compile({
@@ -681,15 +810,25 @@ export class TaskExecutor {
     feedback: string | null,
   ): readonly string[] {
     const notes = [
-      `Write each artifact to its own file under \`${ARTIFACT_OUT_DIR}/\` in ${target.workingDirectory}. `
-      + `The file name is the artifact type followed by \`.md\` — for example \`${ARTIFACT_OUT_DIR}/ProductSpec.md\`. `
+      `Write each artifact to its own file under \`${outDirFor(task)}/\` in ${target.workingDirectory}. `
+      + `The file name is the artifact type followed by \`.md\` — for example \`${outDirFor(task)}/ProductSpec.md\`. `
       + 'Tandemise reads those files after your run ends; anything you only describe in conversation is discarded.',
       `\`.tandemise/\` is git-ignored, so writing there never pollutes the diff.`,
     ];
     if (target.kind === 'worktree') {
+      const branch = target.describe().branch;
       notes.push(
-        'You are on your own branch in an isolated worktree. Commit your code changes. '
+        `You are on your own branch${branch ? ` (\`${branch}\`)` : ''} in an isolated worktree `
+        + `at ${target.workingDirectory}. Commit your code changes here, on this branch. `
         + 'Anything left uncommitted is committed for you and attributed to this run.',
+        // Repository instructions often say "create a worktree and a feature
+        // branch first". Followed here, the work lands on a branch Tandemise
+        // does not know, and the reviewer and tester - whose worktrees are cut
+        // from this one - review a tree without the change in it.
+        'Do not create another worktree, clone, or branch to do this work, even if the repository\'s own '
+        + 'instructions (CLAUDE.md, AGENTS.md, contributing docs) say to: this worktree already is that '
+        + 'isolation, and downstream review and QA read this branch. If a later task needs a differently named '
+        + 'branch - for a pull request, say - push this branch under that name rather than moving the work.',
       );
     }
     if (tools.length > 0) {
@@ -713,9 +852,17 @@ export class TaskExecutor {
 
   async #loadDependencies(task: MissionTask, scope: EventScope): Promise<readonly LoadedArtifact[]> {
     const loaded: LoadedArtifact[] = [];
+    const upstream = upstreamTaskIds(task, this.deps.tasks.listByMission(task.missionId));
     for (const requirement of task.inputArtifacts) {
-      const manifest = this.deps.artifacts.latest(task.missionId, requirement.type);
-      if (manifest === undefined) {
+      // Every live artifact of the type from an upstream task, not just the
+      // newest in the mission: a product document fed by web and mobile
+      // research needs both briefs. Falls back to the newest when nothing
+      // upstream produced one (an input produced outside the graph).
+      const fromUpstream = liveArtifacts(this.deps.artifacts, task.missionId, requirement.type)
+        .filter((a) => a.taskId !== null && upstream.has(a.taskId));
+      const latest = this.deps.artifacts.latest(task.missionId, requirement.type);
+      const manifests = fromUpstream.length > 0 ? fromUpstream : latest === undefined ? [] : [latest];
+      if (manifests.length === 0) {
         if (requirement.required) {
           this.deps.recorder.note(
             scope,
@@ -725,10 +872,12 @@ export class TaskExecutor {
         }
         continue;
       }
-      try {
-        loaded.push(await this.deps.artifactStore.read(manifest.id));
-      } catch (e) {
-        this.deps.recorder.note(scope, `Could not read ${requirement.type}: ${errorMessage(e)}`, 'warn');
+      for (const manifest of manifests) {
+        try {
+          loaded.push(await this.deps.artifactStore.read(manifest.id));
+        } catch (e) {
+          this.deps.recorder.note(scope, `Could not read ${requirement.type}: ${errorMessage(e)}`, 'warn');
+        }
       }
     }
     return loaded;
@@ -950,7 +1099,13 @@ export class TaskExecutor {
       const lease = this.deps.leases.acquire(key, { taskId: task.id }, LEASE_TTL_MS);
       if (lease === undefined) {
         for (const acquired of held) this.deps.leases.release(acquired.id);
-        return { ok: false, reason: `Resource '${key}' is held by another task.`, held: [] };
+        return {
+          ok: false,
+          reason: key.endsWith(':worktree')
+            ? 'Queued: another task is working directly in this repository checkout, and tasks that run in place take turns.'
+            : `Queued: resource '${key}' is held by another task.`,
+          held: [],
+        };
       }
       held.push(lease);
     }
@@ -1044,13 +1199,16 @@ export class TaskExecutor {
       risk: 'read',
       title: `${task.title} exhausted its retries`,
       rationale: `'${task.key}' failed its completion gate on every one of its ${task.retryPolicy.maxAttempts} attempts.`,
-      effect: 'Approving returns the task to the queue for one more attempt. Rejecting leaves the mission blocked.',
+      effect: 'Retrying returns the task to the queue for one more attempt. Accepting marks its result good enough and lets dependent work continue. Leaving it blocked stops here.',
       evidence: [
         { kind: 'text', label: 'Last measurement', value: summarize(detail, 1000) },
         { kind: 'text', label: 'Objective', value: summarize(task.objective, 600) },
       ],
       options: [
         { id: 'approve', label: 'Retry once more' },
+        // The work may be sound and the gate the thing that cannot be met;
+        // retrying cannot fix that, and leaving it blocked stops the mission.
+        { id: ACCEPT_RESULT_OPTION, label: 'Accept the result and continue' },
         { id: 'reject', label: 'Leave blocked' },
       ],
       recommendedOptionId: null,
@@ -1075,6 +1233,9 @@ export class TaskExecutor {
       status,
       statusReason: reason,
       ...(finished ? { finishedAt: this.deps.clock.now() } : {}),
+      // A success answers whatever the last failure said; nothing is owed to a
+      // later attempt of this task any more.
+      ...(status === 'SUCCEEDED' ? { retryFeedback: null } : {}),
       ...extra,
     });
     this.deps.recorder.record(scope, {
@@ -1087,17 +1248,25 @@ export class TaskExecutor {
     return updated;
   }
 
-  #settle(task: MissionTask, scope: EventScope, status: TaskStatus, reason: string | null): TaskAttemptOutcome {
-    this.#setStatus(task, scope, status, reason);
+  #settle(
+    task: MissionTask,
+    scope: EventScope,
+    status: TaskStatus,
+    reason: string | null,
+    extra: Partial<MissionTask> = {},
+  ): TaskAttemptOutcome {
+    this.#setStatus(task, scope, status, reason, extra);
     return { kind: 'settled', status, reason };
   }
 
   #settleFailure(task: MissionTask, scope: EventScope, reason: string): TaskAttemptOutcome {
     if (task.attempts < task.retryPolicy.maxAttempts) {
-      this.#setStatus(task, scope, 'READY', reason);
+      this.#setStatus(task, scope, 'READY', reason, { retryFeedback: reason });
       return { kind: 'settled', status: 'READY', reason, retryAfterMs: task.retryPolicy.backoffMs };
     }
-    return this.#settle(task, scope, task.retryPolicy.onExhausted === 'fail' ? 'FAILED' : 'BLOCKED', reason);
+    return this.#settle(
+      task, scope, task.retryPolicy.onExhausted === 'fail' ? 'FAILED' : 'BLOCKED', reason, { retryFeedback: reason },
+    );
   }
 
   #block(task: MissionTask, scope: EventScope, reason: string): TaskAttemptOutcome {
@@ -1124,6 +1293,14 @@ export class TaskExecutor {
     // Routing is an ordered preference list, so it is walked in order and a
     // profile it does not mention is not a candidate at all.
     return routed.flatMap((id) => all.filter((p) => p.id === id));
+  }
+
+  /** Doubles with each consecutive signed-out run of this task, up to a ceiling. */
+  #signedOutBackoff(taskId: TaskId): number {
+    const runs = [...this.deps.runs.listByTask(taskId)].sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+    const streak = runs.findIndex((r) => r.errorCode !== RUNTIME_SIGNED_OUT);
+    const consecutive = streak === -1 ? runs.length : streak;
+    return Math.min(AWAITING_PERSON_RETRY_MS * 2 ** Math.max(0, consecutive - 1), MAX_SIGNED_OUT_BACKOFF_MS);
   }
 
   #resumableRun(taskId: TaskId, adapterSupportsResume: boolean): Run | null {
@@ -1177,6 +1354,7 @@ interface DriveInput {
   readonly runId: import('@tandemise/shared').RunId;
   /** Null when the assignment was granted no tools. */
   readonly mcpConfigPath: string | null;
+  readonly reservation: SlotReservation;
 }
 
 interface RunFailure {
@@ -1190,6 +1368,8 @@ interface DriveOutcome {
   readonly status: Run['status'];
   readonly failure: RunFailure | null;
   readonly cancelled: boolean;
+  /** The daemon stopped under the run; the task goes back to the queue, not to CANCELLED. */
+  readonly interrupted: boolean;
 }
 
 interface JudgeInput {
@@ -1246,13 +1426,25 @@ function targetKindFor(isolation: MissionTask['executionPolicy']['isolation']): 
  * running unisolated in the user's checkout contends with every other such
  * task, because they share one working tree (MVP.md §9.4).
  */
+/** Capabilities that let a task change the checkout it runs in, beyond its own artifacts. */
+const CHANGES_CHECKOUT = [
+  CORE_CAPABILITIES.filesystemWrite, CORE_CAPABILITIES.shell, CORE_CAPABILITIES.git, CORE_CAPABILITIES.gitCommit,
+];
+
 function resourceKeysFor(
   task: MissionTask,
   mission: Mission,
   repository: Repository | null,
 ): readonly string[] {
   if (repository === null) return [];
-  if (task.executionPolicy.isolation === 'none') return [`repository:${repository.id}:worktree`];
+  if (task.executionPolicy.isolation === 'none') {
+    // A task that only reads and writes its own artifact folder cannot disturb
+    // another task in the same checkout, so it does not take turns with them.
+    // Without this, research in one mission queued behind a spec in another.
+    const capabilities = [...task.executionPolicy.capabilities, ...task.requiredCapabilities];
+    const changes = capabilities.some((c) => CHANGES_CHECKOUT.some((w) => anyCapabilityMatches([c], w)));
+    return changes ? [`repository:${repository.id}:worktree`] : [];
+  }
   return [`mission:${mission.id}:branch:${task.key}`];
 }
 

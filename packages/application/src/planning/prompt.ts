@@ -23,6 +23,16 @@ export interface PlannerPromptInput {
   readonly preset: WorkflowPreset;
   readonly availableCapabilities: readonly string[];
   readonly repositoryContext: string | null;
+  /** Healthy integrations in the project, so a plan can route work to them. */
+  readonly connectedApps?: readonly ConnectedApp[];
+}
+
+export interface ConnectedApp {
+  readonly name: string;
+  /** The capabilities whose holders see this app's tools. */
+  readonly capabilities: readonly string[];
+  /** Health detail - for an MCP server, its version and tool names. */
+  readonly detail: string;
 }
 
 export function buildPlannerPrompt(input: PlannerPromptInput): string {
@@ -89,7 +99,7 @@ A task may only require capabilities this installation can actually satisfy:
 
 ${availableCapabilities.join(', ')}
 
-# The starting shape
+${renderConnectedApps(input.connectedApps ?? [])}# The starting shape
 
 The "${preset.name}" preset is a known-good plan for this kind of work. Start
 from it and adapt it to THIS mission. Adaptation is expected and encouraged:
@@ -136,6 +146,27 @@ ${fence(JSON.stringify(presetPlan, null, 2), 'json')}
 9. Set \`approvalPolicy.onCompletion: true\` for any task whose output authorizes
    a consequential action — a release candidate always does.
 
+# Steps that are not an agent
+
+Most tasks are agent work. Two other kinds exist, and using an agent for either
+is a mistake that costs the user time and money:
+
+- \`"executor": "wait"\` — something outside this machine that must finish before
+  the next task: CI on a pull request, a deploy. Give it \`"waitFor"\`, a shell
+  command run in the repository every \`everyMs\` until it exits 0 (fails after
+  \`timeoutMs\`). It holds no model and no worker slot. For CI on a pull request
+  whose head branch the plan names, use
+  \`gh pr checks <that-branch> --required\` (exit 0 only when every required
+  check passed). Name that exact branch in the objective of the task that opens
+  the pull request, so the two agree.
+- \`"executor": "human"\` — a step only a person can do, or a decision only a
+  person may make outside this system (approving a pull request on GitHub,
+  making a design in a tool the workers cannot reach). The mission parks until
+  they return; what they paste becomes the step's \`expectedOutputs\` artifact.
+
+Neither kind needs a real \`roleId\`, capabilities, a gate, or isolation. Both
+still take \`key\`, \`title\`, \`objective\` and \`dependsOn\`.
+
 # Writing good objectives
 
 Each task's \`objective\` is handed to a worker that has no memory of this
@@ -166,9 +197,42 @@ fence, matching:
       "approvalPolicy": { "beforeStart": false, "onCompletion": false },
       "retryPolicy": { "maxAttempts": 2, "backoffMs": 5000, "onExhausted": "block" },
       "completionGate": null
+    },
+    {
+      "key": "ci",
+      "title": "Wait for CI on the pull request",
+      "objective": "Wait for the required checks on feat/example to pass.",
+      "executor": "wait",
+      "waitFor": "gh pr checks feat/example --required",
+      "everyMs": 30000,
+      "timeoutMs": 2700000,
+      "dependsOn": ["product_spec"]
     }
   ]
 }`;
+}
+
+function renderConnectedApps(apps: readonly ConnectedApp[]): string {
+  if (apps.length === 0) return '';
+  return `# Connected apps
+
+These apps are connected to this project and working. A worker reaches an app's
+tools only if its task lists one of that app's capabilities in both
+\`requiredCapabilities\` and \`executionPolicy.capabilities\`. When the goal names
+one of these apps, or the work is what an app is for (design work and a
+connected design tool, say), route the task to it by capability, and say in the
+objective which app to use and what to produce with it - do not ask a worker to
+describe in Markdown what it could make in the real tool.
+
+Some apps work asynchronously: a tool starts a run and another reports on it.
+Say in the objective that the worker must keep polling until that run has
+finished, and must record the finished result's link (a preview URL, say) in
+its artifact - an artifact written while the app is still working hands the
+person approving it nothing to look at.
+
+${apps.map((app) => `- ${app.name} — capability: ${app.capabilities.join(', ') || 'none'}\n  ${app.detail}`).join('\n')}
+
+`;
 }
 
 function fence(content: string, lang = ''): string {

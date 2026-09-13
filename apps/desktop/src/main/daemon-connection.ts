@@ -12,6 +12,9 @@ const HANDSHAKE_FILE = join(process.env['TANDEMISE_HOME'] ?? join(homedir(), '.t
 const SPAWN_POLL_INTERVAL_MS = 250;
 const SPAWN_POLL_TIMEOUT_MS = 15_000;
 
+/** How often a running window checks that its daemon is still the one listening. */
+const WATCH_INTERVAL_MS = 3_000;
+
 /**
  * Owns everything the renderer must not touch: the filesystem handshake, the
  * liveness probe, and the decision to start a daemon.
@@ -76,6 +79,43 @@ export class DaemonConnector extends EventEmitter {
       );
     }
     return this.#set('connected', started, `Connected to daemon on ${started.url}.`);
+  }
+
+  /**
+   * Follows the daemon across restarts.
+   *
+   * The daemon outlives the window, which also means it can be restarted under
+   * a running window - a rebuild, a crash, `npm run daemon` in another terminal
+   * - and it comes back on a new ephemeral port. Without this the window kept
+   * retrying the dead port until someone found the retry button. Only the
+   * handshake is re-read here; starting a daemon stays an explicit action, so a
+   * developer stopping theirs on purpose is not fought by the window.
+   */
+  watch(intervalMs = WATCH_INTERVAL_MS): () => void {
+    let busy = false;
+    const timer = setInterval(() => {
+      if (busy || this.#inFlight !== null) return;
+      busy = true;
+      void this.#follow().finally(() => {
+        busy = false;
+      });
+    }, intervalMs);
+    timer.unref();
+    return () => clearInterval(timer);
+  }
+
+  async #follow(): Promise<void> {
+    const current = this.#status.connection;
+    if (current !== null && (await isReachable(current))) return;
+    const next = await readHandshake();
+    if (next === null || !(await isReachable(next))) {
+      if (current !== null) {
+        this.#set('unavailable', null, 'The daemon stopped. Waiting for it to come back, or press retry to start one.');
+      }
+      return;
+    }
+    if (current?.url === next.url && current.token === next.token && this.#status.phase === 'connected') return;
+    this.#set('connected', next, `Connected to daemon on ${next.url}.`);
   }
 
   #set(phase: DaemonStatus['phase'], connection: DaemonConnection | null, detail: string): DaemonStatus {

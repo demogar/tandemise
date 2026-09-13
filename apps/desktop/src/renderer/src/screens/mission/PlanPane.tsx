@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { MissionDetail, TaskView } from '@tandemise/api-contract';
 import { Icon } from '../../components/Icon.js';
-import { Empty } from '../../components/primitives.js';
+import { Empty, IdChip } from '../../components/primitives.js';
 import { TaskDetail } from './TaskDetail.js';
 import { duration, pluralize, taskBadge, taskTone } from '../../lib/format.js';
 
@@ -110,6 +110,12 @@ export function PlanPane({ detail }: { detail: MissionDetail }): JSX.Element {
                   ))}
                 </div>
               </>
+            ) : detail.mission.status === 'PLANNING' ? (
+              <Empty
+                icon="sparkle"
+                title="Planning…"
+                body="The planner is reading the repositories and shaping a task graph for this goal. It usually takes a minute or two, longer if a runtime is busy; the timeline shows what it is doing. Nothing runs until you have approved the plan."
+              />
             ) : (
               <Empty
                 icon="sparkle"
@@ -124,6 +130,8 @@ export function PlanPane({ detail }: { detail: MissionDetail }): JSX.Element {
   }
 
   const selectedTask = detail.tasks.find((task) => task.id === selected) ?? null;
+  // The plan is itself an artifact; its id names the exact version approved.
+  const planArtifactId = [...detail.artifacts].reverse().find((a) => a.type === 'MissionPlan')?.id ?? null;
 
   return (
     <>
@@ -132,6 +140,7 @@ export function PlanPane({ detail }: { detail: MissionDetail }): JSX.Element {
           <div className="banner">
             <Icon name="sparkle" size={15} className="dim" />
             <span className="muted">{detail.plan.summary}</span>
+            {planArtifactId ? <span style={{ marginLeft: 'auto' }}><IdChip id={planArtifactId} prefix="plan" /></span> : null}
           </div>
         </div>
       ) : null}
@@ -201,6 +210,10 @@ function TaskCard({
       </div>
 
       <div className="taskcard__title">{task.title}</div>
+      <div className="taskcard__ids">
+        <IdChip id={task.id} />
+        <span className="dim">{task.key}</span>
+      </div>
 
       <div className="taskcard__meta">
         {/* Only set when the task works somewhere other than the mission's own
@@ -232,6 +245,13 @@ function TaskCard({
               {check.name.replace(/^checks\./, '')}
             </span>
           ))}
+        </div>
+      ) : null}
+
+      {task.status === 'READY' && task.statusReason?.startsWith('Queued') ? (
+        <div className="taskcard__gate">
+          <Icon name="clock" size={11} />
+          <span>{task.statusReason}</span>
         </div>
       ) : null}
 

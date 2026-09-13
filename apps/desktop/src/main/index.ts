@@ -192,7 +192,7 @@ app.whenReady().then(async () => {
   createTray();
   mainWindow = createWindow();
 
-  void connector.refresh();
+  void connector.refresh().finally(() => connector.watch());
 
   app.on('activate', showWindow);
 
