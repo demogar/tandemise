@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/demogar/tandemise/compare/v0.2.0...v0.3.0) (2026-09-15)
+
+
+### Features
+
+* feedback rounds, a handoff feed, and a responsible person behind every task ([#14](https://github.com/demogar/tandemise/issues/14)) ([7e98629](https://github.com/demogar/tandemise/commit/7e986292b750f22203e0f48ac53448094094c867))
+
 ## [0.2.0](https://github.com/demogar/tandemise/compare/v0.1.0...v0.2.0) (2026-09-13)
 
 
