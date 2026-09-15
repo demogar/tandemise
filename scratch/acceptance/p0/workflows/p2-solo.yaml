@@ -1,0 +1,7 @@
+name: P2 solo
+description: One document task and nothing downstream, for rounds without dependents.
+steps:
+  - key: doc
+    role: product
+    objective: Write a short spec for a hello page.
+    outputs: [ProductSpec]

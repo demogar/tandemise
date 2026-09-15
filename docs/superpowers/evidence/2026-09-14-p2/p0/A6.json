@@ -1,0 +1,24 @@
+{
+  "id": "A6",
+  "title": "Record Ana's approval on her behalf",
+  "ok": true,
+  "checks": [
+    {
+      "label": "card offers \"Recording for\"",
+      "ok": true
+    },
+    {
+      "label": "stored: decided by Ana, recorded by you",
+      "ok": true
+    },
+    {
+      "label": "history reads \"by Ana Ruiz · recorded by You\"",
+      "ok": true
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/A6-recording-for.png",
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/A6-history.png"
+  ]
+}

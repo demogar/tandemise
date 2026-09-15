@@ -72,6 +72,32 @@ for (const [name, spec] of Object.entries(PACKAGES)) {
 {
   const renderer = 'apps/desktop/src/renderer/src';
   const TYPE_ONLY_RE = /^\s*(?:import|export)\s+type\s/;
+  // Subpaths whose compiled module has no runtime imports at all, so the Team
+  // screen and the daemon share one preset mapping instead of a mirrored copy.
+  // Each maps to its source; the allowance holds only while that source has no
+  // value imports or re-exports of any kind (type-only ones are erased).
+  const PURE_SUBPATH_SOURCES = new Map([
+    ['@tandemise/domain/staffing-presets', 'packages/domain/src/staffing-presets.ts'],
+    // The artifact reader hides YAML front matter with the same rule the daemon uses.
+    ['@tandemise/artifacts/strip-front-matter', 'packages/artifacts/src/strip-front-matter.ts'],
+    // The Inbox and the daemon's mission feed judge "for me" with one rule.
+    ['@tandemise/api-contract/for-me', 'packages/api-contract/src/for-me.ts'],
+  ]);
+  const PURE_SUBPATHS = new Set(PURE_SUBPATH_SOURCES.keys());
+  const ANY_IMPORT_RE = /^\s*(?:import|export)\b[^;]*?\bfrom\s+['"]([^'"]+)['"]|^\s*import\s+['"]([^'"]+)['"]|\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)|\brequire\s*\(/gm;
+  for (const [subpath, source] of PURE_SUBPATH_SOURCES) {
+    let src;
+    try {
+      src = readFileSync(source, 'utf8');
+    } catch {
+      errors.push(`${subpath}: allowlisted as pure but ${source} does not exist`);
+      continue;
+    }
+    for (const match of src.matchAll(ANY_IMPORT_RE)) {
+      if (TYPE_ONLY_RE.test(match[0])) continue;
+      errors.push(`${source}: allowlisted for the renderer as pure, but has a value import (${match[0].trim().slice(0, 80)}); keep it type-only or drop the allowance`);
+    }
+  }
   const STATEMENT_RE = /^\s*(?:import|export)\s[^;]*?\sfrom\s+['"](@tandemise\/[^'"]+)['"]/gm;
   let files = [];
   try {
@@ -82,7 +108,7 @@ for (const [name, spec] of Object.entries(PACKAGES)) {
   for (const file of files) {
     const src = readFileSync(file, 'utf8');
     for (const match of src.matchAll(STATEMENT_RE)) {
-      if (TYPE_ONLY_RE.test(match[0])) continue;
+      if (TYPE_ONLY_RE.test(match[0]) || PURE_SUBPATHS.has(match[1])) continue;
       errors.push(`${file}: renderer value-imports ${match[1]}, which pulls Node built-ins into the browser bundle; use \`import type\` or lib/domain.ts`);
     }
   }

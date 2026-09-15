@@ -1,0 +1,41 @@
+{
+  "id": "A10",
+  "title": "Nobody answers: the request climbs the tree",
+  "ok": true,
+  "checks": [
+    {
+      "label": "starts with Ana only",
+      "ok": true
+    },
+    {
+      "label": "about a minute later it reaches Maria (level 1)",
+      "ok": true,
+      "observed": {
+        "seconds": 62
+      }
+    },
+    {
+      "label": "Inbox: \"For Ana Ruiz and Maria Lopez · Escalated to Maria Lopez\"",
+      "ok": true
+    },
+    {
+      "label": "another minute later it reaches you (level 2)",
+      "ok": true
+    },
+    {
+      "label": "For me: names you and says \"Escalated to you\"",
+      "ok": true,
+      "observed": "Inbox\nWhat is waiting on a person.\nFor me · 4\nEveryone · 4\nApprove the output of design?\nDesignBrief ready for the hello page\nFor you, Ana Ruiz and Maria Lopez·Escalated to you·Escalation mu1sdu67\nAction\n2m ago\nCheck architecture when you can\nArchite"
+    },
+    {
+      "label": "timeline shows the escalations",
+      "ok": true
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/A10-maria.png",
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/A10-you.png",
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/A10-timeline.png"
+  ]
+}

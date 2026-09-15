@@ -1,15 +1,15 @@
 import type {
-  ApprovalRepositoryPort, ArtifactRepositoryPort, ArtifactStorePort, Capability, Mission,
+  ApprovalRepositoryPort, ArtifactHandoff, ArtifactRepositoryPort, ArtifactStorePort, Capability, MemberRepositoryPort, Mission,
   MissionPlan, MissionRepositoryPort, MissionTask, PlanValidationIssue, RepoRepositoryPort,
   Repository, RoleRepositoryPort, RoleTemplate, RuntimeProfile, RuntimeProfileRepositoryPort,
   TaskRepositoryPort, Workspace, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
-import { ARTIFACT_OUT_DIR, CORE_CAPABILITIES, canTransition, compileWorkflow, validateMissionPlan } from '@tandemise/domain';
+import { ARTIFACT_OUT_DIR, CORE_CAPABILITIES, RUNTIME_ACTOR, DEFAULT_ESCALATE_AFTER_MS, canTransition, indexTeam, isActiveMember, compileWorkflow, validateMissionPlan } from '@tandemise/domain';
 import type { MissionDetail } from '@tandemise/api-contract';
-import type { WorkflowSourcePort } from '../ports.js';
+import type { ArtifactMeasurePort, WorkflowSourcePort } from '../ports.js';
 import type { ApprovalFactory } from '@tandemise/policy';
 import type { ExecutionTarget, ExecutionTargetManager } from '@tandemise/execution-core';
-import { onlyBusy } from '@tandemise/runtimes-core';
+import { describeRejections, onlyBusy } from '@tandemise/runtimes-core';
 import type { RuntimeManager, RuntimeSelection, SlotReservation } from '@tandemise/runtimes-core';
 import type { Clock, Logger, MissionId, TandemisePaths } from '@tandemise/shared';
 import { TandemiseError, errorMessage, ids, slugify, summarize } from '@tandemise/shared';
@@ -20,7 +20,7 @@ import { describeIssues } from '../support/dag.js';
 import { DEFAULT_PRESET_ID, findPreset, type WorkflowPreset } from '../planning/presets.js';
 import { buildPlannerPrompt, describePlan, type ConnectedApp } from '../planning/prompt.js';
 import { parsePlanResponse } from '../planning/parse.js';
-import { materializePlan, renderPlanDocument } from '../planning/materialize.js';
+import { clip, materializePlan, planTitle, renderPlanDocument } from '../planning/materialize.js';
 
 /** The role whose runtime routing the planner borrows (MVP.md §9.2). */
 const PLANNER_ROLE_ID = 'architecture';
@@ -47,8 +47,12 @@ export interface PlanningDeps {
   readonly runtimeProfiles: RuntimeProfileRepositoryPort;
   readonly approvals: ApprovalRepositoryPort;
   readonly approvalFactory: ApprovalFactory;
+  /** The workspace's owners, who a plan nobody asked for by name goes to. */
+  readonly members: MemberRepositoryPort;
   readonly artifacts: ArtifactRepositoryPort;
   readonly artifactStore: ArtifactStorePort;
+  /** Cuts the plan's summary to a headline and measures the plan document. */
+  readonly measure: ArtifactMeasurePort;
   readonly runtimeManager: RuntimeManager;
   readonly targetManager: ExecutionTargetManager;
   readonly projections: ProjectionService;
@@ -178,7 +182,7 @@ export class PlanningServiceImpl implements PlanningService {
     if (authored !== null) {
       const tasks = materializePlan(authored, mission.id, this.deps.clock, repositories);
       this.deps.tasks.replaceAll(mission.id, tasks);
-      await this.#storePlanDocument(planning, authored);
+      await this.#storePlanDocument(planning, authored, workspace);
       this.deps.recorder.invalidate('tasks', mission.id);
       this.#requestApprovalOrAccept(planning, workspace,
         { plan: authored, source: 'workflow', fallbackReason: null, issues: [] }, scope, tasks);
@@ -190,9 +194,10 @@ export class PlanningServiceImpl implements PlanningService {
       planning, workspace, repository ?? null, roles, preset, scope, repositories,
     );
 
-    const tasks = materializePlan(outcome.plan, mission.id, this.deps.clock, repositories);
+    // A preset names its inputs, so inferring only fills what a model's plan left out.
+    const tasks = materializePlan(outcome.plan, mission.id, this.deps.clock, repositories, { inferInputs: true });
     this.deps.tasks.replaceAll(mission.id, tasks);
-    await this.#storePlanDocument(planning, outcome.plan);
+    await this.#storePlanDocument(planning, outcome.plan, workspace);
     this.deps.recorder.invalidate('tasks', mission.id);
 
     this.#requestApprovalOrAccept(planning, workspace, outcome, scope, tasks);
@@ -273,7 +278,7 @@ export class PlanningServiceImpl implements PlanningService {
     if (!selected.ok) {
       return fallback(
         `no healthy runtime could be selected (${
-          selected.error.rejections.map((r) => `${r.profileId}: ${r.reason}`).join('; ') || 'no candidates'
+          describeRejections(selected.error.rejections) || 'no candidates'
         }).`,
       );
     }
@@ -565,22 +570,30 @@ way to write that file, reply with the JSON object instead.`;
 
   // -------------------------------------------------------------- acceptance
 
-  async #storePlanDocument(mission: Mission, plan: MissionPlan): Promise<void> {
+  async #storePlanDocument(mission: Mission, plan: MissionPlan, workspace: Workspace): Promise<void> {
     try {
       const previous = this.deps.artifacts.latest(mission.id, 'MissionPlan');
+      const handoff = this.#planHandoff(plan, workspace);
+      const body = renderPlanDocument(plan, mission.title, handoff);
       const manifest = await this.deps.artifactStore.write({
         workspaceId: mission.workspaceId,
         missionId: mission.id,
         taskId: null,
         createdByRunId: null,
         type: 'MissionPlan',
-        title: `Plan for ${mission.title}`,
-        body: renderPlanDocument(plan, mission.title),
+        title: planTitle(mission.title),
+        body,
         sourceRefs: [],
         supersedes: previous?.id ?? null,
-        summary: plan.summary.trim().length > 0 ? plan.summary.trim() : describePlan(plan),
+        summary: handoff.headline,
       });
-      this.deps.artifacts.create(manifest);
+      // Written by the planner run, not by a member; answered for by whoever asked for the mission.
+      // Measured for the reader but never held to a budget: like a person's
+      // text, the plan document is a system summary, not an agent's draft.
+      this.deps.artifacts.create({
+        ...manifest, authorId: RUNTIME_ACTOR, responsibleId: mission.createdBy ?? null,
+        handoff, wordCount: this.deps.measure.measure('MissionPlan', body).mainWords, overBudget: false,
+      });
       this.deps.recorder.invalidate('artifacts', mission.id);
     } catch (e) {
       // The plan is already in the task rows; losing its readable rendering is
@@ -589,6 +602,34 @@ way to write that file, reply with the JSON object instead.`;
         missionId: mission.id, error: errorMessage(e),
       });
     }
+  }
+
+  /**
+   * What the plan card says before anyone opens the plan: its one-line summary,
+   * its shape and the first thing that will stop for a person. That the
+   * mission waits on its approval is said once, in `needs`, which the feed and
+   * reader hide once the plan is decided; a point saying it would outlive the
+   * approval and repeat the needs line while it lasts.
+   */
+  #planHandoff(plan: MissionPlan, workspace: Workspace): ArtifactHandoff {
+    const description = describePlan(plan);
+    const awaitsApproval = workspace.autonomy.planApproval === 'ask';
+    const summary = plan.summary.trim().length > 0 ? plan.summary.trim() : description;
+    const stop = plan.tasks.find((t) => t.completionGate !== null || t.approvalPolicy.beforeStart || t.approvalPolicy.onCompletion);
+    const stopLine = stop === undefined ? null
+      : stop.completionGate !== null ? `First gate: ${stop.key} passes when ${stop.completionGate}`
+        : `${stop.title} needs approval ${stop.approvalPolicy.beforeStart ? 'before it starts' : 'when it finishes'}`;
+    const points = [description, stopLine]
+      .filter((p): p is string => p !== null)
+      .map((p) => clip(p, 140));
+    return {
+      // Cut on a word boundary at 90 characters, the same rule a person's text gets.
+      headline: clip(this.deps.measure.deriveHandoff(summary.split('\n')[0] ?? summary).headline, 90),
+      points,
+      needs: awaitsApproval ? 'Approve the plan to start' : null,
+      changed: [],
+      links: [],
+    };
   }
 
   #requestApprovalOrAccept(
@@ -635,6 +676,8 @@ way to write that file, reply with the JSON object instead.`;
           ? []
           : [{ kind: 'artifact' as const, label: 'MissionPlan', value: artifact.id }]),
       ],
+      addressees: this.#planAddressees(mission),
+      escalateAfterMs: DEFAULT_ESCALATE_AFTER_MS,
     });
     this.deps.approvals.create(approval);
     this.deps.recorder.record(scope, { type: 'approval.requested', approvalId: approval.id });
@@ -649,6 +692,17 @@ way to write that file, reply with the JSON object instead.`;
     const routed = workspace.routing[PLANNER_ROLE_ID];
     if (routed === undefined || routed.length === 0) return all;
     return routed.flatMap((id) => all.filter((p) => p.id === id));
+  }
+
+  /**
+   * Whoever asked for the mission, while they are still an active person on
+   * the team; otherwise the owners, who always exist.
+   */
+  #planAddressees(mission: Mission): readonly string[] {
+    const team = indexTeam(this.deps.members.listByWorkspace(mission.workspaceId, { includeRemoved: true }));
+    const creator = mission.createdBy ?? null;
+    if (creator !== null && isActiveMember(team, creator) && team.byId.get(creator)?.kind === 'person') return [creator];
+    return team.owners.map((m) => m.id);
   }
 
   #setStatus(mission: Mission, scope: EventScope, status: Mission['status'], reason: string): Mission {

@@ -11,6 +11,7 @@ import {
   InstanceLock, loadOrCreateToken, removeConnectionFile, writeConnectionFile,
 } from './http/identity.js';
 import { installShutdownHandlers } from './lifecycle.js';
+import { adoptGitName, gitUserName } from './local-person.js';
 import { RECOVERY_SERVICE } from '@tandemise/application';
 
 /**
@@ -32,8 +33,10 @@ export async function startDaemon(overrides: Parameters<typeof loadConfig>[0] = 
   const lock = new InstanceLock(config.home);
   lock.acquire();
 
-  const { container, services, lifecycle, events, projections, log } = bootstrap(config);
+  const gitName = gitUserName();
+  const { container, services, lifecycle, events, projections, log } = bootstrap(config, { localPersonName: gitName });
   log.info('daemon.starting', { version: config.version, apiVersion: API_VERSION, home: config.home });
+  adoptGitName(services, gitName, log);
 
   // Recovery reconciles whatever the last daemon left behind, and must complete
   // before the scheduler can dispatch anything (MVP.md §21.2).
@@ -73,6 +76,8 @@ export async function startDaemon(overrides: Parameters<typeof loadConfig>[0] = 
     token,
     router,
     log,
+    // P0 has one token and one person: every request acts as the local person.
+    identityResolver: () => ({ personId: services.identity.localPerson().id }),
     port: config.port,
     onUpgrade: (req, socket, head) => stream?.handleUpgrade(req, socket, head),
   });

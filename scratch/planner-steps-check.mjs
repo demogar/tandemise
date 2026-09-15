@@ -24,6 +24,7 @@ const plan = {
     { key: 'ci', title: 'CI', objective: 'Wait for CI', executor: 'wait', waitFor: 'gh pr checks feat/x --required',
       everyMs: 30000, timeoutMs: 2700000, dependsOn: ['open_pr'], executionPolicy: { isolation: 'worktree' } },
     { key: 'approve', title: 'Approve', objective: 'Approve the PR on GitHub', executor: 'human', dependsOn: ['ci'] },
+    { key: 'figma', title: 'Design', objective: 'Make the design in Figma', executor: 'human', roleId: 'design', dependsOn: ['ci'] },
   ],
 };
 
@@ -36,6 +37,9 @@ if (parsed.ok) {
   ok('wait step keeps its cadence', ci.waitPolicy?.everyMs === 30000 && ci.waitPolicy?.timeoutMs === 2700000);
   ok('wait step is not sandboxed', ci.executionPolicy.isolation === 'none');
   ok('human step needs no role', approve.executor === 'human' && approve.roleId === 'human');
+  // Staffing is per role, so a person's step that names one keeps it.
+  const figma = parsed.value.tasks[3];
+  ok('a human step keeps the role it names', figma.executor === 'human' && figma.roleId === 'design', figma.roleId);
   const validated = validateMissionPlan(parsed.value, {
     knownRoleIds: new Set(['development']), satisfiableCapabilities: new Set(), knownRepositoryNames: undefined,
   });

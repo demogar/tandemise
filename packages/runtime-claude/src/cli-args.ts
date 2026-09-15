@@ -2,6 +2,16 @@ import { ARTIFACT_OUT_DIR, CORE_CAPABILITIES, anyCapabilityMatches } from '@tand
 import type { Capability } from '@tandemise/domain';
 import type { RunRequest } from '@tandemise/runtimes-core';
 import { isPathInside } from '@tandemise/shared';
+import { realpathSync } from 'node:fs';
+
+/** The path with symlinks resolved, or as given when it does not exist (yet). */
+function realPath(path: string): string {
+  try {
+    return realpathSync(path);
+  } catch {
+    return path;
+  }
+}
 
 export const PERMISSION_MODES = ['default', 'plan', 'acceptEdits', 'bypassPermissions'] as const;
 export type PermissionMode = (typeof PERMISSION_MODES)[number];
@@ -151,10 +161,21 @@ export function buildInvocation(request: RunRequest, resumeSessionRef: string | 
   if (disallowed.length > 0) args.push('--disallowed-tools', disallowed.join(','));
 
   // The working directory is implicit (it is the child's cwd); only additional
-  // roots need declaring, and only roots outside it are additional.
+  // roots need declaring, and only roots outside it are additional. The cwd
+  // resolves symlinks, so Claude Code trusts only the real path while the
+  // prompt names the path as given (macOS /tmp is itself a link): a real run
+  // had every read of its own repository refused. Declare the spelling it
+  // would otherwise not recognise, for the working directory and each root.
+  const dirs = new Set<string>();
+  const cwd = request.workingDirectory;
+  if (realPath(cwd) !== cwd) dirs.add(cwd);
   for (const root of request.allowedRoots) {
-    if (!isPathInside(request.workingDirectory, root)) args.push('--add-dir', root);
+    if (isPathInside(cwd, root)) continue;
+    dirs.add(root);
+    const real = realPath(root);
+    if (real !== root) dirs.add(real);
   }
+  for (const dir of dirs) args.push('--add-dir', dir);
 
   // Always strict. Without --strict-mcp-config the CLI merges the user's own
   // MCP servers - their Gmail, Drive, Notion - into the run. Passing it only

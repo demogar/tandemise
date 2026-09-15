@@ -7,7 +7,7 @@ import { NormalizingEventSink, SESSION_NOT_FOUND, classifyAbort } from '@tandemi
 import type { AgentRuntimeAdapter, RunRequest } from '@tandemise/runtimes-core';
 import { TandemiseError, errorMessage, isPathInside, systemClock } from '@tandemise/shared';
 import type { Clock, RunId } from '@tandemise/shared';
-import { DEFAULT_FAKE_SCRIPT, parseFakeScript, substituteStep } from './fake-script.js';
+import { DEFAULT_FAKE_SCRIPT, parseFakeScript, stepApplies, substituteStep } from './fake-script.js';
 import type { FakeScript, FakeStep } from './fake-script.js';
 
 export const FAKE_ADAPTER_ID = 'fake';
@@ -151,13 +151,16 @@ export class FakeRuntimeAdapter implements AgentRuntimeAdapter {
       sink.push({ type: 'checkpoint', externalSessionId: resumeSessionRef, label: 'session.resumed' });
     }
 
-    const values = { prompt: request.prompt, cwd: request.workingDirectory, runId: request.runId };
+    const captured = Object.fromEntries(Object.entries(script.value.captures ?? {}).map(([name, source]) =>
+      [name, [...request.prompt.matchAll(new RegExp(source, 'gm'))].map((m) => m[1] ?? m[0]).join(', ')]));
+    const values = { prompt: request.prompt, cwd: request.workingDirectory, runId: request.runId, ...captured };
     for (const step of script.value.steps) {
       if (signal.aborted) {
         const outcome = classifyAbort(request.signal, request.maxWallTimeMs);
         sink.fail(outcome.code, outcome.message, outcome.retryable);
         return;
       }
+      if (!stepApplies(step, request.prompt)) continue;
       if (step.kind === 'delay') {
         await delay(step.ms, signal);
         continue;

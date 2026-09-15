@@ -1,0 +1,32 @@
+{
+  "id": "A5",
+  "title": "The lead also signs off (both_sign_off)",
+  "ok": true,
+  "checks": [
+    {
+      "label": "Maria's drawer toggle stores oversight = both_sign_off",
+      "ok": true
+    },
+    {
+      "label": "after Ana approves, design still waits",
+      "ok": true
+    },
+    {
+      "label": "a sign-off card goes to Maria only",
+      "ok": true
+    },
+    {
+      "label": "card shows the \"Lead sign-off\" badge, not the raw marker row",
+      "ok": true
+    },
+    {
+      "label": "design succeeds only after Maria signs off (recorded by you)",
+      "ok": true
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/A5-maria-drawer.png",
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/A5-lead-signoff.png"
+  ]
+}

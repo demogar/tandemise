@@ -34,6 +34,14 @@ export interface ApprovalDraft {
   readonly options?: readonly ApprovalOption[];
   readonly recommendedOptionId?: string | null;
   readonly expiresAt?: string | null;
+  /** Member ids the card is for. Advisory until accounts exist. */
+  readonly addressees?: readonly string[];
+  /**
+   * How long the card waits before it is also sent up the team tree. Null or
+   * absent: it never escalates. Turned into an absolute `escalateAt` here so
+   * every caller measures from the same moment - the card's creation.
+   */
+  readonly escalateAfterMs?: number | null;
 }
 
 export interface ApprovalFactory {
@@ -90,6 +98,12 @@ export function createApprovalFactory(options: { clock?: Clock } = {}): Approval
       createdAt: clock.now(),
       decidedAt: null,
       expiresAt: draft.expiresAt ?? null,
+      addressees: [...new Set(draft.addressees ?? [])],
+      escalationLevel: 0,
+      escalateAt: draft.escalateAfterMs === undefined || draft.escalateAfterMs === null
+        ? null
+        : new Date(clock.epochMs() + draft.escalateAfterMs).toISOString(),
+      recordedBy: null,
     });
   };
 

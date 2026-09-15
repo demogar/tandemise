@@ -4,7 +4,7 @@ import type {
 import { Err, Ok, TandemiseError, errorMessage, nullLogger, systemClock } from '@tandemise/shared';
 import type { Clock, Logger, Result, RunId, RuntimeProfileId } from '@tandemise/shared';
 import { token } from '@tandemise/kernel';
-import type { AgentRuntimeAdapter, RunRequest, SlotReservation } from './adapter.js';
+import type { AgentRuntimeAdapter, RunRequest, SlotReservation, SlotRetention } from './adapter.js';
 import type { RuntimeRegistry } from './registry.js';
 
 /** How long a health probe is reused. Short enough for a polling UI to feel live. */
@@ -17,6 +17,13 @@ export const DEFAULT_HEALTH_TTL_MS = 10_000;
  */
 export const RESERVATION_TTL_MS = 5 * 60_000;
 
+/**
+ * The backstop for a slot a finished run kept for its follow-up. Longer than
+ * an unstarted reservation's, because it waits across harvesting and checks,
+ * which can run a repository's whole test suite.
+ */
+export const RETAINED_SLOT_TTL_MS = 60 * 60_000;
+
 export interface RuntimeSelection {
   readonly profile: RuntimeProfile;
   readonly adapter: AgentRuntimeAdapter;
@@ -28,6 +35,8 @@ export interface RuntimeSelection {
 /** Why a candidate was passed over. Surfaced verbatim so routing is explainable. */
 export interface RuntimeRejection {
   readonly profileId: RuntimeProfileId;
+  /** The profile's name, for reasons a person reads. */
+  readonly profileName: string;
   readonly reason: string;
   /**
    * The candidate could run this, just not right now. A caller that finds only
@@ -39,6 +48,15 @@ export interface RuntimeRejection {
    * Like `busy`, a reason to wait rather than fail - just a longer wait.
    */
   readonly awaitingPerson?: true;
+}
+
+/**
+ * The rejections as one line a person reads: "'Scripted agent': missing
+ * capabilities: mcp". Profiles are named, not identified - a raw id in a
+ * blocked banner tells nobody which runtime to fix.
+ */
+export function describeRejections(rejections: readonly RuntimeRejection[]): string {
+  return rejections.map((r) => `'${r.profileName}': ${r.reason}`).join('; ');
 }
 
 /** True when every candidate was capable and merely out of slots. */
@@ -194,11 +212,11 @@ export class RuntimeManager {
     for (const profile of candidates) {
       const reason = this.#rejectCheaply(profile, requiredCapabilities);
       if (reason !== null) {
-        rejections.push({ profileId: profile.id, reason });
+        rejections.push({ profileId: profile.id, profileName: profile.name, reason });
         continue;
       }
       if (this.isSaturated(profile)) {
-        rejections.push({ profileId: profile.id, reason: this.#saturationReason(profile), busy: true });
+        rejections.push({ profileId: profile.id, profileName: profile.name, reason: this.#saturationReason(profile), busy: true });
         continue;
       }
       // Safe: `#rejectCheaply` returns a reason when the adapter is unknown.
@@ -212,7 +230,7 @@ export class RuntimeManager {
         // Saturation is re-read after the await: another selection may have
         // taken the last slot while this one was probing health.
         if (this.isSaturated(profile)) {
-          rejections.push({ profileId: profile.id, reason: this.#saturationReason(profile), busy: true });
+          rejections.push({ profileId: profile.id, profileName: profile.name, reason: this.#saturationReason(profile), busy: true });
           continue;
         }
         return Ok({ profile, adapter, health, reservation: this.#reserve(profile.id) });
@@ -223,6 +241,7 @@ export class RuntimeManager {
       }
       rejections.push({
         profileId: profile.id,
+        profileName: profile.name,
         reason: `${health.state}: ${health.actionRequired ?? health.detail}`,
         ...(health.actionRequired === undefined ? {} : { awaitingPerson: true as const }),
       });
@@ -230,7 +249,7 @@ export class RuntimeManager {
 
     if (degraded !== null) {
       if (this.isSaturated(degraded.profile)) {
-        rejections.push({ profileId: degraded.profile.id, reason: this.#saturationReason(degraded.profile), busy: true });
+        rejections.push({ profileId: degraded.profile.id, profileName: degraded.profile.name, reason: this.#saturationReason(degraded.profile), busy: true });
         return Err({ requiredCapabilities, rejections });
       }
       this.#log.warn('routing to a degraded runtime', {
@@ -247,8 +266,10 @@ export class RuntimeManager {
    * The TTL is a backstop so a caller that never releases cannot saturate a
    * profile forever.
    */
-  #reserve(profileId: RuntimeProfileId): SlotReservation {
-    this.#claim(profileId);
+  #reserve(profileId: RuntimeProfileId, retained = false): SlotReservation {
+    // A retained slot is already counted in flight: the run that held it
+    // passes it on without ever giving it back.
+    if (!retained) this.#claim(profileId);
     let held = true;
     const timer = setTimeout(() => {
       this.#reservations.delete(reservation);
@@ -256,7 +277,7 @@ export class RuntimeManager {
       held = false;
       this.#log.warn('runtime reservation expired unstarted', { profileId });
       this.#release(profileId);
-    }, RESERVATION_TTL_MS);
+    }, retained ? RETAINED_SLOT_TTL_MS : RESERVATION_TTL_MS);
     timer.unref?.();
     const reservation: ReservationHandle = {
       release: () => {
@@ -302,7 +323,7 @@ export class RuntimeManager {
     // as idle - and two schedulers would both route to the same
     // `maxConcurrent: 1` profile.
     if (!this.#inherit(request)) this.#claim(request.profile.id);
-    return this.#tracked(request.profile.id, adapter.start(request));
+    return this.#tracked(request.profile.id, adapter.start(request), request.retainSlot);
   }
 
   resume(sessionRef: string, request: RunRequest): AsyncIterable<AgentEvent> {
@@ -313,7 +334,7 @@ export class RuntimeManager {
       });
     }
     if (!this.#inherit(request)) this.#claim(request.profile.id);
-    return this.#tracked(request.profile.id, adapter.resume(sessionRef, request));
+    return this.#tracked(request.profile.id, adapter.resume(sessionRef, request), request.retainSlot);
   }
 
   async cancel(profile: RuntimeProfile, runId: RunId): Promise<void> {
@@ -371,11 +392,22 @@ export class RuntimeManager {
    * iterator, which `finally` covers because a `for await` that breaks early
    * calls `return()` on the generator.
    */
-  async *#tracked(profileId: RuntimeProfileId, events: AsyncIterable<AgentEvent>): AsyncIterable<AgentEvent> {
+  async *#tracked(
+    profileId: RuntimeProfileId,
+    events: AsyncIterable<AgentEvent>,
+    retain: SlotRetention | undefined,
+  ): AsyncIterable<AgentEvent> {
     try {
       yield* events;
     } finally {
-      this.#release(profileId);
+      if (retain === undefined) {
+        this.#release(profileId);
+      } else {
+        // Converted in the same synchronous step that would have freed it, so
+        // no selection can see the profile idle in between.
+        retain.reservation?.release();
+        retain.reservation = this.#reserve(profileId, true);
+      }
     }
   }
 }

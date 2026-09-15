@@ -1,5 +1,6 @@
 import type { ArtifactType } from '@tandemise/domain';
 import { z } from 'zod';
+import { HANDOFF_LIMITS, handoffSchema } from './handoff.js';
 
 /**
  * Front-matter schemas for the structured artifact types (MVP.md §15.2).
@@ -16,10 +17,21 @@ import { z } from 'zod';
  */
 const nonEmpty = (what: string) => z.string().trim().min(1, `${what} must not be empty`);
 
+/**
+ * What every artifact carries, whatever its type. The title is capped because
+ * it is a short name shown in lists, not a sentence; the handoff is required
+ * because it is what a person reads first (P1 spec §1).
+ */
 const base = <T extends ArtifactType>(type: T) => ({
   type: z.literal(type),
   schemaVersion: z.number().int().positive().default(1),
-  title: nonEmpty('title'),
+  title: z.string().trim()
+    .min(1, 'title must not be empty')
+    .max(HANDOFF_LIMITS.title, `title must be at most ${HANDOFF_LIMITS.title} characters: a short name, not a sentence`),
+  // A missing handoff is parsed as an empty one so the issue names the field the
+  // author has to write (`handoff.headline`), not just `handoff`: the retry
+  // prompt repeats these paths, and "Required at handoff" does not say what is.
+  handoff: z.preprocess((value) => value ?? {}, handoffSchema),
 });
 
 const FINDING_SEVERITY = z.enum(['blocking', 'major', 'minor', 'nit']);
@@ -128,7 +140,17 @@ export const DecisionRecordFrontMatter = z.object({
   supersedes: z.string().trim().default(''),
 });
 
-/** The artifact types that carry a validated front-matter contract. */
+/*
+ * Evidence, FinanceReport and MissionPlan have no machine-read facts of their
+ * own, so their contract is only the common part: a title and a handoff. Other
+ * keys an author adds are kept rather than dropped, because before these
+ * schemas existed their front matter was passed through as written.
+ */
+export const FinanceReportFrontMatter = z.object(base('FinanceReport')).passthrough();
+export const EvidenceFrontMatter = z.object(base('Evidence')).passthrough();
+export const MissionPlanFrontMatter = z.object(base('MissionPlan')).passthrough();
+
+/** Every artifact type's validated front-matter contract. */
 export const ARTIFACT_SCHEMAS = {
   ProblemBrief: ProblemBriefFrontMatter,
   ProductSpec: ProductSpecFrontMatter,
@@ -141,12 +163,20 @@ export const ARTIFACT_SCHEMAS = {
   QAReport: QAReportFrontMatter,
   ReleaseCandidate: ReleaseCandidateFrontMatter,
   DecisionRecord: DecisionRecordFrontMatter,
-} as const;
+  FinanceReport: FinanceReportFrontMatter,
+  Evidence: EvidenceFrontMatter,
+  MissionPlan: MissionPlanFrontMatter,
+} as const satisfies Record<ArtifactType, z.ZodTypeAny>;
 
 export type SchemaBackedArtifactType = keyof typeof ARTIFACT_SCHEMAS;
 
+/**
+ * True for every artifact type since the handoff became part of every
+ * contract. Kept so callers written when only some types had schemas keep
+ * compiling, and so an unknown string from outside is still refused.
+ */
 export function hasSchema(type: ArtifactType): type is SchemaBackedArtifactType {
-  return type in ARTIFACT_SCHEMAS;
+  return Object.prototype.hasOwnProperty.call(ARTIFACT_SCHEMAS, type);
 }
 
 export type FrontMatterFor<T extends SchemaBackedArtifactType> = z.infer<(typeof ARTIFACT_SCHEMAS)[T]>;

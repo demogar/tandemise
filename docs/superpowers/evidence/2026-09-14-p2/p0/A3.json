@@ -1,0 +1,26 @@
+{
+  "id": "A3",
+  "title": "You do a stage yourself",
+  "ok": true,
+  "checks": [
+    {
+      "label": "docs is assigned to you (the only owner)",
+      "ok": true,
+      "observed": {
+        "id": "mem_01m2gyq7cat1ayp7e9d3",
+        "name": "Demostenes Garcia G.",
+        "kind": "person"
+      }
+    },
+    {
+      "label": "artifact by you, responsible you, readable text",
+      "ok": true,
+      "observed": {
+        "author": "Demostenes Garcia G.",
+        "mediaType": "text/markdown"
+      }
+    }
+  ],
+  "notes": [],
+  "shots": []
+}

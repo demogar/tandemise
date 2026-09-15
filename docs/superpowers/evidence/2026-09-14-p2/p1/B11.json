@@ -1,0 +1,47 @@
+{
+  "id": "B11",
+  "title": "Real Claude Code: handoff and short card",
+  "ok": true,
+  "checks": [
+    {
+      "label": "design finished on Claude Code",
+      "ok": true,
+      "observed": {
+        "status": "SUCCEEDED",
+        "runtime": "Claude Code"
+      }
+    },
+    {
+      "label": "the DesignBrief has a valid handoff (headline ≤ 90, ≤ 3 points)",
+      "ok": true,
+      "observed": {
+        "headline": "Hello page design is finished as a written brief; no preview link exists",
+        "points": [
+          "Six frames specified with final copy - Loading, Default, Personalised, Error, Keyboard focus, Mobile",
+          "Claude Design was chosen, but the upload failed because this session has no design authorisation",
+          "The page always says hello; a failed greeting load never hides the heading"
+        ],
+        "needs": "To get a preview, run /design-login in an interactive session, then re-run this task to upload the frames",
+        "changed": [],
+        "links": []
+      }
+    },
+    {
+      "label": "within budget, or tightened once",
+      "ok": true,
+      "observed": {
+        "words": 465,
+        "tightens": 0
+      }
+    }
+  ],
+  "notes": [
+    "answered \"Where should I design the hello page: Claude Design, or should I write a detailed brief instead?\" with \"Claude Design\"",
+    "answered \"Claude Design isn't authorised in this session. Can you run /design-login so I can retry, or should I finish with a written brief?\" with \"Finish with a written brief\"",
+    "words 465, overBudget false, tighten passes 0"
+  ],
+  "shots": [
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/B11-feed.png",
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/B11-reader.png"
+  ]
+}

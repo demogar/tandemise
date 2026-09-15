@@ -1,4 +1,5 @@
 import type { MissionId, RunId, TaskId, Timestamp, WorkerAssignmentId } from '@tandemise/shared';
+import type { RunPurpose } from './feedback.js';
 
 export const RUN_STATUSES = [
   'STARTING', 'RUNNING', 'SUCCEEDED', 'FAILED', 'CANCELLED',
@@ -35,6 +36,12 @@ export interface Run {
   readonly startedAt: Timestamp;
   readonly finishedAt: Timestamp | null;
   readonly heartbeatAt: Timestamp | null;
+  /** The agent member the run acted as, or null for a legacy runtime-only dispatch. */
+  readonly agentMemberId?: string | null;
+  /** The task round this run belongs to; null for a run from before migration 010. */
+  readonly round?: number | null;
+  /** Why this run exists; null for the same reason as `round`. */
+  readonly purpose?: RunPurpose | null;
 }
 
 /**

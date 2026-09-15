@@ -7,6 +7,7 @@ import type { RuntimeRegistry } from '@tandemise/runtimes-core';
 import { asId, type Clock, type Logger, type MissionId, type RunId } from '@tandemise/shared';
 import type { ProcessLivenessPort } from '../ports.js';
 import type { EventRecorder } from '../support/event-recorder.js';
+import { withdrawApproval } from '../support/withdraw.js';
 
 export interface RecoveryReport {
   readonly adopted: readonly string[];
@@ -179,12 +180,11 @@ export class RecoveryService {
   #withdrawQuestions(taskId: MissionTask['id']): void {
     for (const approval of this.approvals.list({ statuses: ['PENDING'] })) {
       if (approval.taskId !== taskId || approval.kind !== 'choice') continue;
-      this.approvals.update(approval.id, {
-        status: 'CANCELLED',
-        decisionNote: 'Tandemise restarted while the worker was waiting on this. It will ask again if it still needs to.',
-        decidedAt: this.clock.now(),
-      });
-      this.recorder.invalidate('approvals', approval.missionId ?? undefined);
+      withdrawApproval(
+        { approvals: this.approvals, recorder: this.recorder, clock: this.clock },
+        approval,
+        'Tandemise restarted while the worker was waiting on this. It will ask again if it still needs to.',
+      );
     }
   }
 

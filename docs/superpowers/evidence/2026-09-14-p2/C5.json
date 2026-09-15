@@ -1,0 +1,116 @@
+{
+  "id": "C5",
+  "title": "Several notes: both go into one round and are cited",
+  "ok": true,
+  "checks": [
+    {
+      "label": "solo workspace: you are the only person",
+      "ok": true,
+      "observed": [
+        "Demostenes Garcia G."
+      ]
+    },
+    {
+      "label": "paused from the header while doc runs",
+      "ok": true,
+      "observed": "PAUSED"
+    },
+    {
+      "label": "the mission stays paused after doc finishes",
+      "ok": true
+    },
+    {
+      "label": "no \"Recording for\" on screen (first composer)",
+      "ok": true
+    },
+    {
+      "label": "first note: \"Round 2 started\"",
+      "ok": true,
+      "observed": "Round 2 started"
+    },
+    {
+      "label": "second note joins the waiting round: \"Added to the task\"",
+      "ok": true,
+      "observed": "Added to the task"
+    },
+    {
+      "label": "both notes are in round 2 before it runs",
+      "ok": true,
+      "observed": {
+        "status": "READY",
+        "round": 2,
+        "items": [
+          [
+            "in_round",
+            2
+          ],
+          [
+            "open",
+            2
+          ]
+        ]
+      }
+    },
+    {
+      "label": "the card counts both notes for the round that has not run: \"2 notes for round 2\", with no Start round",
+      "ok": true,
+      "observed": "PRODUCT MANAGER\ndoc\nQueued\nRound 2\njust now\nby\nRuntime\n·\nresponsible\nYou\nFull doc\nRequest changes\n\nRound 2: changes requested\n\n2 notes for round 2\nAdd a link to the pricing page"
+    },
+    {
+      "label": "the card names no one in the round line",
+      "ok": true,
+      "observed": "PRODUCT MANAGER\ndoc\nQueued\nRound 2\njust now\nby\nRuntime\n·\nresponsible\nYou\nFull doc\nRequest changes\n\nRound 2: changes requested\n\n2 notes for round 2\nAdd a link to the pricing page"
+    },
+    {
+      "label": "the drawer thread lists both notes",
+      "ok": true,
+      "observed": "doc\nReady\nProduct Manager\nScripted agent\nc5-notes-scripted-omit-citation-once-scripted-sl-doc\nnone isolation\nDone by\nScripted agent\n·\nResponsible\nYou\nRound 2: changes requested\nOBJECTIVE\nWrite a short spec for a hello page.\nSTARTED\nSep 14, 2026, 5:15 PM\nFINISHED\n—\nFEEDBACK\nRound 2\nYou\nIn progress\n\nSay who the page is for\n\nYou\nJoins this round\nDismiss\n\nAdd a link to the pricing page\n\nARTIFACTS PRODUCED\nProductSpec: Scripted work\nDetails\nRequest changes\nClose"
+    },
+    {
+      "label": "both notes sit under \"Round 2\"; the second \"Joins this round\"; nothing waits for a round and there is no Start round",
+      "ok": true,
+      "observed": "doc\nReady\nProduct Manager\nScripted agent\nc5-notes-scripted-omit-citation-once-scripted-sl-doc\nnone isolation\nDone by\nScripted agent\n·\nResponsible\nYou\nRound 2: changes requested\nOBJECTIVE\nWrite a short spec for a hello page.\nSTARTED\nSep 14, 2026, 5:15 PM\nFINISHED\n—\nFEEDBACK\nRound 2\nYou\nIn progress\n\nSay who the page is for\n\nYou\nJoins this round\nDismiss\n\nAdd a link to the pricing page\n\nARTIFACTS PRODUCED\nProductSpec: Scripted work\nDetails\nRequest changes\nClose"
+    },
+    {
+      "label": "the drawer shows the round reason plainly, not as a warning, and with no personal name",
+      "ok": true,
+      "observed": {
+        "warns": 0
+      }
+    },
+    {
+      "label": "no \"Recording for\" on screen (drawer)",
+      "ok": true
+    },
+    {
+      "label": "C5: both notes addressed in round 2",
+      "ok": true,
+      "observed": [
+        [
+          "Say who the page is for",
+          "addressed",
+          2
+        ],
+        [
+          "Add a link to the pricing page",
+          "addressed",
+          2
+        ]
+      ]
+    },
+    {
+      "label": "C5: the reader's \"Changes in v2\" links both notes",
+      "ok": true,
+      "observed": "doc\nProductSpec: Scripted work\nby\nRuntime\n·\nresponsible\nYou\nRequest changes\n\nProductSpec ready for the hello page\n\nWritten by the scripted acceptance agent\nNo model was called\nCHANGES IN V2\nApplied: Say who the page is for\nYou\nSay who the page is for\nYou\nAdd a link to the pricing page\nv1\nv2\nCompare with v1\nProduct Spec\nSep 14, 2026, 5:16 PM\ndoc branch\nDetails\n\nWritten by the scripted acceptance agent.\n\nRound notes:\n\nSay who the page is for\nAdd a link to the pricing page"
+    }
+  ],
+  "notes": [
+    "mission msn_01m2gztpzdtj428jvc8r",
+    "card while waiting: PRODUCT MANAGER | doc | Queued | Round 2 | just now | by | Runtime | · | responsible | You | Full doc | Request changes |  | Round 2: changes requested |  | 2 notes for round 2 | Add a link to the pricing page"
+  ],
+  "shots": [
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/C5-card-two-notes.png",
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/C5-drawer-two-notes.png",
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/C5-reader-changes-v2.png"
+  ]
+}

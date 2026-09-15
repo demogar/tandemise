@@ -19,7 +19,7 @@ import { persistenceModule } from '@tandemise/persistence';
 import * as persistenceTokens from '@tandemise/persistence';
 import {
   createArtifactsModule, ARTIFACT_STORE as ARTIFACTS_STORE_TOKEN,
-  renderArtifactTemplate, parseArtifact,
+  renderArtifactTemplate, parseArtifact, measureArtifact, deriveHandoff, splitAppendix,
 } from '@tandemise/artifacts';
 import { policyModule } from '@tandemise/policy';
 import { contextModule } from '@tandemise/context';
@@ -56,11 +56,16 @@ const head = (t) => console.log(`\n── ${t}`);
 // One profile per role, each scripted to behave like that role: write the
 // artifacts its role produces, into the hand-off directory the prompt names.
 
+// Every artifact carries a handoff; a short one is enough for the engine's contract.
 const fm = (type, title, extra) => [
   '---',
   `type: ${type}`,
   'schemaVersion: 1',
   `title: ${JSON.stringify(title)}`,
+  'handoff:',
+  `  headline: ${JSON.stringify(`${type} ready for Taskly`)}`,
+  '  points:',
+  `    - ${JSON.stringify(title)}`,
   ...extra,
   '---',
   '',
@@ -145,6 +150,8 @@ const developmentBadScript = {
       'type: ChangeSet',
       'schemaVersion: 1',
       'title: "Clear completed tasks"',
+      'handoff:',
+      '  headline: Clear completed tasks implemented',
       '---',
       '',
       '## Changes\n\nI implemented it. (No `branch` in the front matter: the contract is not met.)\n',
@@ -297,6 +304,7 @@ for (const name of Object.keys(appTokens)) {
 container.bind(appTokens.ARTIFACT_STORE, (r) => r.resolve(ARTIFACTS_STORE_TOKEN), { source: 'alias' });
 container.bind(appTokens.ARTIFACT_TEMPLATES, () => ({ render: renderArtifactTemplate }), { source: 'check' });
 container.bind(appTokens.ARTIFACT_PARSER, () => ({ parse: parseArtifact }), { source: 'check' });
+container.bind(appTokens.ARTIFACT_MEASURE, () => ({ measure: measureArtifact, deriveHandoff, splitAppendix }), { source: 'check' });
 container.bind(appTokens.EVENT_BUS, () => eventBus, { source: 'check' });
 container.bind(appTokens.PROJECTION_BUS, () => projectionBus, { source: 'check' });
 container.bind(appTokens.SECRET_STORE, () => memorySecrets(), { source: 'check' });
@@ -343,7 +351,7 @@ ok('recovery completes on an empty database', emptyRecovery.tasksRequeued === 0,
 
 // ===================================================== 1. workspace + repository
 head('1. workspace, built-in roles, and the repository');
-let workspaceView = await services.workspaces.create({ name: 'Tandemise Check' });
+let workspaceView = await services.workspaces.create({ personId: services.identity.localPerson().id }, { name: 'Tandemise Check' });
 const workspaceId = workspaceView.workspace.id;
 ok('the workspace seeded the built-in roles', workspaceView.roles.length === 8,
   workspaceView.roles.map((r) => r.id).join(', '));
@@ -386,7 +394,7 @@ ok('all runtimes report healthy', runtimeViews.every((v) => v.health.state === '
 
 // ================================================== 2. mission, plan, fallback
 head('2. a mission from a natural-language goal, and the preset fallback');
-const mission = await services.missions.create({
+const mission = await services.missions.create({ personId: services.identity.localPerson().id }, {
   workspaceId,
   repositoryId: repository.id,
   goal: 'Let people clear all their completed tasks in Taskly in one action, without touching open ones.',
@@ -422,7 +430,7 @@ ok('starting is refused while the plan is unapproved', refused?.code === 'APPROV
 
 // ==================================================== 3. run the DAG to the end
 head('3. approve the plan and run the DAG');
-await services.approvals.decide(planApproval.id, { optionId: 'approve' });
+await services.approvals.decide({ personId: services.identity.localPerson().id }, planApproval.id, { optionId: 'approve' });
 ok('approving the plan starts the mission',
   repos.missions.get(mission.id).status === 'EXECUTING');
 
@@ -484,7 +492,7 @@ ok('the mission followed its task into BLOCKED',
 
 repos.profiles.update(profileFor.qa, { capabilities: [...FAKE_CAPABILITIES, 'browser'] });
 await services.runtimes.checkHealth(profileFor.qa);
-const retried = await services.missions.retryTask(qaTask.id, { note: 'Granted the browser capability.' });
+const retried = await services.missions.retryTask({ personId: services.identity.localPerson().id }, qaTask.id, { note: 'Granted the browser capability.' });
 ok('a manual retry puts the task back in the queue and revives the mission',
   retried.status === 'READY' && repos.missions.get(mission.id).status === 'EXECUTING');
 await runUntilSettled();
@@ -578,7 +586,7 @@ ok('the approval card is complete', rcApproval !== undefined
   && rcApproval.approval.evidence.length > 0,
   `${rcApproval?.approval.evidence.length} pieces of evidence`);
 
-await services.approvals.decide(rcApproval.approval.id, { optionId: 'approve', note: 'Ship it.' });
+await services.approvals.decide({ personId: services.identity.localPerson().id }, rcApproval.approval.id, { optionId: 'approve', note: 'Ship it.' });
 ok('approving releases the task',
   repos.tasks.listByMission(mission.id).find((t) => t.key === 'release_candidate').status === 'SUCCEEDED');
 
@@ -723,7 +731,7 @@ ok('a project can rewrite a built-in role',
 
 // Roles belong to the project, so a second project must not see the first's
 // house style - that is the whole reason for scoping them.
-const otherWorkspace = (await services.workspaces.create({ name: 'Another project' })).workspace.id;
+const otherWorkspace = (await services.workspaces.create({ personId: services.identity.localPerson().id }, { name: 'Another project' })).workspace.id;
 ok('another project keeps the shipped role',
   services.roles.list(otherWorkspace).find((r) => r.id === 'product')?.name === 'Product Manager',
   services.roles.list(otherWorkspace).find((r) => r.id === 'product')?.name);
@@ -754,7 +762,7 @@ ok('a role someone wrote is actually deleted', !services.roles.list(workspaceId)
   const roleRepo = container.resolve(appTokens.ROLE_REPOSITORY);
   const stale = ['repository.read', 'filesystem.read', 'artifact.write'];
   // The unedited test relies on seeding writing createdAt === updatedAt.
-  const seededWs = await services.workspaces.create({ name: 'Seeding timestamps check' });
+  const seededWs = await services.workspaces.create({ personId: services.identity.localPerson().id }, { name: 'Seeding timestamps check' });
   const seededId = seededWs.workspace?.id ?? seededWs.id;
   ok('a freshly seeded project role reads as unedited',
     roleRepo.list(seededId).filter((r) => r.workspaceId === seededId).every((r) => r.createdAt === r.updatedAt),
@@ -763,7 +771,7 @@ ok('a role someone wrote is actually deleted', !services.roles.list(workspaceId)
 
   // A project seeded under the old bug: copied from the global, never edited,
   // but createdAt taken from the global and updatedAt set later.
-  const legacyWs = await services.workspaces.create({ name: 'Legacy seeding check' });
+  const legacyWs = await services.workspaces.create({ personId: services.identity.localPerson().id }, { name: 'Legacy seeding check' });
   const legacyId = legacyWs.workspace?.id ?? legacyWs.id;
   const legacyArch = roleRepo.get('architecture', legacyId);
   const staleGlobalArch = { ...legacyArch, workspaceId: null, defaultCapabilities: stale, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' };
@@ -815,12 +823,12 @@ ok('live targets are listable', services.projections.targets().length >= 0
 ok('mission events page by sequence',
   services.projections.missionEvents(mission.id, { afterSequence: 100, limit: 5 }).length === 5);
 
-const throwaway = await services.missions.create({
+const throwaway = await services.missions.create({ personId: services.identity.localPerson().id }, {
   workspaceId, goal: 'A mission created only to exercise pause, resume, cancel and delete.',
 });
 await services.planning.plan(throwaway.id);
 const throwawayApproval = services.approvals.list({ missionId: throwaway.id, status: 'PENDING' })[0];
-await services.approvals.decide(throwawayApproval.approval.id, { optionId: 'approve' });
+await services.approvals.decide({ personId: services.identity.localPerson().id }, throwawayApproval.approval.id, { optionId: 'approve' });
 await scheduler.drain();
 ok('pause stops dispatch', (await services.missions.pause(throwaway.id)).status === 'PAUSED');
 const attemptsAtPause = repos.tasks.listByMission(throwaway.id).map((t) => t.attempts).join(',');

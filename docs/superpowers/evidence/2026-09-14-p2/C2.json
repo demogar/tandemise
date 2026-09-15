@@ -1,0 +1,180 @@
+{
+  "id": "C2",
+  "title": "Tweak with dependents: the impact dialog, Redo and Keep",
+  "ok": true,
+  "checks": [
+    {
+      "label": "solo workspace: you are the only person",
+      "ok": true,
+      "observed": [
+        "Demostenes Garcia G."
+      ]
+    },
+    {
+      "label": "no \"Recording for\" on screen (redo composer)",
+      "ok": true
+    },
+    {
+      "label": "redo: the dialog opens as \"Round 2 of design\"",
+      "ok": true,
+      "observed": "Round 2 of design\n\nBuild (done), Review (done) used Design v1.\n\nRedo them after the new version\nKeep their work\nThey are flagged when the new version lands.\nNot now\nStart round 2"
+    },
+    {
+      "label": "redo: it lists Build (done) and says it used Design v1",
+      "ok": true,
+      "observed": "Round 2 of design\n\nBuild (done), Review (done) used Design v1.\n\nRedo them after the new version\nKeep their work\nThey are flagged when the new version lands.\nNot now\nStart round 2"
+    },
+    {
+      "label": "redo: it offers Redo and Keep, Start round 2 and Not now",
+      "ok": true
+    },
+    {
+      "label": "redo: chose \"Redo them after the new version\"",
+      "ok": true
+    },
+    {
+      "label": "redo: each dependent has its checkbox, ticked",
+      "ok": true,
+      "observed": "Round 2 of design\n\nBuild (done), Review (done) used Design v1.\n\nRedo them after the new version\nbuild\nreview\nKeep their work\nThey are flagged when the new version lands.\nNot now\nStart round 2"
+    },
+    {
+      "label": "redo: clicked Start round 2",
+      "ok": true
+    },
+    {
+      "label": "redo: build goes back to PENDING, \"Redone after design round 2\"",
+      "ok": true,
+      "observed": {
+        "status": "PENDING",
+        "reason": "Redone after design round 2"
+      }
+    },
+    {
+      "label": "redo: build reran and its new run used design v2",
+      "ok": true,
+      "observed": {
+        "inputs": [
+          {
+            "id": "art_01m2gznay2tvwgwgk2g5",
+            "taskId": "tsk_01m2gzmv61xdekcbkbs0",
+            "round": 2,
+            "type": "DesignBrief"
+          }
+        ],
+        "designArts": [
+          {
+            "id": "art_01m2gzmzta6hbea9v57g",
+            "round": 1
+          },
+          {
+            "id": "art_01m2gznay2tvwgwgk2g5",
+            "round": 2
+          }
+        ]
+      }
+    },
+    {
+      "label": "redo: build was not flagged for attention",
+      "ok": true
+    },
+    {
+      "label": "redo: review reran (its run count increased) and succeeded",
+      "ok": true,
+      "observed": {
+        "before": 1,
+        "after": 2,
+        "status": "SUCCEEDED"
+      }
+    },
+    {
+      "label": "redo: the feed shows design as Round 2",
+      "ok": true,
+      "observed": "PRODUCT DESIGNER\ndesign\nDone\nRound 2\njust now\nby\nDesign agent\n·\nresponsible\nYou\nFull doc\nRequest changes\n\nDesignBrief ready for the hello page\n\nWHAT CHANGED\nApplied: Make the greeting larger\n· You\nWritten by the scripted acceptance agent\nNo model was called"
+    },
+    {
+      "label": "redo: the timeline says \"Round 2 started\" and \"Redone: build\"",
+      "ok": true,
+      "observed": "msn_01m2gzmv5va07gjzfr0z\nMissions\np2-chain\nC2 redo mu1st6d1\nC2 redo mu1st6d1\nComplete\nFeed\nPlan\n3\nTimeline\nArtifacts\n4\nChecks & Gates\nMetrics\n65 events · latest just now\nFollowing\nRaw log\nMission created: C2 redo mu1st6d1\n05:12:18 PM\n·\nYou\nMission moved to Planning\nPlanning the mission.\n05:12:18 PM\n·\nTandemise\nRunning the project's own \"p2-chain\" workflow, from /tmp/tdm-p0/project/.tandemise/workflows/p2-chain.yaml.\n05:12:18 PM\n·\nTandemise\nWaiting for your approval\nThe mission is paused until you decide.\n05:12:18 PM\n·\nTandemise\n·\nReview decision\nMission moved to Awaiting plan approval\nWaiting "
+    },
+    {
+      "label": "no \"Recording for\" on screen (redo feed)",
+      "ok": true
+    },
+    {
+      "label": "no \"Recording for\" on screen (keep composer)",
+      "ok": true
+    },
+    {
+      "label": "keep: the dialog lists Build (done) and says it used Design v1",
+      "ok": true,
+      "observed": "Round 2 of design\n\nBuild (done), Review (done) used Design v1.\n\nRedo them after the new version\nKeep their work\nThey are flagged when the new version lands.\nNot now\nStart round 2"
+    },
+    {
+      "label": "keep: chose \"Keep their work\"",
+      "ok": true
+    },
+    {
+      "label": "keep: clicked Start round 2",
+      "ok": true
+    },
+    {
+      "label": "keep: build stays SUCCEEDED right after",
+      "ok": true
+    },
+    {
+      "label": "keep: build is still SUCCEEDED on its first run, and flagged once design round 2 lands",
+      "ok": true,
+      "observed": {
+        "status": "SUCCEEDED",
+        "needsAttention": true
+      }
+    },
+    {
+      "label": "keep: the timeline says build was built against design v1 and v2 is out",
+      "ok": true,
+      "observed": "msn_01m2gznpxm71zs592dqf\nMissions\np2-chain\nC2 keep mu1stsa5\nC2 keep mu1stsa5\nComplete\nFeed\nPlan\n3\nTimeline\nArtifacts\n4\nChecks & Gates\nMetrics\n47 events · latest just now\nFollowing\nRaw log\nMission created: C2 keep mu1stsa5\n05:12:47 PM\n·\nYou\nMission moved to Planning\nPlanning the mission.\n05:12:47 PM\n·\nTandemise\nRunning the project's own \"p2-chain\" workflow, from /tmp/tdm-p0/project/.tandemise/workflows/p2-chain.yaml.\n05:12:47 PM\n·\nTandemise\nWaiting for your approval\nThe mission is paused until you decide.\n05:12:47 PM\n·\nTandemise\n·\nReview decision\nMission moved to Awaiting plan approval\nWaiting for plan approval: 3 tasks: design → development → review.\n05:12:47 PM\n·\nTandemise\nApproval approved\nChose \"Approve\".\n05:12:50 PM\n·\nYou\n·\nReview decision\nMission moved to Executing\nPlan approved; exec"
+    },
+    {
+      "label": "keep: the timeline titles it \"Built on an older version of design\", not \"needs changes\"",
+      "ok": true,
+      "observed": "msn_01m2gznpxm71zs592dqf\nMissions\np2-chain\nC2 keep mu1stsa5\nC2 keep mu1stsa5\nComplete\nFeed\nPlan\n3\nTimeline\nArtifacts\n4\nChecks & Gates\nMetrics\n47 events · latest just now\nFollowing\nRaw log\nMission created: C2 keep mu1stsa5\n05:12:47 PM\n·\nYou\nMission moved to Planning\nPlanning the mission.\n05:12:47 PM\n·\nTandemise\nRunning the project's own \"p2-chain\" workflow, from /tmp/tdm-p0/project/.tandemise/workflows/p2-chain.yaml.\n05:12:47 PM\n·\nTandemise\nWaiting for your approval\nThe mission is paused until you decide.\n05:12:47 PM\n·\nTandemise\n·\nReview decision\nMission moved to Awaiting plan approval\nWaiting for plan approval: 3 tasks: design → development → review.\n05:12:47 PM\n·\nTandemise\nApproval approved\nChose \"Approve\".\n05:12:50 PM\n·\nYou\n·\nReview decision\nMission moved to Executing\nPlan approved; exec"
+    },
+    {
+      "label": "keep: the flag is recorded by Tandemise as stale input",
+      "ok": true,
+      "observed": {
+        "actor": "system",
+        "body": {
+          "type": "task.attention",
+          "taskId": "tsk_01m2gznpxtvbk9s8jqbq",
+          "note": "Built against design v1; v2 is out.",
+          "kind": "stale_input",
+          "upstream": "design"
+        }
+      }
+    },
+    {
+      "label": "keep: the Plan card reads \"Built on an older version of design\", with no \"Changes requested after the fact\"",
+      "ok": true,
+      "observed": "msn_01m2gznpxm71zs592dqf\nMissions\np2-chain\nC2 keep mu1stsa5\nC2 keep mu1stsa5\nComplete\nFeed\nPlan\n3\nTimeline\nArtifacts\n4\nChecks & Gates\nMetrics\nA design, a build that uses it, and an independent review of the build.\nDetails\nSTAGE 1\n1 TASK\nPRODUCT DESIGNER\nsucceeded\ndesign\ndesign\nDone by\nDesign agent\n·\nResponsible\nYou\n Scripted agent\n c2-keep-mu1stsa5-design\nattempt 2\n13s\n2 artifacts\nSTAGE 2\n1 TASK\nDEVELOPER\nsucceeded\nbuild\nbuild\nDone by\nCoding agent\n·\nResponsible\nYou\n Scripted agent\n c2-keep-mu1stsa5-build\n2s\nBuilt on an older version of design\n1 artifact\nSTAGE 3\n1 TASK\nREVIEWER\nsucceeded\nreview\nreview\nDone by\nReview agent\n·\nResponsible\nYou\n Scripted agent\n c2-keep-mu1stsa5-review\n2s\nAll gate conditions met.\n1 artifact"
+    },
+    {
+      "label": "Plan tab: task cards show no raw tsk_ ids and the plan strip no art_ id until Details",
+      "ok": true,
+      "observed": null
+    }
+  ],
+  "notes": [
+    "redo: mission msn_01m2gzmv5va07gjzfr0z",
+    "keep: mission msn_01m2gznpxm71zs592dqf"
+  ],
+  "shots": [
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/C2-dialog.png",
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/C2-dialog-redo.png",
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/C2-redo-feed.png",
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/C2-redo-timeline.png",
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/C2-dialog-keep.png",
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/C2-keep-timeline.png",
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/C2-keep-flag.png"
+  ]
+}

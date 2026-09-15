@@ -1,0 +1,92 @@
+{
+  "id": "A1",
+  "title": "Solo, no configuration",
+  "ok": true,
+  "checks": [
+    {
+      "label": "plan approval appears in Inbox → For me, marked \"For you\"",
+      "ok": true
+    },
+    {
+      "label": "solo: your step is assigned to you, not up for grabs",
+      "ok": true,
+      "observed": {
+        "id": "mem_01m2gyq7cat1ayp7e9d3",
+        "name": "Demostenes Garcia G.",
+        "kind": "person"
+      }
+    },
+    {
+      "label": "status reason has no double period",
+      "ok": true,
+      "observed": "Waiting for Demostenes Garcia G."
+    },
+    {
+      "label": "no Claim button for your own step",
+      "ok": true
+    },
+    {
+      "label": "mission completes",
+      "ok": true,
+      "observed": "COMPLETE"
+    },
+    {
+      "label": "every task: responsible is you",
+      "ok": true,
+      "observed": [
+        "spec:Demostenes Garcia G.",
+        "design:Demostenes Garcia G.",
+        "architecture:Demostenes Garcia G.",
+        "build:Demostenes Garcia G.",
+        "docs:Demostenes Garcia G.",
+        "finance:Demostenes Garcia G.",
+        "qa:Demostenes Garcia G.",
+        "release:Demostenes Garcia G."
+      ]
+    },
+    {
+      "label": "agent artifacts are authored by the runtime (no agents configured)",
+      "ok": true,
+      "observed": [
+        "ReleaseCandidate:Runtime",
+        "QAPlan:Runtime",
+        "ChangeSet:Runtime",
+        "Evidence:Demostenes Garcia G.",
+        "ArchitecturePlan:Runtime",
+        "DesignBrief:Runtime",
+        "FinanceReport:Runtime",
+        "ProductSpec:Runtime",
+        "MissionPlan:Runtime"
+      ]
+    },
+    {
+      "label": "your docs are authored by you and readable as text",
+      "ok": true,
+      "observed": {
+        "author": "Demostenes Garcia G.",
+        "mediaType": "text/markdown"
+      }
+    },
+    {
+      "label": "plan approval addressed to you and decided by you (a member, not \"user\")",
+      "ok": true
+    },
+    {
+      "label": "Plan shows \"Responsible You\"",
+      "ok": true
+    },
+    {
+      "label": "Artifacts reader shows your docs text and \"by You\"",
+      "ok": true
+    }
+  ],
+  "notes": [
+    "mission msn_01m2gyqbn20wwn7djdc7"
+  ],
+  "shots": [
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/A1-inbox-plan.png",
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/A1-docs-open.png",
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/A1-plan.png",
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/A1-artifact-docs.png"
+  ]
+}

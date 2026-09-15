@@ -1,4 +1,4 @@
-import type { ArtifactType, WorkflowDefinition, WorkflowIssue } from '@tandemise/domain';
+import type { ArtifactHandoff, ArtifactType, WorkflowDefinition, WorkflowIssue } from '@tandemise/domain';
 import type { Result, Timestamp } from '@tandemise/shared';
 
 /**
@@ -15,9 +15,10 @@ import type { Result, Timestamp } from '@tandemise/shared';
  * output contract. Bound to `renderArtifactTemplate` from
  * `@tandemise/artifacts`.
  *
- * `undefined` for a type with no front-matter schema (Evidence, MissionPlan).
- * A missing template is not an error: the task still names the file it must
- * write, it simply has no skeleton to fill in.
+ * Every artifact type has a template, since every one carries a handoff.
+ * `undefined` stays in the contract so a binding without a template for some
+ * type still works: the task names the file it must write, it simply has no
+ * skeleton to fill in.
  */
 export interface ArtifactTemplatePort {
   render(type: ArtifactType): string | undefined;
@@ -44,6 +45,34 @@ export interface ParsedArtifactDocument {
  */
 export interface ArtifactParserPort {
   parse(type: ArtifactType, source: string): Result<ParsedArtifactDocument, readonly ArtifactParseIssue[]>;
+}
+
+/** An artifact body measured against its type's word budget. */
+export interface ArtifactBodyMeasure {
+  /** Words before `## Appendix`, excluding fenced code and tables. */
+  readonly mainWords: number;
+  readonly appendixWords: number;
+  readonly codeLines: number;
+  readonly hasAppendix: boolean;
+  /** The type's main-body budget, in words. */
+  readonly budget: number;
+  readonly overBudget: boolean;
+}
+
+/**
+ * Length budgets, derived handoffs and the appendix split. Bound to
+ * `measureArtifact`, `deriveHandoff` and `splitAppendix` from
+ * `@tandemise/artifacts`.
+ *
+ * The engine needs both to decide whether a round gets a tighten pass and to
+ * give a person's work the same headline an agent's carries, and the rules
+ * themselves belong with the schemas that quote the same numbers.
+ */
+export interface ArtifactMeasurePort {
+  measure(type: ArtifactType, body: string): ArtifactBodyMeasure;
+  deriveHandoff(text: string): ArtifactHandoff;
+  /** Cuts a body at its first `## Appendix` heading, with the same fence and table rules `measure` uses. */
+  splitAppendix(body: string): { main: string; appendix: string | null };
 }
 
 /** User-visible daemon settings. The application only reads and merges them. */

@@ -6,6 +6,8 @@ import { Empty, ErrorState, Skeleton } from '../../components/primitives.js';
 import { useMissionEvents, useRoles } from '../../lib/queries.js';
 import { buildTimeline, rawLines } from '../../lib/events.js';
 import { clockTime, relativeTime } from '../../lib/format.js';
+import { ActorChip } from '../../components/ActorChip.js';
+import { useActors } from '../../lib/team.js';
 
 /**
  * The live semantic feed (MVP.md §23.3).
@@ -17,12 +19,13 @@ import { clockTime, relativeTime } from '../../lib/format.js';
 export function TimelinePane({ detail }: { detail: MissionDetail }): JSX.Element {
   const events = useMissionEvents(detail.mission.id);
   const roles = useRoles();
+  const actors = useActors();
   const [raw, setRaw] = useState(false);
   const [follow, setFollow] = useState(true);
   const scroller = useRef<HTMLDivElement>(null);
 
   const roleNames = useMemo(() => new Map((roles.data ?? []).map((role) => [role.id, role.name])), [roles.data]);
-  const items = useMemo(() => buildTimeline(events.data ?? [], roleNames), [events.data, roleNames]);
+  const items = useMemo(() => buildTimeline(events.data ?? [], roleNames, actors.name), [events.data, roleNames, actors.name]);
   const lines = useMemo(() => rawLines(events.data ?? []), [events.data]);
   const latestSequence = items[items.length - 1]?.sequence ?? 0;
 
@@ -121,7 +124,15 @@ export function TimelinePane({ detail }: { detail: MissionDetail }): JSX.Element
                     {item.detail ? <div className="tlitem__detail">{item.detail}</div> : null}
                     <div className="tlitem__meta">
                       <span>{clockTime(item.at)}</span>
-                      {item.role ? (
+                      {/* Who did it, when a member did; the role it acted in stays on hover. */}
+                      {item.actorId && actors.byId.has(item.actorId) ? (
+                        <>
+                          <span className="sep">·</span>
+                          <span title={item.role ?? undefined}>
+                            <ActorChip actor={actors.ref(item.actorId)} meId={actors.meId} />
+                          </span>
+                        </>
+                      ) : item.role ? (
                         <>
                           <span className="sep">·</span>
                           <span>{item.role}</span>
@@ -130,7 +141,7 @@ export function TimelinePane({ detail }: { detail: MissionDetail }): JSX.Element
                       {item.link?.kind === 'approval' ? (
                         <>
                           <span className="sep">·</span>
-                          <Link href="/approvals">Review decision</Link>
+                          <Link href="/inbox">Review decision</Link>
                         </>
                       ) : null}
                       {item.link?.kind === 'artifact' ? (

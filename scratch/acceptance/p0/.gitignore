@@ -1,0 +1,8 @@
+evidence/
+lib/probe-*.mjs
+lib/click-probe.mjs
+lib/qa-drawer*.mjs
+lib/remove-probe.mjs
+lib/staffing-inspect.mjs
+lib/open-and-inspect.mjs
+lib/probe-item.mjs

@@ -1,6 +1,7 @@
 import type {
   ApprovalId, ArtifactId, EventId, MissionId, RunId, TaskId, Timestamp, WorkspaceId,
 } from '@tandemise/shared';
+import type { FeedbackStatus } from './entities/feedback.js';
 
 /**
  * The canonical event vocabulary (MVP.md §10.4).
@@ -40,6 +41,44 @@ export type OrchestrationEvent =
   | { readonly type: 'gate.evaluated'; readonly gate: string; readonly passed: boolean; readonly detail?: string }
   | { readonly type: 'approval.resolved'; readonly approvalId: ApprovalId; readonly status: string; readonly option?: string }
   | { readonly type: 'policy.denied'; readonly capability: string; readonly reason: string }
+  /** An unanswered approval was also sent to the next person up; `to` is who was added. */
+  | { readonly type: 'approval.escalated'; readonly approvalId: ApprovalId; readonly to: readonly string[]; readonly level: number }
+  /**
+   * A review was not needed: its `when` did not hold (with the facts it read), or - with `reason` - the only
+   * person who could give it did the work. `when` is `sign-off` for a lead's skipped sign-off.
+   */
+  | { readonly type: 'review.skipped'; readonly taskId: TaskId; readonly when: string; readonly facts: Readonly<Record<string, unknown>>; readonly reason?: string }
+  /** A review's `when` read a fact nobody measured, so the review was kept rather than skipped. */
+  | { readonly type: 'review.required'; readonly taskId: TaskId; readonly when: string; readonly missingFacts: readonly string[] }
+  /**
+   * Finished work stands out: someone looked at it and said it needs changes, or
+   * (`kind: 'stale_input'`) it was kept on a version of `upstream` that a later
+   * round replaced. Absent `kind` is the first case, as every older event is.
+   */
+  | {
+    readonly type: 'task.attention'; readonly taskId: TaskId; readonly note: string;
+    readonly kind?: 'stale_input';
+    /** The title of the task whose newer version is out; set with `kind`. */
+    readonly upstream?: string;
+  }
+  /**
+   * A passed round's artifacts ran over their word budgets, so the author is asked once to tighten them.
+   * `attempt` is the task's counted attempt the pass belongs to: it is what keeps a restart from asking twice.
+   */
+  | { readonly type: 'artifact.tighten_requested'; readonly types: readonly string[]; readonly attempt: number; readonly filesChanged?: number }
+  /**
+   * An artifact was accepted over its word budget, after its tighten pass. Length never blocks a mission.
+   * The artifact's type is `artifactType` because `type` is the event's own discriminant.
+   */
+  | { readonly type: 'artifact.over_budget'; readonly artifactId: ArtifactId; readonly artifactType: string; readonly words: number; readonly budget: number }
+  /** A person or an AI reviewer left a note on a task's output. */
+  | { readonly type: 'feedback.given'; readonly feedbackId: string; readonly status: FeedbackStatus; readonly excerpt: string }
+  /** A round's handoff cited the note, accepting or declining the change. */
+  | { readonly type: 'feedback.addressed'; readonly feedbackId: string; readonly round: number; readonly declined: boolean }
+  /** A note was withdrawn or superseded without a round addressing it. */
+  | { readonly type: 'feedback.dismissed'; readonly feedbackId: string }
+  /** The task's next round began, carrying the feedback it is meant to address. */
+  | { readonly type: 'task.round_started'; readonly round: number; readonly feedbackIds: readonly string[]; readonly downstream: 'redo' | 'keep' | 'none'; readonly redone: readonly string[] }
   | { readonly type: 'note'; readonly text: string; readonly level?: 'info' | 'warn' | 'error' };
 
 export type TandemiseEventBody = AgentEvent | OrchestrationEvent;
@@ -60,6 +99,8 @@ export interface RunEventRecord {
   readonly runtimeProfileId: string | null;
   readonly body: TandemiseEventBody;
   readonly createdAt: Timestamp;
+  /** Who caused the event: a member id or a system actor. Null for older events. */
+  readonly actorId?: string | null;
 }
 
 /**
@@ -71,7 +112,9 @@ export const SEMANTIC_EVENT_TYPES: ReadonlySet<string> = new Set([
   'message', 'file.changed', 'artifact.created', 'approval.requested', 'completed',
   'failed', 'mission.status', 'task.status', 'run.started', 'run.finished',
   'check.result', 'gate.evaluated', 'approval.resolved', 'policy.denied', 'note',
-  'tool.started',
+  'tool.started', 'approval.escalated', 'review.skipped', 'review.required', 'task.attention',
+  'artifact.tighten_requested', 'artifact.over_budget',
+  'feedback.given', 'feedback.addressed', 'feedback.dismissed', 'task.round_started',
 ]);
 
 export function isSemanticEvent(body: TandemiseEventBody): boolean {

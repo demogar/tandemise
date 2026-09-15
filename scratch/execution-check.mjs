@@ -1,7 +1,7 @@
 // End-to-end check of @tandemise/execution-core + @tandemise/execution-local.
 // Run: node scratch/execution-check.mjs   (after `npx tsc -b packages/execution-local`)
 import { execFileSync } from 'node:child_process';
-import { mkdtemp, mkdir, writeFile, rm, stat, symlink, readFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, rm, stat, symlink, readFile, realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -254,7 +254,16 @@ try {
     workspaceId, missionId, taskId: ids.task(), kind: 'local',
     name: 'reviewer', repositoryPath: repoPath,
   });
-  check('local target runs in the repository itself', local.workingDirectory === repoPath, local.workingDirectory);
+  check('local target runs in the repository itself', local.workingDirectory === await realpath(repoPath), local.workingDirectory);
+  // What the prompt names must be what the runtime's cwd resolves to, or a
+  // symlinked checkout has its own writes refused.
+  await symlink(repoPath, join(root, 'repo-link'));
+  const linked = await manager.provision({
+    workspaceId, missionId, taskId: ids.task(), kind: 'local',
+    name: 'linked reviewer', repositoryPath: join(root, 'repo-link'),
+  });
+  check('a symlinked checkout runs at its resolved path', linked.workingDirectory === await realpath(repoPath), linked.workingDirectory);
+  await manager.release(linked.describe());
   check('local target is not isolated', !local.capabilities().includes('isolated-workspace'), local.capabilities().join(','));
   check('local target execs', (await local.exec({ command: 'git', args: ['rev-parse', '--abbrev-ref', 'HEAD'] })).stdout.trim() === 'main');
   const localRelease = await manager.release(local.describe());

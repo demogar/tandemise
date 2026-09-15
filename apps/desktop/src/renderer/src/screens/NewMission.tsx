@@ -1,10 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
-import type { AutonomyLevel } from '@tandemise/domain';
+import type { AutonomyLevel, RoleTemplate, StaffingPatch } from '@tandemise/domain';
+import { STAFFING_PRESETS, type StaffingPreset } from '@tandemise/domain/staffing-presets';
+import { Drawer } from '../components/Modal.js';
+import { RecordingFor, behalfOf } from '../components/ActorChip.js';
+import type { RoleStaffingPatchRequest } from '@tandemise/api-contract';
+import { useActors, type Actors } from '../lib/team.js';
+import { PRESET_LABELS, staffingSummary, toWire } from '../lib/staffing.js';
+import { StaffingEditor, applyPreset, needsPick, presetOf } from './team/StaffingEditor.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { Icon } from '../components/Icon.js';
 import { ErrorState, Field, Segmented } from '../components/primitives.js';
-import { useDaemonMutation, useWorkflows } from '../lib/queries.js';
+import { useDaemonMutation, useRoles, useStaffing, useWorkflows } from '../lib/queries.js';
 import { useWorkspace } from '../lib/workspace.js';
 import { useHotkey } from '../lib/keyboard.js';
 import { shortenPath, titleCase } from '../lib/format.js';
@@ -42,6 +49,10 @@ export function NewMission(): JSX.Element {
   const [title, setTitle] = useState('');
   const [baseBranch, setBaseBranch] = useState('');
   const [showMore, setShowMore] = useState(false);
+  const [showStaffing, setShowStaffing] = useState(false);
+  const [staffing, setStaffing] = useState<Record<string, StaffingPatch>>({});
+  const actors = useActors();
+  const [createdFor, setCreatedFor] = useState<string | null>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -54,6 +65,8 @@ export function NewMission(): JSX.Element {
     }
   }, [workspace, repositoryId]);
 
+  // Staffing travels in the create request: the daemon stores it with the
+  // mission before planning starts, so no task can become ready without it.
   const create = useDaemonMutation(
     (daemon, args: Parameters<typeof daemon.createMission>[0]) => daemon.createMission(args),
     ['missions'],
@@ -78,6 +91,10 @@ export function NewMission(): JSX.Element {
         workflowInputs,
         baseBranch: baseBranch.trim() || null,
         planNow: true,
+        ...behalfOf(actors, createdFor),
+        ...(Object.keys(staffing).length > 0
+          ? { staffing: Object.fromEntries(Object.entries(staffing).map(([role, patch]) => [role, toWire(patch)])) as RoleStaffingPatchRequest }
+          : {}),
       },
       { onSuccess: (detail) => navigate(`/missions/${detail.mission.id}`) },
     );
@@ -237,9 +254,34 @@ export function NewMission(): JSX.Element {
                       placeholder={'Existing password sign-in still works\nEnrolment is covered by an end-to-end test'}
                     />
                   </Field>
+                  {actors.solo ? null : (
+                    <Field label="Created for" hint="Plan approvals go to this person.">
+                      <div>
+                        <RecordingFor actors={actors} value={createdFor} onChange={setCreatedFor} label="" />
+                      </div>
+                    </Field>
+                  )}
                   <Field label="Base branch" hint="Task branches are cut from here. Defaults to the repository's default branch.">
                     <input className="input" value={baseBranch} onChange={(event) => setBaseBranch(event.target.value)} placeholder="main" />
                   </Field>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="disclosure">
+              <button
+                type="button"
+                className="disclosure__toggle"
+                aria-expanded={showStaffing}
+                onClick={() => setShowStaffing((open) => !open)}
+              >
+                <Icon name="chevronRight" size={13} className="disclosure__chevron" />
+                Staffing for this mission
+                {Object.keys(staffing).length > 0 ? <span className="badge badge--accent">{Object.keys(staffing).length} changed</span> : null}
+              </button>
+              {showStaffing ? (
+                <div className="disclosure__panel">
+                  <MissionStaffing value={staffing} onChange={setStaffing} actors={actors} />
                 </div>
               ) : null}
             </div>
@@ -256,6 +298,104 @@ export function NewMission(): JSX.Element {
         </div>
       </div>
     </>
+  );
+}
+
+/** One line per role; only the roles you change are sent, the rest follow the project. */
+function MissionStaffing({
+  value,
+  onChange,
+  actors,
+}: {
+  value: Record<string, StaffingPatch>;
+  onChange: (next: Record<string, StaffingPatch>) => void;
+  actors: Actors;
+}): JSX.Element {
+  const roles = useRoles();
+  const project = useStaffing().data ?? {};
+  const [editing, setEditing] = useState<RoleTemplate | null>(null);
+  const [draft, setDraft] = useState<StaffingPatch | null>(null);
+  const [startPreset, setStartPreset] = useState<'person' | 'pool' | undefined>(undefined);
+  const [startCustom, setStartCustom] = useState(false);
+  const set = (roleId: string, patch: StaffingPatch | null): void => {
+    const next = { ...value };
+    if (patch === null || Object.keys(patch).length === 0) delete next[roleId];
+    else next[roleId] = patch;
+    onChange(next);
+  };
+
+  return (
+    <div className="card card--flush">
+      {(roles.data ?? []).map((role) => {
+        const patch = value[role.id];
+        const preset: StaffingPreset | 'inherit' = patch ? presetOf(patch, actors).preset : 'inherit';
+        return (
+          <div key={role.id} className="list__row staffrow" style={{ gridTemplateColumns: 'minmax(96px, 130px) minmax(160px, 210px) 1fr' }}>
+            <div className="list__title">{role.name}</div>
+            <select
+              className="select"
+              aria-label={`${role.name} staffing`}
+              value={preset}
+              onChange={(event) => {
+                const next = event.target.value;
+                if (next === 'inherit') set(role.id, null);
+                else if (next === 'custom') {
+                  setStartPreset(undefined);
+                  setStartCustom(true);
+                  setDraft(patch ?? { ...(project[role.id] ?? {}) });
+                  setEditing(role);
+                } else {
+                  const applied = applyPreset(next as Exclude<StaffingPreset, 'custom'>, patch ?? project[role.id] ?? {}, role.id, actors);
+                  if (needsPick(next, applied)) {
+                    // Nobody holds the role: pick someone before it counts.
+                    setStartPreset(next);
+                    setStartCustom(false);
+                    setDraft(applied);
+                    setEditing(role);
+                  } else set(role.id, applied);
+                }
+              }}
+            >
+              <option value="inherit">Same as the project</option>
+              {STAFFING_PRESETS.map((p) => (
+                <option key={p} value={p}>
+                  {PRESET_LABELS[p]}
+                </option>
+              ))}
+            </select>
+            <span className={patch ? 'muted truncate' : 'dim truncate'} style={{ fontSize: 'var(--fs-sm)' }}>
+              {staffingSummary(patch ?? project[role.id] ?? {}, role.id, actors)}
+            </span>
+          </div>
+        );
+      })}
+      {editing ? (
+        <Drawer
+          title={`${editing.name} staffing`}
+          subtitle="For this mission only."
+          onClose={() => setEditing(null)}
+          footer={
+            <>
+              <button type="button" className="btn btn--ghost" onClick={() => setEditing(null)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn--primary"
+                onClick={() => {
+                  set(editing.id, draft);
+                  setEditing(null);
+                }}
+              >
+                Use this
+              </button>
+            </>
+          }
+        >
+          <StaffingEditor roleId={editing.id} value={draft} onChange={setDraft} actors={actors} level="mission" inherited={project[editing.id]} startPreset={startPreset} startCustom={startCustom} />
+        </Drawer>
+      ) : null}
+    </div>
   );
 }
 

@@ -1,8 +1,9 @@
 import type {
   ApprovalRepositoryPort, ArtifactRepositoryPort, CheckResult, Evaluation,
-  EvaluationRepositoryPort, GateFacts, GateOutcome, MissionTask, TaskRepositoryPort,
+  EvaluationRepositoryPort, GateFacts, GateOutcome, MissionTask, RiskClass, TaskRepositoryPort,
 } from '@tandemise/domain';
-import { blockingFindings, evaluateGate } from '@tandemise/domain';
+import { blockingFindings, evaluateGate, maxRisk } from '@tandemise/domain';
+import { riskForCapability } from '@tandemise/policy';
 import { GateFactBuilder, evaluateNamedGate } from '@tandemise/evaluation';
 import type { MissionId } from '@tandemise/shared';
 
@@ -33,8 +34,15 @@ export class GateService {
     private readonly approvals: ApprovalRepositoryPort,
   ) {}
 
-  factsFor(task: MissionTask): GateFacts {
+  /**
+   * `measured` carries what only the attempt in hand knows - what its own
+   * ChangeSet says it changed - so it never reads another task's diff.
+   */
+  factsFor(task: MissionTask, measured: TaskMeasurements = {}): GateFacts {
     const builder = new GateFactBuilder();
+
+    builder.withTask({ attempt: task.attempts, roleId: task.roleId, risk: riskOf(task) });
+    if (measured.filesChanged !== undefined) builder.withDiff({ filesChanged: measured.filesChanged });
 
     builder.withChecks(sortByTime(this.evaluations.latestChecks(task.missionId)));
     builder.withChecks(sortByTime(this.evaluations.listChecks(task.id)));
@@ -59,9 +67,9 @@ export class GateService {
   }
 
   /** `null` when the task declares no completion gate - not a pass, an absence. */
-  evaluate(task: MissionTask): GateOutcome | null {
+  evaluate(task: MissionTask, measured: TaskMeasurements = {}): GateOutcome | null {
     if (task.completionGate === null) return null;
-    return evaluateGate(task.completionGate, this.factsFor(task));
+    return evaluateGate(task.completionGate, this.factsFor(task, measured));
   }
 
   /** One of the named workspace gates (`ready_for_qa`, `ready_to_ship`). */
@@ -79,6 +87,19 @@ export class GateService {
     }
     return latest;
   }
+}
+
+export interface TaskMeasurements {
+  readonly filesChanged?: number;
+}
+
+/**
+ * The most consequential thing the task may do. A task that asks for nothing
+ * is a read: it can still only look.
+ */
+function riskOf(task: MissionTask): RiskClass {
+  const capabilities = [...task.executionPolicy.capabilities, ...task.requiredCapabilities];
+  return capabilities.reduce<RiskClass>((risk, c) => maxRisk(risk, riskForCapability(c)), 'read');
 }
 
 /** `GateFactBuilder.withChecks` is last-wins, so order is the whole contract. */

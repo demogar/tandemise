@@ -10,6 +10,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./staffing-presets": {
+      "types": "./dist/staffing-presets.d.ts",
+      "default": "./dist/staffing-presets.js"
     }
   },
   "scripts": {

@@ -2,11 +2,16 @@ import type {
   ApiErrorBody,
   ApprovalView,
   HomeView,
+  InboxView,
   ConnectIntegrationRequest,
   ConnectionAttemptView,
   ConnectorView,
   IntegrationView,
+  ArtifactReadView,
+  ArtifactView,
+  MissionArtifactView,
   MissionDetail,
+  MissionFeedView,
   MissionSummary,
   RepositoryProbe,
   RuntimeDiscoveryView,
@@ -23,13 +28,30 @@ import type {
   UpdateWorkspaceRequest,
   AddRepositoryRequest,
   CreateWorkspaceRequest,
+  AddMemberRequest,
+  ClaimTaskRequest,
+  CompleteTaskRequest,
+  CreatePersonRequest,
+  MeView,
+  MemberView,
+  PersonView,
+  RoleStaffingPatchRequest,
+  StaffingPreviewView,
+  TaskStaffingPatchRequest,
+  TeamView,
+  UpdateMemberRequest,
+  UpdatePersonRequest,
+  FeedbackGivenView,
+  FeedbackView,
+  GiveFeedbackRequest,
+  StartRoundRequest,
+  TaskFeedbackView,
 } from '@tandemise/api-contract';
 import { API_VERSION, API_VERSION_HEADER, STREAM_PATH } from './domain.js';
 import type {
-  ArtifactManifest,
-  LoadedArtifact,
   MissionStatus,
   Repository,
+  RoleStaffing,
   RoleTemplate,
   RunEventRecord,
   RuntimeProfile,
@@ -137,6 +159,11 @@ export class DaemonClient {
     return this.#get('/home', { workspaceId });
   }
 
+  /** Pending approvals and tasks waiting on a person, in one read. */
+  inbox(workspaceId: string): Promise<InboxView> {
+    return this.#get('/inbox', { workspaceId });
+  }
+
   // -------------------------------------------------------------- workspaces
 
   workspaces(): Promise<readonly WorkspaceView[]> {
@@ -197,26 +224,122 @@ export class DaemonClient {
     return this.#get(`/missions/${id}/events`, query);
   }
 
-  missionArtifacts(id: string): Promise<readonly ArtifactManifest[]> {
-    return this.#get(`/missions/${id}/artifacts`);
+  /** Live versions only, unless `includeSuperseded`; each row carries its version number and successor. */
+  missionArtifacts(id: string, query?: { includeSuperseded?: boolean }): Promise<readonly MissionArtifactView[]> {
+    return this.#get(`/missions/${id}/artifacts`, query);
   }
 
-  /** A person reporting they have done a `human` task, with what they produced. */
-  completeTask(id: string, body: { result: string; note?: string }): Promise<TaskView> {
+  /** The mission's cards grouped for the principal; `doneLimit` defaults to 5 on the daemon. */
+  missionFeed(id: string, query?: { doneLimit?: number }): Promise<MissionFeedView> {
+    return this.#get(`/missions/${id}/feed`, query);
+  }
+
+  /** A person reporting they have done a `human` task, with what they produced; `onBehalfOf` records it for a teammate. */
+  completeTask(id: string, body: CompleteTaskRequest): Promise<TaskView> {
     return this.#request('POST', `/tasks/${id}/complete`, body);
+  }
+
+  /** Takes an unassigned pool task, for the principal or for `onBehalfOf`. */
+  claimTask(id: string, body: ClaimTaskRequest = {}): Promise<TaskView> {
+    return this.#request('POST', `/tasks/${id}/claim`, body);
   }
 
   retryTask(taskId: string, body?: { runtimeProfileId?: string; note?: string; addCapabilities?: readonly string[] }): Promise<void> {
     return this.#request('POST', `/tasks/${taskId}/retry`, body ?? {});
   }
 
+  // ---------------------------------------------------------- feedback and rounds
+
+  /** A note on a task. What it does follows the task's state; `impact` is set when finished work used its output. */
+  giveFeedback(taskId: string, body: GiveFeedbackRequest): Promise<FeedbackGivenView> {
+    return this.#request('POST', `/tasks/${taskId}/feedback`, body);
+  }
+
+  /** Confirms a round that waited on the person's choice about the work downstream. */
+  startRound(taskId: string, body: StartRoundRequest): Promise<TaskView> {
+    return this.#request('POST', `/tasks/${taskId}/rounds`, body);
+  }
+
+  /** The task's notes, oldest first, and the round open notes are waiting on. */
+  taskFeedback(taskId: string): Promise<TaskFeedbackView> {
+    return this.#get(`/tasks/${taskId}/feedback`);
+  }
+
+  dismissFeedback(id: string, body: { onBehalfOf?: string } = {}): Promise<FeedbackView> {
+    return this.#request('POST', `/feedback/${id}/dismiss`, body);
+  }
+
+  // ---------------------------------------------------------- people and team
+
+  me(): Promise<MeView> {
+    return this.#get('/me');
+  }
+
+  listPeople(): Promise<readonly PersonView[]> {
+    return this.#get('/people');
+  }
+
+  createPerson(body: CreatePersonRequest): Promise<PersonView> {
+    return this.#request('POST', '/people', body);
+  }
+
+  updatePerson(id: string, body: UpdatePersonRequest): Promise<PersonView> {
+    return this.#request('PATCH', `/people/${id}`, body);
+  }
+
+  /** Soft: the person and every seat they held are marked removed. */
+  removePerson(id: string): Promise<void> {
+    return this.#request('DELETE', `/people/${id}`);
+  }
+
+  team(workspaceId: string): Promise<TeamView> {
+    return this.#get(`/workspaces/${workspaceId}/team`);
+  }
+
+  addMember(workspaceId: string, body: AddMemberRequest): Promise<MemberView> {
+    return this.#request('POST', `/workspaces/${workspaceId}/members`, body);
+  }
+
+  updateMember(id: string, body: UpdateMemberRequest): Promise<MemberView> {
+    return this.#request('PATCH', `/members/${id}`, body);
+  }
+
+  removeMember(id: string): Promise<void> {
+    return this.#request('DELETE', `/members/${id}`);
+  }
+
+  // ---------------------------------------------------------------- staffing
+
+  getStaffing(workspaceId: string): Promise<RoleStaffing> {
+    return this.#get(`/workspaces/${workspaceId}/staffing`);
+  }
+
+  /** Merged per role; send only the roles that changed, `null` removes one. */
+  patchStaffing(workspaceId: string, body: RoleStaffingPatchRequest): Promise<RoleStaffing> {
+    return this.#request('PATCH', `/workspaces/${workspaceId}/staffing`, body);
+  }
+
+  patchMissionStaffing(missionId: string, body: RoleStaffingPatchRequest): Promise<RoleStaffing> {
+    return this.#request('PATCH', `/missions/${missionId}/staffing`, body);
+  }
+
+  /** `null` clears the override. Refused with CONFLICT once the task has started. */
+  patchTaskStaffing(taskId: string, body: TaskStaffingPatchRequest): Promise<TaskView> {
+    return this.#request('PATCH', `/tasks/${taskId}/staffing`, body);
+  }
+
+  previewStaffing(taskId: string): Promise<StaffingPreviewView> {
+    return this.#get(`/tasks/${taskId}/staffing/preview`);
+  }
+
   // --------------------------------------------------------------- artifacts
 
-  artifacts(query: { workspaceId?: string; q?: string }): Promise<readonly ArtifactManifest[]> {
+  artifacts(query: { workspaceId?: string; q?: string; includeSuperseded?: boolean }): Promise<readonly ArtifactView[]> {
     return this.#get('/artifacts', query);
   }
 
-  artifact(id: string): Promise<LoadedArtifact> {
+  /** The manifest numbered along its versions, the body, and the appendix already split off. */
+  artifact(id: string): Promise<ArtifactReadView> {
     return this.#get(`/artifacts/${id}`);
   }
 

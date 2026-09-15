@@ -1,0 +1,33 @@
+{
+  "id": "A18",
+  "title": "Hand a waiting task to someone else",
+  "ok": true,
+  "checks": [
+    {
+      "label": "docs is waiting for Bo",
+      "ok": true,
+      "observed": "Bo Chen"
+    },
+    {
+      "label": "docs now waits for Maria, who is responsible",
+      "ok": true,
+      "observed": {
+        "reason": "Waiting for Maria Lopez."
+      }
+    },
+    {
+      "label": "Inbox shows docs \"For Maria Lopez\"",
+      "ok": true
+    },
+    {
+      "label": "a task that already ran refuses a staffing change (409)",
+      "ok": true,
+      "observed": 409
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/A18-change.png",
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/A18-inbox.png"
+  ]
+}

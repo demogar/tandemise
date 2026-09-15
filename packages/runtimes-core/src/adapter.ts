@@ -58,6 +58,19 @@ export interface RunRequest {
    * afresh, which is right for a run that was never routed.
    */
   readonly reservation?: SlotReservation;
+  /**
+   * Keeps this run's slot when its stream ends, as a reservation left in
+   * `reservation` on this holder, instead of freeing it. For work that may
+   * need a follow-up run - a tighten pass, a restarted session - which must
+   * not find the slot taken by another task in between. Whoever passes a
+   * holder owns what it ends up holding and must release it or hand it on.
+   */
+  readonly retainSlot?: SlotRetention;
+}
+
+/** Receives the slot a finished run kept; see `RunRequest.retainSlot`. */
+export interface SlotRetention {
+  reservation: SlotReservation | undefined;
 }
 
 /**

@@ -18,6 +18,7 @@ interface EventRow {
   runtime_profile_id: string | null;
   body: string;
   created_at: string;
+  actor_id: string | null;
 }
 
 /**
@@ -43,11 +44,12 @@ function fromRow(r: EventRow): RunEventRecord {
     runtimeProfileId: r.runtime_profile_id,
     body: parseJson<TandemiseEventBody>(r.body, UNREADABLE_BODY),
     createdAt: r.created_at,
+    actorId: r.actor_id,
   };
 }
 
 const COLUMNS = `id, workspace_id, mission_id, task_id, run_id, sequence, type,
-  role_id, runtime_profile_id, body, created_at`;
+  role_id, runtime_profile_id, body, created_at, actor_id`;
 
 interface AppendEventInput {
   id: EventId;
@@ -59,6 +61,7 @@ interface AppendEventInput {
   runtimeProfileId?: string | null;
   body: TandemiseEventBody;
   createdAt: Timestamp;
+  actorId?: string | null;
 }
 
 export class SqliteEventRepository implements EventRepositoryPort {
@@ -76,7 +79,7 @@ export class SqliteEventRepository implements EventRepositoryPort {
     this.#insert = db.handle.prepare<EventRow>(
       `INSERT INTO run_events (${COLUMNS}) VALUES (
         :id, :workspace_id, :mission_id, :task_id, :run_id, :sequence, :type,
-        :role_id, :runtime_profile_id, :body, :created_at)`,
+        :role_id, :runtime_profile_id, :body, :created_at, :actor_id)`,
     );
     this.#nextSequence = db.handle.prepare<{ missionId: string }, { next: number }>(
       'SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM run_events WHERE mission_id = :missionId',
@@ -131,6 +134,7 @@ export class SqliteEventRepository implements EventRepositoryPort {
         runtimeProfileId: input.runtimeProfileId ?? null,
         body: input.body,
         createdAt: input.createdAt,
+        actorId: input.actorId ?? null,
       };
       this.#insert.run({
         id: record.id,
@@ -144,6 +148,7 @@ export class SqliteEventRepository implements EventRepositoryPort {
         runtime_profile_id: record.runtimeProfileId,
         body: toJson(record.body),
         created_at: record.createdAt,
+        actor_id: record.actorId ?? null,
       });
       return record;
     });

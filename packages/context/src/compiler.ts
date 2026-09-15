@@ -207,7 +207,17 @@ function renderOutputContract(contract: OutputContract): string {
   if (contract.completionGate) {
     parts.push('', `This task is only complete when this gate passes: \`${contract.completionGate}\``);
   }
-  if (contract.notes?.length) parts.push('', bullets(contract.notes));
+  // The budget is repeated outside the templates on purpose: the template is a
+  // skeleton the author copies, and a rule that sits only inside it gets copied
+  // into the artifact instead of followed.
+  const budgets = contract.artifacts
+    .filter((artifact) => artifact.wordBudget !== undefined)
+    .map((artifact) => `Main body: at most ${artifact.wordBudget} words for ${artifact.type}; detail goes under "## Appendix".`);
+  if (budgets.length > 0) {
+    budgets.push('A main body over its budget is not a failure: you are asked once to tighten it, and length never blocks the task.');
+  }
+  const notes = [...budgets, ...(contract.notes ?? [])];
+  if (notes.length > 0) parts.push('', bullets(notes));
   parts.push(
     '',
     'Do not finish by summarising in chat. The artifact files above are the deliverable;',

@@ -4,7 +4,7 @@ import type {
   AgentEvent, RuntimeCapability, RuntimeDiscovery, RuntimeHealth, RuntimeProfile,
 } from '@tandemise/domain';
 import {
-  DEFAULT_TERMINATION_GRACE_MS, NormalizingEventSink, relieveBackPressure, superviseProcessStream,
+  DEFAULT_TERMINATION_GRACE_MS, NormalizingEventSink, relieveBackPressure, superviseProcessStream, withDeclaredCapabilities,
 } from '@tandemise/runtimes-core';
 import type { AgentRuntimeAdapter, RunRequest, SupervisedChild } from '@tandemise/runtimes-core';
 import { TandemiseError, systemClock } from '@tandemise/shared';
@@ -101,7 +101,7 @@ export class CodexAdapter implements AgentRuntimeAdapter {
   }
 
   capabilities(profile: RuntimeProfile): readonly RuntimeCapability[] {
-    return parseCodexSettings(profile.settings).capabilities ?? CODEX_CAPABILITIES;
+    return withDeclaredCapabilities(profile, parseCodexSettings(profile.settings).capabilities ?? CODEX_CAPABILITIES, this.baseCapabilities);
   }
 
   start(request: RunRequest): AsyncIterable<AgentEvent> {

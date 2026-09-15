@@ -9,7 +9,7 @@ export type { GenericCliSettings, GenericEventMap } from './generic-settings.js'
 export { FakeRuntimeAdapter, FAKE_ADAPTER_ID, FAKE_CAPABILITIES, FAKE_SCRIPT_ENV } from './fake.js';
 export type { FakeRuntimeAdapterOptions } from './fake.js';
 
-export { DEFAULT_FAKE_SCRIPT, parseFakeScript, substituteStep } from './fake-script.js';
-export type { FakeScript, FakeStep } from './fake-script.js';
+export { DEFAULT_FAKE_SCRIPT, parseFakeScript, stepApplies, substituteStep } from './fake-script.js';
+export type { FakeScript, FakeStep, FakeStepCondition } from './fake-script.js';
 
 export { genericRuntimeModule } from './module.js';

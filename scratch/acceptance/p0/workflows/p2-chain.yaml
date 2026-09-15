@@ -1,0 +1,20 @@
+name: P2 chain
+description: A design, a build that uses it, and an independent review of the build.
+steps:
+  - key: design
+    role: design
+    objective: Design the hello page.
+    outputs: [DesignBrief]
+  - key: build
+    role: development
+    dependsOn: [design]
+    objective: Build the hello page.
+    inputs: [DesignBrief]
+    outputs: [ChangeSet]
+  - key: review
+    role: review
+    dependsOn: [build]
+    objective: Review the build against the design.
+    inputs: [ChangeSet]
+    gate: review.blocking_findings == 0
+    outputs: [ReviewReport]

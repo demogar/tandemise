@@ -1,5 +1,5 @@
 import type {
-  ApprovalId, ArtifactId, EventId, MissionId, RepositoryId, RunId, RuntimeProfileId,
+  ApprovalId, ArtifactId, EventId, FeedbackId, MemberId, MissionId, PersonId, RepositoryId, RunId, RuntimeProfileId,
   ExecutionTargetId, IntegrationId, TaskId, Timestamp, WorkerAssignmentId, WorkspaceId,
 } from '@tandemise/shared';
 import type { Mission, MissionDraft, MissionProgress, MissionStatus } from '../entities/mission.js';
@@ -8,6 +8,7 @@ import type { Run, RunStatus, RunUsage, Checkpoint } from '../entities/run.js';
 import type { ArtifactManifest, ArtifactType } from '../entities/artifact.js';
 import type { Approval, ApprovalStatus } from '../entities/approval.js';
 import type { Repository, Workspace } from '../entities/workspace.js';
+import type { Member, Person } from '../entities/member.js';
 import type { RoleTemplate } from '../entities/role.js';
 import type { RuntimeProfile } from '../entities/runtime.js';
 import type { ExecutionTargetRecord, ResourceLease, TargetStatus } from '../entities/target.js';
@@ -16,6 +17,7 @@ import type { WorkerAssignment } from '../entities/assignment.js';
 import type { RunEventRecord, TandemiseEventBody } from '../event.js';
 import type { Decision } from '../entities/decision.js';
 import type { CheckResult, Evaluation } from '../entities/evaluation.js';
+import type { FeedbackItem, FeedbackStatus } from '../entities/feedback.js';
 
 /**
  * Persistence ports.
@@ -31,6 +33,22 @@ export interface WorkspaceRepositoryPort {
   get(id: WorkspaceId): Workspace | undefined;
   list(): readonly Workspace[];
   update(id: WorkspaceId, patch: Partial<Omit<Workspace, 'id' | 'createdAt'>>): Workspace;
+}
+
+/** People are global to the installation; removal is a timestamp so history keeps its names. */
+export interface PersonRepositoryPort {
+  create(p: Omit<Person, 'createdAt' | 'removedAt'>): Person;
+  get(id: PersonId): Person | undefined;
+  list(options?: { includeRemoved?: boolean }): readonly Person[];
+  update(id: PersonId, patch: Partial<Pick<Person, 'displayName' | 'handles' | 'accountId' | 'removedAt'>>): Person;
+}
+
+export interface MemberRepositoryPort {
+  create(m: Omit<Member, 'createdAt' | 'updatedAt'>): Member;
+  get(id: MemberId): Member | undefined;
+  listByWorkspace(workspaceId: WorkspaceId, options?: { includeRemoved?: boolean }): readonly Member[];
+  findPersonMember(workspaceId: WorkspaceId, personId: PersonId): Member | undefined;
+  update(id: MemberId, patch: Partial<Omit<Member, 'id' | 'workspaceId' | 'kind' | 'createdAt'>>): Member;
 }
 
 export interface RepoRepositoryPort {
@@ -84,6 +102,7 @@ export interface EventRepositoryPort {
     runtimeProfileId?: string | null;
     body: TandemiseEventBody;
     createdAt: Timestamp;
+    actorId?: string | null;
   }): RunEventRecord;
   listByMission(missionId: MissionId, opts?: { afterSequence?: number; limit?: number; semanticOnly?: boolean }): readonly RunEventRecord[];
   listByRun(runId: RunId, opts?: { afterSequence?: number; limit?: number }): readonly RunEventRecord[];
@@ -97,8 +116,17 @@ export interface ArtifactRepositoryPort {
   listByTask(taskId: TaskId): readonly ArtifactManifest[];
   /** Most recent non-superseded artifact of a type on a mission. */
   latest(missionId: MissionId, type: ArtifactType): ArtifactManifest | undefined;
-  search(workspaceId: WorkspaceId, query: string, limit?: number): readonly ArtifactManifest[];
+  /** Current versions only unless `includeSuperseded`: a search that returns every revision buries the live one. */
+  search(workspaceId: WorkspaceId, query: string, limit?: number, options?: { includeSuperseded?: boolean }): readonly ArtifactManifest[];
+  /** The workspace's artifacts, newest first; superseded versions are left out unless `includeSuperseded`. */
+  listRecent(workspaceId: WorkspaceId, limit: number, options?: { includeSuperseded?: boolean }): readonly ArtifactManifest[];
   markSuperseded(id: ArtifactId, by: ArtifactId): void;
+  /**
+   * Sets aside the output of a pass that was overtaken before it was judged:
+   * every list above leaves it out from now on (`get` still returns it), and
+   * the versions it had replaced are live again.
+   */
+  withdraw(ids: readonly ArtifactId[], at: Timestamp): void;
 }
 
 export interface ApprovalRepositoryPort {
@@ -107,6 +135,8 @@ export interface ApprovalRepositoryPort {
   list(filter?: { workspaceId?: WorkspaceId; missionId?: MissionId; statuses?: readonly ApprovalStatus[] }): readonly Approval[];
   update(id: ApprovalId, patch: Partial<Omit<Approval, 'id' | 'createdAt'>>): Approval;
   pendingForTask(taskId: TaskId): readonly Approval[];
+  /** PENDING approvals whose `escalateAt` is at or before `at`: the escalation sweep's whole read. */
+  dueForEscalation(at: Timestamp): readonly Approval[];
 }
 
 export interface RoleRepositoryPort {
@@ -180,6 +210,30 @@ export interface LeaseRepositoryPort {
   releaseByRun(runId: RunId): void;
   listExpired(now: Timestamp): readonly ResourceLease[];
   listAll(): readonly ResourceLease[];
+}
+
+export interface FeedbackRepositoryPort {
+  create(item: FeedbackItem): FeedbackItem;
+  get(id: FeedbackId): FeedbackItem | undefined;
+  /** Oldest first. */
+  listByTask(taskId: TaskId): readonly FeedbackItem[];
+  /** Oldest first, through mission_tasks: one read for a whole feed. */
+  listByMission(missionId: MissionId): readonly FeedbackItem[];
+  listByStatus(statuses: readonly FeedbackStatus[]): readonly FeedbackItem[];
+  /** Stamps `updatedAt`. */
+  update(id: FeedbackId, patch: Partial<Pick<FeedbackItem, 'status' | 'round'>>): FeedbackItem;
+}
+
+/**
+ * What a run actually saw, from the context compiler's `includedArtifactIds`.
+ * Downstream impact is read from this rather than guessed from the plan
+ * (spec §3); runs from before migration 010 have no rows here.
+ */
+export interface RunInputRepositoryPort {
+  /** Idempotent: a run records what it was given once, and a restart may record it again. */
+  record(runId: RunId, artifactIds: readonly ArtifactId[]): void;
+  listByRun(runId: RunId): readonly ArtifactId[];
+  listByMission(missionId: MissionId): readonly { readonly runId: RunId; readonly artifactId: ArtifactId }[];
 }
 
 /** A single transactional boundary across the repositories above. */

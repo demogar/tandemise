@@ -1,0 +1,46 @@
+name: P0 acceptance
+description: Exercises staffing, responsibility, reviews and escalation across product, design, architecture, code, docs, qa, finance and release work.
+steps:
+  - key: spec
+    role: product
+    objective: Write a short spec for a hello page.
+    outputs: [ProductSpec]
+  - key: design
+    role: design
+    dependsOn: [spec]
+    objective: Design the hello page and share a preview link.
+    outputs: [DesignBrief]
+  - key: architecture
+    role: architecture
+    dependsOn: [spec]
+    objective: Plan how the hello page is built.
+    outputs: [ArchitecturePlan]
+  - key: build
+    role: development
+    dependsOn: [design, architecture]
+    objective: Build the hello page.
+    inputs: [DesignBrief, ArchitecturePlan]
+    outputs: [ChangeSet]
+  - key: docs
+    role: product
+    executor: human
+    dependsOn: [spec]
+    objective: Write the README paragraph for the hello page yourself.
+    outputs: [Evidence]
+  - key: finance
+    role: finance
+    dependsOn: [spec]
+    objective: Estimate the monthly hosting cost of the hello page.
+    outputs: [FinanceReport]
+  - key: qa
+    role: qa
+    dependsOn: [build]
+    objective: Plan how the hello page is tested.
+    isolation: none
+    outputs: [QAPlan]
+  - key: release
+    role: release
+    dependsOn: [qa, docs, finance]
+    objective: Assemble the release candidate for the hello page.
+    capabilities: [github.pr.create]
+    outputs: [ReleaseCandidate]

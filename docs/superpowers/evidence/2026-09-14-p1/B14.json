@@ -1,0 +1,33 @@
+{
+  "id": "B14",
+  "title": "A check for me: Needs you, decided on the card, then gone",
+  "ok": true,
+  "checks": [
+    {
+      "label": "the architecture check is under Needs you",
+      "ok": true,
+      "observed": "msn_01m2g1t7p3gszbbdcprc\nMissions\np0\nB check mu1a6q2l\nB check mu1a6q2l\nExecuting\nPause\nCancel\nFeed\n2\nPlan\n8\nTimeline\nArtifacts\n6\nChecks & Gates\nMetrics\nNeeds you\n2 items\nPRODUCT MANAGER\ndocs\nPerson step\njust now\nby\nYou\n\nWrite the README paragraph for the hello page yourself.\n\nNeeds You to do this step and mark it done.\nDo it\nARCHITECT\narchitecture"
+    },
+    {
+      "label": "it reads as non-blocking (\"Check when you can\")",
+      "ok": true,
+      "observed": "ARCHITECT\narchitecture\nDone\njust now\nby\nRuntime\n·\nresponsible\nYou\nFull doc\n\nArchitecturePlan ready for the hello page\n\nWritten by the scripted acceptance agent\nNo model was called\nCheck when you can Check architecture when you can\nRecording for\nDemostenes Garcia G. (you)\nAna Ruiz\nMaria Lopez\nNothing is waiting on this; your note is kept with the work.\nNeeds changes\nLooks good"
+    },
+    {
+      "label": "decided \"Looks good\" on the card",
+      "ok": true
+    },
+    {
+      "label": "the check left Needs you",
+      "ok": true,
+      "observed": "msn_01m2g1t7p3gszbbdcprc\nMissions\np0\nB check mu1a6q2l\nB check mu1a6q2l\nExecuting\nPause\nCancel\nFeed\n1\nPlan\n8\nTimeline\nArtifacts\n7\nChecks & Gates\nMetrics\nNeeds you\n1 item\nPRODUCT MANAGER\ndocs\nPerson step\njust now\nby\nYou\n\nWrite the README paragraph for the hello page yourself.\n\nNeeds You to do this ste"
+    }
+  ],
+  "notes": [
+    "check \"Check architecture when you can\" options: Looks good, Needs changes"
+  ],
+  "shots": [
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/B14-check-needs-you.png",
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/B14-check-decided.png"
+  ]
+}

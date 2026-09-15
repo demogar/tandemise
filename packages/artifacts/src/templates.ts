@@ -1,4 +1,6 @@
 import type { ArtifactType } from '@tandemise/domain';
+import { WORD_BUDGETS } from './budget.js';
+import { HANDOFF_LIMITS } from './handoff.js';
 import { hasSchema, type SchemaBackedArtifactType } from './schemas.js';
 
 /**
@@ -23,13 +25,38 @@ const HOW_TO_FILL = [
   '  - Repeat or delete list items as needed; keep the two-space indentation.',
   '  - Front matter is machine-read and must stay short. Put the reasoning in the prose below.',
   '  - Do not add a second `---` fence anywhere in the prose.',
+  '  - The handoff is what a busy owner reads first, often the only thing they read. Write the headline as the outcome, not the activity.',
+  '  - Put `needs` only when a person must act, and say what they must do.',
+  '  - Put a link for every real thing that lives elsewhere (preview, pull request, design file).',
+].join('\n');
+
+/**
+ * The handoff skeleton, inserted right after `title` in every template. Each
+ * placeholder states its limit, because the limit is what gets an artifact
+ * refused, and an author who cannot see it finds out only on the retry.
+ *
+ * `changed.feedback` is not shown: it names a feedback item, which only exists
+ * once rounds of feedback do (P2), and an invented id would be worse than none.
+ */
+const HANDOFF_BLOCK = [
+  'handoff:',
+  `  headline: <the outcome in one sentence, at most ${HANDOFF_LIMITS.headline} characters>`,
+  '  points:',
+  `    - <a point the owner should know, at most ${HANDOFF_LIMITS.point} characters; up to ${HANDOFF_LIMITS.points} points, or delete this key's items>`,
+  `  needs: <what a person must do, at most ${HANDOFF_LIMITS.needs} characters, or leave empty when nobody must act>`,
+  '  changed:',
+  `    - what: <what changed since the last round, at most ${HANDOFF_LIMITS.changedWhat} characters; up to ${HANDOFF_LIMITS.changed}, or delete this key's items in the first round>`,
+  '  links:',
+  `    - label: <what the link opens, at most ${HANDOFF_LIMITS.linkLabel} characters, e.g. Open preview>`,
+  `      url: <an http:// or https:// URL; up to ${HANDOFF_LIMITS.links} links, or delete this key's items>`,
+  '      kind: workspace | preview | pr | doc | other',
 ].join('\n');
 
 const TEMPLATES: Readonly<Record<SchemaBackedArtifactType, string>> = {
   ProblemBrief: `---
 type: ProblemBrief
 schemaVersion: 1
-title: <one line naming the problem>
+title: <one line naming the problem, at most ${HANDOFF_LIMITS.title} characters>
 successMetric: <the single measurable signal that this problem is solved>
 evidence:
   - <artifact id, URL, file path, or analytics query backing a claim below>
@@ -54,7 +81,7 @@ evidence:
   ProductSpec: `---
 type: ProductSpec
 schemaVersion: 1
-title: <one line naming the scope of this spec>
+title: <one line naming the scope of this spec, at most ${HANDOFF_LIMITS.title} characters>
 acceptanceCriteria:
   - id: AC1
     statement: <an observable, testable statement — QA will map a test to this id>
@@ -78,7 +105,7 @@ nonGoals:
   DesignBrief: `---
 type: DesignBrief
 schemaVersion: 1
-title: <one line naming the surface being designed>
+title: <one line naming the surface being designed, at most ${HANDOFF_LIMITS.title} characters>
 flows:
   - <named user flow, e.g. "First-run onboarding">
 accessibility:
@@ -103,7 +130,7 @@ openQuestions:
   ArchitecturePlan: `---
 type: ArchitecturePlan
 schemaVersion: 1
-title: <one line naming the technical approach>
+title: <one line naming the technical approach, at most ${HANDOFF_LIMITS.title} characters>
 components:
   - <module, package, or service this change touches>
 risks:
@@ -128,7 +155,7 @@ migration: <one line: how existing data/users move over, or "none">
   ImplementationPlan: `---
 type: ImplementationPlan
 schemaVersion: 1
-title: <one line naming the implementation>
+title: <one line naming the implementation, at most ${HANDOFF_LIMITS.title} characters>
 steps:
   - id: S1
     summary: <one line describing this change>
@@ -150,7 +177,7 @@ steps:
   ChangeSet: `---
 type: ChangeSet
 schemaVersion: 1
-title: <one line describing what changed>
+title: <one line describing what changed, at most ${HANDOFF_LIMITS.title} characters>
 branch: <branch name>
 commits:
   - <commit sha>
@@ -174,7 +201,7 @@ knownLimitations:
   ReviewReport: `---
 type: ReviewReport
 schemaVersion: 1
-title: <one line naming what was reviewed>
+title: <one line naming what was reviewed, at most ${HANDOFF_LIMITS.title} characters>
 verdict: pass | needs_changes | fail
 reviewedRef: <commit sha, branch, or ChangeSet artifact id>
 findings:
@@ -197,7 +224,7 @@ and what a correct fix looks like.>
   QAPlan: `---
 type: QAPlan
 schemaVersion: 1
-title: <one line naming what is under test>
+title: <one line naming what is under test, at most ${HANDOFF_LIMITS.title} characters>
 cases:
   - id: TC1
     criterion: <the acceptance criterion id this case proves, e.g. AC1>
@@ -217,7 +244,7 @@ cases:
   QAReport: `---
 type: QAReport
 schemaVersion: 1
-title: <one line naming the test run>
+title: <one line naming the test run, at most ${HANDOFF_LIMITS.title} characters>
 results:
   - criterion: <the acceptance criterion id, e.g. AC1>
     outcome: PASS | FAIL | SKIP
@@ -238,7 +265,7 @@ blockingDefects: <integer>
   ReleaseCandidate: `---
 type: ReleaseCandidate
 schemaVersion: 1
-title: <one line naming the release>
+title: <one line naming the release, at most ${HANDOFF_LIMITS.title} characters>
 ref: <tag or commit sha being released>
 checks:
   - name: <check name, e.g. tests>
@@ -261,7 +288,7 @@ rollback: <the exact action that undoes this release>
   DecisionRecord: `---
 type: DecisionRecord
 schemaVersion: 1
-title: <one line naming the decision>
+title: <one line naming the decision, at most ${HANDOFF_LIMITS.title} characters>
 status: proposed | accepted | rejected | superseded
 decision: <the decision itself, in one sentence>
 owner: <who is accountable for it>
@@ -280,21 +307,82 @@ supersedes: <decision id this replaces, or leave empty>
 ## Consequences
 <What this makes easy, what it makes hard, and what it commits us to.>
 `,
+  FinanceReport: `---
+type: FinanceReport
+schemaVersion: 1
+title: <one line naming what was costed or forecast, at most ${HANDOFF_LIMITS.title} characters>
+---
+
+## Summary
+<The figures that matter, and what they mean for the decision at hand.>
+
+## Figures
+<The numbers, as a table where that is clearer. Say where each one comes from.>
+
+## Assumptions
+<Every assumption behind the figures, so a reader can challenge it.>
+`,
+
+  Evidence: `---
+type: Evidence
+schemaVersion: 1
+title: <one line naming what this evidence shows, at most ${HANDOFF_LIMITS.title} characters>
+---
+
+## What this shows
+<The observation, stated plainly.>
+
+## How it was captured
+<Command, browser, device, data and commit, so it can be reproduced.>
+
+## Raw output
+<The relevant excerpt of the log or test output, not the whole log.>
+`,
+
+  MissionPlan: `---
+type: MissionPlan
+schemaVersion: 1
+title: <one line naming the plan, at most ${HANDOFF_LIMITS.title} characters>
+---
+
+## Approach
+<How the mission will be carried out, and why this order.>
+
+## Steps
+<Each step: who does it, what it produces, what it depends on.>
+
+## Risks
+<What could derail the plan, and what happens then.>
+`,
 };
+
+/** Adds the handoff, which every type shares, right after the skeleton's title. */
+function withHandoff(skeleton: string): string {
+  const lines = skeleton.split('\n');
+  const titleAt = lines.findIndex((line) => line.startsWith('title:'));
+  lines.splice(titleAt + 1, 0, HANDOFF_BLOCK);
+  return lines.join('\n');
+}
 
 /**
  * The copy-pasteable skeleton for one artifact type, preceded by the filling
- * rules. Types without a front-matter contract (Evidence, MissionPlan,
- * FinanceReport) have no template.
+ * rules. Every type has one, since every type carries a handoff; `undefined`
+ * is kept in the signature for a string that is not an artifact type.
+ *
+ * The word budget is a rule, not part of the skeleton: agents copy the
+ * skeleton into their document, and a budget sentence between or after the
+ * fences would end up in the artifact itself.
  */
 export function renderArtifactTemplate(type: ArtifactType): string | undefined {
   if (!hasSchema(type)) return undefined;
-  return `${HOW_TO_FILL}\n\n${TEMPLATES[type]}`;
+  const budget = WORD_BUDGETS[type];
+  const budgetRule = `  - Main body: at most ${budget} words for ${type}. Put supporting detail under "## Appendix" (up to ${budget * 2} words).`;
+  return `${HOW_TO_FILL}\n${budgetRule}\n\n${artifactSkeleton(type)}`;
 }
 
 /** The skeleton alone, without the instruction preamble. */
 export function artifactSkeleton(type: SchemaBackedArtifactType): string {
-  return TEMPLATES[type];
+  return withHandoff(TEMPLATES[type]);
 }
 
 export { HOW_TO_FILL as ARTIFACT_TEMPLATE_RULES };

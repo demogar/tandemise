@@ -291,15 +291,79 @@
   padding-top: 14vh;
 }
 
+/* A drawer: details behind a scannable row, with the row still in view. */
+.overlay--side {
+  justify-content: flex-end;
+  backdrop-filter: none;
+  background: color-mix(in srgb, var(--surface-sunken) 40%, transparent);
+}
+
+.drawer {
+  display: flex;
+  flex-direction: column;
+  width: min(460px, calc(100vw - var(--s12)));
+  height: 100%;
+  background: var(--surface-raised);
+  border-left: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-lg);
+  animation: slide-from-right var(--duration) var(--ease);
+}
+
+.drawer--wide {
+  width: min(760px, calc(100vw - var(--s12)));
+}
+
+.drawer__head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s2);
+  padding: var(--s4) var(--s4) var(--s3) var(--s5);
+  border-bottom: 1px solid var(--border);
+}
+
+.drawer__subtitle {
+  margin-top: 2px;
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+
+.drawer__body {
+  flex: 1;
+  /* Stated rather than left to the overflow rule, so the body scrolls whatever a child's own minimum height is. */
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--s4) var(--s5) var(--s5);
+  font-size: var(--fs-base);
+  color: var(--text-secondary);
+}
+
+@keyframes slide-from-right {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+}
+
 @keyframes fade {
   from {
     opacity: 0;
   }
 }
 
+/*
+ * A modal never grows past the window: its head and foot stay put and the
+ * body scrolls. Without the bound, a tall task drawer centred in the overlay
+ * lost its top and bottom off-screen, footer buttons included, with nothing
+ * to scroll.
+ */
 .modal {
+  display: flex;
+  flex-direction: column;
   width: min(520px, calc(100vw - var(--s12)));
+  max-height: calc(100vh - var(--s12));
   background: var(--surface-raised);
+  /* Set here, not inherited: a modal opened from inside a drawer body would otherwise take its secondary text colour. */
+  color: var(--text);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
@@ -319,6 +383,7 @@
 }
 
 .modal__head {
+  flex: none;
   padding: var(--s4) var(--s5) 0;
 }
 
@@ -329,6 +394,9 @@
 }
 
 .modal__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
   padding: var(--s3) var(--s5) var(--s5);
   font-size: var(--fs-base);
   color: var(--text-secondary);
@@ -336,6 +404,7 @@
 }
 
 .modal__foot {
+  flex: none;
   display: flex;
   justify-content: flex-end;
   gap: var(--s2);

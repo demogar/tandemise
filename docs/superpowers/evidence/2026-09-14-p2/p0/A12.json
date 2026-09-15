@@ -1,0 +1,47 @@
+{
+  "id": "A12",
+  "title": "Staffing change mid-mission",
+  "ok": true,
+  "checks": [
+    {
+      "label": "finance is READY, snapshotted to the Finance agent",
+      "ok": true
+    },
+    {
+      "label": "qa (still PENDING) would now go to a runtime instead of the Ana/Bo pool",
+      "ok": true,
+      "observed": {
+        "assignee": null,
+        "responsible": {
+          "id": "mem_01m2gyq7cat1ayp7e9d3",
+          "name": "Demostenes Garcia G.",
+          "kind": "person"
+        },
+        "claimable": [],
+        "executor": "agent"
+      }
+    },
+    {
+      "label": "finance (already READY) still ran on the Finance agent",
+      "ok": true,
+      "observed": {
+        "status": "SUCCEEDED",
+        "by": "Finance agent"
+      }
+    },
+    {
+      "label": "qa resolved with the new staffing: an agent run, not a human pool",
+      "ok": true,
+      "observed": {
+        "status": "RUNNING",
+        "executor": "agent"
+      }
+    }
+  ],
+  "notes": [
+    "spec:SUCCEEDED design:RUNNING architecture:READY build:PENDING docs:READY finance:READY qa:PENDING release:PENDING"
+  ],
+  "shots": [
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/A12-plan-after-change.png"
+  ]
+}

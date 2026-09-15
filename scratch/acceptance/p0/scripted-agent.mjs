@@ -1,0 +1,163 @@
+#!/usr/bin/env node
+// A deterministic stand-in for a model, used by the real-app acceptance runs.
+//
+// It is wired as a Generic CLI runtime profile (promptVia: stdin). It reads the
+// prompt Tandemise compiled, finds every "### <Type> → <destination>" line in
+// the output contract, and writes an artifact that satisfies that type's
+// front-matter schema. Everything around it - scheduling, staffing, approvals,
+// the desktop - is the real product. Only the model is replaced, so a scenario
+// that fails is a product failure rather than a model having a bad day.
+//
+// Knobs (environment of the daemon, inherited by the runtime). The three modes
+// can also be switched on per mission by writing the variable's name in the
+// mission goal, so one daemon can run a normal and a long mission side by side.
+//   SCRIPTED_DELAY_MS         sleep before writing, so a scenario can act mid-run
+//   SCRIPTED_LONG=1           first draft's main body is 1.5x its type's word budget;
+//                             a prompt asking to "Tighten" gets a short body
+//   SCRIPTED_STUBBORN=1       always over budget, tighten pass or not
+//   SCRIPTED_NO_HANDOFF_ONCE=1  omit the handoff until the retry feedback names it
+// Rounds (P2): a prompt that carries numbered feedback lines is a round, and the
+// agent answers every note in handoff.changed, citing its id. The P2 modes are
+// listed where they are read, below.
+// A task objective that mentions "preview" gets an "Open preview" link in its handoff.
+import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { dirname, isAbsolute, join } from 'node:path';
+
+const chunks = [];
+for await (const chunk of process.stdin) chunks.push(chunk);
+const prompt = Buffer.concat(chunks).toString('utf8');
+
+const workIn = /^Work in: (.+)$/m.exec(prompt)?.[1]?.trim() ?? process.cwd();
+const outputs = [...prompt.matchAll(/^### ([A-Za-z]+) → (\S+)$/gm)].map((m) => ({ type: m[1], destination: m[2] }));
+const title = (/^#+\s*Task[^\n]*\n+([^\n]+)/m.exec(prompt)?.[1] ?? 'Scripted work').slice(0, 80);
+
+const objective = /^Objective:\n([\s\S]*?)\n\n/m.exec(prompt)?.[1] ?? '';
+// Harness-only switch: a mode is on when its env var is 1 or when the prompt
+// contains the variable's name anywhere (a goal, a constraint, an upstream
+// artifact). That is deliberately loose, and fine for a scripted stand-in that
+// never sees real user text; nothing in the product reads these names.
+const mode = (name) => process.env[name] === '1' || prompt.includes(name);
+const LONG = mode('SCRIPTED_LONG');
+const STUBBORN = mode('SCRIPTED_STUBBORN');
+// The tighten request is one "Tighten <Type>: ..." line per artifact; the
+// output contract's own "asked once to tighten it" is lower case and never matches.
+const tightening = /^Tighten [A-Za-z]+:/m.test(prompt);
+// The first attempt has no retry feedback; the retry after a missing handoff names handoff.headline.
+const omitHandoff = mode('SCRIPTED_NO_HANDOFF_ONCE') && !prompt.includes('handoff.headline');
+
+// Rounds: the numbered feedback lines the engine writes into a round's prompt.
+const feedbackItems = [...prompt.matchAll(/^\d+\. (fb_[0-9a-z]{20}) \(([^)]*)\): (.*)$/gm)].map((m) => ({ id: m[1], author: m[2], text: m[3] }));
+const inRound = feedbackItems.length > 0;
+//   SCRIPTED_SLOW_20S            first pass sleeps 20 s (a note can arrive mid-run); a delivery pass does not
+//   SCRIPTED_OMIT_CITATION_ONCE  leaves the last note uncited until the retry names it ("must cite fb_…")
+//   SCRIPTED_DECLINE             declines every note
+//   SCRIPTED_REVIEW_BLOCKING     a ReviewReport blocks until the ChangeSet it reads cites feedback
+//   SCRIPTED_FAIL_UNTIL_NOTE     writes nothing (the task blocks) until a round carries a note
+//   SCRIPTED_PROMPT_DIR          (env) every prompt is saved there, so a scenario can read what the agent was told
+const SLOW = mode('SCRIPTED_SLOW_20S') && !inRound;
+const OMIT_ONCE = mode('SCRIPTED_OMIT_CITATION_ONCE') && !/must cite fb_/.test(prompt);
+const DECLINE = mode('SCRIPTED_DECLINE');
+const REVIEW_BLOCKING = mode('SCRIPTED_REVIEW_BLOCKING') && !/feedback: "?fb_[0-9a-z]{20}/.test(prompt);
+const FAIL_UNTIL_NOTE = mode('SCRIPTED_FAIL_UNTIL_NOTE') && !inRound;
+if (process.env.SCRIPTED_PROMPT_DIR) {
+  mkdirSync(process.env.SCRIPTED_PROMPT_DIR, { recursive: true });
+  writeFileSync(join(process.env.SCRIPTED_PROMPT_DIR, `${Date.now()}-${process.pid}.txt`), prompt);
+}
+if (SLOW) await new Promise((r) => setTimeout(r, 20_000));
+if (FAIL_UNTIL_NOTE) { console.log('SCRIPTED_FAIL_UNTIL_NOTE: nothing written'); process.exit(0); }
+
+const cite = OMIT_ONCE ? feedbackItems.slice(0, -1) : feedbackItems;
+const changed = !inRound ? [] : DECLINE
+  ? [{ what: 'Declined: the scripted agent keeps the page as it is', feedback: feedbackItems.map((f) => f.id).join(', ') }]
+  : [{ what: `Applied: ${feedbackItems[0].text}`.slice(0, 140), ...(cite.length > 0 ? { feedback: cite.map((f) => f.id).join(', ') } : {}) }];
+
+// Main-body word budgets per type, as the handoff contract sets them.
+const BUDGET = {
+  ReleaseCandidate: 300, DecisionRecord: 300, MissionPlan: 300,
+  ProblemBrief: 400, QAPlan: 400, Evidence: 400,
+  DesignBrief: 500, ReviewReport: 500, QAReport: 500, ChangeSet: 500,
+  ProductSpec: 600, FinanceReport: 600,
+  ArchitecturePlan: 800, ImplementationPlan: 800,
+};
+
+/** Plain prose of `words` words: no code or tables, so every word counts against the budget. */
+const prose = (words) => {
+  const sentence = 'The hello page greets each visitor by name and keeps the layout calm and readable on every screen size.';
+  const vocabulary = sentence.split(' ');
+  const out = [];
+  for (let i = 0; i < words; i += 1) out.push(vocabulary[i % vocabulary.length]);
+  // Paragraphs of about sixty words, so the reader shows a document rather than one block.
+  return out.map((w, i) => (i > 0 && i % 60 === 0 ? `\n\n${w}` : w)).join(' ');
+};
+
+const delay = Number(process.env.SCRIPTED_DELAY_MS ?? 0);
+if (delay > 0) await new Promise((r) => setTimeout(r, delay));
+
+const FRONT = {
+  ProblemBrief: { successMetric: 'Scenario passes', evidence: [] },
+  ProductSpec: { acceptanceCriteria: [{ id: 'AC1', statement: 'The scenario observes the expected state.' }], nonGoals: [] },
+  DesignBrief: { flows: ['Main flow'], accessibility: ['Keyboard reachable'], openQuestions: [] },
+  ArchitecturePlan: { components: ['app'], risks: [], migration: '' },
+  ImplementationPlan: { steps: [{ id: 's1', summary: 'Make the change', files: ['README.md'], dependsOn: [] }] },
+  ChangeSet: { branch: 'scripted/change', commits: [], filesChanged: 0, testsRun: [], knownLimitations: [] },
+  ReviewReport: { verdict: 'pass', reviewedRef: 'HEAD', findings: [] },
+  QAPlan: { cases: [{ id: 'c1', criterion: 'AC1', method: 'manual' }] },
+  QAReport: { results: [{ criterion: 'AC1', outcome: 'PASS', evidence: 'scripted' }], blockingDefects: 0 },
+  ReleaseCandidate: { ref: 'HEAD', checks: [], unresolvedRisks: [], rollback: 'Revert the commit.' },
+  DecisionRecord: { status: 'accepted', decision: 'Proceed', owner: 'scripted', supersedes: '' },
+};
+
+const yaml = (value, indent = '') => {
+  if (Array.isArray(value)) {
+    if (value.length === 0) return ' []';
+    return value.map((item) => (typeof item === 'object'
+      ? `\n${indent}- ${yaml(item, `${indent}  `).trimStart()}`
+      : `\n${indent}- ${JSON.stringify(item)}`)).join('');
+  }
+  if (typeof value === 'object' && value !== null) {
+    return Object.entries(value).map(([k, v]) => {
+      const rendered = yaml(v, `${indent}  `);
+      return `\n${indent}${k}:${rendered.startsWith('\n') ? rendered : rendered.startsWith(' ') ? rendered : ` ${rendered}`}`;
+    }).join('');
+  }
+  return ` ${JSON.stringify(value)}`;
+};
+
+for (const { type, destination } of outputs) {
+  const path = isAbsolute(destination) ? destination : join(workIn, destination);
+  mkdirSync(dirname(path), { recursive: true });
+  // Every artifact carries a handoff, and titles are capped at 60 characters,
+  // so the stand-in writes a basic handoff and trims its title to fit.
+  const handoff = {
+    headline: `${type} ready for the hello page`,
+    points: ['Written by the scripted acceptance agent', 'No model was called'],
+    ...(/preview/i.test(objective) ? { links: [{ label: 'Open preview', url: 'https://example.com/preview', kind: 'workspace' }] } : {}),
+    ...(changed.length > 0 ? { changed } : {}),
+  };
+  const typeFront = type === 'ReviewReport' && REVIEW_BLOCKING
+    ? { verdict: 'fail', reviewedRef: 'HEAD', findings: [{ severity: 'blocking', title: 'The greeting ignores the visitor name', location: 'hello.txt' }] }
+    : type === 'ChangeSet'
+      ? { ...FRONT.ChangeSet, filesChanged: 1 }
+      : FRONT[type] ?? {};
+  // A ChangeSet touches a file, so a round leaves a commit on the task's branch.
+  if (type === 'ChangeSet') appendFileSync(join(workIn, 'hello.txt'), `round ${inRound ? feedbackItems.map((f) => f.id).join(',') : 'first'}\n`);
+  const front = {
+    type, schemaVersion: 1, title: `${type}: ${title}`.slice(0, 60).trim(),
+    ...(omitHandoff ? {} : { handoff }),
+    ...typeFront,
+  };
+  const budget = BUDGET[type] ?? 400;
+  const long = STUBBORN || (LONG && !tightening);
+  // A tightened long draft does what the tighten request asks: a short main
+  // body, with the supporting detail moved under "## Appendix" (within 2x budget).
+  // A round's body lists the notes it answered, so the reader's comparison shows what moved.
+  const roundNotes = inRound ? `\nRound notes:\n${feedbackItems.map((f) => `- ${f.text}`).join('\n')}\n` : '';
+  const body = (long
+    ? `# ${front.title}\n\n${prose(Math.ceil(budget * 1.5))}\n`
+    : LONG && tightening
+      ? `# ${front.title}\n\nWritten by the scripted acceptance agent.\n\n## Appendix\n\n${prose(Math.ceil(budget * 0.8))}\n`
+      : `# ${front.title}\n\nWritten by the scripted acceptance agent.\n`) + roundNotes;
+  writeFileSync(path, `---${yaml(front)}\n---\n\n${body}`);
+  console.log(`wrote ${type} to ${path}`);
+}
+if (outputs.length === 0) console.log('No artifacts requested.');

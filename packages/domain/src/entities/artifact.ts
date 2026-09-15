@@ -20,6 +20,25 @@ export function isArtifactType(v: string): v is ArtifactType {
   return (ARTIFACT_TYPES as readonly string[]).includes(v);
 }
 
+/** Where a handoff link points, so a card can say "open preview" rather than a bare URL. */
+export const HANDOFF_LINK_KINDS = ['workspace', 'preview', 'pr', 'doc', 'other'] as const;
+export type HandoffLinkKind = (typeof HANDOFF_LINK_KINDS)[number];
+
+/**
+ * What a busy owner reads first, and often the only thing they read: a
+ * headline, at most three points, what is needed from them, what changed and
+ * where the real thing lives. The artifact's zod schema enforces the limits;
+ * this is the normalised shape, so optional parts are `null` or empty rather
+ * than missing.
+ */
+export interface ArtifactHandoff {
+  readonly headline: string;
+  readonly points: readonly string[];
+  readonly needs: string | null;
+  readonly changed: readonly { readonly what: string; readonly feedback: string | null }[];
+  readonly links: readonly { readonly label: string; readonly url: string; readonly kind: HandoffLinkKind }[];
+}
+
 /** A pointer to truth that lives in another system (MVP.md §15.3). */
 export interface ExternalRef {
   readonly kind: 'git.commit' | 'git.branch' | 'github.pr' | 'github.issue' | 'url' | 'file';
@@ -49,6 +68,30 @@ export interface ArtifactManifest {
   readonly supersedes: ArtifactId | null;
   readonly summary: string | null;
   readonly createdAt: Timestamp;
+  /** Who made it: an agent or person member, or a system actor. */
+  readonly authorId?: string | null;
+  /** The person who answers for it. */
+  readonly responsibleId?: string | null;
+  /** Who put it on record, which differs from the author when a person uploads for an agent. */
+  readonly recordedBy?: string | null;
+  /**
+   * The handoff read from the front matter. Optional so manifests built before
+   * the contract existed still type-check; legacy rows have none and show
+   * their summary as the headline instead.
+   */
+  readonly handoff?: ArtifactHandoff | null;
+  /** Words in the main body, before `## Appendix`; null when never measured. */
+  readonly wordCount?: number | null;
+  /** True when the body stayed over its type's word budget after the tighten pass. */
+  readonly overBudget?: boolean;
+  /** The task round this artifact was produced in; null before migration 010. */
+  readonly round?: number | null;
+  /**
+   * When the output was set aside because its pass was overtaken before it
+   * was judged (a Redo reset the task); null for everything else. Lists leave
+   * such an artifact out; only a direct read by id returns it.
+   */
+  readonly withdrawnAt?: Timestamp | null;
 }
 
 export interface ArtifactWriteRequest {

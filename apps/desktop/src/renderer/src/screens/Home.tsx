@@ -5,21 +5,27 @@ import { Icon } from '../components/Icon.js';
 import { Empty, ErrorState, SectionHead, SkeletonCards, SkeletonList, StatusBadge, StatusDot } from '../components/primitives.js';
 import { ApprovalPreviewCard } from './approvals/ApprovalCard.js';
 import { useHome, useRoles } from '../lib/queries.js';
+import { useInbox, type InboxItem } from '../lib/inbox.js';
 import { buildTimeline } from '../lib/events.js';
+import { useActors } from '../lib/team.js';
 import { healthTone, missionTone, pluralize, relativeTime } from '../lib/format.js';
 
 export function Home(): JSX.Element {
   const home = useHome();
   const roles = useRoles();
+  // The same inbox read as the nav badge. The badge counts everything for me;
+  // Home leaves out checks, which nothing waits on.
+  const needsMe = useInbox().needsMe;
   const [, navigate] = useLocation();
 
   const roleNames = new Map((roles.data ?? []).map((role) => [role.id, role.name]));
+  const actors = useActors();
   const data = home.data;
 
   return (
     <>
       <PageHeader
-        title={headline(data)}
+        title={headline(data, needsMe.length)}
         subtitle={data?.workspace ? `${data.workspace.name} workspace` : 'Your agent workforce at a glance'}
         actions={
           <button type="button" className="btn btn--primary" onClick={() => navigate('/missions/new')}>
@@ -36,11 +42,11 @@ export function Home(): JSX.Element {
           <section className="section">
             <SectionHead
               title="Needs you now"
-              meta={data ? describeAttention(data.pendingApprovals.length, data.blockedMissions.length) : undefined}
+              meta={data ? describeAttention(needsMe.length, data.blockedMissions.length) : undefined}
             />
             {home.isPending ? (
               <SkeletonCards count={2} />
-            ) : (data?.pendingApprovals.length ?? 0) === 0 && (data?.blockedMissions.length ?? 0) === 0 ? (
+            ) : needsMe.length === 0 && (data?.blockedMissions.length ?? 0) === 0 ? (
               <div className="card">
                 <Empty
                   icon="check"
@@ -50,9 +56,15 @@ export function Home(): JSX.Element {
               </div>
             ) : (
               <div className="stack">
-                {(data?.pendingApprovals ?? []).slice(0, 2).map((view) => (
-                  <ApprovalPreviewCard key={view.approval.id} view={view} />
-                ))}
+                {needsMe.slice(0, 2).map((item) =>
+                  item.kind === 'approval' ? <ApprovalPreviewCard key={item.id} view={item.view} /> : <HumanTaskRow key={item.id} item={item} />,
+                )}
+                {needsMe.length > 2 ? (
+                  <Link href="/inbox" className="btn btn--ghost" style={{ alignSelf: 'flex-start' }}>
+                    {pluralize(needsMe.length - 2, 'more request')} in your inbox
+                    <Icon name="chevronRight" size={13} />
+                  </Link>
+                ) : null}
                 {(data?.blockedMissions ?? []).map((summary) => (
                   <MissionRow key={summary.mission.id} summary={summary} />
                 ))}
@@ -152,7 +164,7 @@ export function Home(): JSX.Element {
                 ) : (
                   <div className="card">
                     <div className="timeline">
-                      {buildTimeline(data?.recentEvents ?? [], roleNames)
+                      {buildTimeline(data?.recentEvents ?? [], roleNames, actors.name)
                         .slice(-7)
                         .reverse()
                         .map((item) => (
@@ -249,9 +261,23 @@ function MissionRow({ summary }: { summary: MissionSummary }): JSX.Element {
   );
 }
 
-function describeAttention(approvals: number, blocked: number): string {
+/** A task parked for me, on the one line the Inbox gives it; opening it goes to its mission. */
+function HumanTaskRow({ item }: { item: Extract<InboxItem, { kind: 'task' }> }): JSX.Element {
+  return (
+    <Link href={`/missions/${item.task.missionId}`} className="list__row list__row--bordered" style={{ textDecoration: 'none', color: 'inherit' }}>
+      <StatusDot tone="blocked" />
+      <div className="list__main">
+        <div className="list__title">{item.task.title}</div>
+        <div className="list__subtitle truncate">Yours to do · {item.task.missionTitle}</div>
+      </div>
+      <Icon name="chevronRight" size={13} className="dim" />
+    </Link>
+  );
+}
+
+function describeAttention(waiting: number, blocked: number): string {
   const parts: string[] = [];
-  if (approvals > 0) parts.push(pluralize(approvals, 'approval'));
+  if (waiting > 0) parts.push(pluralize(waiting, 'request'));
   if (blocked > 0) parts.push(`${pluralize(blocked, 'mission')} blocked`);
   return parts.length > 0 ? parts.join(' · ') : 'all clear';
 }
@@ -261,12 +287,11 @@ function describeAttention(approvals: number, blocked: number): string {
  * greeting looked friendly but told the user nothing they could act on - and
  * "Still up" at 2am read as a judgement rather than a status.
  */
-function headline(data: HomeView | undefined): string {
+function headline(data: HomeView | undefined, waiting: number): string {
   if (!data) return 'Home';
-  const waiting = data.pendingApprovals.length;
   const blocked = data.blockedMissions.length;
   const running = data.activeMissions.length;
-  if (waiting > 0) return `${pluralize(waiting, 'decision')} waiting on you`;
+  if (waiting > 0) return `${pluralize(waiting, 'request')} waiting on you`;
   if (blocked > 0) return `${pluralize(blocked, 'mission')} blocked`;
   if (running > 0) return `${pluralize(running, 'mission')} running`;
   return 'Nothing needs you';

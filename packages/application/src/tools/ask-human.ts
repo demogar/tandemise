@@ -1,14 +1,17 @@
 import type {
-  ApprovalOption, ApprovalRepositoryPort, MissionTask, TaskRepositoryPort,
+  ApprovalOption, ApprovalRepositoryPort, MissionTask, RunRepositoryPort, TaskRepositoryPort,
 } from '@tandemise/domain';
 import { CORE_CAPABILITIES, REJECT_OPTION } from '@tandemise/domain';
 import type { ApprovalFactory } from '@tandemise/policy';
 import { defineTool, type IntegrationTool, type ToolContext } from '@tandemise/integrations-core';
-import type { Clock } from '@tandemise/shared';
+import type { Clock, WorkspaceId } from '@tandemise/shared';
 import { summarize } from '@tandemise/shared';
 import { z } from 'zod';
 import type { EventRecorder, EventScope } from '../support/event-recorder.js';
 import type { ApprovalWaiter } from '../support/tool-policy.js';
+import { withdrawApproval } from '../support/withdraw.js';
+import { runActorOf } from '../support/run-actor.js';
+import type { RequestAddress } from '../engine/reviews.js';
 import { MAX_PARKED_MS, type RunDeadlines } from '../engine/run-deadline.js';
 
 export const ASK_HUMAN_TOOL = 'ask_human';
@@ -66,6 +69,13 @@ export interface AskHumanDeps {
   readonly approvals: ApprovalRepositoryPort;
   readonly approvalFactory: ApprovalFactory;
   readonly tasks: TaskRepositoryPort;
+  /** Finds the run asking, whose agent is the event's actor. */
+  readonly runs?: Pick<RunRepositoryPort, 'get' | 'listByTask'>;
+  /**
+   * Who the question is for and when it climbs the team tree: the person doing
+   * the step, when a person is, then the person who answers for it.
+   */
+  readonly address: (task: MissionTask | undefined, workspaceId: WorkspaceId) => RequestAddress;
   readonly waiter: ApprovalWaiter;
   /** Stops the run's wall-time clock while the person thinks. */
   readonly deadlines: RunDeadlines;
@@ -140,6 +150,9 @@ export function createAskHumanTool(deps: AskHumanDeps): IntegrationTool {
       };
 
       const chooseFrom = input.options ?? [];
+      const task = deps.tasks.get(ctx.assignment.taskId);
+      const actorId = deps.runs === undefined ? task?.assigneeId ?? null
+        : runActorOf(deps.runs, { runId: ctx.runId, taskId: ctx.assignment.taskId }, task);
       const approval = deps.approvalFactory.createOrThrow({
         workspaceId: ctx.assignment.workspaceId,
         missionId: ctx.assignment.missionId,
@@ -164,15 +177,16 @@ export function createAskHumanTool(deps: AskHumanDeps): IntegrationTool {
           DECLINE_OPTION,
         ],
         recommendedOptionId: input.recommended ?? null,
+        ...deps.address(task, ctx.assignment.workspaceId),
       });
       deps.approvals.create(approval);
 
-      const task = deps.tasks.get(ctx.assignment.taskId);
       // Parked, not running. The worker is alive but consuming nothing, and the
       // scheduler keeps the rest of the mission moving past it.
       if (task !== undefined) park(task, input.question);
 
-      deps.recorder.record(scope, { type: 'approval.requested', approvalId: approval.id });
+      // The agent asked: the event is theirs, like every other event of the run.
+      deps.recorder.record({ ...scope, actorId }, { type: 'approval.requested', approvalId: approval.id });
       deps.recorder.invalidate('approvals', ctx.assignment.missionId);
       deps.recorder.invalidate('tasks', ctx.assignment.missionId);
 
@@ -196,12 +210,7 @@ export function createAskHumanTool(deps: AskHumanDeps): IntegrationTool {
           answer = timedOut
             ? `No answer within ${hours(allowanceMs)}. Decide yourself, and record what you assumed.`
             : 'The run ended before this was answered.';
-          deps.approvals.update(approval.id, {
-            status: timedOut ? 'EXPIRED' : 'CANCELLED',
-            decisionNote: answer,
-            decidedAt: deps.clock.now(),
-          });
-          deps.recorder.invalidate('approvals', ctx.assignment.missionId);
+          withdrawApproval(deps, approval, answer, timedOut ? 'EXPIRED' : 'CANCELLED');
         }
 
         const declined = pending || !decision.approved;

@@ -1,0 +1,50 @@
+{
+  "id": "A11",
+  "title": "Remove a person",
+  "ok": true,
+  "checks": [
+    {
+      "label": "confirmation explains the consequence in plain words",
+      "ok": true,
+      "observed": "Remove Ana Ruiz?\n\nTheir past work keeps their name. Their agent stops taking work until someone else owns it.\n\nCancel\nRemove\nRemove\nCancel\nS"
+    },
+    {
+      "label": "Ana's seat is removed; her agent is kept but inactive",
+      "ok": true
+    },
+    {
+      "label": "Team screen marks the agent \"Inactive: owner removed\"",
+      "ok": true
+    },
+    {
+      "label": "past decisions still carry Ana's name",
+      "ok": true
+    },
+    {
+      "label": "design no longer routes to Ana's agent, nor silently to any runtime: it waits for a real person",
+      "ok": true,
+      "observed": {
+        "assignee": null,
+        "responsible": {
+          "id": "mem_01m2gyq7cat1ayp7e9d3",
+          "name": "Demostenes Garcia G.",
+          "kind": "person"
+        },
+        "claimable": [
+          {
+            "id": "mem_01m2gyq7cat1ayp7e9d3",
+            "name": "Demostenes Garcia G.",
+            "kind": "person"
+          }
+        ],
+        "executor": "human"
+      }
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/A11-confirm.png",
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/A11-tree.png",
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/A11-plan.png"
+  ]
+}

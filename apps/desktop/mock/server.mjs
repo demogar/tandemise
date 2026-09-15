@@ -25,7 +25,8 @@ const API = '/v1';
 
 const state = {
   missions: structuredClone(fx.missions),
-  tasks: structuredClone(fx.tasksByMission),
+  // Fixture tasks predate rounds; every TaskView carries a round and a feedback thread.
+  tasks: Object.fromEntries(Object.entries(structuredClone(fx.tasksByMission)).map(([id, tasks]) => [id, tasks.map((t) => ({ round: 1, feedback: [], attention: null, ...t }))])),
   approvals: structuredClone(fx.approvals),
   runtimes: structuredClone(fx.runtimes),
   integrations: structuredClone(fx.integrations),
@@ -333,6 +334,44 @@ route('GET', '/missions/:id/events', (params, _b, query) => {
   return events.slice(-limit);
 });
 
+// The mission feed, projected simply: the mock has one person, so every open
+// approval and every person step is "mine". Enough to render the Feed tab.
+route('GET', '/missions/:id/feed', (params, _b, query) => {
+  const detail = detailFor(params.id);
+  const doneLimit = Number(query.doneLimit ?? 5);
+  const DONE = ['SUCCEEDED', 'FAILED', 'SKIPPED', 'CANCELLED'];
+  const cards = detail.tasks.filter((t) => t.status !== 'PENDING').map((task) => {
+    const artifact = detail.artifacts.filter((a) => a.taskId === task.id)[0] ?? null;
+    // A check for me is "Needs you" too, but a decision that holds work up comes first.
+    const open = state.approvals.filter((v) => v.approval.taskId === task.id && v.approval.status === 'PENDING');
+    const approval = open.find((v) => v.approval.kind !== 'check') ?? open[0] ?? null;
+    const section = approval || task.status === 'AWAITING_HUMAN' ? 'needs_you' : DONE.includes(task.status) ? 'done' : 'in_progress';
+    return {
+      taskId: task.id, key: task.key, title: task.title, roleName: task.roleName ?? null, status: task.status,
+      statusReason: task.statusReason ?? null, section, doneBy: null, responsible: null, recordedBy: null,
+      artifactId: artifact?.id ?? null, artifactTitle: artifact?.title ?? null,
+      handoff: artifact ? artifact.handoff ?? (artifact.summary ? { headline: artifact.summary, points: [], needs: null, changed: [], links: [] } : null) : null,
+      moreArtifacts: 0, overBudget: false, superseded: false, supersededByTaskKey: null,
+      pendingApproval: section === 'needs_you' && approval ? approval : null,
+      humanAction: task.status === 'AWAITING_HUMAN' ? 'complete' : null,
+      planDecision: null,
+      updatedAt: task.updatedAt ?? detail.mission.updatedAt,
+      round: task.round ?? 1,
+      openFeedback: (task.feedback ?? []).filter((f) => f.status === 'open' || f.status === 'queued'),
+      changed: [],
+      canRequestChanges: task.executor !== 'wait',
+    };
+  });
+  const done = cards.filter((c) => c.section === 'done');
+  return {
+    missionId: params.id,
+    needsYou: cards.filter((c) => c.section === 'needs_you'),
+    inProgress: cards.filter((c) => c.section === 'in_progress'),
+    done: done.slice(0, doneLimit),
+    doneTotal: done.length,
+  };
+});
+
 route('GET', '/missions/:id/artifacts', (params) => state.artifacts.filter((a) => a.manifest.missionId === params.id).map((a) => a.manifest));
 
 route('GET', '/artifacts', (_p, _b, query) => {
@@ -362,12 +401,62 @@ route('POST', '/tasks/:id/retry', (params) => {
   return null;
 });
 
+// Feedback, simply: a note is added to the task and a finished task goes again as the next round.
+// There are no dependents in the mock, so no impact dialog; enough to exercise the composer and the thread.
+function taskById(id) {
+  for (const tasks of Object.values(state.tasks)) {
+    const task = tasks.find((t) => t.id === id);
+    if (task) return task;
+  }
+  throw notFound('Task not found.');
+}
+
+route('POST', '/tasks/:id/feedback', (params, body) => {
+  const task = taskById(params.id);
+  const running = task.status === 'RUNNING' || task.status === 'AWAITING_INPUT';
+  const startsRound = ['SUCCEEDED', 'FAILED', 'BLOCKED', 'CANCELLED', 'AWAITING_APPROVAL'].includes(task.status);
+  task.round = task.round ?? 1;
+  if (startsRound) task.round += 1;
+  const item = {
+    id: `fb_mock${Date.now().toString(36)}`, taskId: task.id, artifactId: body.artifactId ?? null,
+    author: { id: 'mem_you', name: 'You', kind: 'person' }, recordedBy: null, text: body.text,
+    status: running ? 'queued' : startsRound ? 'in_round' : 'open', round: startsRound || running ? task.round : null,
+    createdAt: new Date().toISOString(),
+  };
+  task.feedback = [...(task.feedback ?? []), item];
+  if (startsRound) task.status = 'READY';
+  emit(task.missionId, { type: 'feedback.given', feedbackId: item.id, status: item.status, excerpt: item.text.slice(0, 140) }, { taskId: task.id, roleId: task.roleId });
+  if (startsRound) emit(task.missionId, { type: 'task.round_started', round: task.round, feedbackIds: [item.id], downstream: 'none', redone: [] }, { taskId: task.id, roleId: task.roleId });
+  invalidate('tasks', task.missionId);
+  return { feedback: item, impact: null, roundStarted: startsRound ? task.round : null, roundNotes: startsRound ? 1 : 0 };
+});
+
+route('GET', '/tasks/:id/feedback', (params) => {
+  const task = taskById(params.id);
+  return { taskId: task.id, round: task.round ?? 1, items: task.feedback ?? [], pendingImpact: null };
+});
+
+route('POST', '/feedback/:id/dismiss', (params) => {
+  for (const tasks of Object.values(state.tasks)) {
+    for (const task of tasks) {
+      const item = (task.feedback ?? []).find((f) => f.id === params.id);
+      if (item) {
+        item.status = 'dismissed';
+        invalidate('tasks', task.missionId);
+        return item;
+      }
+    }
+  }
+  throw notFound('That note no longer exists.');
+});
+
 route('GET', '/approvals', () => state.approvals);
 
 route('POST', '/approvals/:id/decide', (params, body) => {
   const view = state.approvals.find((a) => a.approval.id === params.id);
   if (!view) throw notFound('Approval not found.');
-  const approved = body.optionId !== 'reject';
+  // Request changes is stored as a rejection, as the daemon does: the card is answered, and the work goes again.
+  const approved = body.optionId !== 'reject' && body.optionId !== 'request_changes';
   Object.assign(view.approval, {
     status: approved ? 'APPROVED' : 'REJECTED',
     selectedOptionId: body.optionId,
@@ -584,6 +673,8 @@ function planMission(missionId) {
     updatedAt: new Date().toISOString(),
     startedAt: null,
     finishedAt: null,
+    round: 1,
+    feedback: [],
     latestRun: null,
     runCount: 0,
     outputArtifacts: [],

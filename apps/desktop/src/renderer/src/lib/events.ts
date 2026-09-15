@@ -1,5 +1,5 @@
 import type { RunEventRecord, TandemiseEventBody } from '@tandemise/domain';
-import { isSemanticEvent } from './domain.js';
+import { REQUEST_CHANGES_OPTION, isSemanticEvent } from './domain.js';
 import type { IconName } from '../components/Icon.js';
 import { humanizeStatus, pluralize, titleCase, type Tone } from './format.js';
 
@@ -11,6 +11,8 @@ export interface TimelineItem {
   readonly title: string;
   readonly detail: string | null;
   readonly role: string | null;
+  /** The member who did it, when the event names one; the renderer resolves the name. */
+  readonly actorId: string | null;
   readonly at: string;
   readonly sequence: number;
   /** Set when the entry links somewhere - an artifact, an approval. */
@@ -26,7 +28,12 @@ export interface TimelineItem {
  * "Developer changed 8 files" is the sentence the spec asks for, and emitting
  * eight lines instead would bury every other event in the mission.
  */
-export function buildTimeline(records: readonly RunEventRecord[], roleNames: ReadonlyMap<string, string>): readonly TimelineItem[] {
+export function buildTimeline(
+  records: readonly RunEventRecord[],
+  roleNames: ReadonlyMap<string, string>,
+  /** Who an actor id is, for lines that lead with the person ("You asked for changes"); without it the role stands in. */
+  actorName?: (id: string) => string,
+): readonly TimelineItem[] {
   const items: TimelineItem[] = [];
   let index = 0;
 
@@ -55,6 +62,7 @@ export function buildTimeline(records: readonly RunEventRecord[], roleNames: Rea
         title: `${roleLabel(record.roleId, roleNames)} changed ${pluralize(paths.length, 'file')}`,
         detail: paths.slice(0, 6).join(', ') + (paths.length > 6 ? `, +${paths.length - 6} more` : ''),
         role: roleLabel(record.roleId, roleNames),
+        actorId: record.actorId ?? null,
         at: last.createdAt,
         sequence: last.sequence,
         link: null,
@@ -63,16 +71,17 @@ export function buildTimeline(records: readonly RunEventRecord[], roleNames: Rea
       continue;
     }
 
-    items.push(describe(record, roleNames));
+    items.push(describe(record, roleNames, actorName));
     index += 1;
   }
 
   return items;
 }
 
-function describe(record: RunEventRecord, roleNames: ReadonlyMap<string, string>): TimelineItem {
+function describe(record: RunEventRecord, roleNames: ReadonlyMap<string, string>, actorName?: (id: string) => string): TimelineItem {
   const role = roleLabel(record.roleId, roleNames);
-  const base = { key: record.id, role, at: record.createdAt, sequence: record.sequence } as const;
+  const actor = record.actorId && actorName ? actorName(record.actorId) : null;
+  const base = { key: record.id, role, actorId: record.actorId ?? null, at: record.createdAt, sequence: record.sequence } as const;
   const body = record.body;
 
   switch (body.type) {
@@ -184,12 +193,17 @@ function describe(record: RunEventRecord, roleNames: ReadonlyMap<string, string>
         link: null,
       };
     case 'approval.resolved':
+      // Stored as a rejection, but the work goes back as the next round: a red "rejected" would read as the end of it.
+      if (body.option === REQUEST_CHANGES_OPTION) {
+        return { ...base, icon: 'message', tone: 'running', title: 'Changes requested', detail: null, link: { kind: 'approval', id: body.approvalId } };
+      }
       return {
         ...base,
         icon: body.status === 'APPROVED' ? 'check' : 'x',
         tone: body.status === 'APPROVED' ? 'succeeded' : 'failed',
         title: `Approval ${body.status.toLowerCase()}`,
-        detail: body.option ? `You chose "${body.option}".` : null,
+        // Whoever decided is named on the row; "You chose" would be wrong for a teammate's decision.
+        detail: body.option ? `Chose "${humanizeStatus(body.option)}".` : null,
         link: { kind: 'approval', id: body.approvalId },
       };
     case 'policy.denied':
@@ -201,6 +215,73 @@ function describe(record: RunEventRecord, roleNames: ReadonlyMap<string, string>
         detail: body.reason,
         link: null,
       };
+    case 'approval.escalated':
+      return {
+        ...base,
+        icon: 'alert',
+        tone: 'blocked',
+        title: 'An unanswered approval was escalated',
+        detail: `Now also waiting on the next person up (level ${body.level}).`,
+        link: { kind: 'approval', id: body.approvalId },
+      };
+    case 'review.skipped':
+      return {
+        ...base,
+        icon: 'info',
+        tone: 'pending',
+        title: body.when === 'sign-off' ? 'The lead\'s sign-off was not needed' : 'A review was not needed',
+        detail: body.reason
+          ? 'The person who did the work was the only one who could review it.'
+          : `Its condition did not hold: ${body.when}`,
+        link: null,
+      };
+    case 'review.required':
+      return {
+        ...base,
+        icon: 'shield',
+        tone: 'pending',
+        title: 'A review was kept',
+        detail: `Its condition reads what was not measured (${body.missingFacts.join(', ')}), so it applies: ${body.when}`,
+        link: null,
+      };
+    case 'artifact.tighten_requested':
+      return {
+        ...base,
+        icon: 'file',
+        tone: 'running',
+        title: `${role} was asked to tighten ${body.types.join(', ')}`,
+        detail: 'The first draft ran over its length budget. This is one editing pass, not a failure.',
+        link: null,
+      };
+    case 'artifact.over_budget':
+      return {
+        ...base,
+        icon: 'info',
+        tone: 'pending',
+        title: `${body.artifactType} was accepted over its length budget`,
+        detail: `${body.words} words in the main body; the budget is ${body.budget}.`,
+        link: { kind: 'artifact', id: body.artifactId },
+      };
+    case 'task.attention':
+      // Kept on an older version is a fact to know, not a request: nobody asked this work for changes.
+      if (body.kind === 'stale_input') {
+        return {
+          ...base,
+          icon: 'info',
+          tone: 'pending',
+          title: `Built on an older version of ${body.upstream ?? 'its input'}`,
+          detail: body.note || null,
+          link: null,
+        };
+      }
+      return {
+        ...base,
+        icon: 'alert',
+        tone: 'blocked',
+        title: `${role}'s work needs changes`,
+        detail: body.note || null,
+        link: null,
+      };
     case 'note':
       return {
         ...base,
@@ -208,6 +289,40 @@ function describe(record: RunEventRecord, roleNames: ReadonlyMap<string, string>
         tone: body.level === 'error' ? 'failed' : body.level === 'warn' ? 'blocked' : 'pending',
         title: body.text,
         detail: null,
+        link: null,
+      };
+    case 'feedback.given':
+      return {
+        ...base,
+        icon: 'message',
+        tone: 'pending',
+        // "Someone" and "—" say nothing a row's actor chip does not; the sentence then stands without a name.
+        title: actor !== null && actor !== '—' && actor !== 'Someone' ? `${actor} asked for changes` : 'Changes were asked for',
+        detail: body.excerpt,
+        link: null,
+      };
+    case 'feedback.addressed':
+      return {
+        ...base,
+        icon: body.declined ? 'x' : 'check',
+        tone: body.declined ? 'blocked' : 'succeeded',
+        title: body.declined ? `Round ${body.round} declined a note` : `Round ${body.round} answered a note`,
+        detail: null,
+        link: null,
+      };
+    case 'feedback.dismissed':
+      return { ...base, icon: 'x', tone: 'pending', title: 'A note was dismissed', detail: null, link: null };
+    case 'task.round_started':
+      return {
+        ...base,
+        icon: 'flag',
+        tone: 'running',
+        title: `Round ${body.round} started`,
+        // Who asked comes from the event's actor ("You"), never from the task's reason line; keys, as the plan names tasks.
+        detail: [
+          actor !== null && actor !== '—' && actor !== 'Someone' ? `Asked by ${actor}` : null,
+          body.redone.length > 0 ? `Redone: ${body.redone.join(', ')}` : null,
+        ].filter((part): part is string => part !== null).join(' · ') || null,
         link: null,
       };
   }

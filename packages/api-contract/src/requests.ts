@@ -1,5 +1,15 @@
 import { z } from 'zod';
-import { ARTIFACT_TYPES, AUTONOMY_LEVELS, MISSION_STATUSES, RUNTIME_CAPABILITIES } from '@tandemise/domain';
+import {
+  ACCESS_LEVELS, ARTIFACT_TYPES, AUTONOMY_LEVELS, MISSION_STATUSES, OVERSIGHT_MODES, RUNTIME_CAPABILITIES,
+  staffingPatchSchema,
+} from '@tandemise/domain';
+
+/**
+ * Who a person is recording a decision or result for. The stored actor is this
+ * member and the principal becomes `recordedBy`, so a lead can enter what a
+ * teammate said without the record claiming the lead said it.
+ */
+const onBehalfOf = z.string().min(1).optional();
 
 /**
  * Request schemas.
@@ -55,6 +65,10 @@ export type AddRepositoryRequest = z.infer<typeof addRepositoryRequest>;
 
 export const probeRepositoryRequest = z.object({ path: z.string().min(1) });
 
+/** Per role; `null` removes that role's staffing, any other role is left alone. */
+export const roleStaffingPatchRequest = z.record(z.string().min(1), staffingPatchSchema.nullable());
+export type RoleStaffingPatchRequest = z.infer<typeof roleStaffingPatchRequest>;
+
 export const createMissionRequest = z.object({
   workspaceId: z.string().min(1),
   repositoryId: z.string().min(1).nullable().optional(),
@@ -71,6 +85,13 @@ export const createMissionRequest = z.object({
   baseBranch: z.string().nullable().optional(),
   /** Plan immediately after creation. The common path from the UI. */
   planNow: z.boolean().optional(),
+  onBehalfOf,
+  /**
+   * The mission's staffing per role, the same shape its staffing PATCH takes.
+   * Stored with the mission, before planning starts, so no task can become
+   * READY - and snapshot its staffing - ahead of it.
+   */
+  staffing: roleStaffingPatchRequest.optional(),
 });
 export type CreateMissionRequest = z.infer<typeof createMissionRequest>;
 
@@ -85,6 +106,7 @@ export const decideApprovalRequest = z.object({
   note: z.string().max(4000).optional(),
   /** For plan approvals: an edited plan to use instead of the proposed one. */
   editedPlan: z.unknown().optional(),
+  onBehalfOf,
 });
 export type DecideApprovalRequest = z.infer<typeof decideApprovalRequest>;
 
@@ -98,14 +120,18 @@ export const createRuntimeProfileRequest = z.object({
   maxConcurrent: z.number().int().min(1).max(8).optional(),
   enabled: z.boolean().optional(),
   /**
-   * Overrides what the adapter reports it can do.
+   * Capabilities this profile has on top of what the adapter reports.
    *
    * An adapter's `discover()` is a guess about a tool it did not write, and the
    * user frequently knows better - that this Claude Code install has
    * `computer_use`, or that a generic CLI can drive a browser. Without this the
    * capability router has no way to be corrected: a role requiring `browser`
    * would be permanently unroutable even though the runtime can do it.
-   * Omitted means "trust the adapter".
+   *
+   * They are added to the adapter's own capabilities (F5 ruling), never used to
+   * take one away. A list equal to the adapter's defaults, in any order, means
+   * "no override", so a profile saved with the defaults still follows what its
+   * settings declare. Omitted also means "trust the adapter".
    */
   capabilities: z.array(z.enum(RUNTIME_CAPABILITIES)).optional(),
 });
@@ -125,8 +151,67 @@ export const updateRuntimeProfileRequest = createRuntimeProfileRequest.partial()
 export const completeTaskRequest = z.object({
   result: z.string().trim().min(1).max(20_000),
   note: z.string().trim().max(2_000).optional(),
+  onBehalfOf,
 });
 export type CompleteTaskRequest = z.infer<typeof completeTaskRequest>;
+
+/** Taking an unassigned pool task, for yourself or for the member named. */
+export const claimTaskRequest = z.object({ onBehalfOf });
+export type ClaimTaskRequest = z.infer<typeof claimTaskRequest>;
+
+// ------------------------------------------------------------ people and team
+
+export const createPersonRequest = z.object({
+  displayName: z.string().trim().min(1).max(120),
+  handles: z.record(z.string(), z.string()).optional(),
+});
+export type CreatePersonRequest = z.infer<typeof createPersonRequest>;
+
+export const updatePersonRequest = createPersonRequest.partial();
+export type UpdatePersonRequest = z.infer<typeof updatePersonRequest>;
+
+const memberTitle = z.string().max(120).nullable().optional();
+
+export const addMemberRequest = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('person'),
+    personId: z.string().min(1),
+    reportsTo: z.string().min(1).nullable().optional(),
+    access: z.enum(ACCESS_LEVELS).optional(),
+    oversight: z.enum(OVERSIGHT_MODES).optional(),
+    title: memberTitle,
+    roleIds: z.array(z.string().min(1)).optional(),
+  }),
+  z.object({
+    kind: z.literal('agent'),
+    name: z.string().trim().min(1).max(120),
+    // An agent acts on its owner's authority, so it cannot be added without one.
+    reportsTo: z.string().min(1),
+    roleIds: z.array(z.string().min(1)).min(1),
+    runtimeProfileIds: z.array(z.string().min(1)).optional(),
+    integrationIds: z.array(z.string().min(1)).optional(),
+    title: memberTitle,
+  }),
+]);
+export type AddMemberRequest = z.infer<typeof addMemberRequest>;
+
+/** Removal has its own endpoint; `status` here only brings a removed member back. */
+export const updateMemberRequest = z.object({
+  name: z.string().trim().min(1).max(120),
+  reportsTo: z.string().min(1).nullable(),
+  access: z.enum(ACCESS_LEVELS),
+  oversight: z.enum(OVERSIGHT_MODES),
+  title: z.string().max(120).nullable(),
+  roleIds: z.array(z.string().min(1)),
+  runtimeProfileIds: z.array(z.string().min(1)),
+  integrationIds: z.array(z.string().min(1)),
+  status: z.literal('active'),
+}).partial();
+export type UpdateMemberRequest = z.infer<typeof updateMemberRequest>;
+
+/** `null` clears the task's own override. */
+export const taskStaffingPatchRequest = staffingPatchSchema.nullable();
+export type TaskStaffingPatchRequest = z.infer<typeof taskStaffingPatchRequest>;
 
 export const createIntegrationRequest = z.object({
   workspaceId: z.string().min(1),
@@ -186,10 +271,28 @@ export const missionEventsQuery = z.object({
   semanticOnly: z.coerce.boolean().optional(),
 });
 
+export const missionFeedQuery = z.object({
+  /** How many done cards to return; the rest are counted in `doneTotal`. */
+  doneLimit: z.coerce.number().int().min(0).max(500).optional(),
+});
+
+export const missionArtifactsQuery = z.object({
+  // An enum, not `z.coerce.boolean()`: that reads the string 'false' as true.
+  includeSuperseded: z.enum(['true', 'false']).optional().transform((v) => v === 'true'),
+});
+
+/** `GET /v1/artifacts`: search stays on current versions unless older ones are asked for. */
+export const artifactSearchQuery = z.object({
+  workspaceId: z.string().optional(),
+  q: z.string().optional(),
+  includeSuperseded: z.enum(['true', 'false']).optional().transform((v) => v === 'true'),
+});
+
 export const retryTaskRequest = z.object({
   /** Override the runtime for this attempt - the manual fallback escape hatch. */
   runtimeProfileId: z.string().optional(),
-  note: z.string().max(2000).optional(),
+  /** Stored as a feedback item and started as a round, so it takes a note's full length. */
+  note: z.string().max(4000).optional(),
   /**
    * Capabilities to add before retrying. Still narrowed to the role's own
    * defaults when grants are built, so this widens a task within what its role
@@ -197,6 +300,30 @@ export const retryTaskRequest = z.object({
    */
   addCapabilities: z.array(z.string().trim().min(1).max(100)).max(20).optional(),
 });
+
+// ------------------------------------------------------------ feedback and rounds
+
+/** A note on a task's output (spec §2); what it does depends on the task's state. */
+export const giveFeedbackRequest = z.object({
+  text: z.string().trim().min(1).max(4000),
+  /** Feedback about one output of the task; omitted for the whole task. */
+  artifactId: z.string().min(1).optional(),
+  onBehalfOf,
+});
+export type GiveFeedbackRequest = z.infer<typeof giveFeedbackRequest>;
+
+/** Confirms a round that waited on the downstream choice (spec §3). */
+export const startRoundRequest = z.object({
+  feedbackIds: z.array(z.string().min(1)).min(1).max(50),
+  // "none" says the caller saw nothing downstream; if work used the output since, the round is refused rather than kept silently.
+  downstream: z.enum(['redo', 'keep', 'none']),
+  redoTaskIds: z.array(z.string().min(1)).max(200).optional(),
+  onBehalfOf,
+});
+export type StartRoundRequest = z.infer<typeof startRoundRequest>;
+
+export const dismissFeedbackRequest = z.object({ onBehalfOf });
+export type DismissFeedbackRequest = z.infer<typeof dismissFeedbackRequest>;
 
 export const cancelMissionRequest = z.object({
   reason: z.string().max(500).optional(),

@@ -1,19 +1,27 @@
 import type {
-  ApprovalRepositoryPort, Mission, MissionRepositoryPort, MissionStatus, MissionTask,
-  RepoRepositoryPort, TaskRepositoryPort, WorkspaceRepositoryPort,
+  ApprovalRepositoryPort, ArtifactRepositoryPort, MemberRepositoryPort, Mission, MissionRepositoryPort, MissionStatus,
+  MissionTask, RepoRepositoryPort, RoleRepositoryPort, RunRepositoryPort, TaskRepositoryPort, UnitOfWork, WorkspaceRepositoryPort,
   ArtifactStorePort,
 } from '@tandemise/domain';
-import { canTransition, isTaskFinished, isTerminalMissionStatus } from '@tandemise/domain';
+import { canTransition, indexTeam, isTaskFinished, isTerminalMissionStatus, responsibleFor } from '@tandemise/domain';
 import type {
-  CompleteTaskRequest, CreateMissionRequest, MissionSummary, TaskView,
+  ClaimTaskRequest, CompleteTaskRequest, CreateMissionRequest, MissionSummary, TaskView,
 } from '@tandemise/api-contract';
 import type { Clock, Logger, MissionId, RepositoryId, TaskId } from '@tandemise/shared';
 import { TandemiseError, asId, ids, slugify, summarize } from '@tandemise/shared';
-import type { MissionService, PlanningService, ProjectionService } from '../services.js';
+import type { FeedbackService, MissionService, PlanningService, ProjectionService } from '../services.js';
 import type { SchedulerService } from '../engine/scheduler.js';
 import type { EventRecorder, EventScope } from '../support/event-recorder.js';
 import type { RuntimeOverrides } from '../support/runtime-overrides.js';
 import { DEFAULT_PRESET_ID } from '../planning/presets.js';
+import { actorFor, requireSeat, type Caller } from '../support/identity.js';
+import { supersededBy } from '../support/lineage.js';
+import { waitingForName, withoutEscalation } from '../engine/staffing-resolver.js';
+import type { ReviewPipeline } from '../engine/reviews.js';
+import type { FeedbackRounds } from '../engine/feedback-rounds.js';
+import type { ArtifactMeasurePort } from '../ports.js';
+import { feedbackEffectFor } from '../support/feedback-rules.js';
+import { assertStaffing, mergeRoleStaffing } from '../support/staffing-edit.js';
 
 /** Statuses from which a task may be put back in the queue by hand. */
 const RETRYABLE_TASK_STATUSES: readonly MissionTask['status'][] = [
@@ -25,13 +33,29 @@ export interface MissionDeps {
   readonly repositories: RepoRepositoryPort;
   readonly missions: MissionRepositoryPort;
   readonly tasks: TaskRepositoryPort;
+  /** Tells an output card from a start card, which decides whether a retry's note starts a round. */
+  readonly runs: Pick<RunRepositoryPort, 'listByTask'>;
   readonly approvals: ApprovalRepositoryPort;
   /** Where a person's completed work is written, in the shape the plan declared. */
   readonly artifactStore: ArtifactStorePort;
+  /** Where its manifest is recorded, so gates and downstream tasks can find it. */
+  readonly artifacts: ArtifactRepositoryPort;
+  /** Gives a person's text the handoff an agent writes for itself. */
+  readonly measure: ArtifactMeasurePort;
+  /** Who may act, and who a task is assigned to. */
+  readonly members: MemberRepositoryPort;
+  readonly roles: RoleRepositoryPort;
+  /** A person's finished step is reviewed exactly as an agent's round is. */
+  readonly reviews: ReviewPipeline;
   readonly planning: PlanningService;
   readonly projections: ProjectionService;
   readonly scheduler: SchedulerService;
+  /** A retry with a note is the next round, started the way any note starts one. */
+  readonly feedback: FeedbackService;
+  /** A person's completed step answers the notes left on it. */
+  readonly rounds: FeedbackRounds;
   readonly overrides: RuntimeOverrides;
+  readonly unitOfWork: UnitOfWork;
   readonly recorder: EventRecorder;
   readonly clock: Clock;
   readonly log: Logger;
@@ -64,10 +88,13 @@ export class MissionServiceImpl implements MissionService {
     return missions.map((mission) => this.#summary(mission));
   }
 
-  async create(request: CreateMissionRequest): Promise<Mission> {
+  async create(caller: Caller, request: CreateMissionRequest): Promise<Mission> {
     const workspaceId = asId<'WorkspaceId'>(request.workspaceId);
     const workspace = this.deps.workspaces.get(workspaceId);
     if (workspace === undefined) throw TandemiseError.notFound('Workspace', workspaceId);
+    // The creator is who plan approvals go to first, so it is resolved before
+    // anything is written: a caller with no seat creates nothing.
+    const { actorId } = actorFor(this.deps, workspaceId, caller, request.onBehalfOf);
 
     const repositoryId = request.repositoryId === undefined
       ? workspace.defaultRepositoryId
@@ -79,30 +106,40 @@ export class MissionServiceImpl implements MissionService {
 
     const id = ids.mission();
     const title = request.title?.trim() || titleFromGoal(request.goal);
-    const mission = this.deps.missions.create({
-      id,
-      workspaceId,
-      repositoryId: repositoryId as RepositoryId | null,
-      title,
-      goal: request.goal.trim(),
-      constraints: request.constraints ?? [],
-      successCriteria: request.successCriteria ?? [],
-      autonomy: request.autonomy ?? workspace.defaultAutonomyLevel,
-      workflowPreset: request.workflowPreset ?? DEFAULT_PRESET_ID,
-      workflowInputs: request.workflowInputs ?? {},
-      baseBranch: request.baseBranch ?? repository?.defaultBranch ?? null,
-    });
-
-    // The integration branch is named at creation rather than at merge time so
-    // that every task branch can be cut from a name that already exists in the
-    // record, and so the user can see where the work will land before it does.
-    const withBranch = this.deps.missions.update(id, {
-      integrationBranch: `tandemise/${slugify(title)}/integration`,
+    const created = this.deps.unitOfWork.transaction(() => {
+      // Validated and stored with the mission, in one transaction, rather than
+      // patched on afterwards: with plans approved automatically, a task can
+      // become READY - and snapshot its staffing - before a second request lands.
+      const { next: staffing, touched } = mergeRoleStaffing({}, request.staffing ?? {});
+      if (touched.length > 0) {
+        assertStaffing(indexTeam(this.deps.members.listByWorkspace(workspaceId, { includeRemoved: true })), staffing, touched);
+      }
+      this.deps.missions.create({
+        id,
+        workspaceId,
+        repositoryId: repositoryId as RepositoryId | null,
+        title,
+        goal: request.goal.trim(),
+        constraints: request.constraints ?? [],
+        successCriteria: request.successCriteria ?? [],
+        autonomy: request.autonomy ?? workspace.defaultAutonomyLevel,
+        workflowPreset: request.workflowPreset ?? DEFAULT_PRESET_ID,
+        workflowInputs: request.workflowInputs ?? {},
+        baseBranch: request.baseBranch ?? repository?.defaultBranch ?? null,
+        createdBy: actorId,
+        staffing,
+      });
+      // The integration branch is named at creation rather than at merge time so
+      // that every task branch can be cut from a name that already exists in the
+      // record, and so the user can see where the work will land before it does.
+      return this.deps.missions.update(id, {
+        integrationBranch: `tandemise/${slugify(title)}/integration`,
+      });
     });
 
     this.deps.recorder.note(
-      { workspaceId, missionId: id },
-      `Mission created: ${summarize(mission.goal, 300)}`,
+      { workspaceId, missionId: id, actorId },
+      `Mission created: ${summarize(created.goal, 300)}`,
     );
     this.deps.recorder.invalidate('missions', id);
 
@@ -112,7 +149,7 @@ export class MissionServiceImpl implements MissionService {
       await this.deps.planning.begin(id);
       return this.#require(id);
     }
-    return withBranch;
+    return created;
   }
 
   async start(id: MissionId): Promise<Mission> {
@@ -208,11 +245,13 @@ export class MissionServiceImpl implements MissionService {
   }
 
   async retryTask(
+    caller: Caller,
     taskId: TaskId,
     options: { runtimeProfileId?: string; note?: string; addCapabilities?: readonly string[] },
   ): Promise<TaskView> {
     const task = this.#requireTask(taskId);
     const mission = this.#require(task.missionId);
+    requireSeat(this.deps, mission.workspaceId, caller);
     const widening = (options.addCapabilities ?? []).length > 0;
     // A worker parked on a question can be restarted with more access: that is
     // often the question ("I can't do this with my grants").
@@ -232,7 +271,35 @@ export class MissionServiceImpl implements MissionService {
     // while the timeline showed attempt 1 each round.
     const added = [...new Set(options.addCapabilities ?? [])]
       .filter((c) => !task.executionPolicy.capabilities.includes(c));
-    const reason = options.note?.trim()
+    const note = options.note?.trim() ?? '';
+    // A note is the person's request, so the retry is the next round framed as
+    // one (spec §7, C12), not a gate failure with a remark appended. Only where
+    // a note would start a round: from AWAITING_INPUT the run is restarted with
+    // more access mid-question, and behind a start card nothing has run yet, so
+    // those keep today's framing.
+    // A wait step reads no feedback, so its note stays a retry reason.
+    const effect = feedbackEffectFor(task, this.deps.approvals.pendingForTask(taskId), this.deps.runs);
+    if (note.length > 0 && task.executor !== 'wait' && (effect.kind === 'review' || effect.kind === 'reopen' || effect.kind === 'round_now')) {
+      let pending;
+      try {
+        // One unit with the round, so a round that cannot start leaves the task's access as it was.
+        pending = this.deps.recorder.deferred(() => this.deps.unitOfWork.transaction(() => {
+          if (added.length > 0) {
+            this.deps.tasks.update(taskId, { executionPolicy: { ...task.executionPolicy, capabilities: [...task.executionPolicy.capabilities, ...added] } });
+          }
+          // A retry cannot show the impact dialog; work that used the old version is kept and flagged when the round lands.
+          return this.deps.feedback.beginGive(caller, taskId, { text: note }, { forceDownstream: 'keep' });
+        }));
+      } catch (error) {
+        // The override lives in memory, outside the unit: set before the round so its first dispatch sees it, taken back if it failed.
+        if (options.runtimeProfileId !== undefined) this.deps.overrides.clear(taskId);
+        throw error;
+      }
+      // Only now that the unit has committed: the scheduler must find the round when it wakes.
+      this.deps.feedback.afterGive(pending);
+      return this.#taskView(mission.id, taskId);
+    }
+    const reason = note
       || `Retried by the user${options.runtimeProfileId === undefined ? '' : ' on a different runtime'}`
         + `${added.length > 0 ? ` with more access: ${added.join(', ')}` : ''}.`;
     if (task.status === 'AWAITING_INPUT') {
@@ -251,6 +318,10 @@ export class MissionServiceImpl implements MissionService {
         : {}),
       status: 'READY',
       statusReason: reason,
+      // A retry is a new round: the attention a check asked for was about the
+      // last one, and the people an escalation reached were for that wait.
+      needsAttention: false,
+      ...(task.staffing?.escalatedTo === undefined ? {} : { staffing: withoutEscalation(task.staffing) }),
       // The retry's prompt quotes what the last attempt failed on. A note the
       // person wrote is added to it, never swapped in: "Retried by the user"
       // in its place told the worker nothing about what to do differently.
@@ -322,7 +393,7 @@ export class MissionServiceImpl implements MissionService {
    * model arrive at the next task in the same shape, and nothing after this
    * point needs to care which it was.
    */
-  async completeTask(taskId: TaskId, request: CompleteTaskRequest): Promise<TaskView> {
+  async completeTask(caller: Caller, taskId: TaskId, request: CompleteTaskRequest): Promise<TaskView> {
     const task = this.#requireTask(taskId);
     const mission = this.#require(task.missionId);
 
@@ -336,35 +407,113 @@ export class MissionServiceImpl implements MissionService {
         `A task in ${task.status} is not waiting for you.`,
         { details: { taskId, status: task.status } });
     }
+    const { actorId, recordedBy } = actorFor(this.deps, mission.workspaceId, caller, request.onBehalfOf);
+    this.#assertMayTake(task, actorId, 'complete');
+    // Completing an unclaimed pool task is claiming it: whoever did the work is
+    // its assignee, and answers for it unless someone was named responsible.
+    const taken: { assigneeId?: string; responsibleId?: string } = task.assigneeId !== actorId
+      ? this.#claimFields(task, mission, actorId) : {};
+    const responsibleId = taken.responsibleId ?? task.responsibleId ?? null;
 
-    const scope = { ...scopeOf(mission), taskId, roleId: task.roleId };
+    const scope: EventScope = { ...scopeOf(mission), taskId, roleId: task.roleId, actorId };
+    // Taking it from its assignee (an escalation reached them) is said, as a claim would say it.
+    if (task.assigneeId != null && task.assigneeId !== actorId) this.#noteTaken(scope, task, actorId);
+    // People are not made to fill in YAML: their first sentence is the headline.
+    const handoff = this.deps.measure.deriveHandoff(request.result);
     for (const type of task.expectedOutputs) {
-      await this.deps.artifactStore.write({
+      // A re-completed task replaces what it brought back last time, exactly as
+      // an agent's retry does; otherwise both answers stay live and the next
+      // task reads the stale one too. The repository sets the back-pointer.
+      const previous = supersededBy(task, type, this.deps.artifacts, this.deps.tasks);
+      const manifest = await this.deps.artifactStore.write({
         workspaceId: mission.workspaceId,
         missionId: mission.id,
         taskId: task.id,
         type,
         title: task.title,
         body: request.result,
-        summary: request.note ?? null,
+        // What a person types is text, whatever the output type: Evidence
+        // defaults to a binary blob, which the reader cannot show.
+        mediaType: 'text/markdown',
+        summary: handoff.headline,
+        supersedes: previous?.id ?? null,
       });
+      // Recorded, not only stored: gates and the next task read the manifest
+      // table, and a person's output has to arrive the way an agent's does.
+      // Measured so the reader can show its length, but never held to a budget:
+      // what a person brings back is theirs to size.
+      const recorded = this.deps.artifacts.create({
+        ...manifest, authorId: actorId, recordedBy, responsibleId,
+        handoff, wordCount: this.deps.measure.measure(type, request.result).mainWords, overBudget: false,
+        round: task.round ?? 1,
+      });
+      this.deps.recorder.record(scope, { type: 'artifact.created', artifactId: recorded.id });
     }
+    // A person's text cites no ids, so bringing the step back answers every note on it (plan ruling 1).
+    this.deps.rounds.onPersonCompleted(task, scope);
 
-    const reason = request.note?.trim() || 'Completed by you.';
-    this.deps.tasks.update(taskId, {
-      status: 'SUCCEEDED',
-      statusReason: reason,
-      finishedAt: this.deps.clock.now(),
+    // The step passed its round: the reviews its staffing names - a blocking
+    // look, the lead's sign-off, an after-the-fact check - apply to a person's
+    // work exactly as they do to an agent's. A person's step has no gate and
+    // no checks of its own.
+    const workspace = this.deps.workspaces.get(mission.workspaceId);
+    if (workspace === undefined) throw TandemiseError.notFound('Workspace', mission.workspaceId);
+    const outcome = this.deps.reviews.onRoundPassed({
+      task: { ...task, ...taken },
+      mission,
+      workspace,
+      role: this.deps.roles.get(task.roleId, mission.workspaceId),
+      gate: null,
+      checks: [],
+      scope,
     });
-    this.deps.recorder.record(scope, { type: 'task.status', from: task.status, to: 'SUCCEEDED', reason });
+    const reason = outcome.status === 'SUCCEEDED' ? request.note?.trim() || 'Completed by you.' : outcome.reason;
+    this.deps.tasks.update(taskId, {
+      ...taken,
+      status: outcome.status,
+      statusReason: reason,
+      ...(outcome.status === 'SUCCEEDED' ? { finishedAt: this.deps.clock.now() } : {}),
+    });
+    this.deps.recorder.record(scope, {
+      type: 'task.status', from: task.status, to: outcome.status, ...(reason === null ? {} : { reason }),
+    });
     this.deps.recorder.invalidate('tasks', mission.id);
     this.deps.recorder.invalidate('artifacts', mission.id);
+    this.deps.scheduler.wake();
     return this.#taskView(mission.id, taskId);
   }
 
-  async skipTask(taskId: TaskId): Promise<TaskView> {
+  /**
+   * Takes an unassigned human task, for the caller or the member named.
+   *
+   * Only someone the staffing made claimable may take it, and a task already
+   * taken by someone else is not taken twice: two people doing the same work
+   * without knowing it is the failure this exists to prevent.
+   */
+  async claimTask(caller: Caller, taskId: TaskId, request: ClaimTaskRequest): Promise<TaskView> {
     const task = this.#requireTask(taskId);
     const mission = this.#require(task.missionId);
+    if (task.executor !== 'human' || task.status !== 'AWAITING_HUMAN') {
+      throw new TandemiseError('PRECONDITION_FAILED',
+        `Task '${task.key}' is not waiting for a person to take it.`,
+        { details: { taskId, executor: task.executor, status: task.status } });
+    }
+    const { actorId } = actorFor(this.deps, mission.workspaceId, caller, request.onBehalfOf);
+    if (task.assigneeId === actorId) return this.#taskView(mission.id, taskId);
+    this.#assertMayTake(task, actorId, 'claim');
+
+    const fields = this.#claimFields(task, mission, actorId);
+    const name = this.#nameOf(actorId);
+    this.deps.tasks.update(taskId, { ...fields, statusReason: waitingForName(name) });
+    this.#noteTaken({ ...scopeOf(mission), taskId, roleId: task.roleId, actorId }, task, actorId);
+    this.deps.recorder.invalidate('tasks', mission.id);
+    return this.#taskView(mission.id, taskId);
+  }
+
+  async skipTask(caller: Caller, taskId: TaskId): Promise<TaskView> {
+    const task = this.#requireTask(taskId);
+    const mission = this.#require(task.missionId);
+    requireSeat(this.deps, mission.workspaceId, caller);
     if (isTaskFinished(task.status) && task.status !== 'FAILED') {
       throw new TandemiseError('PRECONDITION_FAILED', `A task in ${task.status} cannot be skipped.`, {
         details: { taskId, status: task.status },
@@ -399,6 +548,41 @@ export class MissionServiceImpl implements MissionService {
   }
 
   // ------------------------------------------------------------------ internals
+
+  #nameOf(memberId: string): string {
+    return this.deps.members.get(asId<'MemberId'>(memberId))?.name ?? 'someone';
+  }
+
+  /** "Ana took 'Design review'." - the audit line for someone taking a task. */
+  #noteTaken(scope: EventScope, task: MissionTask, actorId: string): void {
+    this.deps.recorder.note(scope, `${this.#nameOf(actorId)} took '${task.title}'.`);
+  }
+
+  /**
+   * The assignee may act on their task; on an unassigned one, anyone the
+   * staffing made claimable. A task resolved before staffing existed names no
+   * one, and stays open to whoever the workspace lets act at all.
+   */
+  #assertMayTake(task: MissionTask, actorId: string, action: 'claim' | 'complete'): void {
+    const allowed = task.assigneeId != null
+      ? task.assigneeId === actorId || reachedByEscalation(task, actorId)
+      : task.staffing == null || task.staffing.claimable.includes(actorId);
+    if (allowed) return;
+    const whose = task.assigneeId != null
+      ? `it is assigned to ${this.deps.members.get(asId<'MemberId'>(task.assigneeId))?.name ?? 'someone else'}`
+      : 'they are not one of the people who can take it';
+    throw new TandemiseError('CONFLICT', `This member cannot ${action} '${task.title}': ${whose}.`, {
+      details: { taskId: task.id, actorId, assigneeId: task.assigneeId ?? null },
+    });
+  }
+
+  /** The assignment a person taking a task gets, with responsibility re-derived for them. */
+  #claimFields(task: MissionTask, mission: Mission, actorId: string): { assigneeId: string; responsibleId?: string } {
+    if (task.staffing == null) return { assigneeId: actorId };
+    const team = indexTeam(this.deps.members.listByWorkspace(mission.workspaceId, { includeRemoved: true }));
+    if (team.owners.length === 0) return { assigneeId: actorId };
+    return { assigneeId: actorId, responsibleId: responsibleFor(team, task.staffing.staffing, actorId) };
+  }
 
   /** A blocked mission that just got a runnable task again goes back to work. */
   #reviveMission(mission: Mission, reason: string): void {
@@ -470,4 +654,14 @@ function titleFromGoal(goal: string): string {
   const firstSentence = goal.trim().split(/(?<=[.!?])\s/)[0] ?? goal.trim();
   const trimmed = firstSentence.replace(/[.!?]+$/, '').trim();
   return trimmed.length <= 80 ? trimmed : `${trimmed.slice(0, 77).trimEnd()}…`;
+}
+
+/**
+ * Whether the member was reached by an escalation, and so may take a task
+ * from its assignee. Only what `ReviewPipeline#escalatePool` recorded counts:
+ * the other people of a pool someone already claimed - two owners of a
+ * fallback pool included - came from the staffing, and a claim is not taken twice.
+ */
+function reachedByEscalation(task: MissionTask, actorId: string): boolean {
+  return task.assigneeId != null && (task.staffing?.escalatedTo ?? []).includes(actorId);
 }

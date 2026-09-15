@@ -415,13 +415,25 @@
   line-height: 1.35;
 }
 
+.approval__headline {
+  margin-top: 2px;
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+
 .approval__context {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--s2);
+  gap: 2px var(--s2);
   font-size: var(--fs-xs);
   color: var(--text-tertiary);
   margin-top: 3px;
+}
+
+/* Wrap between items, never inside one: a mission title split over three lines is unreadable. */
+.approval__context > * {
+  white-space: nowrap;
 }
 
 .approval__grid {
@@ -493,6 +505,14 @@
   width: 132px;
   color: var(--text-secondary);
   font-weight: 550;
+}
+
+.evidence__headline {
+  display: block;
+  margin-top: 2px;
+  font-family: var(--font-sans);
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
 }
 
 .evidence__value {
@@ -720,6 +740,8 @@
 }
 
 .reader__title {
+  /* Set, not inherited: in a drawer the body's secondary colour would dim the one line everyone reads first. */
+  color: var(--text);
   font-size: var(--fs-xl);
   font-weight: 640;
   letter-spacing: -0.022em;
@@ -734,6 +756,246 @@
   margin-top: var(--s2);
   font-size: var(--fs-xs);
   color: var(--text-tertiary);
+}
+
+/* The byline sits on its own line under the title, so the headline below it reads as the first sentence.
+   The reader's one action (Request changes) shares that line rather than taking one of its own. */
+.reader__byline {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-height: 30px;
+  margin-top: var(--s2);
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+
+/* Record-keeping values, as a text button: present for whoever needs them, invisible to a scan. */
+.reader__details-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: auto;
+  padding: 0 var(--s1);
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  font-size: var(--fs-xs);
+  border-radius: var(--radius-xs);
+}
+
+.reader__details-toggle:hover {
+  color: var(--text);
+}
+
+/* ---------------------------------------------------------------- handoff */
+
+/* The one sentence most readers stop at, so it is the largest text after the title. */
+.handoff__headline {
+  margin-top: var(--s4);
+  max-width: 64ch;
+  font-size: var(--fs-lg);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 1.45;
+  color: var(--text);
+}
+
+.handoff__points {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  margin-top: var(--s3);
+  max-width: 70ch;
+  padding-left: var(--s5);
+  font-size: var(--fs-base);
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+.handoff__points li {
+  list-style: disc;
+}
+
+.handoff__points li::marker {
+  color: var(--text-tertiary);
+}
+
+/* What moved since the last round, kept short and below the points it revises. */
+.handoff__changed {
+  margin-top: var(--s4);
+  max-width: 70ch;
+}
+
+.handoff__label {
+  margin-bottom: var(--s1);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.handoff__changed ul {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: var(--s5);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.handoff__changed li {
+  list-style: disc;
+}
+
+.handoff__changed li::marker {
+  color: var(--text-tertiary);
+}
+
+/* What the author is waiting on a person for: the blocked tone, because that is what an unmet need is. */
+.handoff__needs {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s2);
+  margin-top: var(--s4);
+  max-width: 70ch;
+  padding: var(--s2) var(--s3);
+  border-radius: var(--radius-sm);
+  border-left: 2px solid var(--status-blocked);
+  background: var(--status-blocked-soft);
+  font-size: var(--fs-base);
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.handoff__needs > svg {
+  flex: none;
+  margin-top: 3px;
+  color: var(--status-blocked);
+}
+
+.handoff__needs strong {
+  font-weight: 620;
+  margin-right: var(--s1);
+}
+
+.handoff__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  margin-top: var(--s4);
+}
+
+.handoff__changed + .reader__meta,
+.handoff__links + .reader__meta,
+.handoff__needs + .reader__meta,
+.handoff__points + .reader__meta,
+.handoff__headline + .reader__meta {
+  margin-top: var(--s5);
+}
+
+/* The appendix stays folded: it is there to be checked, not read. */
+.reader__appendix {
+  margin-top: var(--s8);
+  border-top: 1px solid var(--border);
+  padding-top: var(--s4);
+}
+
+.reader__appendix > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  cursor: pointer;
+  list-style: none;
+  font-size: var(--fs-sm);
+  font-weight: 550;
+  color: var(--text-secondary);
+}
+
+.reader__appendix > summary::-webkit-details-marker {
+  display: none;
+}
+
+.reader__appendix > summary:hover {
+  color: var(--text);
+}
+
+.reader__appendix-chevron {
+  transition: transform var(--duration-fast) var(--ease);
+}
+
+.reader__appendix[open] .reader__appendix-chevron {
+  transform: rotate(90deg);
+}
+
+.reader__appendix[open] > summary {
+  margin-bottom: var(--s4);
+}
+
+/* ------------------------------------------------------------ artifact rows */
+
+.artifact-row {
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  align-items: flex-start;
+}
+
+.artifact-row > svg {
+  margin-top: 2px;
+}
+
+/* An older version sits under the one that replaced it, stepped in and quieter. */
+.artifact-row--older {
+  padding-left: var(--s8);
+}
+
+.artifact-row--older .list__title {
+  font-weight: 450;
+  color: var(--text-secondary);
+}
+
+.artifact-row__aside {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+  flex: none;
+  font-size: var(--fs-micro);
+  color: var(--text-tertiary);
+}
+
+.artifact-row__title {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-width: 0;
+}
+
+.artifact-row__version {
+  flex: none;
+  height: 16px;
+  padding: 0 5px;
+  font-size: var(--fs-micro);
+}
+
+.artifact-row__by {
+  max-width: 96px;
+  font-size: var(--fs-xs);
+  color: var(--text-tertiary);
+}
+
+.artifact-list__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2);
+  padding: var(--s2) var(--s4);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-xs);
+  color: var(--text-secondary);
 }
 
 /* -------------------------------------------------------------- findings */
@@ -807,4 +1069,947 @@
   gap: 4px;
   border-color: var(--accent-line);
   color: var(--accent);
+}
+
+/* ------------------------------------------------------------ attribution */
+/* Who did it and who answers for it, inline with other meta text. */
+.actor {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  color: var(--text-secondary);
+}
+
+.actor__prefix {
+  color: var(--text-tertiary);
+  margin-right: 2px;
+}
+
+.actor__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.actor[data-kind='agent'] svg,
+.actor[data-kind='system'] svg {
+  color: var(--text-tertiary);
+  flex: none;
+}
+
+.attribution {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.recordfor {
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  font-size: var(--fs-xs);
+  color: var(--text-tertiary);
+}
+
+.recordfor__select {
+  width: auto;
+  padding-block: 3px;
+  font-size: var(--fs-sm);
+}
+
+/* ------------------------------------------------------------------- team */
+.tree__row {
+  /* Set inline per row: how far down the reporting line it sits. */
+  --depth: 0;
+  width: 100%;
+  text-align: left;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  padding-left: calc(var(--s4) + var(--depth) * var(--s6));
+}
+
+.tree__row[data-inactive='true'] .list__title,
+.tree__row[data-inactive='true'] .monogram {
+  opacity: 0.55;
+}
+
+.tree__branch {
+  color: var(--text-tertiary);
+  margin-right: calc(var(--s1) * -1);
+}
+
+.monogram--sm {
+  width: 26px;
+  height: 26px;
+  font-size: var(--fs-sm);
+  border-radius: var(--radius-sm);
+}
+
+.staffrow {
+  display: grid;
+  grid-template-columns: minmax(120px, 180px) minmax(180px, 250px) 1fr auto;
+  align-items: center;
+  gap: var(--s3);
+}
+
+.staffrow .select {
+  padding-block: 4px;
+  font-size: var(--fs-sm);
+}
+
+.staffing {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+  border: none;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+
+.staffing:disabled {
+  opacity: 0.6;
+}
+
+.staffing__summary {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s2) var(--s3);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  font-weight: 550;
+}
+
+.staffing__review .select,
+.staffing__review .input {
+  padding-left: var(--s2);
+  font-size: var(--fs-sm);
+}
+
+.staffing__review .select {
+  padding-right: var(--s6);
+  background-position: calc(100% - 13px) 13px, calc(100% - 8px) 13px;
+}
+
+.staffing__review {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 76px auto;
+  gap: var(--s2);
+  align-items: center;
+}
+
+/* A toggle chip for picking members; pressed ones carry their rank. */
+.pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 var(--s2);
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+  transition: background var(--duration-fast) var(--ease), border-color var(--duration-fast) var(--ease);
+}
+
+.pick:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+
+.pick[aria-pressed='true'] {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.pick__rank {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: var(--fs-micro);
+  font-weight: 700;
+}
+
+/* ------------------------------------------------------------------ inbox */
+.inbox__row {
+  width: 100%;
+  text-align: left;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+}
+
+.inbox__open {
+  padding: var(--s3) var(--s4) var(--s4);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-sunken);
+}
+
+.inbox__headline {
+  margin-top: 1px;
+  font-size: var(--fs-sm);
+  color: var(--text);
+}
+
+.inbox__escalated {
+  color: var(--status-blocked);
+  font-weight: 550;
+}
+
+/* A look at finished work nothing waits on: said quietly, never as blocked. */
+.taskcard__note {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: var(--s2);
+  font-size: var(--fs-xs);
+  color: var(--text-tertiary);
+}
+
+.taskcard__people--would .actor,
+.taskcard__people--would .actor__prefix {
+  color: var(--text-tertiary);
+}
+
+.taskcard__people {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  row-gap: 2px;
+  margin-top: var(--s2);
+  font-size: var(--fs-xs);
+  min-width: 0;
+}
+
+.staffblock {
+  padding: var(--s3) var(--s4);
+}
+
+.staffblock .taskcard__people {
+  margin-top: 0;
+  font-size: var(--fs-sm);
+}
+
+/* -------------------------------------------------------------------- feed */
+
+/*
+ * A mission's feed. The measure is wider than prose but narrower than the
+ * page: a full point (140 characters) still fits on its one line, and the eye
+ * does not travel the width of a large window to read a headline.
+ */
+.feed {
+  max-width: 920px;
+}
+
+.feed__cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+.feed__more {
+  margin-top: var(--s3);
+}
+
+/*
+ * One card is at most eight lines: header, byline, a two-line headline, three
+ * one-line points and one line for what changed. The clamps below are what
+ * hold that line, so a long handoff is cut with an ellipsis instead of growing
+ * the card.
+ */
+.feedcard {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--s3) var(--s4) var(--s3) var(--s5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+/* Status rail: colour plus the written status in the header, never colour alone. */
+.feedcard::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: var(--s3);
+  bottom: var(--s3);
+  width: 2px;
+  border-radius: var(--radius-full);
+  background: var(--status-pending);
+}
+
+.feedcard[data-tone='running']::before {
+  background: var(--status-running);
+}
+
+.feedcard[data-tone='succeeded']::before {
+  background: var(--status-succeeded);
+}
+
+.feedcard[data-tone='blocked']::before {
+  background: var(--status-blocked);
+}
+
+.feedcard[data-tone='failed']::before {
+  background: var(--status-failed);
+}
+
+/* What waits on me is the one place the feed raises its voice. */
+.feedcard[data-section='needs_you'] {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-sm);
+}
+
+.feedcard__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-width: 0;
+  min-height: 22px;
+}
+
+.feedcard__role {
+  flex: none;
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.feedcard__title {
+  flex: 0 1 auto;
+  font-size: var(--fs-base);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.feedcard__time {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  flex: none;
+  margin-left: auto;
+  font-size: var(--fs-xs);
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+.feedcard__updated::after {
+  content: '·';
+  margin-left: var(--s2);
+}
+
+.feedcard__byline {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-width: 0;
+  min-height: 24px;
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+}
+
+.feedcard__byline .attribution {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.feedcard__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  flex: none;
+  margin-left: auto;
+  /* Ghost buttons carry padding; pulling them out lines their text up with the time above. */
+  margin-right: calc(-1 * var(--s2));
+}
+
+.feedcard__link {
+  height: 24px;
+  padding: 0 var(--s2);
+  font-size: var(--fs-xs);
+  color: var(--text-secondary);
+}
+
+.feedcard__more {
+  font-size: var(--fs-xs);
+  color: var(--text-tertiary);
+}
+
+.feedcard__headline {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  margin-top: var(--s1);
+  font-size: var(--fs-md);
+  font-weight: 500;
+  line-height: 1.45;
+  letter-spacing: -0.005em;
+  color: var(--text);
+}
+
+/* A status reason stands in for the headline: said, but quieter than an outcome. */
+.feedcard__headline--waiting {
+  font-size: var(--fs-base);
+  font-weight: 450;
+  color: var(--text-secondary);
+}
+
+.feedcard__points {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+/* The bullet is drawn inside the item so the one-line clip cannot cut it off. */
+.feedcard__points li {
+  display: flex;
+  gap: var(--s2);
+  min-width: 0;
+}
+
+.feedcard__points li::before {
+  content: '•';
+  flex: none;
+  color: var(--text-tertiary);
+}
+
+.feedcard__changed {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  min-width: 0;
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+/* The label sits beside the list rather than above it, so each change costs one line and the label none. */
+.feedcard__changed .feedcard__label {
+  flex: none;
+  margin-right: 0;
+}
+
+.feedcard__changed-list {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.feedcard__changed-list li {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-width: 0;
+}
+
+.feedcard__author {
+  flex: none;
+  color: var(--text-tertiary);
+}
+
+.feedcard__declined {
+  flex: none;
+  height: 18px;
+}
+
+/* A round past the first is worth saying on the header: the card is about a revision, not the first try. */
+.feedcard__round {
+  flex: none;
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+/* Notes waiting on a round: one line, the count first, the latest note after it. */
+.feedcard__pending {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-width: 0;
+  min-height: 24px;
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+
+.feedcard__pending > svg {
+  flex: none;
+  color: var(--status-blocked);
+}
+
+.feedcard__pending-count {
+  flex: none;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.feedcard__pending-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.feedcard__pending .feedcard__link {
+  flex: none;
+  margin-right: calc(-1 * var(--s2));
+}
+
+.feedcard__label {
+  margin-right: var(--s2);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+/* What the card waits on me for, with the answer right under it. */
+.feedcard__needs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  margin-top: var(--s2);
+  padding: var(--s2) var(--s3);
+  border-left: 2px solid var(--status-blocked);
+  border-radius: var(--radius-sm);
+  background: var(--status-blocked-soft);
+}
+
+.feedcard__needs-line {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s2);
+  font-size: var(--fs-base);
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.feedcard__needs-text {
+  flex: 1;
+  min-width: 0;
+  align-self: center;
+}
+
+.feedcard__needs-line > svg {
+  flex: none;
+  align-self: center;
+  color: var(--status-blocked);
+}
+
+.feedcard__needs-line strong {
+  font-weight: 620;
+  margin-right: var(--s1);
+}
+
+/* A check asks for a look, not a decision that holds work up, so it stays in the neutral status colour. */
+.feedcard__needs--soft {
+  border-left-color: var(--status-pending);
+  background: var(--status-pending-soft);
+}
+
+.feedcard__needs--soft .feedcard__needs-line > svg {
+  color: var(--status-pending);
+}
+
+/* The feed's layout of the shared decision controls: a one-line note, then one button per option. */
+.decide-inline {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.decide-inline__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.decide-inline__note {
+  flex: 1 1 200px;
+  width: auto;
+  min-width: 0;
+  height: 30px;
+  padding-block: 0;
+  font-size: var(--fs-sm);
+}
+
+/* What sending the option under the pointer does; it turns to a warning only when an answer is missing. */
+.decide-inline__hint {
+  font-size: var(--fs-xs);
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+.decide-inline__hint[data-warn='true'] {
+  color: var(--status-blocked);
+}
+
+/* An answer the worker waits on is asked for up front, not only after a failed send. */
+.decide-inline__note[data-required='true'] {
+  border-color: var(--accent-line);
+}
+
+/* ------------------------------------------------------ feedback and rounds */
+
+/* The result of an action whose effect lands elsewhere: bottom centre, above everything, gone on its own. */
+.flash {
+  position: fixed;
+  left: 50%;
+  bottom: var(--s6);
+  z-index: 60;
+  transform: translateX(-50%);
+  padding: var(--s2) var(--s4);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-md);
+  font-size: var(--fs-sm);
+  color: var(--text);
+  white-space: nowrap;
+  animation: slidein var(--duration) var(--ease);
+}
+
+.composer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+.impact {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+.impact__used {
+  font-size: var(--fs-base);
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.impact__choice {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  font-size: var(--fs-base);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.impact__hint {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--fs-xs);
+  color: var(--text-tertiary);
+}
+
+/* The dependents hang under "Redo", indented to the radio's text, since they are what Redo applies to. */
+.impact__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  margin-top: calc(-1 * var(--s1));
+  padding-left: var(--s5);
+}
+
+.impact__dependent {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-width: 0;
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.retry-note {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.retry-note__row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--s2);
+}
+
+.retry-note__row .errorstate {
+  flex: 1;
+}
+
+.feedback-thread {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+.feedback-thread__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-height: 24px;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.feedback-thread__list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.feedback-thread__item {
+  padding: var(--s2) var(--s3);
+}
+
+.feedback-thread__item + .feedback-thread__item {
+  border-top: 1px solid var(--border);
+}
+
+.feedback-thread__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-height: 24px;
+  font-size: var(--fs-xs);
+  color: var(--text-tertiary);
+}
+
+.feedback-thread__author {
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.feedback-thread__status {
+  height: 18px;
+}
+
+.feedback-thread__action {
+  height: 24px;
+  margin-left: auto;
+  padding: 0 var(--s2);
+  font-size: var(--fs-xs);
+}
+
+.feedback-thread__text {
+  font-size: var(--fs-sm);
+  line-height: 1.55;
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* A dismissed note is history: kept readable, but quieter than the ones still in play. */
+.feedback-thread__item[data-status='dismissed'] .feedback-thread__text {
+  color: var(--text-tertiary);
+}
+
+.reader__request {
+  margin-left: auto;
+}
+
+.reader__versions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+}
+
+.reader__version {
+  height: 20px;
+  padding: 0 var(--s2);
+  border: none;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  cursor: pointer;
+}
+
+.reader__version:hover {
+  color: var(--text);
+}
+
+.reader__version[aria-pressed='true'] {
+  background: var(--surface-raised);
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+  cursor: default;
+}
+
+/* The details toggle floats right; the comparison toggle stays with the versions it compares. */
+.reader__compare {
+  margin-left: 0;
+  color: var(--text-secondary);
+}
+
+.reader__compare[aria-pressed='true'] {
+  color: var(--text);
+}
+
+/* Scoped under the handoff block so it wins over the bulleted list style there: each change is a disclosure, not a bullet. */
+.handoff__changed .reader__changes {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 0;
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.reader__changes > li {
+  list-style: none;
+}
+
+.reader__change > summary,
+.reader__change--plain {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.reader__change > summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.reader__change > summary::-webkit-details-marker {
+  display: none;
+}
+
+.reader__change > summary:hover {
+  color: var(--text);
+}
+
+.reader__change-chevron {
+  flex: none;
+  color: var(--text-tertiary);
+  transition: transform var(--duration-fast) var(--ease);
+}
+
+.reader__change[open] .reader__change-chevron {
+  transform: rotate(180deg);
+}
+
+/* The note a change answers, quoted under it with its author. */
+.reader__notes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  margin: var(--s1) 0 var(--s2);
+  padding: var(--s2) var(--s3);
+  border-left: 2px solid var(--border-strong);
+  background: var(--surface-sunken);
+  border-radius: var(--radius-xs);
+}
+
+.reader__notes > li {
+  display: flex;
+  gap: var(--s2);
+  list-style: none;
+}
+
+.reader__note-author {
+  flex: none;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.reader__note-text {
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.diff {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.diff__summary {
+  padding: var(--s2) var(--s3);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-xs);
+  color: var(--text-tertiary);
+}
+
+.diff__body {
+  overflow-x: auto;
+  padding-block: var(--s1);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  line-height: 1.6;
+}
+
+.diff__line {
+  display: flex;
+  gap: var(--s2);
+  padding: 0 var(--s3);
+  color: var(--text-secondary);
+}
+
+.diff__line--added {
+  background: var(--status-succeeded-soft);
+  color: var(--text);
+}
+
+.diff__line--removed {
+  background: var(--status-failed-soft);
+  color: var(--text);
+}
+
+.diff__sign {
+  flex: none;
+  width: 1ch;
+  color: var(--text-tertiary);
+}
+
+.diff__line--added .diff__sign {
+  color: var(--status-succeeded);
+}
+
+.diff__line--removed .diff__sign {
+  color: var(--status-failed);
+}
+
+.diff__text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.diff__fold {
+  padding: var(--s1) var(--s3);
+  font-family: var(--font-sans);
+  color: var(--text-tertiary);
 }

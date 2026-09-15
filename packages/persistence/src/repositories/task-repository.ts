@@ -4,9 +4,9 @@ import type {
   RetryPolicy, TaskRepositoryPort, TaskStatus,
 } from '@tandemise/domain';
 import { DEFAULT_RETRY_POLICY, NO_APPROVAL } from '@tandemise/domain';
-import type { TaskExecutor, WaitPolicy } from '@tandemise/domain';
+import type { ResolvedStaffingSnapshot, StaffingPatch, TaskExecutor, WaitPolicy } from '@tandemise/domain';
 import type { TandemiseDatabase } from '../database.js';
-import { parseJson, toJson } from '../json.js';
+import { fromSqlBool, parseJson, parseJsonOrNull, toJson, toJsonOrNull, toSqlBool } from '../json.js';
 import { applyPatch } from '../patch.js';
 
 interface TaskRow {
@@ -31,6 +31,12 @@ interface TaskRow {
   executor: string | null;
   wait_policy: string | null;
   retry_feedback: string | null;
+  staffing: string | null;
+  staffing_override: string | null;
+  assignee_id: string | null;
+  responsible_id: string | null;
+  needs_attention: number;
+  round: number;
   order_hint: number;
   created_at: string;
   updated_at: string;
@@ -73,6 +79,14 @@ function toRow(t: MissionTask): TaskRow {
     executor: t.executor ?? 'agent',
     wait_policy: t.waitPolicy === null || t.waitPolicy === undefined ? null : toJson(t.waitPolicy),
     retry_feedback: t.retryFeedback ?? null,
+    staffing: toJsonOrNull(t.staffing),
+    staffing_override: toJsonOrNull(t.staffingOverride),
+    assignee_id: t.assigneeId ?? null,
+    responsible_id: t.responsibleId ?? null,
+    needs_attention: toSqlBool(t.needsAttention ?? false),
+    // Defaulted on write like `executor`: a task built before round columns
+    // existed is round 1, its first and only pass so far.
+    round: t.round ?? 1,
     order_hint: t.orderHint,
     created_at: t.createdAt,
     updated_at: t.updatedAt,
@@ -105,6 +119,12 @@ function fromRow(r: TaskRow, dependsOn: readonly string[]): MissionTask {
     executor: (r.executor ?? 'agent') as TaskExecutor,
     waitPolicy: r.wait_policy === null ? null : parseJson<WaitPolicy | null>(r.wait_policy, null),
     retryFeedback: r.retry_feedback,
+    staffing: parseJsonOrNull<ResolvedStaffingSnapshot>(r.staffing),
+    staffingOverride: parseJsonOrNull<StaffingPatch>(r.staffing_override),
+    assigneeId: r.assignee_id,
+    responsibleId: r.responsible_id,
+    needsAttention: fromSqlBool(r.needs_attention),
+    round: r.round,
     orderHint: r.order_hint,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
@@ -115,7 +135,8 @@ function fromRow(r: TaskRow, dependsOn: readonly string[]): MissionTask {
 
 const COLUMNS = `id, mission_id, "key", title, objective, role_id, required_capabilities,
   input_artifacts, expected_outputs, execution_policy, approval_policy, retry_policy,
-  completion_gate, status, status_reason, attempts, remediates_task_id, repository_id, executor, wait_policy, retry_feedback, order_hint,
+  completion_gate, status, status_reason, attempts, remediates_task_id, repository_id, executor, wait_policy, retry_feedback,
+  staffing, staffing_override, assignee_id, responsible_id, needs_attention, round, order_hint,
   created_at, updated_at, started_at, finished_at`;
 
 export class SqliteTaskRepository implements TaskRepositoryPort {
@@ -139,7 +160,8 @@ export class SqliteTaskRepository implements TaskRepositoryPort {
       `INSERT INTO mission_tasks (${COLUMNS}) VALUES (
         :id, :mission_id, :key, :title, :objective, :role_id, :required_capabilities,
         :input_artifacts, :expected_outputs, :execution_policy, :approval_policy, :retry_policy,
-        :completion_gate, :status, :status_reason, :attempts, :remediates_task_id, :repository_id, :executor, :wait_policy, :retry_feedback, :order_hint,
+        :completion_gate, :status, :status_reason, :attempts, :remediates_task_id, :repository_id, :executor, :wait_policy, :retry_feedback,
+        :staffing, :staffing_override, :assignee_id, :responsible_id, :needs_attention, :round, :order_hint,
         :created_at, :updated_at, :started_at, :finished_at)`,
     );
     this.#update = db.handle.prepare<TaskRow>(
@@ -151,7 +173,9 @@ export class SqliteTaskRepository implements TaskRepositoryPort {
          completion_gate = :completion_gate, status = :status, status_reason = :status_reason,
          attempts = :attempts, remediates_task_id = :remediates_task_id,
          repository_id = :repository_id, executor = :executor, wait_policy = :wait_policy, retry_feedback = :retry_feedback,
-         order_hint = :order_hint,
+         staffing = :staffing, staffing_override = :staffing_override, assignee_id = :assignee_id,
+         responsible_id = :responsible_id, needs_attention = :needs_attention,
+         round = :round, order_hint = :order_hint,
          updated_at = :updated_at, started_at = :started_at, finished_at = :finished_at
        WHERE id = :id`,
     );

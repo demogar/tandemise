@@ -4,7 +4,8 @@ import type {
 } from '@tandemise/domain';
 import { blockingFindings, canTransition } from '@tandemise/domain';
 import type { ApprovalFactory } from '@tandemise/policy';
-import type { Clock } from '@tandemise/shared';
+import type { Clock, WorkspaceId } from '@tandemise/shared';
+import type { RequestAddress } from './reviews.js';
 import { ids, summarize } from '@tandemise/shared';
 import type { EventRecorder, EventScope } from '../support/event-recorder.js';
 import { describeIssues, validateTaskGraph } from '../support/dag.js';
@@ -19,10 +20,6 @@ export const MAX_REMEDIATION_CYCLES = 3;
 
 /** The role that fixes what an evaluator found. */
 const FIX_ROLE = 'development';
-
-export type RevisionOutcome =
-  | { readonly kind: 'planned'; readonly revisionKey: string; readonly round: number }
-  | { readonly kind: 'rejected'; readonly reason: string };
 
 export type RemediationOutcome =
   | { readonly kind: 'none' }
@@ -53,6 +50,8 @@ export class RemediationPlanner {
     private readonly approvalFactory: ApprovalFactory,
     private readonly recorder: EventRecorder,
     private readonly clock: Clock,
+    /** Who a card about a task is for and when it escalates; shared with every other card. */
+    private readonly address: (task: MissionTask, workspaceId: WorkspaceId) => RequestAddress,
   ) {}
 
   plan(source: MissionTask, mission: Mission): RemediationOutcome {
@@ -81,7 +80,7 @@ export class RemediationPlanner {
     const root = chainRoot(source, existing);
     const cycle = existing.filter((t) => t.key.startsWith('fix_') && chainRoot(t, existing) === root).length + 1;
     if (cycle > MAX_REMEDIATION_CYCLES) {
-      return this.#exhausted(source, mission, scope, blocking);
+      return this.escalate(source, mission, blocking);
     }
 
     const fixKey = `fix_${source.key}_${cycle}`;
@@ -104,6 +103,10 @@ export class RemediationPlanner {
       status: 'PENDING',
       statusReason: null,
       attempts: 0,
+      // Spread from an existing development task, so without this it would inherit that task's round number.
+      round: 1,
+      // The flag is about the output being revised, not about the new round.
+      needsAttention: false,
       remediatesTaskId: source.id,
       orderHint: source.orderHint + 1,
       createdAt: this.clock.now(),
@@ -122,6 +125,10 @@ export class RemediationPlanner {
       status: 'PENDING',
       statusReason: null,
       attempts: 0,
+      // Spread from the reviewed task, so without this it would inherit that task's round number.
+      round: 1,
+      // The flag is about the output being revised, not about the new round.
+      needsAttention: false,
       remediatesTaskId: source.id,
       orderHint: source.orderHint + 2,
       createdAt: this.clock.now(),
@@ -164,138 +171,20 @@ export class RemediationPlanner {
   }
 
   /**
-   * Turns a person's "not like this" into the next round of the same work.
-   *
-   * An evaluator's findings go to a developer and back to the evaluator. A
-   * person rejecting output is a different loop: they *are* the reviewer, and
-   * the role that made the thing is the one that should revise it - the
-   * designer redoes the design, not a developer. So the revision is a copy of
-   * the rejected task, with the feedback folded into its objective and its
-   * previous output as an input, and it inherits the rejected task's approval
-   * policy: the revision comes back to the same person for the same decision.
-   *
-   * There is no cycle bound here, unlike `plan`. Every round starts with a human
-   * rejecting the previous one, so nothing can loop without a person choosing to
-   * go round again - and "you may only ask for three revisions" is not a rule
-   * anyone iterating on a design would accept.
-   *
-   * The rejected task is marked SKIPPED, with a reason naming its revision,
-   * rather than left BLOCKED. Its output still exists and is what the revision
-   * starts from; it simply no longer gates anything, because everything that
-   * was waiting on it now waits on the revision.
+   * Asks a person to step in when findings keep coming back: the fix-task chain
+   * ran out of cycles, or the reviewed task already went through its AI-started
+   * rounds (spec §5). Public because the review round path ends here too.
    */
-  planRevision(source: MissionTask, mission: Mission, feedback: string): RevisionOutcome {
+  escalate(source: MissionTask, mission: Mission, blocking: readonly Finding[]): RemediationOutcome {
     const scope: EventScope = {
       workspaceId: mission.workspaceId,
       missionId: mission.id,
       taskId: source.id,
       roleId: source.roleId,
     };
-
-    const existing = this.tasks.listByMission(mission.id);
-    const rootId = chainRoot(source, existing);
-    const root = existing.find((t) => t.id === rootId) ?? source;
-    const round = existing.filter((t) => t.key.startsWith(`${root.key}_revision_`)).length + 1;
-    const revisionKey = `${root.key}_revision_${round}`;
-
-    const revision: MissionTask = {
-      ...source,
-      id: ids.task(),
-      key: revisionKey,
-      title: `${root.title} (revision ${round})`,
-      objective: revisionObjective(root, source, this.#earlierFeedback(root, source, existing), feedback, round),
-      dependsOn: [source.key],
-      inputArtifacts: mergeRequirements(
-        source.inputArtifacts,
-        source.expectedOutputs.map((type) => ({ type, required: true as const })),
-      ),
-      status: 'PENDING',
-      statusReason: null,
-      attempts: 0,
-      remediatesTaskId: source.id,
-      orderHint: source.orderHint + 1,
-      createdAt: this.clock.now(),
-      updatedAt: this.clock.now(),
-      startedAt: null,
-      finishedAt: null,
-    };
-
-    const repointed = existing
-      .filter((t) => t.id !== source.id && t.dependsOn.includes(source.key))
-      .map((t) => ({ ...t, dependsOn: t.dependsOn.map((d) => (d === source.key ? revisionKey : d)) }));
-
-    const superseded: MissionTask = {
-      ...source,
-      status: 'SKIPPED',
-      statusReason: `Superseded by '${revisionKey}' after your feedback.`,
-    };
-
-    const mutated = [
-      ...existing.map((t) => (t.id === source.id ? superseded : repointed.find((r) => r.id === t.id) ?? t)),
-      revision,
-    ];
-    const validated = validateTaskGraph(mutated, this.roles.list(mission.workspaceId));
-    if (!validated.ok) {
-      const reason = `A revision would produce an invalid plan: ${describeIssues(validated.error)}`;
-      this.recorder.note(scope, reason, 'error');
-      return { kind: 'rejected', reason };
-    }
-
-    this.tasks.add(revision);
-    for (const task of repointed) this.tasks.update(task.id, { dependsOn: task.dependsOn });
-    this.tasks.update(source.id, {
-      status: superseded.status,
-      statusReason: superseded.statusReason,
-      finishedAt: this.clock.now(),
-    });
-    this.recorder.record(scope, {
-      type: 'task.status',
-      from: source.status,
-      to: 'SKIPPED',
-      reason: superseded.statusReason ?? undefined,
-    });
-
-    this.recorder.note(
-      scope,
-      `Your feedback on '${source.key}' became '${revisionKey}'. `
-      + `${repointed.length} downstream task${repointed.length === 1 ? '' : 's'} now wait on the revision.`,
-    );
-    this.recorder.invalidate('tasks', mission.id);
-    return { kind: 'planned', revisionKey, round };
-  }
-
-  /**
-   * What the person said about every earlier round of this work, oldest first.
-   *
-   * The rejected approvals already are the history, so it is read from them
-   * rather than copied forward through objectives. Without it round two would be
-   * briefed on round two's note alone, and the worker would be free to undo
-   * what round one asked for - "make the buttons bigger" lost the moment
-   * someone says "now move the total".
-   */
-  #earlierFeedback(root: MissionTask, source: MissionTask, existing: readonly MissionTask[]): readonly string[] {
-    const chain = new Set(
-      existing
-        .filter((t) => t.id === root.id || t.key.startsWith(`${root.key}_revision_`))
-        .filter((t) => t.id !== source.id)
-        .map((t) => t.id),
-    );
-    return this.approvals
-      .list({ missionId: root.missionId, statuses: ['REJECTED'] })
-      .filter((a) => a.taskId !== null && chain.has(a.taskId))
-      .filter((a) => (a.decisionNote ?? '').trim().length > 0)
-      .sort((a, b) => (a.decidedAt ?? '').localeCompare(b.decidedAt ?? ''))
-      .map((a) => (a.decisionNote ?? '').trim());
-  }
-
-  #exhausted(
-    source: MissionTask,
-    mission: Mission,
-    scope: EventScope,
-    blocking: readonly Finding[],
-  ): RemediationOutcome {
+    // Worded for both paths: fix tasks and rounds of the reviewed task are each an attempt at the findings.
     const reason = `'${source.key}' still reports ${blocking.length} blocking finding(s) after `
-      + `${MAX_REMEDIATION_CYCLES} remediation cycles. A human has to decide how to proceed.`;
+      + `${MAX_REMEDIATION_CYCLES} attempts to address them. A human has to decide how to proceed.`;
 
     const alreadyAsked = this.approvals
       .list({ missionId: mission.id, statuses: ['PENDING'] })
@@ -322,6 +211,8 @@ export class RemediationPlanner {
           { id: 'reject', label: 'Leave the mission blocked' },
         ],
         recommendedOptionId: null,
+        // For whoever answers for the work that is not converging.
+        ...this.address(source, mission.workspaceId),
       });
       this.approvals.create(approval);
       this.recorder.record(scope, { type: 'approval.requested', approvalId: approval.id });
@@ -420,48 +311,5 @@ function recheckObjective(source: MissionTask, blocking: readonly Finding[]): st
     '',
     'Verify each one against the actual diff. A finding you cannot confirm as fixed stays blocking —',
     "the fix author's account of its own work is not evidence.",
-  ].join('\n');
-}
-
-/** Union by artifact type; a requirement already present keeps its own `required`. */
-function mergeRequirements(
-  base: MissionTask['inputArtifacts'],
-  extra: MissionTask['inputArtifacts'],
-): MissionTask['inputArtifacts'] {
-  const seen = new Set(base.map((r) => r.type));
-  return [...base, ...extra.filter((r) => !seen.has(r.type))];
-}
-
-/**
- * The person's words are quoted, not paraphrased. They came from the user
- * supervising the mission - as trusted as the mission goal - and a summary
- * written by this system would be one more place for "make it feel lighter" to
- * turn into something they did not say.
- */
-function revisionObjective(
-  root: MissionTask,
-  source: MissionTask,
-  earlier: readonly string[],
-  feedback: string,
-  round: number,
-): string {
-  const quote = (text: string): string[] => text.trim().split('\n').map((line) => `> ${line}`);
-  return [
-    root.objective,
-    '',
-    `This is revision ${round}. The person supervising this mission reviewed the previous`,
-    `output of '${source.key}' and asked for changes. Their feedback, verbatim:`,
-    '',
-    ...quote(feedback),
-    ...(earlier.length === 0 ? [] : [
-      '',
-      'What they asked for in earlier rounds still stands. Do not undo it:',
-      ...earlier.flatMap((note, i) => ['', `Round ${i + 1}:`, ...quote(note)]),
-    ]),
-    '',
-    'Your previous output is available as an input artifact. Revise it - do not start over -',
-    'and change what the feedback asks for without regressing anything else. If the feedback',
-    'is ambiguous in a way that changes the result, ask with `ask_human` before building.',
-    'State in your output what you changed in response to each point.',
   ].join('\n');
 }

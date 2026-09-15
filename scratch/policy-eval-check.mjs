@@ -265,6 +265,11 @@ try {
 type: ReviewReport
 schemaVersion: 1
 title: Review of onboarding change
+handoff:
+  headline: Needs changes before merge, a session token is logged
+  points:
+    - One blocking finding and one minor naming issue
+  needs: Fix the logged session token
 verdict: needs_changes
 reviewedRef: 9f3c1ab
 findings:
@@ -345,7 +350,8 @@ Acceptance criteria AC1 and AC2 are satisfied by the new tests.
     ['ProblemBrief', 'ProductSpec', 'DesignBrief', 'ArchitecturePlan', 'ImplementationPlan', 'ChangeSet',
      'ReviewReport', 'QAPlan', 'QAReport', 'ReleaseCandidate', 'DecisionRecord']
       .every((t) => typeof renderArtifactTemplate(t) === 'string'));
-  check('Evidence has no template', renderArtifactTemplate('Evidence') === undefined);
+  // Evidence carries a handoff like every other type, so it has a skeleton to fill in.
+  check('Evidence has a template with a handoff', renderArtifactTemplate('Evidence')?.includes('handoff:') === true);
 
   // ───────────────────────────────────────────────────── 4. context compiler
 

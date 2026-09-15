@@ -10,11 +10,15 @@ import { SqliteDecisionRepository } from './repositories/decision-repository.js'
 import { SqliteEvaluationRepository } from './repositories/evaluation-repository.js';
 import { SqliteEventRepository } from './repositories/event-repository.js';
 import { SqliteExecutionTargetRepository } from './repositories/execution-target-repository.js';
+import { SqliteFeedbackRepository } from './repositories/feedback-repository.js';
 import { SqliteIntegrationRepository } from './repositories/integration-repository.js';
 import { SqliteLeaseRepository } from './repositories/lease-repository.js';
+import { SqliteMemberRepository } from './repositories/member-repository.js';
 import { SqliteMissionRepository } from './repositories/mission-repository.js';
+import { SqlitePersonRepository } from './repositories/person-repository.js';
 import { SqliteRepoRepository } from './repositories/repo-repository.js';
 import { SqliteRoleRepository } from './repositories/role-repository.js';
+import { SqliteRunInputRepository } from './repositories/run-input-repository.js';
 import { SqliteRunRepository } from './repositories/run-repository.js';
 import { SqliteRuntimeProfileRepository } from './repositories/runtime-profile-repository.js';
 import { SqliteTaskRepository } from './repositories/task-repository.js';
@@ -23,8 +27,8 @@ import { createUnitOfWork } from './repositories/unit-of-work.js';
 import {
   APPROVAL_REPOSITORY, ARTIFACT_REPOSITORY, ASSIGNMENT_REPOSITORY, CHECKPOINT_REPOSITORY,
   DATABASE, DECISION_REPOSITORY, EVALUATION_REPOSITORY, EVENT_REPOSITORY,
-  EXECUTION_TARGET_REPOSITORY, INTEGRATION_REPOSITORY, LEASE_REPOSITORY, MISSION_REPOSITORY,
-  REPO_REPOSITORY, ROLE_REPOSITORY, RUN_REPOSITORY, RUNTIME_PROFILE_REPOSITORY,
+  EXECUTION_TARGET_REPOSITORY, FEEDBACK_REPOSITORY, INTEGRATION_REPOSITORY, LEASE_REPOSITORY, MEMBER_REPOSITORY, MISSION_REPOSITORY,
+  PERSON_REPOSITORY, REPO_REPOSITORY, ROLE_REPOSITORY, RUN_INPUT_REPOSITORY, RUN_REPOSITORY, RUNTIME_PROFILE_REPOSITORY,
   TASK_REPOSITORY, UNIT_OF_WORK, WORKSPACE_REPOSITORY,
 } from './tokens.js';
 
@@ -86,5 +90,9 @@ export function persistenceModule(options: PersistenceOptions): TandemiseModule 
     container.bind(EVALUATION_REPOSITORY, (r) => new SqliteEvaluationRepository(db(r)), { source: SOURCE });
     container.bind(CHECKPOINT_REPOSITORY, (r) => new SqliteCheckpointRepository(db(r)), { source: SOURCE });
     container.bind(LEASE_REPOSITORY, (r) => new SqliteLeaseRepository(db(r), clock), { source: SOURCE });
+    container.bind(PERSON_REPOSITORY, (r) => new SqlitePersonRepository(db(r), clock), { source: SOURCE });
+    container.bind(MEMBER_REPOSITORY, (r) => new SqliteMemberRepository(db(r), clock), { source: SOURCE });
+    container.bind(FEEDBACK_REPOSITORY, (r) => new SqliteFeedbackRepository(db(r), clock), { source: SOURCE });
+    container.bind(RUN_INPUT_REPOSITORY, (r) => new SqliteRunInputRepository(db(r)), { source: SOURCE });
   });
 }

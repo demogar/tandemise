@@ -7,21 +7,31 @@ import { PageHeader } from '../../components/PageHeader.js';
 import { Icon, type IconName } from '../../components/Icon.js';
 import { ConfirmDialog } from '../../components/Modal.js';
 import { Empty, ErrorState, IdChip, Skeleton, SkeletonList, StatusBadge } from '../../components/primitives.js';
+import { FeedPane } from './FeedPane.js';
 import { PlanPane } from './PlanPane.js';
 import { TimelinePane } from './TimelinePane.js';
 import { ArtifactsPane } from './ArtifactsPane.js';
 import { ChecksPane } from './ChecksPane.js';
 import { MetricsPane } from './MetricsPane.js';
-import { useDaemonMutation, useMission } from '../../lib/queries.js';
+import { isApprovalForMember, isApprovalWaitingOnMember, isHumanTaskForMember, isPlanUnstarted, planStanding } from '@tandemise/api-contract/for-me';
+import { useDaemonMutation, useMission, useMyMemberId } from '../../lib/queries.js';
 import { missionTone, pluralize } from '../../lib/format.js';
+import { describeError } from '../../lib/daemon.js';
+import { clearMissionNotice, useMissionNotice } from '../../lib/notices.js';
 
-const TABS = ['plan', 'timeline', 'artifacts', 'checks', 'metrics'] as const;
-export type MissionTab = (typeof TABS)[number];
+// Feed first: it is where a mission opens, and the order of the tabs says so.
+export const MISSION_TABS = ['feed', 'plan', 'timeline', 'artifacts', 'checks', 'metrics'] as const;
+export type MissionTab = (typeof MISSION_TABS)[number];
 
 export function MissionDetail({ id, tab }: { id: string; tab: MissionTab }): JSX.Element {
   const mission = useMission(id);
+  const meId = useMyMemberId();
+  const staffingNotice = useMissionNotice(id);
   const [, navigate] = useLocation();
   const [confirming, setConfirming] = useState<'cancel' | 'delete' | null>(null);
+  // Set by the "waiting on you" banner and cleared by the feed once it has scrolled,
+  // so revisiting the tab later does not jump to "Needs you" again.
+  const [focusNeeds, setFocusNeeds] = useState(false);
 
   const act = useDaemonMutation(
     (daemon, args: { action: 'plan' | 'start' | 'pause' | 'resume' | 'cancel' }) => daemon.missionAction(id, args.action),
@@ -47,7 +57,11 @@ export function MissionDetail({ id, tab }: { id: string; tab: MissionTab }): JSX
   const detail = mission.data;
   const status = detail.mission.status;
   const tone = missionTone(status);
-  const pendingApprovals = detail.approvals.filter((approval) => approval.status === 'PENDING');
+  // Only what is addressed to me (or to nobody in particular) is "waiting on you";
+  // the rule is the shared one the feed and Inbox use.
+  const pendingApprovals = detail.approvals.filter(
+    (approval) => approval.status === 'PENDING' && isApprovalWaitingOnMember({ kind: approval.kind, addresseeIds: approval.addressees ?? [] }, meId),
+  );
 
   return (
     <>
@@ -59,7 +73,7 @@ export function MissionDetail({ id, tab }: { id: string; tab: MissionTab }): JSX
         actions={
           <>
             <StatusBadge status={status} tone={tone} />
-            {actionsFor(status).map((action) => (
+            {actionsFor(status, isPlanUnstarted(detail.tasks)).map((action) => (
               <button
                 key={action.id}
                 type="button"
@@ -84,9 +98,12 @@ export function MissionDetail({ id, tab }: { id: string; tab: MissionTab }): JSX
         </div>
       ) : null}
 
-      {pendingApprovals.length > 0 ? (
+      {/* On the feed, "Needs you" already says this, at the top, with the decision in reach. */}
+      {pendingApprovals.length > 0 && tab !== 'feed' ? (
+        // The decision is answered on the mission's own feed, next to the work it is about, rather than in the Inbox.
         <Link
-          href="/approvals"
+          href={`/missions/${id}`}
+          onClick={() => setFocusNeeds(true)}
           className="banner banner--warn"
           style={{ margin: 'var(--s3) var(--s7) 0', textDecoration: 'none', color: 'inherit' }}
         >
@@ -99,6 +116,21 @@ export function MissionDetail({ id, tab }: { id: string; tab: MissionTab }): JSX
         </Link>
       ) : null}
 
+      {staffingNotice ? (
+        <div style={{ padding: 'var(--s3) var(--s7) 0' }}>
+          <div className="banner banner--warn">
+            <Icon name="alert" size={15} />
+            <span style={{ flex: 1 }}>
+              <strong>The mission was created, but its staffing was not saved.</strong> {describeError(staffingNotice).detail} Set it
+              per task from the plan, or in Team for the whole project.
+            </span>
+            <button type="button" className="btn btn--ghost" onClick={() => clearMissionNotice(id)}>
+              Dismiss
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {status === 'BLOCKED' && detail.mission.statusReason ? (
         <div className="banner banner--warn" style={{ margin: 'var(--s3) var(--s7) 0' }}>
           <Icon name="alert" size={15} />
@@ -107,14 +139,15 @@ export function MissionDetail({ id, tab }: { id: string; tab: MissionTab }): JSX
       ) : null}
 
       <div className="tabs" style={{ marginTop: 'var(--s3)' }}>
+        <TabLink id={id} tab="feed" current={tab} label="Feed" count={needsYouCount(detail, meId)} />
         <TabLink id={id} tab="plan" current={tab} label="Plan" count={detail.tasks.length} />
         <TabLink id={id} tab="timeline" current={tab} label="Timeline" />
-        <TabLink id={id} tab="artifacts" current={tab} label="Artifacts" count={detail.artifacts.length} />
+        <TabLink id={id} tab="artifacts" current={tab} label="Artifacts" count={liveArtifactCount(detail)} />
         <TabLink id={id} tab="checks" current={tab} label="Checks & Gates" count={detail.checks.length} />
         <TabLink id={id} tab="metrics" current={tab} label="Metrics" />
       </div>
 
-      {renderPane(tab, detail)}
+      {renderPane(tab, detail, focusNeeds, () => setFocusNeeds(false))}
 
       {confirming === 'cancel' ? (
         <ConfirmDialog
@@ -166,8 +199,10 @@ export function MissionDetail({ id, tab }: { id: string; tab: MissionTab }): JSX
   );
 }
 
-function renderPane(tab: MissionTab, detail: MissionDetailView): JSX.Element {
+function renderPane(tab: MissionTab, detail: MissionDetailView, focusNeeds: boolean, onFocused: () => void): JSX.Element {
   switch (tab) {
+    case 'feed':
+      return <FeedPane detail={detail} focusNeeds={focusNeeds} onFocused={onFocused} />;
     case 'plan':
       return <PlanPane detail={detail} />;
     case 'timeline':
@@ -195,7 +230,7 @@ function TabLink({
   count?: number;
 }): JSX.Element {
   return (
-    <Link href={`/missions/${id}/${tab}`} className="tab" aria-selected={current === tab}>
+    <Link href={tab === 'feed' ? `/missions/${id}` : `/missions/${id}/${tab}`} className="tab" aria-selected={current === tab}>
       {label}
       {count !== undefined && count > 0 ? <span className="tab__count">{count}</span> : null}
     </Link>
@@ -214,7 +249,7 @@ interface MissionAction {
  * of what the user might want - offering Start on a running mission is how a
  * UI teaches people that its buttons are unreliable.
  */
-function actionsFor(status: MissionStatus): readonly MissionAction[] {
+function actionsFor(status: MissionStatus, planUnstarted: boolean): readonly MissionAction[] {
   if (isTerminalMissionStatus(status)) return [];
   switch (status) {
     case 'DRAFT':
@@ -235,6 +270,16 @@ function actionsFor(status: MissionStatus): readonly MissionAction[] {
         { id: 'cancel', label: 'Cancel', icon: 'x' },
       ];
     case 'BLOCKED':
+      // Blocked before any of its plan ran: a rejected plan, or planning that
+      // failed. Re-plan is the way forward, for anyone on the mission and not
+      // only whoever was asked; Resume would run the plan nobody accepted.
+      if (planUnstarted) {
+        return [
+          { id: 'plan', label: 'Re-plan', icon: 'sparkle', primary: true },
+          { id: 'resume', label: 'Resume', icon: 'play' },
+          { id: 'cancel', label: 'Cancel', icon: 'x' },
+        ];
+      }
       return [
         { id: 'resume', label: 'Resume', icon: 'play', primary: true },
         { id: 'cancel', label: 'Cancel', icon: 'x' },
@@ -287,4 +332,51 @@ export function MissionNotFound(): JSX.Element {
       </div>
     </>
   );
+}
+
+/**
+ * Artifacts a newer version has not replaced, which is what the tab lists by
+ * default. The detail carries every version, and counting them all would make
+ * the tab promise rows the list does not show.
+ */
+function liveArtifactCount(detail: MissionDetailView): number {
+  const replaced = new Set(detail.artifacts.flatMap((a) => (a.supersedes ? [a.supersedes as string] : [])));
+  return detail.artifacts.filter((a) => !replaced.has(a.id)).length;
+}
+
+/**
+ * How many feed cards need me, counted from the detail already on screen.
+ *
+ * The feed itself is fetched by its pane with its own "done" limit; a second
+ * subscription here only for a number would double the request on every task
+ * event. One card per task, as the feed has, using the rules the feed's "Needs
+ * you" section uses: any open approval addressed to me, checks included; the
+ * plan only while `planStanding` says it is open and on me, so a stale plan
+ * request is not counted and a rejected plan waiting for my re-plan is.
+ *
+ * The Inbox and the nav badge deliberately leave that rejected plan out: they
+ * list requests to answer, and a rejected plan is no longer a request, only
+ * work waiting to be re-planned from the mission itself.
+ */
+function needsYouCount(detail: MissionDetailView, meId: string | null): number {
+  const cards = new Set<string>();
+  for (const approval of detail.approvals) {
+    if (approval.status !== 'PENDING' || approval.kind === 'plan' || approval.taskId === null) continue;
+    if (isApprovalForMember(approval.addressees ?? [], meId)) cards.add(approval.taskId);
+  }
+  for (const task of detail.tasks) {
+    if (task.status !== 'AWAITING_HUMAN') continue;
+    const people = { assigneeId: task.assignee?.id ?? null, claimableIds: task.claimable.map((c) => c.id), escalatedToIds: task.escalatedTo.map((a) => a.id) };
+    if (isHumanTaskForMember(people, meId)) cards.add(task.id);
+  }
+  const replaced = new Set(detail.artifacts.flatMap((a) => (a.supersedes ? [a.supersedes as string] : [])));
+  const plan = detail.artifacts.find((a) => a.type === 'MissionPlan' && !replaced.has(a.id));
+  const standing = planStanding({
+    missionStatus: detail.mission.status,
+    planCreatedAt: plan?.createdAt ?? null,
+    approvals: detail.approvals.map((a) => ({ id: a.id, kind: a.kind, status: a.status, createdAt: a.createdAt, addresseeIds: a.addressees ?? [] })),
+    tasks: detail.tasks,
+  }, meId);
+  if (standing.forMe) cards.add('plan');
+  return cards.size;
 }

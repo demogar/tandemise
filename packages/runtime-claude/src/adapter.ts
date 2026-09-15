@@ -8,7 +8,7 @@ import {
   DEFAULT_TERMINATION_GRACE_MS, NormalizingEventSink, RUNTIME_SIGNED_OUT, SESSION_NOT_FOUND,
   relieveBackPressure, superviseProcessStream,
 } from '@tandemise/runtimes-core';
-import { buildRuntimeEnv, withheldEnvNames } from '@tandemise/runtimes-core';
+import { buildRuntimeEnv, withDeclaredCapabilities, withheldEnvNames } from '@tandemise/runtimes-core';
 import { CLAUDE_SETTINGS_SCHEMA, PARENT_SESSION_ENV, resolveConfigDir } from './settings.js';
 import type { AgentRuntimeAdapter, RunRequest, SupervisedChild } from '@tandemise/runtimes-core';
 import { TandemiseError, systemClock } from '@tandemise/shared';
@@ -150,8 +150,8 @@ export class ClaudeCodeAdapter implements AgentRuntimeAdapter {
     return this.#health(profile, quota?.blocking === true ? 'degraded' : 'healthy', version, detail);
   }
 
-  capabilities(_profile: RuntimeProfile): readonly RuntimeCapability[] {
-    return CLAUDE_CAPABILITIES;
+  capabilities(profile: RuntimeProfile): readonly RuntimeCapability[] {
+    return withDeclaredCapabilities(profile, CLAUDE_CAPABILITIES, this.baseCapabilities);
   }
 
   start(request: RunRequest): AsyncIterable<AgentEvent> {

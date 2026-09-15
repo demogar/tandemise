@@ -38,20 +38,9 @@ export function parseArtifact(
   source: string,
 ): Result<ParsedArtifact, readonly ArtifactIssue[]> {
   if (!hasSchema(type)) {
-    // Evidence, FinanceReport and MissionPlan have no front-matter contract by
-    // design, so there is nothing to validate but presence. Refusing them made
-    // `artifact.FinanceReport.exists` and `artifact.Evidence.exists` gates
-    // impossible to pass: a finance run wrote its report and was blocked anyway.
-    const document = parseFrontMatterDocument(source);
-    const body = document.ok ? document.value.body : source.trim();
-    if (body.trim() === '') {
-      return Err([{ path: '', message: 'Artifact body is empty.' }]);
-    }
-    return Ok({
-      type: type as SchemaBackedArtifactType,
-      frontMatter: (document.ok ? document.value.frontMatter : {}) as ParsedArtifact['frontMatter'],
-      body,
-    });
+    // Every artifact type has a contract now, because every one carries a
+    // handoff; only a string that is not an artifact type at all lands here.
+    return Err([{ path: 'type', message: `\`${String(type)}\` is not an artifact type.` }]);
   }
 
   const document = parseFrontMatterDocument(source);

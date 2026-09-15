@@ -1,20 +1,26 @@
 import type {
-  ApprovalId, ArtifactId, IntegrationId, MissionId, RepositoryId, RuntimeProfileId,
+  ApprovalId, ArtifactId, FeedbackId, IntegrationId, MemberId, MissionId, PersonId, RepositoryId, RuntimeProfileId,
   TaskId, WorkspaceId,
 } from '@tandemise/shared';
 import type {
-  Approval, ArtifactManifest, ExecutionTargetRecord, LoadedArtifact, Mission, RoleTemplate,
-  RunEventRecord, RuntimeProfile,
+  Approval, ArtifactManifest, ExecutionTargetRecord, Mission, RoleStaffing, RoleTemplate,
+  RunEventRecord, RuntimeProfile, StaffingPatch,
 } from '@tandemise/domain';
 import type {
   AddRepositoryRequest, ApprovalView, CreateIntegrationRequest, CreateMissionRequest,
-  CreateRuntimeProfileRequest, CreateWorkspaceRequest, DecideApprovalRequest, HomeView,
+  CreateRuntimeProfileRequest, CreateWorkspaceRequest, DecideApprovalRequest, HomeView, InboxView,
   ConnectIntegrationRequest, ConnectionAttemptView, ConnectorView,
   IntegrationView, MissionDetail, MissionSummary, RepositoryProbe, RuntimeDiscoveryView,
   RuntimeView, SystemInfo, TaskView, UpdateWorkspaceRequest, UpsertRoleRequest, WorkspaceView,
-  CompleteTaskRequest,
+  ClaimTaskRequest, CompleteTaskRequest,
   WorkflowSummary,
+  AddMemberRequest, ArtifactView, CreatePersonRequest, MeView, MemberView, PersonView, StaffingPreviewView,
+  TeamView, UpdateMemberRequest, UpdatePersonRequest, MissionArtifactView, MissionFeedView, ArtifactReadView,
+  DismissFeedbackRequest, FeedbackGivenView, FeedbackView, GiveFeedbackRequest, StartRoundRequest, TaskFeedbackView,
 } from '@tandemise/api-contract';
+import type { Caller, IdentityPort } from './support/identity.js';
+import type { RoundBegun } from './engine/feedback-rounds.js';
+import type { RoleStaffingEdit } from './support/staffing-edit.js';
 
 /**
  * The application's public surface.
@@ -36,6 +42,11 @@ export interface TandemiseServices {
   readonly roles: RoleService;
   readonly integrations: IntegrationService;
   readonly projections: ProjectionService;
+  /** Who requests act as. The daemon's routes use it until a principal is resolved per request. */
+  readonly identity: IdentityPort;
+  readonly team: TeamService;
+  readonly staffing: StaffingService;
+  readonly feedback: FeedbackService;
 }
 
 export interface SystemService {
@@ -54,7 +65,8 @@ export interface WorkflowService {
 
 export interface WorkspaceService {
   list(): readonly WorkspaceView[];
-  create(request: CreateWorkspaceRequest): Promise<WorkspaceView>;
+  /** The caller becomes the new workspace's owner. */
+  create(caller: Caller, request: CreateWorkspaceRequest): Promise<WorkspaceView>;
   view(id: WorkspaceId): WorkspaceView;
   update(id: WorkspaceId, patch: UpdateWorkspaceRequest): WorkspaceView;
   listRepositories(id: WorkspaceId): readonly import('@tandemise/domain').Repository[];
@@ -67,16 +79,18 @@ export interface WorkspaceService {
 
 export interface MissionService {
   list(filter: { workspaceId?: string; status?: string; limit?: number }): readonly MissionSummary[];
-  create(request: CreateMissionRequest): Promise<Mission>;
+  create(caller: Caller, request: CreateMissionRequest): Promise<Mission>;
   start(id: MissionId): Promise<Mission>;
   pause(id: MissionId): Promise<Mission>;
   resume(id: MissionId): Promise<Mission>;
   cancel(id: MissionId, reason?: string): Promise<Mission>;
   remove(id: MissionId): Promise<void>;
-  retryTask(taskId: TaskId, options: { runtimeProfileId?: string; note?: string }): Promise<TaskView>;
-  skipTask(taskId: TaskId): Promise<TaskView>;
+  retryTask(caller: Caller, taskId: TaskId, options: { runtimeProfileId?: string; note?: string; addCapabilities?: readonly string[] }): Promise<TaskView>;
+  skipTask(caller: Caller, taskId: TaskId): Promise<TaskView>;
   /** A person reports a `human` task done, with whatever they produced. */
-  completeTask(taskId: TaskId, request: CompleteTaskRequest): Promise<TaskView>;
+  completeTask(caller: Caller, taskId: TaskId, request: CompleteTaskRequest): Promise<TaskView>;
+  /** A person takes an unassigned human task, for themselves or for the member named. */
+  claimTask(caller: Caller, taskId: TaskId, request: ClaimTaskRequest): Promise<TaskView>;
 }
 
 export interface PlanningService {
@@ -91,14 +105,17 @@ export interface PlanningService {
 export interface ApprovalService {
   list(filter: { workspaceId?: string; missionId?: string; status?: string }): readonly ApprovalView[];
   get(id: ApprovalId): ApprovalView;
-  decide(id: ApprovalId, request: DecideApprovalRequest): Promise<ApprovalView>;
+  /** Decided by the caller's member, or by `onBehalfOf` and recorded by the caller's. */
+  decide(caller: Caller, id: ApprovalId, request: DecideApprovalRequest): Promise<ApprovalView>;
 }
 
 export interface ArtifactService {
-  listByMission(missionId: MissionId): readonly ArtifactManifest[];
-  read(id: ArtifactId): Promise<LoadedArtifact>;
-  /** Omit the workspace to search the whole install. */
-  search(workspaceId: WorkspaceId | undefined, query: string): readonly ArtifactManifest[];
+  /** The live versions, or every version when asked, each numbered along its chain. */
+  listByMission(missionId: MissionId, options?: { includeSuperseded?: boolean }): readonly MissionArtifactView[];
+  /** The manifest carries the database's attribution, which the store's copy does not. */
+  read(id: ArtifactId): Promise<ArtifactReadView>;
+  /** Omit the workspace to search the whole install. Current versions only unless `includeSuperseded`. */
+  search(workspaceId: WorkspaceId | undefined, query: string, options?: { includeSuperseded?: boolean }): readonly ArtifactView[];
 }
 
 export interface RuntimeService {
@@ -136,10 +153,70 @@ export interface IntegrationService {
 
 export interface ProjectionService {
   home(workspaceId?: string): Promise<HomeView>;
+  /** Pending approvals and tasks waiting on a person in one workspace. */
+  inbox(workspaceId: WorkspaceId): InboxView;
+  /** A mission's cards, grouped for the caller: what needs them, what is moving, what is done. */
+  missionFeed(id: MissionId, caller: Caller, options?: { doneLimit?: number }): MissionFeedView;
   missionDetail(id: MissionId): Promise<MissionDetail>;
   missionTasks(id: MissionId): Promise<readonly TaskView[]>;
+  taskView(id: TaskId): TaskView;
   missionEvents(id: MissionId, opts: { afterSequence?: number; limit?: number; semanticOnly?: boolean }): readonly RunEventRecord[];
   targets(missionId?: string): readonly ExecutionTargetRecord[];
+}
+
+export interface TeamService {
+  me(caller: Caller): MeView;
+  listPeople(): readonly PersonView[];
+  createPerson(caller: Caller, request: CreatePersonRequest): PersonView;
+  updatePerson(caller: Caller, id: PersonId, request: UpdatePersonRequest): PersonView;
+  /** Soft: the person is marked removed and every seat they held is removed. */
+  removePerson(caller: Caller, id: PersonId): void;
+  team(workspaceId: WorkspaceId): TeamView;
+  addMember(caller: Caller, workspaceId: WorkspaceId, request: AddMemberRequest): MemberView;
+  updateMember(caller: Caller, id: MemberId, request: UpdateMemberRequest): MemberView;
+  /** Marks the seat removed; CONFLICT when it is the workspace's last owner. */
+  removeMember(caller: Caller, id: MemberId): void;
+}
+
+export interface StaffingService {
+  workspace(workspaceId: WorkspaceId): RoleStaffing;
+  /** Merged per role; a role set to `null` is removed. */
+  patchWorkspace(caller: Caller, workspaceId: WorkspaceId, patch: RoleStaffingEdit): RoleStaffing;
+  patchMission(caller: Caller, missionId: MissionId, patch: RoleStaffingEdit): RoleStaffing;
+  /** CONFLICT once the task is running or finished. */
+  patchTask(caller: Caller, taskId: TaskId, patch: StaffingPatch | null): TaskView;
+  preview(taskId: TaskId): StaffingPreviewView;
+}
+
+/**
+ * Notes on a task's output and the rounds they start (spec §2, §3, §8).
+ *
+ * Acting on a note is one rule for every entry point: the feed card, the
+ * reader, the drawer and a retry with a note all come through `give`.
+ */
+/** A note written inside someone's unit of work, with what is left to do once that unit commits. */
+export interface PendingFeedback {
+  readonly view: FeedbackGivenView;
+  /** The round the note started, whose overtaken dependents are stopped after the commit. */
+  readonly begun: RoundBegun | null;
+}
+
+export interface FeedbackService {
+  /** Spec §2's table decides what happens; see `feedbackEffectFor`. */
+  give(caller: Caller, taskId: TaskId, request: GiveFeedbackRequest, options?: { readonly forceDownstream?: 'keep' }): FeedbackGivenView;
+  /**
+   * `give`'s writes alone, for a caller with a unit of its own (a retry that
+   * also widens access). It must call `afterGive` once that unit has committed:
+   * stopping a pass or waking the scheduler before then acts on a round that
+   * may still roll back.
+   */
+  beginGive(caller: Caller, taskId: TaskId, request: GiveFeedbackRequest, options?: { readonly forceDownstream?: 'keep' }): PendingFeedback;
+  afterGive(pending: PendingFeedback): FeedbackGivenView;
+  /** Confirms a round that waited on the downstream choice. */
+  startRound(caller: Caller, taskId: TaskId, request: StartRoundRequest): TaskView;
+  list(taskId: TaskId): TaskFeedbackView;
+  /** CONFLICT once the note is in a round, addressed or already dismissed. */
+  dismiss(caller: Caller, id: FeedbackId, request: DismissFeedbackRequest): FeedbackView;
 }
 
 /** Re-exported so the daemon can name the type it binds. */

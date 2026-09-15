@@ -243,7 +243,9 @@ function toPlannedTask(
     key: step.key,
     title: step.title ?? step.key.replace(/_/g, ' '),
     objective,
-    roleId: human ? HUMAN_ROLE_ID : waiting ? WAIT_ROLE_ID : step.role ?? HUMAN_ROLE_ID,
+    // A person's step keeps the role it names, so staffing for that role applies
+    // to it; the placeholder is only for a step that names none.
+    roleId: waiting ? WAIT_ROLE_ID : step.role ?? HUMAN_ROLE_ID,
     executor: step.executor,
     waitPolicy: waiting
       ? {

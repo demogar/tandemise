@@ -1,11 +1,11 @@
 import {
-  TandemiseError, asId, type ArtifactId, type MissionId, type TaskId, type WorkspaceId,
+  TandemiseError, asId, type ArtifactId, type MissionId, type TaskId, type Timestamp, type WorkspaceId,
 } from '@tandemise/shared';
 import type {
-  ArtifactManifest, ArtifactRepositoryPort, ArtifactType, ExternalRef,
+  ArtifactHandoff, ArtifactManifest, ArtifactRepositoryPort, ArtifactType, ExternalRef,
 } from '@tandemise/domain';
 import type { TandemiseDatabase } from '../database.js';
-import { toJson } from '../json.js';
+import { fromSqlBool, parseJsonOrNull, toJson, toJsonOrNull, toSqlBool } from '../json.js';
 
 interface ArtifactRow {
   id: string;
@@ -23,6 +23,14 @@ interface ArtifactRow {
   supersedes: string | null;
   summary: string | null;
   created_at: string;
+  author_id: string | null;
+  responsible_id: string | null;
+  recorded_by: string | null;
+  handoff: string | null;
+  word_count: number | null;
+  over_budget: number;
+  round: number | null;
+  withdrawn_at: string | null;
 }
 
 interface LinkRow {
@@ -36,7 +44,8 @@ interface LinkRow {
 const COLUMN_LIST = [
   'id', 'workspace_id', 'mission_id', 'task_id', 'created_by_run_id', 'type', 'title',
   'content_ref', 'media_type', 'sha256', 'byte_size', 'schema_version', 'supersedes',
-  'summary', 'created_at',
+  'summary', 'created_at', 'author_id', 'responsible_id', 'recorded_by',
+  'handoff', 'word_count', 'over_budget', 'round', 'withdrawn_at',
 ] as const;
 
 const COLUMNS = COLUMN_LIST.join(', ');
@@ -61,6 +70,14 @@ function toRow(a: ArtifactManifest): ArtifactRow {
     supersedes: a.supersedes,
     summary: a.summary,
     created_at: a.createdAt,
+    author_id: a.authorId ?? null,
+    responsible_id: a.responsibleId ?? null,
+    recorded_by: a.recordedBy ?? null,
+    handoff: toJsonOrNull(a.handoff),
+    word_count: a.wordCount ?? null,
+    over_budget: toSqlBool(a.overBudget ?? false),
+    round: a.round ?? null,
+    withdrawn_at: a.withdrawnAt ?? null,
   };
 }
 
@@ -82,6 +99,16 @@ function fromRow(r: ArtifactRow, sourceRefs: readonly ExternalRef[]): ArtifactMa
     supersedes: r.supersedes === null ? null : asId<'ArtifactId'>(r.supersedes),
     summary: r.summary,
     createdAt: r.created_at,
+    authorId: r.author_id,
+    responsibleId: r.responsible_id,
+    recordedBy: r.recorded_by,
+    // A corrupt column reads as no handoff, so the card falls back to the
+    // summary rather than the list failing to load.
+    handoff: parseJsonOrNull<ArtifactHandoff>(r.handoff),
+    wordCount: r.word_count,
+    overBudget: fromSqlBool(r.over_budget),
+    round: r.round,
+    withdrawnAt: r.withdrawn_at,
   };
 }
 
@@ -110,7 +137,10 @@ export class SqliteArtifactRepository implements ArtifactRepositoryPort {
   readonly #selectByTask;
   readonly #selectLatest;
   readonly #search;
+  readonly #selectRecent;
   readonly #markSuperseded;
+  readonly #withdraw;
+  readonly #restoreReplaced;
 
   constructor(db: TandemiseDatabase) {
     this.#db = db;
@@ -118,7 +148,8 @@ export class SqliteArtifactRepository implements ArtifactRepositoryPort {
       `INSERT INTO artifacts (${COLUMNS}) VALUES (
         :id, :workspace_id, :mission_id, :task_id, :created_by_run_id, :type, :title,
         :content_ref, :media_type, :sha256, :byte_size, :schema_version, :supersedes,
-        :summary, :created_at)`,
+        :summary, :created_at, :author_id, :responsible_id, :recorded_by,
+        :handoff, :word_count, :over_budget, :round, :withdrawn_at)`,
     );
     this.#insertLink = db.handle.prepare<{
       artifactId: string; ordinal: number; kind: string; value: string; label: string | null;
@@ -139,27 +170,40 @@ export class SqliteArtifactRepository implements ArtifactRepositoryPort {
     );
     this.#selectByMission = db.handle.prepare<{ missionId: string; type: string | null }, ArtifactRow>(
       `SELECT ${COLUMNS} FROM artifacts
-       WHERE mission_id = :missionId AND (:type IS NULL OR type = :type)
+       WHERE mission_id = :missionId AND (:type IS NULL OR type = :type) AND withdrawn_at IS NULL
        ORDER BY created_at DESC, id DESC`,
     );
     this.#selectByTask = db.handle.prepare<{ taskId: string }, ArtifactRow>(
-      `SELECT ${COLUMNS} FROM artifacts WHERE task_id = :taskId ORDER BY created_at DESC, id DESC`,
+      `SELECT ${COLUMNS} FROM artifacts WHERE task_id = :taskId AND withdrawn_at IS NULL ORDER BY created_at DESC, id DESC`,
     );
     this.#selectLatest = db.handle.prepare<{ missionId: string; type: string }, ArtifactRow>(
       `SELECT ${COLUMNS} FROM artifacts
-       WHERE mission_id = :missionId AND type = :type AND superseded_by IS NULL
+       WHERE mission_id = :missionId AND type = :type AND superseded_by IS NULL AND withdrawn_at IS NULL
        ORDER BY created_at DESC, id DESC
        LIMIT 1`,
     );
-    this.#search = db.handle.prepare<{ match: string; workspaceId: string; limit: number }, ArtifactRow>(
+    this.#search = db.handle.prepare<{ match: string; workspaceId: string; limit: number; all: number }, ArtifactRow>(
       `SELECT ${A_COLUMNS} FROM artifacts_fts
        JOIN artifacts a ON a.rowid = artifacts_fts.rowid
        WHERE artifacts_fts MATCH :match AND a.workspace_id = :workspaceId
+         AND (:all = 1 OR a.superseded_by IS NULL) AND a.withdrawn_at IS NULL
        ORDER BY bm25(artifacts_fts), a.created_at DESC
+       LIMIT :limit`,
+    );
+    this.#selectRecent = db.handle.prepare<{ workspaceId: string; limit: number; all: number }, ArtifactRow>(
+      `SELECT ${COLUMNS} FROM artifacts
+       WHERE workspace_id = :workspaceId AND (:all = 1 OR superseded_by IS NULL) AND withdrawn_at IS NULL
+       ORDER BY created_at DESC, id DESC
        LIMIT :limit`,
     );
     this.#markSuperseded = db.handle.prepare<{ id: string; by: string }>(
       'UPDATE artifacts SET superseded_by = :by WHERE id = :id',
+    );
+    this.#withdraw = db.handle.prepare<{ id: string; at: string }>(
+      'UPDATE artifacts SET withdrawn_at = :at WHERE id = :id AND withdrawn_at IS NULL',
+    );
+    this.#restoreReplaced = db.handle.prepare<{ id: string }>(
+      'UPDATE artifacts SET superseded_by = NULL WHERE superseded_by = :id',
     );
   }
 
@@ -197,15 +241,34 @@ export class SqliteArtifactRepository implements ArtifactRepositoryPort {
     return row ? fromRow(row, this.#linksFor([row.id]).get(row.id) ?? []) : undefined;
   }
 
-  search(workspaceId: WorkspaceId, query: string, limit = DEFAULT_SEARCH_LIMIT): readonly ArtifactManifest[] {
+  search(
+    workspaceId: WorkspaceId, query: string, limit = DEFAULT_SEARCH_LIMIT, options: { includeSuperseded?: boolean } = {},
+  ): readonly ArtifactManifest[] {
     const match = toMatchExpression(query);
     if (match === undefined) return [];
-    return this.#hydrate(this.#search.all({ match, workspaceId, limit }));
+    return this.#hydrate(this.#search.all({ match, workspaceId, limit, all: options.includeSuperseded === true ? 1 : 0 }));
+  }
+
+  listRecent(workspaceId: WorkspaceId, limit: number, options: { includeSuperseded?: boolean } = {}): readonly ArtifactManifest[] {
+    return this.#hydrate(this.#selectRecent.all({ workspaceId, limit, all: options.includeSuperseded === true ? 1 : 0 }));
   }
 
   markSuperseded(id: ArtifactId, by: ArtifactId): void {
     const result = this.#markSuperseded.run({ id, by });
     if (result.changes === 0) throw TandemiseError.notFound('Artifact', id);
+  }
+
+  /**
+   * The back-pointers are cleared with it: the in-memory version lines already
+   * ignore a withdrawn row, and `latest` must agree with them.
+   */
+  withdraw(ids: readonly ArtifactId[], at: Timestamp): void {
+    this.#db.transaction(() => {
+      for (const id of ids) {
+        this.#withdraw.run({ id, at });
+        this.#restoreReplaced.run({ id });
+      }
+    });
   }
 
   #writeLinks(artifactId: string, refs: readonly ExternalRef[]): void {

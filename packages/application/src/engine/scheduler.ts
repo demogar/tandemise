@@ -3,7 +3,7 @@ import { DaemonStopping } from '../support/shutdown.js';
 /** The reason a task carries when it is blocked only by a dead dependency. */
 const DEPENDENCY_BLOCK_PREFIX = 'Blocked by ';
 import type {
-  ApprovalRepositoryPort, Mission, MissionRepositoryPort, MissionStatus, MissionTask,
+  ApprovalRepositoryPort, MemberRepositoryPort, Mission, MissionRepositoryPort, MissionStatus, MissionTask,
   TaskRepositoryPort, WorkspaceRepositoryPort,
   RepoRepositoryPort,
 } from '@tandemise/domain';
@@ -18,6 +18,9 @@ import type { EventRecorder, EventScope } from '../support/event-recorder.js';
 import type { BranchIntegrationService } from './branch-integration.js';
 import type { RemediationPlanner } from './remediation.js';
 import type { TaskAttemptOutcome, TaskExecutor } from './task-executor.js';
+import { waitingReason, withoutEscalation, type StaffingResolver } from './staffing-resolver.js';
+import type { ReviewPipeline } from './reviews.js';
+import type { FeedbackRounds, ReviewRouting } from './feedback-rounds.js';
 
 /** Mission statuses in which the scheduler is allowed to dispatch work. */
 const DISPATCHABLE: readonly MissionStatus[] = ['EXECUTING', 'REVIEWING', 'QA', 'READY_TO_SHIP'];
@@ -34,6 +37,14 @@ export interface SchedulerDeps {
   readonly remediation: RemediationPlanner;
   readonly integration: BranchIntegrationService;
   readonly recorder: EventRecorder;
+  /** Resolves who does a task, once, when it becomes READY. */
+  readonly staffing: StaffingResolver;
+  /** To name the person a human task is waiting for. */
+  readonly members: MemberRepositoryPort;
+  /** Moves unanswered requests up the team tree, once per tick. */
+  readonly reviews: ReviewPipeline;
+  /** Releases feedback notes a settled pass never read, once per tick. */
+  readonly rounds: FeedbackRounds;
   readonly clock: Clock;
   readonly log: Logger;
   readonly tickIntervalMs?: number;
@@ -118,6 +129,10 @@ export class SchedulerService implements LifecycleComponent {
 
   /** Asks for a tick as soon as the current one finishes. */
   wake(): void {
+    // A stopped scheduler - disposed, or never started, as in a check that
+    // drives ticks itself - has nothing to wake; ticking it would read a
+    // database that may already be closed.
+    if (!this.#running) return;
     this.#wakeRequested = true;
     if (!this.#ticking) void this.#safeTick();
   }
@@ -157,6 +172,10 @@ export class SchedulerService implements LifecycleComponent {
   }
 
   async #pass(): Promise<void> {
+    this.#sweepStrandedFeedback();
+    // First, so a step re-resolved to an agent is dispatched in this same pass.
+    this.#sweepEscalations();
+
     const missions = this.deps.missions
       .list({ statuses: DISPATCHABLE })
       .filter((m) => !isTerminalMissionStatus(m.status));
@@ -219,7 +238,9 @@ export class SchedulerService implements LifecycleComponent {
         continue;
       }
       const satisfied = dependencies.every((d) => d.status === 'SUCCEEDED' || d.status === 'SKIPPED');
-      if (satisfied) this.#setStatus(task, scope, 'READY', null);
+      // Resolved in the same write that makes it READY: from here on, changes
+      // to the workspace's or mission's staffing no longer move this task.
+      if (satisfied) this.#setStatus(task, scope, 'READY', null, this.#resolveStaffing(task));
     }
   }
 
@@ -231,6 +252,24 @@ export class SchedulerService implements LifecycleComponent {
 
     const ceiling = Math.max(1, workspace.concurrency.maxTotalWorkers);
     const now = this.deps.clock.epochMs();
+
+    // A task can reach READY without passing through promotion - planned with
+    // no dependencies, retried, sent back by a failed gate, handed back by
+    // recovery. One that has never been resolved is resolved here, before
+    // anything routes on it; one already resolved is resolved again only if
+    // it names someone who has since left, so a mid-mission staffing edit
+    // still never moves work that reached READY.
+    for (const task of this.deps.tasks.listByMission(mission.id)) {
+      if (task.status !== 'READY' || this.#active.has(task.id)) continue;
+      // Back in READY by whatever path, a task starts its next wait fresh: the
+      // people an escalation reached were for the wait it left.
+      if ((task.staffing?.escalatedTo ?? []).length > 0) {
+        this.deps.tasks.update(task.id, { staffing: withoutEscalation(task.staffing!) });
+      }
+      if (task.staffing != null && !this.#isStale(task)) continue;
+      const patch = this.#resolveStaffing(task);
+      if (Object.keys(patch).length > 0) this.deps.tasks.update(task.id, patch);
+    }
 
     const tasks = this.deps.tasks.listByMission(mission.id);
     // A wait lives in memory. One left AWAITING_EXTERNAL by a previous daemon
@@ -252,7 +291,7 @@ export class SchedulerService implements LifecycleComponent {
       // ceiling is consulted: waiting on a human is not a reason to stop
       // dispatching the agent work that can proceed alongside it.
       if (task.executor === 'human') {
-        this.#setStatus(task, scopeOf(mission), 'AWAITING_HUMAN', 'Waiting for you to do this one.');
+        this.#setStatus(task, scopeOf(mission), 'AWAITING_HUMAN', this.#waitingFor(task));
         continue;
       }
       // A wait holds no model and no worker slot: it is one command on an
@@ -384,6 +423,33 @@ export class SchedulerService implements LifecycleComponent {
     if (!settledTask.expectedOutputs.some((t) => t === 'ReviewReport' || t === 'QAReport')) return;
 
     const current = this.deps.missions.get(mission.id) ?? mission;
+    // A review's findings go back to the author as a round; only when there is
+    // no single reviewed task to send them to does a fix task take them (spec §5).
+    if (settledTask.expectedOutputs.includes('ReviewReport')) {
+      let routed: ReviewRouting = { kind: 'none' };
+      try {
+        routed = this.deps.rounds.fromReviewFindings(settledTask, current);
+      } catch (e) {
+        // Nothing was written (it is one unit), and a finding must not be lost:
+        // the fix-task flow below still turns it into work.
+        this.deps.log.warn('scheduler.review_round_failed', { missionId: mission.id, taskId: task.id, error: errorMessage(e) });
+      }
+      if (routed.kind === 'round' || routed.kind === 'noted') {
+        // Outside the try: the findings are committed as notes, so a failure
+        // stopping a dependent must never also plan fix tasks for them.
+        this.deps.rounds.stopOvertaken(routed.begun);
+        this.deps.log.info('scheduler.review_round', {
+          missionId: mission.id, reviewed: routed.reviewedTaskId, routed: routed.kind, findings: routed.items,
+          ...(routed.kind === 'round' ? { round: routed.round } : {}),
+        });
+        this.wake();
+        return;
+      }
+      if (routed.kind === 'exhausted') {
+        this.deps.remediation.escalate(settledTask, current, routed.blocking);
+        return;
+      }
+    }
     const planned = this.deps.remediation.plan(settledTask, current);
     if (planned.kind === 'planned') {
       this.deps.log.info('scheduler.remediation_planned', {
@@ -482,9 +548,61 @@ export class SchedulerService implements LifecycleComponent {
 
   // ------------------------------------------------------------- transitions
 
-  #setStatus(task: MissionTask, scope: EventScope, status: MissionTask['status'], reason: string | null): void {
+  /**
+   * The staffing snapshot for a task becoming READY, or nothing.
+   *
+   * A resolution that fails leaves the task unresolved rather than failing the
+   * tick: dispatch then routes it the way it always did, which is a better
+   * outcome for one misconfigured workspace than stopping every mission.
+   */
+  #resolveStaffing(task: MissionTask): Partial<MissionTask> {
+    try {
+      return this.deps.staffing.snapshot(task) ?? {};
+    } catch (e) {
+      this.deps.log.warn('scheduler.staffing_unresolved', { taskId: task.id, error: errorMessage(e) });
+      return {};
+    }
+  }
+
+  #sweepEscalations(): void {
+    try {
+      this.deps.reviews.sweepEscalations(this.deps.clock.epochMs());
+    } catch (e) {
+      // Escalation is a courtesy to the people waiting; a failure here must
+      // not stop the work that is not waiting on anyone.
+      this.deps.log.warn('scheduler.escalation_failed', { error: errorMessage(e) });
+    }
+  }
+
+  /** A note that arrived as a pass was settling is not lost: it waits as an open note on the card. */
+  #sweepStrandedFeedback(): void {
+    try {
+      this.deps.rounds.releaseStranded();
+    } catch (e) {
+      // Like escalation, this tidies notes for people; it must never stop dispatch.
+      this.deps.log.warn('scheduler.feedback_sweep_failed', { error: errorMessage(e) });
+    }
+  }
+
+  #isStale(task: MissionTask): boolean {
+    try {
+      return this.deps.staffing.isStale(task);
+    } catch (e) {
+      this.deps.log.warn('scheduler.staffing_unresolved', { taskId: task.id, error: errorMessage(e) });
+      return false;
+    }
+  }
+
+  #waitingFor(task: MissionTask): string {
+    return waitingReason(this.deps.members, task);
+  }
+
+  #setStatus(
+    task: MissionTask, scope: EventScope, status: MissionTask['status'], reason: string | null,
+    extra: Partial<MissionTask> = {},
+  ): void {
     if (task.status === status && task.statusReason === reason) return;
-    this.deps.tasks.update(task.id, { status, statusReason: reason });
+    this.deps.tasks.update(task.id, { status, statusReason: reason, ...extra });
     this.deps.recorder.record({ ...scope, taskId: task.id, roleId: task.roleId }, {
       type: 'task.status',
       from: task.status,

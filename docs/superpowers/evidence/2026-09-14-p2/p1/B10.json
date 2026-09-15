@@ -1,0 +1,19 @@
+{
+  "id": "B10",
+  "title": "Team: a teammate's pending review is not under my Needs you",
+  "ok": true,
+  "checks": [
+    {
+      "label": "design is not in Needs you",
+      "ok": true
+    },
+    {
+      "label": "design is In progress, \"Waiting for Ana Ruiz\"",
+      "ok": true
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/B10-team-feed.png"
+  ]
+}

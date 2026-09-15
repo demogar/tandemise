@@ -16,7 +16,7 @@ interface NavEntry {
 const PRIMARY: readonly NavEntry[] = [
   { href: '/', label: 'Home', icon: 'home' },
   { href: '/missions', label: 'Missions', icon: 'flag' },
-  { href: '/approvals', label: 'Approvals', icon: 'approvals' },
+  { href: '/inbox', label: 'Inbox', icon: 'approvals' },
   { href: '/artifacts', label: 'Artifacts', icon: 'artifacts' },
 ];
 
@@ -29,7 +29,7 @@ const PRIMARY: readonly NavEntry[] = [
  */
 const PROJECT: readonly NavEntry[] = [
   { href: '/project', label: 'Repositories', icon: 'folder' },
-  { href: '/workforce', label: 'Workforce', icon: 'workforce' },
+  { href: '/team', label: 'Team', icon: 'workforce' },
   { href: '/runtimes', label: 'Runtimes', icon: 'runtimes' },
   { href: '/integrations', label: 'Integrations', icon: 'integrations' },
 ];
@@ -70,7 +70,7 @@ export function Sidebar({ pendingApprovals, stream }: { pendingApprovals: number
             key={entry.href}
             entry={entry}
             active={isActive(location, entry.href)}
-            count={entry.href === '/approvals' ? pendingApprovals : 0}
+            count={entry.href === '/inbox' ? pendingApprovals : 0}
           />
         ))}
         <div className="sidebar__section truncate" title={projectName ?? undefined}>

@@ -23,6 +23,9 @@ export type EvaluationId = Brand<string, 'EvaluationId'>;
 export type EventId = Brand<string, 'EventId'>;
 export type PolicyId = Brand<string, 'PolicyId'>;
 export type LeaseId = Brand<string, 'LeaseId'>;
+export type PersonId = Brand<string, 'PersonId'>;
+export type MemberId = Brand<string, 'MemberId'>;
+export type FeedbackId = Brand<string, 'FeedbackId'>;
 
 const ALPHABET = '0123456789abcdefghjkmnpqrstvwxyz';
 
@@ -62,6 +65,9 @@ export const ids = {
   event: () => newId<'EventId'>('evt'),
   policy: () => newId<'PolicyId'>('pol'),
   lease: () => newId<'LeaseId'>('lse'),
+  person: () => newId<'PersonId'>('per'),
+  member: () => newId<'MemberId'>('mem'),
+  feedback: () => newId<'FeedbackId'>('fb'),
 } as const;
 
 /** Cast a persisted string back to its branded type at a trust boundary. */

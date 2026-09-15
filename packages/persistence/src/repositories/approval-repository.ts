@@ -1,5 +1,5 @@
 import {
-  TandemiseError, asId, type ApprovalId, type MissionId, type TaskId, type WorkspaceId,
+  TandemiseError, asId, type ApprovalId, type MissionId, type TaskId, type Timestamp, type WorkspaceId,
 } from '@tandemise/shared';
 import type {
   Approval, ApprovalEvidence, ApprovalKind, ApprovalOption, ApprovalRepositoryPort, ApprovalStatus,
@@ -30,6 +30,10 @@ interface ApprovalRow {
   created_at: string;
   decided_at: string | null;
   expires_at: string | null;
+  addressees: string;
+  escalation_level: number;
+  escalate_at: string | null;
+  recorded_by: string | null;
 }
 
 function toRow(a: Approval): ApprovalRow {
@@ -54,6 +58,10 @@ function toRow(a: Approval): ApprovalRow {
     created_at: a.createdAt,
     decided_at: a.decidedAt,
     expires_at: a.expiresAt,
+    addressees: toJson(a.addressees ?? []),
+    escalation_level: a.escalationLevel ?? 0,
+    escalate_at: a.escalateAt ?? null,
+    recorded_by: a.recordedBy ?? null,
   };
 }
 
@@ -79,12 +87,17 @@ function fromRow(r: ApprovalRow): Approval {
     createdAt: r.created_at,
     decidedAt: r.decided_at,
     expiresAt: r.expires_at,
+    addressees: parseJson<readonly string[]>(r.addressees, []),
+    escalationLevel: r.escalation_level,
+    escalateAt: r.escalate_at,
+    recordedBy: r.recorded_by,
   };
 }
 
 const COLUMNS = `id, workspace_id, mission_id, task_id, run_id, kind, status, risk, title,
   rationale, effect, evidence, options, recommended_option_id, selected_option_id,
-  decided_by, decision_note, created_at, decided_at, expires_at`;
+  decided_by, decision_note, created_at, decided_at, expires_at,
+  addressees, escalation_level, escalate_at, recorded_by`;
 
 export class SqliteApprovalRepository implements ApprovalRepositoryPort {
   readonly #db: TandemiseDatabase;
@@ -93,6 +106,7 @@ export class SqliteApprovalRepository implements ApprovalRepositoryPort {
   readonly #selectOne;
   readonly #selectList;
   readonly #selectPendingForTask;
+  readonly #selectDue;
 
   constructor(db: TandemiseDatabase) {
     this.#db = db;
@@ -100,7 +114,8 @@ export class SqliteApprovalRepository implements ApprovalRepositoryPort {
       `INSERT INTO approvals (${COLUMNS}) VALUES (
         :id, :workspace_id, :mission_id, :task_id, :run_id, :kind, :status, :risk, :title,
         :rationale, :effect, :evidence, :options, :recommended_option_id, :selected_option_id,
-        :decided_by, :decision_note, :created_at, :decided_at, :expires_at)`,
+        :decided_by, :decision_note, :created_at, :decided_at, :expires_at,
+        :addressees, :escalation_level, :escalate_at, :recorded_by)`,
     );
     this.#update = db.handle.prepare<ApprovalRow>(
       `UPDATE approvals SET
@@ -109,7 +124,8 @@ export class SqliteApprovalRepository implements ApprovalRepositoryPort {
          effect = :effect, evidence = :evidence, options = :options,
          recommended_option_id = :recommended_option_id, selected_option_id = :selected_option_id,
          decided_by = :decided_by, decision_note = :decision_note, decided_at = :decided_at,
-         expires_at = :expires_at
+         expires_at = :expires_at, addressees = :addressees, escalation_level = :escalation_level,
+         escalate_at = :escalate_at, recorded_by = :recorded_by
        WHERE id = :id`,
     );
     this.#selectOne = db.handle.prepare<{ id: string }, ApprovalRow>(
@@ -129,6 +145,13 @@ export class SqliteApprovalRepository implements ApprovalRepositoryPort {
       `SELECT ${COLUMNS} FROM approvals
        WHERE task_id = :taskId AND status = 'PENDING'
        ORDER BY created_at, id`,
+    );
+    // Served by ix_approvals_escalate (status, escalate_at): the sweep runs on
+    // every scheduler tick, so it must never read the whole approvals table.
+    this.#selectDue = db.handle.prepare<{ at: string }, ApprovalRow>(
+      `SELECT ${COLUMNS} FROM approvals
+       WHERE status = 'PENDING' AND escalate_at IS NOT NULL AND escalate_at <= :at
+       ORDER BY escalate_at, id`,
     );
   }
 
@@ -166,5 +189,9 @@ export class SqliteApprovalRepository implements ApprovalRepositoryPort {
 
   pendingForTask(taskId: TaskId): readonly Approval[] {
     return this.#selectPendingForTask.all({ taskId }).map(fromRow);
+  }
+
+  dueForEscalation(at: Timestamp): readonly Approval[] {
+    return this.#selectDue.all({ at }).map(fromRow);
   }
 }

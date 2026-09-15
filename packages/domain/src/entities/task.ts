@@ -2,6 +2,7 @@ import type { MissionId, RepositoryId, TaskId, Timestamp } from '@tandemise/shar
 import type { Capability } from '../capability.js';
 import type { ArtifactType } from './artifact.js';
 import type { GateExpression } from '../gate.js';
+import type { ResolvedStaffingSnapshot, StaffingPatch } from '../staffing.js';
 
 /** Who carries a task out (MVP.md §11). */
 export const TASK_EXECUTORS = ['agent', 'human', 'wait'] as const;
@@ -141,6 +142,25 @@ export interface MissionTask {
    * has none, and every builder of a task need not say so.
    */
   readonly retryFeedback?: string | null;
+  /**
+   * Who was resolved to do and answer for this task when it was dispatched,
+   * kept so the answer does not change if the team does. Null until then.
+   */
+  readonly staffing?: ResolvedStaffingSnapshot | null;
+  /** A task-level staffing patch, layered over the mission's and workspace's. */
+  readonly staffingOverride?: StaffingPatch | null;
+  /** The member doing the work: an agent, or a person who claimed it. */
+  readonly assigneeId?: string | null;
+  /** The person who answers for the work. Always a person member once set. */
+  readonly responsibleId?: string | null;
+  /** Set when an after-the-fact check asked for changes on finished work. */
+  readonly needsAttention?: boolean;
+  /**
+   * Which pass through the task this is. Round 1 is the first passed attempt;
+   * feedback and tightening happen inside a round and never start a new one.
+   * Optional so builders written before P2 still compile; read back as 1.
+   */
+  readonly round?: number;
   readonly attempts: number;
   /** Present when this task was generated to fix findings from another task. */
   readonly remediatesTaskId: TaskId | null;

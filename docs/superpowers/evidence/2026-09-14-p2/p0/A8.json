@@ -1,0 +1,52 @@
+{
+  "id": "A8",
+  "title": "AI drafts, you check later",
+  "ok": true,
+  "checks": [
+    {
+      "label": "architecture finished without waiting; a check card is open for you",
+      "ok": true
+    },
+    {
+      "label": "build went ahead while the check was open",
+      "ok": true,
+      "observed": "SUCCEEDED"
+    },
+    {
+      "label": "the Inbox opens the impact dialog: build used architecture v1",
+      "ok": true,
+      "observed": "Round 2 of architecture\n\nBuild (done) used Architecture v1.\n\nRedo them after the new version\nKeep their work\nThey are flagged when the new version lands.\nNot now\nStart round 2"
+    },
+    {
+      "label": "chose \"Keep their work\" and started round 2",
+      "ok": true
+    },
+    {
+      "label": "architecture starts round 2",
+      "ok": true,
+      "observed": {
+        "round": 2,
+        "status": "READY"
+      }
+    },
+    {
+      "label": "build was not stopped or redone",
+      "ok": true,
+      "observed": "SUCCEEDED"
+    },
+    {
+      "label": "once architecture round 2 lands, build is flagged for attention",
+      "ok": true,
+      "observed": {
+        "needsAttention": true,
+        "status": "SUCCEEDED"
+      }
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/A8-check-card.png",
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/A8-impact-dialog.png",
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/A8-plan-attention.png"
+  ]
+}

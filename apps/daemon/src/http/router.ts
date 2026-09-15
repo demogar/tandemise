@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { TandemiseError, errorMessage, isTandemiseError, redactSecrets, type Logger } from '@tandemise/shared';
 import { API_PREFIX, API_VERSION, API_VERSION_HEADER, HTTP_STATUS_BY_CODE, type ApiErrorBody } from '@tandemise/api-contract';
 import { z } from 'zod';
+import type { Caller } from '@tandemise/application';
 
 /**
  * A small, explicit HTTP router.
@@ -18,6 +19,8 @@ export interface RequestContext {
   readonly query: URLSearchParams;
   readonly log: Logger;
   readonly raw: IncomingMessage;
+  /** Who the request acts as, resolved from its bearer token. */
+  readonly caller: Caller;
   body<T>(schema: z.ZodType<T>): Promise<T>;
 }
 
@@ -98,14 +101,23 @@ export function makeContext(
   params: Record<string, string>,
   query: URLSearchParams,
   log: Logger,
+  resolveCaller: () => Caller,
 ): RequestContext {
   let cached: unknown;
   let read = false;
+  let caller: Caller | undefined;
   return {
     params, query, log, raw: req,
+    // Resolved on first use, so a route that acts as nobody still answers when
+    // the principal cannot be resolved (e.g. the local person was removed).
+    get caller(): Caller {
+      caller ??= resolveCaller();
+      return caller;
+    },
     async body<T>(schema: z.ZodType<T>): Promise<T> {
       if (!read) { cached = await readJsonBody(req); read = true; }
-      const parsed = schema.safeParse(cached ?? {});
+      // Only an absent body means "empty object"; an explicit JSON null is a value.
+      const parsed = schema.safeParse(cached === undefined ? {} : cached);
       if (!parsed.success) {
         throw TandemiseError.validation(formatZodIssues(parsed.error), { issues: parsed.error.issues });
       }

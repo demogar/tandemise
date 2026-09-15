@@ -30,8 +30,9 @@ const plannedTask = z.object({
   key: z.string().trim().min(1),
   title: z.string().trim().min(1),
   objective: z.string().trim().min(1),
-  // Ignored for human and wait steps, which carry their executor's own role.
-  roleId: z.string().trim().min(1).default('agent'),
+  // Ignored for wait steps. A human step keeps the role it names; without one
+  // it gets the human placeholder, and an agent task the generic 'agent'.
+  roleId: z.string().trim().min(1).optional(),
   // Optional: a single-repository project never mentions it, and a planner that
   // omits it means "the mission's repository".
   repository: z.string().trim().min(1).nullish(),
@@ -106,7 +107,8 @@ export function parsePlanResponse(response: string): Result<MissionPlan, readonl
     const parked = task.executor !== 'agent';
     return {
       ...task,
-      roleId: task.executor === 'human' ? HUMAN_ROLE_ID : task.executor === 'wait' ? WAIT_ROLE_ID : task.roleId,
+      roleId: task.executor === 'wait' ? WAIT_ROLE_ID
+        : task.roleId ?? (task.executor === 'human' ? HUMAN_ROLE_ID : 'agent'),
       waitPolicy: task.executor === 'wait' && waitFor !== undefined
         ? { command: waitFor, everyMs: everyMs ?? DEFAULT_WAIT_EVERY_MS, timeoutMs: timeoutMs ?? DEFAULT_WAIT_TIMEOUT_MS }
         : null,

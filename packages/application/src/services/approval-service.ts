@@ -1,8 +1,8 @@
 import type {
-  Approval, ApprovalRepositoryPort, Mission, MissionRepositoryPort, MissionTask,
-  RoleRepositoryPort, RunRepositoryPort, TaskRepositoryPort,
+  Approval, ApprovalRepositoryPort, ArtifactRepositoryPort, MemberRepositoryPort, Mission, MissionRepositoryPort, MissionTask,
+  RoleRepositoryPort, RunRepositoryPort, TaskRepositoryPort, UnitOfWork,
 } from '@tandemise/domain';
-import { ACCEPT_RESULT_OPTION, canTransition, isAffirmative } from '@tandemise/domain';
+import { ACCEPT_RESULT_OPTION, NEEDS_CHANGES_OPTION, REQUEST_CHANGES_OPTION, canTransition, isAffirmative } from '@tandemise/domain';
 import type { ApprovalView, DecideApprovalRequest } from '@tandemise/api-contract';
 import type { ApprovalId, Clock, Logger } from '@tandemise/shared';
 import { TandemiseError, asId, summarize } from '@tandemise/shared';
@@ -10,8 +10,11 @@ import type { ApprovalService } from '../services.js';
 import type { SchedulerService } from '../engine/scheduler.js';
 import type { EventRecorder, EventScope } from '../support/event-recorder.js';
 import type { ApprovalWaiter } from '../support/tool-policy.js';
-import type { RemediationPlanner } from '../engine/remediation.js';
-import { isStartApproval, toApprovalView } from '../support/approval-view.js';
+import type { FeedbackRounds, RoundBegun } from '../engine/feedback-rounds.js';
+import type { ReviewPipeline } from '../engine/reviews.js';
+import { actorFor, type Caller } from '../support/identity.js';
+import { isStartApproval, toApprovalView, toApprovalViews } from '../support/approval-view.js';
+import { feedbackEffectFor } from '../support/feedback-rules.js';
 import { materializePlan } from '../planning/materialize.js';
 import { parsePlanResponse } from '../planning/parse.js';
 
@@ -23,9 +26,17 @@ export interface ApprovalDeps {
   readonly roles: RoleRepositoryPort;
   readonly scheduler: SchedulerService;
   readonly waiter: ApprovalWaiter;
-  /** Turns rejected output plus a note into the next round of the same work. */
-  readonly remediation: RemediationPlanner;
+  /** Turns "Request changes" on output, or "Needs changes" on a check, into feedback and the task's next round. */
+  readonly rounds: FeedbackRounds;
+  /** A decision, the note it records and the round it starts are written together or not at all. */
+  readonly unitOfWork: UnitOfWork;
+  /** What an approved review leads to: the next review, the lead's sign-off, or success. */
+  readonly reviews: ReviewPipeline;
   readonly recorder: EventRecorder;
+  /** Names the people on a card: addressees, who decided, who recorded it. */
+  readonly members: MemberRepositoryPort;
+  /** Gives a card the headline of the artifact it cites. */
+  readonly artifacts: ArtifactRepositoryPort;
   readonly clock: Clock;
   readonly log: Logger;
 }
@@ -55,14 +66,14 @@ export class ApprovalServiceImpl implements ApprovalService {
       ...(filter.missionId === undefined ? {} : { missionId: asId<'MissionId'>(filter.missionId) }),
       ...(filter.status === undefined ? {} : { statuses: [filter.status as Approval['status']] }),
     });
-    return approvals.map((a) => toApprovalView(this.deps, a));
+    return toApprovalViews(this.deps, approvals);
   }
 
   get(id: ApprovalId): ApprovalView {
     return toApprovalView(this.deps, this.#require(id));
   }
 
-  async decide(id: ApprovalId, request: DecideApprovalRequest): Promise<ApprovalView> {
+  async decide(caller: Caller, id: ApprovalId, request: DecideApprovalRequest): Promise<ApprovalView> {
     const approval = this.#require(id);
     if (approval.status !== 'PENDING') {
       throw new TandemiseError('CONFLICT', `Approval '${id}' was already ${approval.status.toLowerCase()}.`, {
@@ -77,33 +88,53 @@ export class ApprovalServiceImpl implements ApprovalService {
       );
     }
 
+    // The note is the whole brief for the round Request changes starts; a round
+    // with nothing to address would only rerun the same work.
+    if (option.id === REQUEST_CHANGES_OPTION && (request.note ?? '').trim().length === 0) {
+      throw TandemiseError.validation('Say what should change: the note is the brief for the next round.', { optionId: option.id });
+    }
+
+    // Resolved before anything is written: someone who is not on the team, or
+    // who names a non-person to decide for, changes nothing.
+    const { actorId, recordedBy } = actorFor(this.deps, approval.workspaceId, caller, request.onBehalfOf);
+
     // A `choice` is answered, not approved: its options *are* the answer, and
     // reading "Figma" back to the worker as a refusal would make the whole
     // asking mechanism useless.
     const approved = isAffirmative(approval.kind, option.id);
-    const decided = this.deps.approvals.update(id, {
-      status: approved ? 'APPROVED' : 'REJECTED',
-      selectedOptionId: option.id,
-      decisionNote: request.note ?? null,
-      decidedBy: 'user',
-      decidedAt: this.deps.clock.now(),
-    });
-
-    const scope = this.#scope(decided);
-    if (scope !== null) {
-      this.deps.recorder.record(scope, {
-        type: 'approval.resolved',
-        approvalId: decided.id,
-        status: decided.status,
-        option: option.id,
+    // One unit: a round that fails to start leaves no card decided for it and no
+    // note recorded, and nothing reaches subscribers until it has committed.
+    const { decided, begun } = this.deps.recorder.deferred(() => this.deps.unitOfWork.transaction(() => {
+      const written = this.deps.approvals.update(id, {
+        status: approved ? 'APPROVED' : 'REJECTED',
+        selectedOptionId: option.id,
+        decisionNote: request.note ?? null,
+        decidedBy: actorId,
+        recordedBy,
+        decidedAt: this.deps.clock.now(),
       });
-    }
-    // A worker blocked mid-call gets its answer before anything else happens:
+
+      const scope = this.#scope(written, actorId);
+      if (scope !== null) {
+        this.deps.recorder.record(scope, {
+          type: 'approval.resolved',
+          approvalId: written.id,
+          status: written.status,
+          option: option.id,
+        });
+      }
+
+      let round: RoundBegun | null = null;
+      if (written.kind === 'plan') this.#resumePlan(written, approved, request);
+      else if (written.taskId !== null) round = this.#resumeTask(written, approved, actorId, recordedBy);
+      return { decided: written, begun: round };
+    }));
+
+    // A worker blocked mid-call gets its answer as soon as the decision stands:
     // it is holding a concurrency slot and a target while it waits.
     this.deps.waiter.settle(decided, approved);
-
-    if (decided.kind === 'plan') this.#resumePlan(decided, approved, request);
-    else if (decided.taskId !== null) this.#resumeTask(decided, approved);
+    // Only after the commit: a stopped pass re-reads its row as it settles and must find the round there.
+    if (begun !== null) this.deps.rounds.stopOvertaken(begun);
 
     this.deps.recorder.invalidate('approvals', decided.missionId ?? undefined);
     this.deps.scheduler.wake();
@@ -120,7 +151,7 @@ export class ApprovalServiceImpl implements ApprovalService {
     if (!approved) {
       this.#setMissionStatus(
         mission, scope, 'BLOCKED',
-        `The plan was rejected${request.note === undefined ? '' : `: ${summarize(request.note, 300)}`}. `
+        `${sentence(`The plan was rejected${request.note === undefined ? '' : `: ${summarize(request.note, 300)}`}`)} `
         + 'Re-plan or change the mission goal.',
       );
       return;
@@ -150,18 +181,24 @@ export class ApprovalServiceImpl implements ApprovalService {
         { issues: parsed.error },
       );
     }
-    const tasks = materializePlan(parsed.value, mission.id, this.deps.clock);
+    // Edited from a proposed plan, so its tasks read what they depend on as a planned one's do.
+    const tasks = materializePlan(parsed.value, mission.id, this.deps.clock, [], { inferInputs: true });
     this.deps.tasks.replaceAll(mission.id, tasks);
     this.deps.recorder.note(scope, `The plan was edited before approval: ${tasks.length} tasks.`);
     this.deps.recorder.invalidate('tasks', mission.id);
   }
 
-  #resumeTask(approval: Approval, approved: boolean): void {
-    if (approval.taskId === null) return;
+  /** Returns the round the decision started, for the caller to act on once it has committed. */
+  #resumeTask(approval: Approval, approved: boolean, actorId: string, recordedBy: string): RoundBegun | null {
+    if (approval.taskId === null) return null;
     const task = this.deps.tasks.get(approval.taskId);
-    if (task === undefined) return;
+    if (task === undefined) return null;
     const mission = this.deps.missions.get(task.missionId);
-    if (mission === undefined) return;
+    if (mission === undefined) return null;
+
+    // A check is answered after the task has already succeeded and work has
+    // moved on from it, so "Looks good" never touches the task's status.
+    if (approval.kind === 'check') return this.#resumeCheck(approval, task, mission, actorId, recordedBy);
 
     // A tool approval is answered while its worker is still RUNNING. The waiter
     // has already released it; touching the task status here would yank the
@@ -171,13 +208,14 @@ export class ApprovalServiceImpl implements ApprovalService {
     // exhausted its retries and sits BLOCKED, so requiring AWAITING_APPROVAL
     // made "Retry once more" record an approval and then do nothing at all.
     const interventionOnBlocked = approval.kind === 'intervention' && task.status === 'BLOCKED';
-    if (task.status !== 'AWAITING_APPROVAL' && !interventionOnBlocked) return;
+    if (task.status !== 'AWAITING_APPROVAL' && !interventionOnBlocked) return null;
 
     const scope: EventScope = {
       workspaceId: mission.workspaceId,
       missionId: mission.id,
       taskId: task.id,
       roleId: task.roleId,
+      actorId,
     };
 
     if (approval.kind === 'intervention') {
@@ -186,12 +224,12 @@ export class ApprovalServiceImpl implements ApprovalService {
         if (mission.status === 'BLOCKED') {
           this.#setMissionStatus(mission, scope, 'EXECUTING', `'${task.key}' was accepted by a human.`);
         }
-        return;
+        return null;
       }
       if (!approved) {
         this.#setTaskStatus(task, scope, 'BLOCKED', 'A human declined to retry this task.');
         this.#setMissionStatus(mission, scope, 'BLOCKED', `'${task.key}' was left blocked by a human.`);
-        return;
+        return null;
       }
       // "Retry once more" has to mean it: the task already exhausted its budget,
       // so returning it to READY without extending the budget would have it
@@ -203,37 +241,93 @@ export class ApprovalServiceImpl implements ApprovalService {
       if (mission.status === 'BLOCKED') {
         this.#setMissionStatus(mission, scope, 'EXECUTING', `'${task.key}' was given one more attempt.`);
       }
-      return;
+      return null;
     }
 
     if (isStartApproval(approval, task, this.deps.runs)) {
-      if (approved) this.#setTaskStatus(task, scope, 'READY', 'Approved to start.');
-      else this.#setTaskStatus(task, scope, 'BLOCKED', 'A human declined to let this task start.');
-      return;
+      if (!approved) {
+        this.#setTaskStatus(task, scope, 'BLOCKED', 'A human declined to let this task start.');
+        return null;
+      }
+      // Work it builds on may have gone again since the card was raised (a
+      // round upstream). READY would start it on the old version; waiting, it
+      // is promoted once that work is done, and the approval on record lets it start.
+      const all = this.deps.tasks.listByMission(task.missionId);
+      const unfinished = task.dependsOn
+        .map((key) => all.find((t) => t.key === key))
+        .filter((d): d is MissionTask => d !== undefined && d.status !== 'SUCCEEDED' && d.status !== 'SKIPPED');
+      if (unfinished.length > 0) {
+        this.#setTaskStatus(task, scope, 'PENDING', `Approved to start; waits for ${unfinished.map((d) => `'${d.key}'`).join(', ')} to finish.`);
+      } else {
+        this.#setTaskStatus(task, scope, 'READY', 'Approved to start.');
+      }
+      return null;
     }
 
     if (approved) {
-      this.#setTaskStatus(task, scope, 'SUCCEEDED', null);
-      return;
+      this.deps.reviews.onReviewApproved(approval, actorId);
+      return null;
     }
 
-    // Rejected with a reason: that reason is the brief for the next round. The
-    // mission keeps moving instead of stopping for someone to re-plan it by
-    // hand, which is what a rejection used to require.
-    const feedback = approval.decisionNote?.trim() ?? '';
-    if (feedback.length > 0) {
-      const revision = this.deps.remediation.planRevision(task, mission, feedback);
-      if (revision.kind === 'planned') return;
-      this.#setTaskStatus(task, scope, 'BLOCKED', revision.reason);
-      this.#setMissionStatus(mission, scope, 'BLOCKED', revision.reason);
-      return;
+    const note = approval.decisionNote?.trim() ?? '';
+    // Request changes, or a reject with a note on a card from before Request
+    // changes existed: the note is feedback, and the same task goes again as its
+    // next round instead of a copy of it (spec §2, AWAITING_APPROVAL). On a card
+    // that offers Request changes, "Reject without changes" means exactly that,
+    // note or not (spec §6).
+    const legacyCard = !approval.options.some((o) => o.id === REQUEST_CHANGES_OPTION);
+    if (approval.selectedOptionId === REQUEST_CHANGES_OPTION || (legacyCard && note.length > 0)) {
+      const item = this.deps.rounds.record({ task, text: note, artifactId: null, authorId: actorId, recordedBy, status: 'open', round: null });
+      return this.deps.rounds.beginRound({
+        task, feedbackIds: [item.id], actorId, keepCardId: approval.id,
+        // Work that used an earlier round's output while this one awaited review
+        // was kept when that round started; that choice stands, and the round
+        // flags it again when it lands. With nothing downstream "none" is the only choice.
+        downstream: this.deps.rounds.impactOf(task).consumers.length === 0 ? 'none' : 'keep',
+      });
     }
 
     // A bare "no" gives the worker nothing to change, so nothing is re-run on
-    // a guess. The reason says how to get a revision instead.
+    // a guess. The reason says how to get another round instead.
     this.#setTaskStatus(task, scope, 'BLOCKED',
-      'Rejected without saying what to change, so nothing was re-run on a guess. Retry the task to run it again.');
+      'Rejected without changes, so nothing was re-run. Request changes with a note, or retry the task, to run it again.');
     this.#setMissionStatus(mission, scope, 'BLOCKED', `The output of '${task.key}' was rejected.`);
+    return null;
+  }
+
+  /**
+   * "Needs changes" on a check is feedback (spec §10). Work may already have
+   * started from this output, so the round starts here only when nothing used
+   * it; otherwise the note waits open and the person makes that call in the
+   * impact dialog. Without a note there is nothing to brief a round with, so
+   * P0's flag stays and the task still stands out.
+   */
+  #resumeCheck(approval: Approval, task: MissionTask, mission: Mission, actorId: string, recordedBy: string): RoundBegun | null {
+    if (approval.selectedOptionId !== NEEDS_CHANGES_OPTION) return null;
+    const scope: EventScope = { workspaceId: mission.workspaceId, missionId: mission.id, taskId: task.id, roleId: task.roleId, actorId };
+    const note = approval.decisionNote?.trim() ?? '';
+    if (note.length === 0) {
+      this.deps.tasks.update(task.id, { needsAttention: true });
+      this.deps.recorder.record(scope, { type: 'task.attention', taskId: task.id, note: '' });
+      this.deps.recorder.invalidate('tasks', mission.id);
+      return null;
+    }
+    const base = { task, text: note, artifactId: null, authorId: actorId, recordedBy };
+    // The check was filed when the round passed, but the task may have moved on
+    // since: a pass that is running reads the note when it ends, and one that has
+    // not run yet reads it in its first round, exactly as a note given directly would.
+    const effect = feedbackEffectFor(task, this.deps.approvals.pendingForTask(task.id), this.deps.runs);
+    if (effect.kind === 'queue' || effect.kind === 'attach') {
+      this.deps.rounds.record({ ...base, status: effect.kind === 'queue' ? 'queued' : 'open', round: task.round ?? 1 });
+      return null;
+    }
+    const item = this.deps.rounds.record({ ...base, status: 'open', round: null });
+    if (this.deps.rounds.impactOf(task).consumers.length > 0) return null;
+    // A later round's output card waiting on the task is answered by this note,
+    // as a note given on the task would answer it: decided, not withdrawn.
+    const card = effect.kind === 'review' ? effect.card : undefined;
+    if (card !== undefined) this.deps.rounds.decideReviewCard(card, { actorId, recordedBy, note: item.text });
+    return this.deps.rounds.beginRound({ task, feedbackIds: [item.id], downstream: 'none', actorId, keepCardId: card?.id ?? approval.id });
   }
 
   // -------------------------------------------------------------- transitions
@@ -279,12 +373,13 @@ export class ApprovalServiceImpl implements ApprovalService {
     this.deps.recorder.invalidate('missions', mission.id);
   }
 
-  #scope(approval: Approval): EventScope | null {
+  #scope(approval: Approval, actorId: string): EventScope | null {
     if (approval.missionId === null) return null;
     return {
       workspaceId: approval.workspaceId,
       missionId: approval.missionId,
       taskId: approval.taskId,
+      actorId,
     };
   }
 
@@ -293,4 +388,9 @@ export class ApprovalServiceImpl implements ApprovalService {
     if (approval === undefined) throw TandemiseError.notFound('Approval', id);
     return approval;
   }
+}
+
+/** Ends `text` as a sentence: a note that already ends one keeps its own mark instead of gaining a period. */
+function sentence(text: string): string {
+  return /[.!?…]$/.test(text.trim()) ? text.trim() : `${text.trim()}.`;
 }

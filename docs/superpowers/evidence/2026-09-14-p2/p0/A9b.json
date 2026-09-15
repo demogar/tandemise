@@ -1,0 +1,24 @@
+{
+  "id": "A9b",
+  "title": "Safety net: a task with an external side effect needs an approval",
+  "ok": true,
+  "checks": [
+    {
+      "label": "release approval addressed to you",
+      "ok": true
+    },
+    {
+      "label": "mission banner: \"1 decision waiting on you. Approve the output of release?\"",
+      "ok": true
+    },
+    {
+      "label": "approved (after the release-class confirmation) → mission COMPLETE",
+      "ok": true,
+      "observed": "COMPLETE"
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/A9b-banner.png"
+  ]
+}

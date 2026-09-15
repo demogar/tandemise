@@ -89,5 +89,34 @@ console.log('\n── the user\'s personal settings stay out of workers\n');
   ok('a profile can opt back in', !inherited.includes('--setting-sources'));
 }
 
+console.log('\n── a working directory reached through a symlink stays readable\n');
+{
+  // The child's cwd resolves the link, so Claude Code only trusts the real
+  // path; the prompt names the linked one. Seen on a real run: every Glob of
+  // the repository was refused ("requested permissions to read from ...").
+  const { mkdtempSync, mkdirSync, symlinkSync, realpathSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const base = realpathSync(mkdtempSync(join(tmpdir(), 'tdm-link-')));
+  const real = join(base, 'real');
+  const extra = join(base, 'extra');
+  mkdirSync(real); mkdirSync(extra);
+  symlinkSync(real, join(base, 'linked'));
+  symlinkSync(extra, join(base, 'extra-linked'));
+  const at = (workingDirectory, allowedRoots = []) => buildInvocation({
+    runId: 'run_x', prompt: 'p', workingDirectory, grants: ['repository.read'], allowedRoots, mcpConfigPath: null,
+    maxWallTimeMs: 1000, signal: new AbortController().signal, log: null,
+    profile: { id: 'rt', adapterId: 'claude-code', settings: {}, args: [], executablePath: null },
+  }, null).args;
+  const dirs = (args) => args.flatMap((a, i) => (a === '--add-dir' ? [args[i + 1]] : []));
+  const linked = dirs(at(join(base, 'linked')));
+  ok('the linked working directory is declared', linked.includes(join(base, 'linked')), linked.join(' '));
+  ok('a real working directory declares nothing extra', dirs(at(real)).length === 0, dirs(at(real)).join(' '));
+  const roots = dirs(at(real, [join(base, 'extra-linked')]));
+  ok('a linked extra root is declared under both spellings', roots.includes(join(base, 'extra-linked')) && roots.includes(extra), roots.join(' '));
+  ok('a missing root is still declared as given', dirs(at(real, [join(base, 'nope')])).includes(join(base, 'nope')));
+  ok('a root inside the working directory is not declared', dirs(at(real, [join(real, 'sub')])).length === 0);
+  rmSync(base, { recursive: true, force: true });
+}
+
 console.log(`\n${bad === 0 ? 'ALL ARTIFACT WRITE SCOPE CHECKS PASSED' : `${bad} FAILED`}`);
 process.exit(bad === 0 ? 0 : 1);

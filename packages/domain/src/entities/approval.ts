@@ -9,6 +9,7 @@ export const APPROVAL_KINDS = [
   'action',        // authorize one classified side effect
   'release',       // authorize merge / deploy / publish
   'intervention',  // a worker is stuck and needs a human
+  'check',         // a non-blocking look at finished work, after the fact
 ] as const;
 export type ApprovalKind = (typeof APPROVAL_KINDS)[number];
 
@@ -52,6 +53,17 @@ export interface Approval {
   readonly createdAt: Timestamp;
   readonly decidedAt: Timestamp | null;
   readonly expiresAt: Timestamp | null;
+  /**
+   * Member ids the card is addressed to. Optional so approvals built before
+   * responsibility existed still typecheck; read back as an empty list.
+   */
+  readonly addressees?: readonly string[];
+  /** How many steps up the team tree the card has been escalated. */
+  readonly escalationLevel?: number;
+  /** When an unanswered card moves to the next person up, or null for never. */
+  readonly escalateAt?: Timestamp | null;
+  /** Who put the card on record: a member id or a system actor. */
+  readonly recordedBy?: string | null;
 }
 
 export interface ApprovalEvidence {
@@ -77,6 +89,22 @@ export const APPROVE_FOR_TASK_OPTION = 'approve_for_task';
 export const ACCEPT_RESULT_OPTION = 'accept_result';
 
 /**
+ * The two answers to a `check`: a look at finished work that nothing waits on.
+ * "Needs changes" is not a rejection of anything - the work already moved on -
+ * so it is recorded as a note and a flag on the task, never a status change.
+ */
+export const LOOKS_GOOD_OPTION = 'looks_good';
+export const NEEDS_CHANGES_OPTION = 'needs_changes';
+
+/**
+ * An owner's answer to a round prompt: the work is not accepted, and the
+ * task's next round should address the feedback given alongside it. Not
+ * affirmative - it is a request, not a gate failure, but it is still not a
+ * yes (P2 spec).
+ */
+export const REQUEST_CHANGES_OPTION = 'request_changes';
+
+/**
  * Whether deciding `optionId` means the request was granted.
  *
  * An `action` or `release` card is a yes/no question, so only `approve` is a
@@ -89,6 +117,7 @@ export const ACCEPT_RESULT_OPTION = 'accept_result';
  * the answer, and the timeline all have to agree on what the human just did.
  */
 export function isAffirmative(kind: ApprovalKind, optionId: string): boolean {
+  if (kind === 'check') return optionId === LOOKS_GOOD_OPTION;
   return kind === 'choice'
     ? optionId !== REJECT_OPTION
     : optionId === APPROVE_OPTION || optionId === APPROVE_FOR_TASK_OPTION || optionId === ACCEPT_RESULT_OPTION;

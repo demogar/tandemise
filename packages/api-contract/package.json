@@ -10,6 +10,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./for-me": {
+      "types": "./dist/for-me.d.ts",
+      "default": "./dist/for-me.js"
     }
   },
   "scripts": {

@@ -47,6 +47,8 @@ export interface ExpectedArtifact {
   readonly template: string;
   /** Where to write it, in words the runtime's tools can act on. */
   readonly destination: string;
+  /** The type's main-body word budget; the contract states it when given. */
+  readonly wordBudget?: number;
 }
 
 export interface OutputContract {

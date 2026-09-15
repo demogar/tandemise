@@ -1,0 +1,32 @@
+{
+  "id": "B2",
+  "title": "Needs you: decide on the card itself",
+  "ok": true,
+  "checks": [
+    {
+      "label": "the plan waits under Needs you with an inline Approve",
+      "ok": true
+    },
+    {
+      "label": "clicked Approve on the plan card",
+      "ok": true
+    },
+    {
+      "label": "spec review card sits under Needs you with its needs line",
+      "ok": true
+    },
+    {
+      "label": "approved spec from the card",
+      "ok": true
+    },
+    {
+      "label": "spec moved to Done",
+      "ok": true
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/B2-plan-needs-you.png",
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/B2-spec-needs-you.png"
+  ]
+}

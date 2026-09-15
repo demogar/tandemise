@@ -1,9 +1,9 @@
 export { RUNTIME_ADAPTERS, RUNTIME_SIGNED_OUT, SESSION_NOT_FOUND, describeAdapter } from './adapter.js';
-export type { AgentRuntimeAdapter, RunRequest, RuntimeAdapterDescriptor, SlotReservation } from './adapter.js';
+export type { AgentRuntimeAdapter, RunRequest, RuntimeAdapterDescriptor, SlotReservation, SlotRetention } from './adapter.js';
 
 export { RuntimeRegistry, RUNTIME_REGISTRY } from './registry.js';
 
-export { RuntimeManager, RUNTIME_MANAGER, DEFAULT_HEALTH_TTL_MS, RESERVATION_TTL_MS, onlyBusy, onlyWaiting } from './manager.js';
+export { RuntimeManager, RUNTIME_MANAGER, DEFAULT_HEALTH_TTL_MS, RESERVATION_TTL_MS, onlyBusy, onlyWaiting, describeRejections } from './manager.js';
 export type {
   RuntimeManagerOptions, RuntimeRejection, RuntimeSelection, RuntimeSelectionFailure,
 } from './manager.js';
@@ -30,5 +30,6 @@ export type { AbortOutcome, Terminable } from './termination.js';
 export { runtimesCoreModule, defineRuntimeModule, RUNTIMES_CORE_MODULE_NAME } from './module.js';
 /** Re-exported so a runtime plugin can name its module type without depending on the kernel. */
 export type { TandemiseModule } from '@tandemise/kernel';
+export { withDeclaredCapabilities } from './capabilities.js';
 export { BASE_RUNTIME_ENV, buildRuntimeEnv, withheldEnvNames } from './runtime-env.js';
 export type { RuntimeEnvOptions } from './runtime-env.js';

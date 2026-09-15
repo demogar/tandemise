@@ -1,0 +1,57 @@
+{
+  "id": "A17",
+  "title": "A person's own work goes through its review and the lead's sign-off",
+  "ok": true,
+  "checks": [
+    {
+      "label": "your drawer stores oversight = both_sign_off",
+      "ok": true
+    },
+    {
+      "label": "product staffed to Bo with a blocking review by the responsible person",
+      "ok": true,
+      "observed": {
+        "assignees": [
+          "mem_01m2gysemjqaeydhhtvq"
+        ],
+        "mode": "first_available",
+        "responsible": null,
+        "reviews": [
+          {
+            "by": "responsible",
+            "mode": "blocking",
+            "when": "always"
+          }
+        ]
+      }
+    },
+    {
+      "label": "spec is Bo’s to do",
+      "ok": true
+    },
+    {
+      "label": "Bo is not asked to approve his own spec; the card goes to you as his lead",
+      "ok": true,
+      "observed": [
+        "mem_01m2gyq7cat1ayp7e9d3"
+      ]
+    },
+    {
+      "label": "timeline records that Bo's self-review was skipped",
+      "ok": true
+    },
+    {
+      "label": "the card is marked \"Lead sign-off\"",
+      "ok": true
+    },
+    {
+      "label": "spec succeeds only after your sign-off",
+      "ok": true
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/A17-staffing-drawer.png",
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/A17-sign-off.png"
+  ]
+}

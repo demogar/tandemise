@@ -1,0 +1,108 @@
+{
+  "id": "C11",
+  "title": "Beyond docs: a code round edits the same branch and the review reruns",
+  "ok": true,
+  "checks": [
+    {
+      "label": "solo workspace: you are the only person",
+      "ok": true,
+      "observed": [
+        "Demostenes Garcia G."
+      ]
+    },
+    {
+      "label": "a review card is open on build for you",
+      "ok": true,
+      "observed": "Approve the output of build?"
+    },
+    {
+      "label": "no \"Recording for\" on screen (Inbox card)",
+      "ok": true
+    },
+    {
+      "label": "the build card is decided Request changes",
+      "ok": true,
+      "observed": {
+        "status": "REJECTED",
+        "option": "request_changes"
+      }
+    },
+    {
+      "label": "same build task, now round 2, back in review",
+      "ok": true,
+      "observed": {
+        "round": 2,
+        "status": "AWAITING_APPROVAL"
+      }
+    },
+    {
+      "label": "a new build review card appears (the review pipeline reran)",
+      "ok": true,
+      "observed": "Approve the output of build?"
+    },
+    {
+      "label": "the round-2 ChangeSet is on the same branch as round 1",
+      "ok": true,
+      "observed": {
+        "r1": "tandemise/c11-code-mu1t5zpk/c11-code-mu1t5zpk-build-pvxv626s",
+        "r2": "tandemise/c11-code-mu1t5zpk/c11-code-mu1t5zpk-build-pvxv626s"
+      }
+    },
+    {
+      "label": "with a different commit",
+      "ok": true,
+      "observed": {
+        "r1": "a57bca6d64f0da723b30499a7822094923ba8c66",
+        "r2": "a31ae60eaf8d4e206d1cc9e1ad35b1ee91380975"
+      }
+    },
+    {
+      "label": "the branch has a second commit touching hello.txt, from the round",
+      "ok": true,
+      "observed": {
+        "log": "a31ae60 build: build\na57bca6 build: build\n",
+        "hello": "round first\nround fb_01m2h07gq5sasvz0c33b\n"
+      }
+    },
+    {
+      "label": "the note is addressed in round 2",
+      "ok": true,
+      "observed": [
+        {
+          "id": "fb_01m2h07gq5sasvz0c33b",
+          "taskId": "tsk_01m2h0732nhhpvxv626s",
+          "artifactId": null,
+          "author": {
+            "id": "mem_01m2gzkc83k859hctqeb",
+            "name": "Demostenes Garcia G.",
+            "kind": "person"
+          },
+          "recordedBy": null,
+          "text": "Escape the visitor name",
+          "status": "addressed",
+          "round": 2,
+          "createdAt": "2026-09-14T22:22:30.629Z"
+        }
+      ]
+    },
+    {
+      "label": "the Inbox shows the second review card with the three options",
+      "ok": true
+    },
+    {
+      "label": "the feed card shows Round 2 in review with What changed",
+      "ok": true,
+      "observed": "DEVELOPER\nbuild\nIn review\nRound 2\njust now\nby\nRuntime\n·\nresponsible\nYou\nFull doc\n\nChangeSet ready for the hello page\n\nWHAT CHANGED\nApplied: Escape the visitor name\n· You\nWritten by the scripted acceptance agent\nNo model was called\nNeeds Approve the output of build?\nApplies immediately.\nReject without changes\nRequest changes\nApprove"
+    }
+  ],
+  "notes": [
+    "mission msn_01m2h0732g381y4617h0",
+    "round 1 source refs: [{\"kind\":\"git.branch\",\"value\":\"tandemise/c11-code-mu1t5zpk/c11-code-mu1t5zpk-build-pvxv626s\",\"label\":\"build branch\"},{\"kind\":\"git.commit\",\"value\":\"a57bca6d64f0da723b30499a7822094923ba8c66\",\"label\":\"build HEAD\"}]",
+    "round 2 source refs: [{\"kind\":\"git.branch\",\"value\":\"tandemise/c11-code-mu1t5zpk/c11-code-mu1t5zpk-build-pvxv626s\",\"label\":\"build branch\"},{\"kind\":\"git.commit\",\"value\":\"a31ae60eaf8d4e206d1cc9e1ad35b1ee91380975\",\"label\":\"build HEAD\"}]"
+  ],
+  "shots": [
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/C11-first-review-card.png",
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/C11-second-review-card.png",
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/C11-feed-round-2.png"
+  ]
+}

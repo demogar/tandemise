@@ -367,10 +367,11 @@ const changeSet = R.artifacts.create({
   sourceRefs: [{ kind: 'github.pr', value: '42' }], supersedes: null,
   summary: 'Adds the wizard shell', createdAt: now(),
 });
-check('FTS matches on title', R.artifacts.search(wsId, 'onboarding').length === 3);
+check('FTS matches on title, every version when asked', R.artifacts.search(wsId, 'onboarding', undefined, { includeSuperseded: true }).length === 3);
+check('FTS hides a superseded version by default', R.artifacts.search(wsId, 'onboarding').length === 2 && !R.artifacts.search(wsId, 'onboarding').some((a) => a.id === artifactV1.id));
 check('FTS prefix-matches a partial word', R.artifacts.search(wsId, 'wiza').length === 1);
 // Both plan revisions carry the same summary, so a summary hit finds both.
-check('FTS matches on summary', R.artifacts.search(wsId, 'step by step').length === 2);
+check('FTS matches on summary', R.artifacts.search(wsId, 'step by step', undefined, { includeSuperseded: true }).length === 2);
 check('FTS honours the limit', R.artifacts.search(wsId, 'onboarding', 1).length === 1);
 check('FTS is workspace-scoped', R.artifacts.search(ids.workspace(), 'onboarding').length === 0);
 // FTS5 operators and an unbalanced quote would be a syntax error if the query
@@ -554,7 +555,7 @@ check('event log survived', re.events.listByMission(missionId).length === eventC
 check('event sequence continues after reopen', re.events.append({
   id: ids.event(), workspaceId: wsId, missionId, body: { type: 'note', text: 'after reopen' }, createdAt: now(),
 }).sequence === eventCountBefore + 1);
-check('artifacts survived, FTS index included', re.artifacts.search(wsId, 'onboarding').length === 3);
+check('artifacts survived, FTS index included', re.artifacts.search(wsId, 'onboarding', undefined, { includeSuperseded: true }).length === 3);
 check('approval decision survived', re.approvals.get(approvalId).selectedOptionId === 'approve');
 check('checkpoints survived', re.checkpoints.latest(runId).sequence === 2);
 check('check results survived', re.evaluations.latestChecks(missionId).length === 2);

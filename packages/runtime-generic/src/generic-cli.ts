@@ -4,7 +4,7 @@ import type {
   AgentEvent, AgentEventType, RuntimeCapability, RuntimeDiscovery, RuntimeHealth, RuntimeProfile,
 } from '@tandemise/domain';
 import {
-  DEFAULT_TERMINATION_GRACE_MS, NormalizingEventSink, relieveBackPressure, superviseProcessStream,
+  DEFAULT_TERMINATION_GRACE_MS, NormalizingEventSink, relieveBackPressure, superviseProcessStream, withDeclaredCapabilities,
 } from '@tandemise/runtimes-core';
 import type { AgentRuntimeAdapter, RunRequest, SupervisedChild } from '@tandemise/runtimes-core';
 import { systemClock } from '@tandemise/shared';
@@ -96,7 +96,7 @@ export class GenericCliAdapter implements AgentRuntimeAdapter {
 
   capabilities(profile: RuntimeProfile): readonly RuntimeCapability[] {
     const parsed = parseGenericCliSettings(profile.settings);
-    return parsed.ok ? parsed.value.capabilities : [];
+    return withDeclaredCapabilities(profile, parsed.ok ? parsed.value.capabilities : [], this.baseCapabilities);
   }
 
   start(request: RunRequest): AsyncIterable<AgentEvent> {

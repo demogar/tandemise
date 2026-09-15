@@ -1,0 +1,35 @@
+{
+  "id": "A4",
+  "title": "Team without accounts: design by Ana's agent is Ana's to approve",
+  "ok": true,
+  "checks": [
+    {
+      "label": "done by Ana's Figma agent; responsible Ana",
+      "ok": true
+    },
+    {
+      "label": "addressed to Ana only; Maria (her lead) not asked",
+      "ok": true,
+      "observed": [
+        "mem_01m2gysaa82qv40p6kka"
+      ]
+    },
+    {
+      "label": "not in your For me",
+      "ok": true
+    },
+    {
+      "label": "under Everyone as \"For Ana Ruiz\"",
+      "ok": true
+    },
+    {
+      "label": "Plan: design is \"Waiting for Ana Ruiz\"",
+      "ok": true
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/A4-inbox-everyone.png",
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/A4-plan.png"
+  ]
+}

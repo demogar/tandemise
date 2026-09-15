@@ -1,6 +1,6 @@
 import { TandemiseError, asId, type Clock, type MissionId, type WorkspaceId } from '@tandemise/shared';
 import type {
-  AutonomyLevel, Mission, MissionDraft, MissionProgress, MissionRepositoryPort, MissionStatus,
+  AutonomyLevel, Mission, MissionDraft, MissionProgress, MissionRepositoryPort, MissionStatus, RoleStaffing,
 } from '@tandemise/domain';
 import type { TandemiseDatabase } from '../database.js';
 import { parseJson, toJson } from '../json.js';
@@ -21,6 +21,8 @@ interface MissionRow {
   integration_branch: string | null;
   base_branch: string | null;
   status_reason: string | null;
+  created_by: string | null;
+  staffing: string;
   created_at: string;
   updated_at: string;
   started_at: string | null;
@@ -60,6 +62,8 @@ function toRow(m: Mission): MissionRow {
     integration_branch: m.integrationBranch,
     base_branch: m.baseBranch,
     status_reason: m.statusReason,
+    created_by: m.createdBy ?? null,
+    staffing: toJson(m.staffing ?? {}),
     created_at: m.createdAt,
     updated_at: m.updatedAt,
     started_at: m.startedAt,
@@ -83,6 +87,8 @@ function fromRow(r: MissionRow): Mission {
     integrationBranch: r.integration_branch,
     baseBranch: r.base_branch,
     statusReason: r.status_reason,
+    createdBy: r.created_by,
+    staffing: parseJson<RoleStaffing>(r.staffing, {}),
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     startedAt: r.started_at,
@@ -92,7 +98,7 @@ function fromRow(r: MissionRow): Mission {
 
 const COLUMNS = `id, workspace_id, repository_id, title, goal, constraints, success_criteria,
   status, autonomy, workflow_preset, workflow_inputs, integration_branch, base_branch, status_reason,
-  created_at, updated_at, started_at, completed_at`;
+  created_by, staffing, created_at, updated_at, started_at, completed_at`;
 
 export class SqliteMissionRepository implements MissionRepositoryPort {
   readonly #db: TandemiseDatabase;
@@ -111,7 +117,7 @@ export class SqliteMissionRepository implements MissionRepositoryPort {
       `INSERT INTO missions (${COLUMNS}) VALUES (
         :id, :workspace_id, :repository_id, :title, :goal, :constraints, :success_criteria,
         :status, :autonomy, :workflow_preset, :workflow_inputs, :integration_branch, :base_branch, :status_reason,
-        :created_at, :updated_at, :started_at, :completed_at)`,
+        :created_by, :staffing, :created_at, :updated_at, :started_at, :completed_at)`,
     );
     this.#update = db.handle.prepare<MissionRow>(
       `UPDATE missions SET
@@ -119,7 +125,8 @@ export class SqliteMissionRepository implements MissionRepositoryPort {
          success_criteria = :success_criteria, status = :status, autonomy = :autonomy,
          workflow_preset = :workflow_preset, workflow_inputs = :workflow_inputs,
          integration_branch = :integration_branch,
-         base_branch = :base_branch, status_reason = :status_reason, updated_at = :updated_at,
+         base_branch = :base_branch, status_reason = :status_reason, created_by = :created_by, staffing = :staffing,
+         updated_at = :updated_at,
          started_at = :started_at, completed_at = :completed_at
        WHERE id = :id`,
     );
@@ -171,6 +178,8 @@ export class SqliteMissionRepository implements MissionRepositoryPort {
       integrationBranch: null,
       baseBranch: draft.baseBranch ?? null,
       statusReason: null,
+      createdBy: draft.createdBy ?? null,
+      staffing: draft.staffing ?? {},
       createdAt: now,
       updatedAt: now,
       startedAt: null,

@@ -19,7 +19,7 @@ import { Container, compose } from '@tandemise/kernel';
 import { createLogger, createPaths, systemClock, ids, asId } from '@tandemise/shared';
 import { persistenceModule, DATABASE } from '@tandemise/persistence';
 import * as persistenceTokens from '@tandemise/persistence';
-import { createArtifactsModule, ARTIFACT_STORE as ARTIFACTS_STORE_TOKEN, renderArtifactTemplate, parseArtifact } from '@tandemise/artifacts';
+import { createArtifactsModule, ARTIFACT_STORE as ARTIFACTS_STORE_TOKEN, renderArtifactTemplate, parseArtifact, measureArtifact, deriveHandoff, splitAppendix } from '@tandemise/artifacts';
 import { policyModule, GRANT_BUILDER, APPROVAL_FACTORY } from '@tandemise/policy';
 import { contextModule } from '@tandemise/context';
 import { createEvaluationModule } from '@tandemise/evaluation';
@@ -85,6 +85,7 @@ const noopBus = { publish: () => {}, subscribe: () => () => {} };
 container.bind(app.ARTIFACT_STORE, (r) => r.resolve(ARTIFACTS_STORE_TOKEN), { source: 'alias' });
 container.bind(app.ARTIFACT_TEMPLATES, () => ({ render: renderArtifactTemplate }), { source: 'check' });
 container.bind(app.ARTIFACT_PARSER, () => ({ parse: parseArtifact }), { source: 'check' });
+container.bind(app.ARTIFACT_MEASURE, () => ({ measure: measureArtifact, deriveHandoff, splitAppendix }), { source: 'check' });
 container.bind(app.EVENT_BUS, () => noopBus, { source: 'check' });
 container.bind(app.PROJECTION_BUS, () => ({ invalidate: () => {}, subscribe: () => () => {} }), { source: 'check' });
 container.bind(app.SECRET_STORE, () => ({ backend: 'memory', store: async () => 'x', resolve: async () => undefined, remove: async () => {}, list: async () => [] }), { source: 'check' });
@@ -113,6 +114,15 @@ db.handle.exec(`
   INSERT INTO missions (id,workspace_id,title,goal,constraints,success_criteria,status,autonomy,workflow_preset,created_at,updated_at)
     VALUES ('m1','ws1','Onboarding','Redesign onboarding','[]','[]','EXECUTING','balanced','p','2026-01-01','2026-01-01');
 `);
+
+// The person answering, seated as the project's owner: deciding a card is done
+// by a member of the workspace it belongs to.
+const caller = { personId: services.identity.localPerson().id };
+container.resolve(app.MEMBER_REPOSITORY).create({
+  id: ids.member(), workspaceId: asId('ws1'), kind: 'person', personId: caller.personId, name: 'Owner', title: null,
+  reportsTo: null, access: 'owner', oversight: 'delegate_owns', roleIds: [], runtimeProfileIds: [], integrationIds: [],
+  status: 'active',
+});
 
 // Seeded as `WorkspaceService.create` does: a real project always has its roles,
 // and plan validation rejects any task whose role the project does not know.
@@ -223,7 +233,7 @@ head('The designer asks which tool, and the answer comes back');
      repo.tasks.get(task.id)?.statusReason);
 
   // Answered exactly as the Approvals screen does.
-  const decided = (await services.approvals.decide(card.id, { optionId: 'figma', note: 'Figma. File: figma.com/file/abc' })).approval;
+  const decided = (await services.approvals.decide(caller, card.id, { optionId: 'figma', note: 'Figma. File: figma.com/file/abc' })).approval;
   ok('picking Figma records APPROVED, not REJECTED', decided.status === 'APPROVED', decided.status);
 
   const result = await call;
@@ -246,7 +256,7 @@ head('An open question, answered in words');
   const card = await until(() => pendingFor(task.id));
   ok('an open question offers Send answer and decline',
      JSON.stringify(card?.options.map((o) => o.id)) === JSON.stringify(['answer', REJECT_OPTION]));
-  await services.approvals.decide(card.id, { optionId: 'answer', note: 'Nothing here yet — add your first route.' });
+  await services.approvals.decide(caller, card.id, { optionId: 'answer', note: 'Nothing here yet — add your first route.' });
   const result = await call;
   ok('the written answer reaches the worker', result.output?.answer === 'Nothing here yet — add your first route.');
   ok('and counts as answered', result.output?.answered === true);
@@ -260,7 +270,7 @@ head('Clicking an option without writing anything still says what was picked');
     question: 'Light or dark first?', options: [{ id: 'light', label: 'Light' }, { id: 'dark', label: 'Dark' }],
   }, contextFor(assignment, new AbortController().signal));
   const card = await until(() => pendingFor(task.id));
-  await services.approvals.decide(card.id, { optionId: 'dark' });
+  await services.approvals.decide(caller, card.id, { optionId: 'dark' });
   const result = await call;
   ok('the answer is the option\'s label, not a generic "Approved."', result.output?.answer === 'Dark', result.output?.answer);
 }
@@ -275,7 +285,7 @@ head('Declining hands the decision back to the worker');
     question: 'Rounded or square buttons?', options: [{ id: 'rounded', label: 'Rounded' }, { id: 'square', label: 'Square' }],
   }, contextFor(assignment, new AbortController().signal));
   const card = await until(() => pendingFor(task.id));
-  await services.approvals.decide(card.id, { optionId: REJECT_OPTION });
+  await services.approvals.decide(caller, card.id, { optionId: REJECT_OPTION });
   const result = await call;
   ok('the call still succeeds - a decline is an answer, not an error', result.outcome === 'ok');
   ok('answered is false', result.output?.answered === false);
@@ -309,7 +319,7 @@ head('An unanswered question expires, and the worker is told to decide');
   shortDeadlines.open(assignment.id, 600000);
   const tool = createAskHumanTool({
     approvals: repo.approvals, approvalFactory: container.resolve(APPROVAL_FACTORY),
-    tasks: repo.tasks, waiter: container.resolve(app.APPROVAL_WAITER), deadlines: shortDeadlines,
+    tasks: repo.tasks, address: (task, ws) => container.resolve(app.REVIEW_PIPELINE).questionAddressFor(task, ws), waiter: container.resolve(app.APPROVAL_WAITER), deadlines: shortDeadlines,
     recorder: container.resolve(app.EVENT_RECORDER), clock: systemClock,
   });
   const execution = await tool.execute(contextFor(assignment, new AbortController().signal), {
@@ -359,7 +369,7 @@ head('The wall-time clock stops while a person thinks');
 
 // ============================================================ revision loop
 
-head('Rejecting output with a note becomes the next round of the same work');
+head('Rejecting output with a note becomes the next round of the same task');
 {
   const missions = container.resolve(app.MISSION_REPOSITORY);
   const runs = container.resolve(app.RUN_REPOSITORY);
@@ -389,10 +399,10 @@ head('Rejecting output with a note becomes the next round of the same work');
   const build = task('build', { dependsOn: ['design'], inputArtifacts: [{ type: 'DesignBrief', required: true }], orderHint: 2 });
   task('docs', { dependsOn: ['build'], orderHint: 3 });
 
-  /** A completion approval: created after the attempt's run, as the executor does. */
+  /** A completion approval: created after the attempt's run, as the executor does. Each round is a further run of the same task. */
   const completionCard = (t) => {
     runs.create({
-      id: ids.run(), missionId: asId('m2'), taskId: t.id, assignmentId: asId('a'), attempt: 1, status: 'SUCCEEDED',
+      id: ids.run(), missionId: asId('m2'), taskId: t.id, assignmentId: asId('a'), attempt: runs.listByTask(t.id).length + 1, status: 'SUCCEEDED',
       roleId: t.roleId, runtimeProfileId: asId('rp1'), executionTargetId: asId('et1'), externalSessionId: null,
       pid: null, exitCode: 0, errorCode: null, errorMessage: null, usage: null,
       startedAt: '2026-01-01T00:00:00.000Z', finishedAt: '2026-01-01T00:01:00.000Z', heartbeatAt: '2026-01-01T00:01:00.000Z',
@@ -407,49 +417,42 @@ head('Rejecting output with a note becomes the next round of the same work');
   };
   const byKey = (key) => repo.tasks.listByMission(asId('m2')).find((t) => t.key === key);
 
-  // Round 1.
-  const first = completionCard(design);
-  await services.approvals.decide(first.id, {
-    optionId: REJECT_OPTION,
-    note: 'The buttons are too small on mobile.\nUse a 44px touch target.',
-  });
+  const feedback = container.resolve(app.FEEDBACK_REPOSITORY);
+  const buildDeps = JSON.stringify(byKey('build')?.dependsOn);
 
-  const revision1 = byKey('design_revision_1');
-  ok('a revision task is created', revision1 !== undefined);
-  ok('by the same role that made it — the designer, not a developer', revision1?.roleId === 'design', revision1?.roleId);
-  ok('it starts from the rejected output', revision1?.inputArtifacts.some((r) => r.type === 'DesignBrief'));
-  ok('it comes back to you for the same decision', revision1?.approvalPolicy.onCompletion === true);
-  ok('your feedback is quoted verbatim in its objective',
-     revision1?.objective.includes('> The buttons are too small on mobile.') && revision1?.objective.includes('> Use a 44px touch target.'));
-  ok('it keeps the original objective', revision1?.objective.startsWith('Produce the checkout design.'));
-  ok('the rejected task is superseded, not blocked', byKey('design')?.status === 'SKIPPED', byKey('design')?.status);
-  ok('and says what superseded it', byKey('design')?.statusReason === "Superseded by 'design_revision_1' after your feedback.",
-     byKey('design')?.statusReason);
-  ok('downstream work now waits on the revision', JSON.stringify(byKey('build')?.dependsOn) === '["design_revision_1"]',
+  // Round 1. A reject with a note is how a card from before "Request changes" asks for one (P2).
+  const first = completionCard(design);
+  const note1 = 'The buttons are too small on mobile.\nUse a 44px touch target.';
+  await services.approvals.decide(caller, first.id, { optionId: REJECT_OPTION, note: note1 });
+
+  ok('the same task goes again as round 2', byKey('design')?.status === 'READY' && byKey('design')?.round === 2,
+     [byKey('design')?.status, byKey('design')?.round]);
+  ok('no revision clone is created', byKey('design_revision_1') === undefined
+     && !repo.tasks.listByMission(asId('m2')).some((t) => t.key.includes('_revision_')));
+  ok('downstream still waits on the same task', JSON.stringify(byKey('build')?.dependsOn) === buildDeps && buildDeps === '["design"]',
      JSON.stringify(byKey('build')?.dependsOn));
   ok('work further downstream is untouched', JSON.stringify(byKey('docs')?.dependsOn) === '["build"]');
+  const [item1] = feedback.listByTask(design.id);
+  ok('your note is a feedback item, verbatim, carried by round 2', item1?.text === note1 && item1.status === 'in_round' && item1.round === 2, item1);
   ok('the mission keeps going', missions.get(asId('m2'))?.status === 'EXECUTING', missions.get(asId('m2'))?.status);
 
-  // Round 2: reject the revision too.
-  repo.tasks.update(revision1.id, { status: 'AWAITING_APPROVAL' });
-  const second = completionCard(repo.tasks.get(revision1.id));
-  await services.approvals.decide(second.id, { optionId: REJECT_OPTION, note: 'Better. Now move the total above the button.' });
-  const revision2 = byKey('design_revision_2');
-  ok('a second round is numbered from the original, not nested', revision2 !== undefined && byKey('design_revision_1_revision_1') === undefined);
-  ok('and builds on the previous revision', JSON.stringify(revision2?.dependsOn) === '["design_revision_1"]');
-  ok('downstream follows the latest round', JSON.stringify(byKey('build')?.dependsOn) === '["design_revision_2"]');
-  ok('the whole graph is still valid to run', missions.get(asId('m2'))?.status === 'EXECUTING');
-  ok('round two is briefed on round two\'s feedback', revision2?.objective.includes('> Better. Now move the total above the button.'));
-  ok('and still carries round one\'s, so it cannot be undone',
-     revision2?.objective.includes('Round 1:') && revision2?.objective.includes('> Use a 44px touch target.'),
-     revision2?.objective.split('\n').filter((l) => l.startsWith('>')).join(' | '));
+  // Round 2: reject that round too.
+  repo.tasks.update(design.id, { status: 'AWAITING_APPROVAL' });
+  const second = completionCard(repo.tasks.get(design.id));
+  await services.approvals.decide(caller, second.id, { optionId: REJECT_OPTION, note: 'Better. Now move the total above the button.' });
+  ok('a second rejection is round 3 of the same task', byKey('design')?.round === 3 && byKey('design')?.status === 'READY'
+     && byKey('design_revision_2') === undefined, [byKey('design')?.status, byKey('design')?.round]);
+  const items = feedback.listByTask(design.id);
+  ok("round 3 carries round 3's note", items.some((i) => i.text === 'Better. Now move the total above the button.' && i.status === 'in_round' && i.round === 3));
+  ok("round 2's note is still on the thread, so it cannot be lost",
+     ['in_round', 'addressed'].includes(feedback.get(item1.id)?.status), feedback.get(item1.id));
 
-  // Approve round 2.
-  repo.tasks.update(revision2.id, { status: 'AWAITING_APPROVAL' });
-  const third = completionCard(repo.tasks.get(revision2.id));
-  await services.approvals.decide(third.id, { optionId: 'approve' });
-  ok('approving a revision completes it', byKey('design_revision_2')?.status === 'SUCCEEDED');
-  ok('and nothing further is spawned', byKey('design_revision_3') === undefined);
+  // Approve round 3.
+  repo.tasks.update(design.id, { status: 'AWAITING_APPROVAL' });
+  const third = completionCard(repo.tasks.get(design.id));
+  await services.approvals.decide(caller, third.id, { optionId: 'approve' });
+  ok('approving the round completes the task', byKey('design')?.status === 'SUCCEEDED');
+  ok('and nothing further is spawned', repo.tasks.listByMission(asId('m2')).length === 3);
 }
 
 head('A bare "no" does not re-run anything on a guess');
@@ -480,14 +483,14 @@ head('A bare "no" does not re-run anything on a guess');
     title: 'Approve?', rationale: 'r', effect: 'e', evidence: [{ kind: 'text', label: 'x', value: 'y' }],
   });
   repo.approvals.create(card);
-  await services.approvals.decide(card.id, { optionId: REJECT_OPTION });
+  await services.approvals.decide(caller, card.id, { optionId: REJECT_OPTION });
   const after = repo.tasks.get(t.id);
   ok('no revision is created without feedback',
      !repo.tasks.listByMission(asId('m3')).some((x) => x.key.includes('revision')));
   ok('the task is blocked', after?.status === 'BLOCKED');
   // The card is already decided, so "reject again with a note" would be a
   // dead end; the reason points at the action that actually exists.
-  ok('and the reason points at something the person can actually do', /Retry the task/.test(after?.statusReason ?? ''), after?.statusReason);
+  ok('and the reason points at something the person can actually do', /Request changes with a note, or retry the task/.test(after?.statusReason ?? ''), after?.statusReason);
 }
 
 
@@ -502,7 +505,7 @@ head('A question that outlives its run cannot disturb the next attempt');
   // The run ends underneath the question, and a new attempt parks on its own.
   deadlines.close(assignment.id);
   repo.tasks.update(task.id, { status: 'AWAITING_INPUT', statusReason: 'Waiting for your answer: the new attempt' });
-  await services.approvals.decide(card.id, { optionId: 'answer', note: 'late answer' });
+  await services.approvals.decide(caller, card.id, { optionId: 'answer', note: 'late answer' });
   await call;
   ok('the next attempt stays parked on its own question', repo.tasks.get(task.id)?.status === 'AWAITING_INPUT',
      repo.tasks.get(task.id)?.status);

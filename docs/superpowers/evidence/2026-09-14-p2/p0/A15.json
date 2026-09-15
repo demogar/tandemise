@@ -1,0 +1,70 @@
+{
+  "id": "A15",
+  "title": "Real runtime: Ana's agent on Claude Code",
+  "ok": true,
+  "checks": [
+    {
+      "label": "Ana's agent runs on Claude Code only (set in its drawer)",
+      "ok": true
+    },
+    {
+      "label": "Claude's question \"Where should I design the hello page?\" is addressed to Ana only",
+      "ok": true,
+      "observed": [
+        "mem_01m2gysaa82qv40p6kka"
+      ]
+    },
+    {
+      "label": "answer recorded as Ana, by you",
+      "ok": true,
+      "observed": {
+        "option": "brief"
+      }
+    },
+    {
+      "label": "design finished its Claude run and waits for review",
+      "ok": true,
+      "observed": {
+        "status": "AWAITING_APPROVAL",
+        "reason": "Approve the output of design?"
+      }
+    },
+    {
+      "label": "the run used Claude Code",
+      "ok": true,
+      "observed": "Claude Code"
+    },
+    {
+      "label": "done by Ana's agent; Ana responsible",
+      "ok": true
+    },
+    {
+      "label": "DesignBrief by Ana's agent, Ana responsible",
+      "ok": true,
+      "observed": {
+        "title": "Hello page",
+        "bytes": 4987
+      }
+    },
+    {
+      "label": "review addressed to Ana only",
+      "ok": true
+    },
+    {
+      "label": "every event of the run carries Ana's agent as actor",
+      "ok": true,
+      "observed": {
+        "events": 26,
+        "actors": [
+          "mem_01m2gysjpxx2tw03mkd5"
+        ]
+      }
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/A15-agent-drawer.png",
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/A15-question.png",
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/A15-plan.png"
+  ]
+}

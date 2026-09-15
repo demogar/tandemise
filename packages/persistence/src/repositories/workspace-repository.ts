@@ -1,6 +1,6 @@
 import { TandemiseError, asId, type Clock, type WorkspaceId } from '@tandemise/shared';
 import type {
-  AutonomySettings, ConcurrencySettings, RoleRouting, Workspace, WorkspaceKnowledge,
+  AutonomySettings, ConcurrencySettings, RoleRouting, RoleStaffing, Workspace, WorkspaceKnowledge,
   WorkspaceRepositoryPort,
 } from '@tandemise/domain';
 import { DEFAULT_AUTONOMY, DEFAULT_CONCURRENCY, EMPTY_KNOWLEDGE } from '@tandemise/domain';
@@ -17,6 +17,7 @@ interface WorkspaceRow {
   routing: string;
   default_autonomy_level: string;
   knowledge: string;
+  staffing: string;
   created_at: string;
   updated_at: string;
 }
@@ -31,6 +32,7 @@ function toRow(w: Workspace): WorkspaceRow {
     routing: toJson(w.routing),
     default_autonomy_level: w.defaultAutonomyLevel,
     knowledge: toJson(w.knowledge),
+    staffing: toJson(w.staffing ?? {}),
     created_at: w.createdAt,
     updated_at: w.updatedAt,
   };
@@ -46,13 +48,14 @@ function fromRow(r: WorkspaceRow): Workspace {
     routing: parseJson<RoleRouting>(r.routing, {}),
     defaultAutonomyLevel: r.default_autonomy_level as Workspace['defaultAutonomyLevel'],
     knowledge: parseJson<WorkspaceKnowledge>(r.knowledge, EMPTY_KNOWLEDGE),
+    staffing: parseJson<RoleStaffing>(r.staffing, {}),
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
 }
 
 const COLUMNS =
-  'id, name, default_repository_id, autonomy, concurrency, routing, default_autonomy_level, knowledge, created_at, updated_at';
+  'id, name, default_repository_id, autonomy, concurrency, routing, default_autonomy_level, knowledge, staffing, created_at, updated_at';
 
 export class SqliteWorkspaceRepository implements WorkspaceRepositoryPort {
   readonly #db: TandemiseDatabase;
@@ -68,14 +71,14 @@ export class SqliteWorkspaceRepository implements WorkspaceRepositoryPort {
     this.#insert = db.handle.prepare<WorkspaceRow>(
       `INSERT INTO workspaces (${COLUMNS}) VALUES (
         :id, :name, :default_repository_id, :autonomy, :concurrency, :routing,
-        :default_autonomy_level, :knowledge, :created_at, :updated_at)`,
+        :default_autonomy_level, :knowledge, :staffing, :created_at, :updated_at)`,
     );
     this.#update = db.handle.prepare<WorkspaceRow>(
       `UPDATE workspaces SET
          name = :name, default_repository_id = :default_repository_id, autonomy = :autonomy,
          concurrency = :concurrency, routing = :routing,
          default_autonomy_level = :default_autonomy_level, knowledge = :knowledge,
-         updated_at = :updated_at
+         staffing = :staffing, updated_at = :updated_at
        WHERE id = :id`,
     );
     this.#selectOne = db.handle.prepare<{ id: string }, WorkspaceRow>(

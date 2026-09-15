@@ -15,7 +15,7 @@ import { Container, compose } from '@tandemise/kernel';
 import { createLogger, createPaths, systemClock, asId } from '@tandemise/shared';
 import { persistenceModule, DATABASE } from '@tandemise/persistence';
 import * as persistenceTokens from '@tandemise/persistence';
-import { createArtifactsModule, ARTIFACT_STORE as ARTIFACTS_STORE_TOKEN, renderArtifactTemplate, parseArtifact } from '@tandemise/artifacts';
+import { createArtifactsModule, ARTIFACT_STORE as ARTIFACTS_STORE_TOKEN, renderArtifactTemplate, parseArtifact, measureArtifact, deriveHandoff, splitAppendix } from '@tandemise/artifacts';
 import { policyModule } from '@tandemise/policy';
 import { contextModule } from '@tandemise/context';
 import { createEvaluationModule } from '@tandemise/evaluation';
@@ -81,6 +81,7 @@ let secretSeq = 0;
 container.bind(app.ARTIFACT_STORE, (r) => r.resolve(ARTIFACTS_STORE_TOKEN), { source: 'alias' });
 container.bind(app.ARTIFACT_TEMPLATES, () => ({ render: renderArtifactTemplate }), { source: 'check' });
 container.bind(app.ARTIFACT_PARSER, () => ({ parse: parseArtifact }), { source: 'check' });
+container.bind(app.ARTIFACT_MEASURE, () => ({ measure: measureArtifact, deriveHandoff, splitAppendix }), { source: 'check' });
 container.bind(app.EVENT_BUS, () => ({ publish: () => {}, subscribe: () => () => {} }), { source: 'check' });
 container.bind(app.PROJECTION_BUS, () => ({ invalidate: () => {}, subscribe: () => () => {} }), { source: 'check' });
 container.bind(app.SECRET_STORE, () => ({

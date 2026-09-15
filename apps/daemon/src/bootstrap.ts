@@ -9,7 +9,7 @@ import { persistenceModule } from '@tandemise/persistence';
 import * as persistenceTokens from '@tandemise/persistence';
 import {
   createArtifactsModule, ARTIFACT_STORE as ARTIFACTS_STORE_TOKEN,
-  renderArtifactTemplate, parseArtifact,
+  renderArtifactTemplate, parseArtifact, measureArtifact, deriveHandoff, splitAppendix,
 } from '@tandemise/artifacts';
 import { policyModule } from '@tandemise/policy';
 import { contextModule } from '@tandemise/context';
@@ -30,7 +30,7 @@ import {
 import { githubIntegrationModule } from '@tandemise/integration-github';
 import { mcpIntegrationModule } from '@tandemise/integration-mcp';
 import { browserIntegrationModule } from '@tandemise/browser';
-import { applicationModule, createServices, SCHEDULER, type TandemiseServices,
+import { createApplicationModule, createServices, SCHEDULER, type TandemiseServices,
   WORKFLOW_SOURCE,
 } from '@tandemise/application';
 import * as applicationTokens from '@tandemise/application';
@@ -67,7 +67,7 @@ export interface Bootstrapped {
  * `requires`, so this list is a readable manifest rather than a fragile
  * sequence - and adding a capability really is one more entry here.
  */
-export function bootstrap(config: DaemonConfig): Bootstrapped {
+export function bootstrap(config: DaemonConfig, options: { readonly localPersonName?: string } = {}): Bootstrapped {
   const log = createLogger({ level: config.logLevel, base: { component: 'daemon' } });
   const container = new Container();
   const events = new InMemoryEventBus();
@@ -96,7 +96,8 @@ export function bootstrap(config: DaemonConfig): Bootstrapped {
     githubIntegrationModule,
     mcpIntegrationModule,
     browserIntegrationModule,
-    applicationModule,
+    // The name reaches a fresh database's first person; this layer may run git, the application may not.
+    createApplicationModule(options.localPersonName === undefined ? {} : { localPersonName: options.localPersonName }),
   );
 
   aliasPorts(container, log);
@@ -193,6 +194,7 @@ function aliasPorts(container: Container, log: Logger): void {
 
   bindDirect('ARTIFACT_TEMPLATES', () => ({ render: renderArtifactTemplate }));
   bindDirect('ARTIFACT_PARSER', () => ({ parse: parseArtifact }));
+  bindDirect('ARTIFACT_MEASURE', () => ({ measure: measureArtifact, deriveHandoff, splitAppendix }));
   bindDirect('EVENT_BUS', (r) => r.resolve(EVENT_BUS));
   bindDirect('PROJECTION_BUS', (r) => r.resolve(PROJECTION_BUS));
   bindDirect('SECRET_STORE', (r) => createSecretStore({ home: r.resolve(CONFIG).home, log }));

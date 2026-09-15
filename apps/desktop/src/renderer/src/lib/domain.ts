@@ -60,6 +60,16 @@ const SEMANTIC: Readonly<Record<TandemiseEventBody['type'], boolean>> = {
   'gate.evaluated': true,
   'approval.resolved': true,
   'policy.denied': true,
+  'approval.escalated': true,
+  'review.skipped': true,
+  'review.required': true,
+  'task.attention': true,
+  'artifact.tighten_requested': true,
+  'artifact.over_budget': true,
+  'feedback.given': true,
+  'feedback.addressed': true,
+  'feedback.dismissed': true,
+  'task.round_started': true,
   note: true,
 };
 
@@ -94,6 +104,12 @@ export function criteriaCoveragePercent(results: readonly CriterionResult[]): nu
 
 /** Mirrors `REJECT_OPTION` in `@tandemise/domain`: the option that declines an approval or a question. */
 export const REJECT_OPTION = 'reject';
+
+/** Mirrors `REQUEST_CHANGES_OPTION` in `@tandemise/domain`: an output card's "send it back as the next round, with this note". */
+export const REQUEST_CHANGES_OPTION = 'request_changes';
+
+/** Mirrors `NEEDS_CHANGES_OPTION` in `@tandemise/domain`: a check's "needs changes", which with a note is feedback. */
+export const NEEDS_CHANGES_OPTION = 'needs_changes';
 
 /** MVP.md §7.2. Mirrors `@tandemise/api-contract`, for the same reason as above. */
 export const API_VERSION = 'v1';

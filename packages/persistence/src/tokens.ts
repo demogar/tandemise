@@ -2,8 +2,9 @@ import { token } from '@tandemise/kernel';
 import type {
   ApprovalRepositoryPort, ArtifactRepositoryPort, AssignmentRepositoryPort,
   CheckpointRepositoryPort, DecisionRepositoryPort, EvaluationRepositoryPort,
-  EventRepositoryPort, ExecutionTargetRepositoryPort, IntegrationRepositoryPort,
-  LeaseRepositoryPort, MissionRepositoryPort, RepoRepositoryPort, RoleRepositoryPort,
+  EventRepositoryPort, ExecutionTargetRepositoryPort, FeedbackRepositoryPort, IntegrationRepositoryPort,
+  LeaseRepositoryPort, MemberRepositoryPort, MissionRepositoryPort, PersonRepositoryPort,
+  RepoRepositoryPort, RoleRepositoryPort, RunInputRepositoryPort,
   RunRepositoryPort, RuntimeProfileRepositoryPort, TaskRepositoryPort, UnitOfWork,
   WorkspaceRepositoryPort,
 } from '@tandemise/domain';
@@ -39,3 +40,7 @@ export const DECISION_REPOSITORY = token<DecisionRepositoryPort>('persistence.De
 export const EVALUATION_REPOSITORY = token<EvaluationRepositoryPort>('persistence.EvaluationRepository');
 export const CHECKPOINT_REPOSITORY = token<CheckpointRepositoryPort>('persistence.CheckpointRepository');
 export const LEASE_REPOSITORY = token<LeaseRepositoryPort>('persistence.LeaseRepository');
+export const PERSON_REPOSITORY = token<PersonRepositoryPort>('persistence.PersonRepository');
+export const MEMBER_REPOSITORY = token<MemberRepositoryPort>('persistence.MemberRepository');
+export const FEEDBACK_REPOSITORY = token<FeedbackRepositoryPort>('persistence.FeedbackRepository');
+export const RUN_INPUT_REPOSITORY = token<RunInputRepositoryPort>('persistence.RunInputRepository');

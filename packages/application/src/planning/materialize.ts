@@ -1,6 +1,6 @@
 import type { MissionId, Clock, RepositoryId } from '@tandemise/shared';
 import { ids } from '@tandemise/shared';
-import type { MissionPlan, MissionTask, PlannedTask, Repository } from '@tandemise/domain';
+import type { ArtifactHandoff, MissionPlan, MissionTask, PlannedTask, Repository } from '@tandemise/domain';
 
 /**
  * Turns an accepted plan into the task rows the scheduler runs.
@@ -16,13 +16,36 @@ export function materializePlan(
   missionId: MissionId,
   clock: Clock,
   repositories: readonly Repository[] = [],
+  options: MaterializeOptions = {},
 ): readonly MissionTask[] {
   const now = clock.now();
   // Matched case-insensitively: a plan author writing `Beveloce-Web` means the
   // same repository as `beveloce-web`, and failing over capitalisation would be
   // a needless way to lose a plan.
   const byName = new Map(repositories.map((r) => [r.name.toLowerCase(), r.id]));
-  return plan.tasks.map((task, index) => fromPlanned(task, missionId, index, now, byName));
+  const tasks = options.inferInputs === true ? withInferredInputs(plan.tasks) : plan.tasks;
+  return tasks.map((task, index) => fromPlanned(task, missionId, index, now, byName));
+}
+
+export interface MaterializeOptions {
+  /**
+   * For a model's plan: a task that names no inputs reads what its direct
+   * dependencies produce. A planner often leaves `inputArtifacts` out, and a
+   * task given none is shown none of that work and records no run inputs, so a
+   * later round of the work it built on could not tell it had used it (spec §3).
+   * A workflow file is left as its author wrote it.
+   */
+  readonly inferInputs?: boolean;
+}
+
+function withInferredInputs(tasks: readonly PlannedTask[]): readonly PlannedTask[] {
+  const byKey = new Map(tasks.map((t) => [t.key, t]));
+  return tasks.map((task) => {
+    if (task.inputArtifacts.length > 0 || task.dependsOn.length === 0) return task;
+    const types = [...new Set(task.dependsOn.flatMap((key) => byKey.get(key)?.expectedOutputs ?? []))];
+    // Not required: the planner never asked for them, so a dependency that writes nothing is no warning.
+    return types.length === 0 ? task : { ...task, inputArtifacts: types.map((type) => ({ type, required: false })) };
+  });
 }
 
 /**
@@ -86,12 +109,28 @@ function fromPlanned(
  * record of the planner's *reasoning* - the task rows keep the decisions but
  * not the summary that explains them.
  */
-export function renderPlanDocument(plan: MissionPlan, missionTitle: string): string {
+/** The MissionPlan's title, within the 60 characters every artifact title is held to. */
+export function planTitle(missionTitle: string): string {
+  return clip(`Plan for ${missionTitle}`, 60);
+}
+
+/** Cuts text to `max` characters, marking the cut. */
+export function clip(text: string, max: number): string {
+  const flat = text.replace(/\s+/g, ' ').trim();
+  return flat.length <= max ? flat : `${flat.slice(0, max - 1).trimEnd()}…`;
+}
+
+export function renderPlanDocument(plan: MissionPlan, missionTitle: string, handoff: ArtifactHandoff): string {
+  // JSON strings are valid YAML scalars, so any title or summary is quoted safely.
   const lines: string[] = [
     '---',
     'type: MissionPlan',
     'schemaVersion: 1',
-    `title: ${JSON.stringify(`Plan for ${missionTitle}`)}`,
+    `title: ${JSON.stringify(planTitle(missionTitle))}`,
+    'handoff:',
+    `  headline: ${JSON.stringify(handoff.headline)}`,
+    ...(handoff.points.length === 0 ? ['  points: []'] : ['  points:', ...handoff.points.map((p) => `    - ${JSON.stringify(p)}`)]),
+    ...(handoff.needs === null ? [] : [`  needs: ${JSON.stringify(handoff.needs)}`]),
     '---',
     '',
     `# Plan for ${missionTitle}`,

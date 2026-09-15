@@ -2,18 +2,21 @@ import { token, type Token } from '@tandemise/kernel';
 import type {
   ApprovalRepositoryPort, ArtifactRepositoryPort, ArtifactStorePort, AssignmentRepositoryPort,
   CheckpointRepositoryPort, DecisionRepositoryPort, EvaluationRepositoryPort, EventBusPort,
-  EventRepositoryPort, ExecutionTargetRepositoryPort, IntegrationRepositoryPort,
-  LeaseRepositoryPort, MissionRepositoryPort, ProjectionBusPort, RepoRepositoryPort,
-  RoleRepositoryPort, RunRepositoryPort, RuntimeProfileRepositoryPort, SecretStorePort,
+  EventRepositoryPort, ExecutionTargetRepositoryPort, FeedbackRepositoryPort, IntegrationRepositoryPort,
+  LeaseRepositoryPort, MemberRepositoryPort, MissionRepositoryPort, PersonRepositoryPort, ProjectionBusPort, RepoRepositoryPort,
+  RoleRepositoryPort, RunInputRepositoryPort, RunRepositoryPort, RuntimeProfileRepositoryPort, SecretStorePort,
   TaskRepositoryPort, UnitOfWork, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
-import type { ArtifactParserPort, ArtifactTemplatePort, ProcessLivenessPort, SettingsStorePort, SystemEnvironmentPort, WorkflowSourcePort, OAuthCallbackPort } from './ports.js';
+import type { ArtifactMeasurePort, ArtifactParserPort, ArtifactTemplatePort, ProcessLivenessPort, SettingsStorePort, SystemEnvironmentPort, WorkflowSourcePort, OAuthCallbackPort } from './ports.js';
 import type {
   ApprovalService, ArtifactService, IntegrationService, MissionService, PlanningService,
   ProjectionService, RoleService, RuntimeService, SystemService, TandemiseServices,
-  WorkspaceService,
-  WorkflowService,
+  StaffingService, TeamService, WorkspaceService,
+  WorkflowService, FeedbackService,
 } from './services.js';
+import type { IdentityPort } from './support/identity.js';
+import type { StaffingResolver } from './engine/staffing-resolver.js';
+import type { ReviewPipeline } from './engine/reviews.js';
 import type { ArtifactHarvester } from './engine/harvester.js';
 import type { BranchIntegrationService } from './engine/branch-integration.js';
 import type { CheckService } from './engine/checks.js';
@@ -21,6 +24,7 @@ import type { GateService } from './engine/gates.js';
 import type { MetricsService } from './engine/metrics.js';
 import type { RecoveryService } from './engine/recovery.js';
 import type { RemediationPlanner } from './engine/remediation.js';
+import type { FeedbackRounds } from './engine/feedback-rounds.js';
 import type { SchedulerService } from './engine/scheduler.js';
 import type { ApprovalWaiter } from './support/tool-policy.js';
 import type { RunDeadlines } from './engine/run-deadline.js';
@@ -71,6 +75,10 @@ export const DECISION_REPOSITORY = token<DecisionRepositoryPort>('port.DecisionR
 export const EVALUATION_REPOSITORY = token<EvaluationRepositoryPort>('port.EvaluationRepository');
 export const CHECKPOINT_REPOSITORY = token<CheckpointRepositoryPort>('port.CheckpointRepository');
 export const LEASE_REPOSITORY = token<LeaseRepositoryPort>('port.LeaseRepository');
+export const PERSON_REPOSITORY = token<PersonRepositoryPort>('port.PersonRepository');
+export const MEMBER_REPOSITORY = token<MemberRepositoryPort>('port.MemberRepository');
+export const FEEDBACK_REPOSITORY = token<FeedbackRepositoryPort>('port.FeedbackRepository');
+export const RUN_INPUT_REPOSITORY = token<RunInputRepositoryPort>('port.RunInputRepository');
 
 export const ARTIFACT_STORE = token<ArtifactStorePort>('port.ArtifactStore');
 /** Workflow files, read from the project's repositories. */
@@ -88,6 +96,7 @@ export const SECRET_STORE = token<SecretStorePort>('port.SecretStore');
  */
 export const ARTIFACT_TEMPLATES = token<ArtifactTemplatePort>('port.ArtifactTemplates');
 export const ARTIFACT_PARSER = token<ArtifactParserPort>('port.ArtifactParser');
+export const ARTIFACT_MEASURE = token<ArtifactMeasurePort>('port.ArtifactMeasure');
 
 export const SETTINGS_STORE = token<SettingsStorePort>('port.SettingsStore');
 export const SYSTEM_ENVIRONMENT = token<SystemEnvironmentPort>('port.SystemEnvironment');
@@ -111,6 +120,12 @@ export const BRANCH_INTEGRATION_SERVICE = token<BranchIntegrationService>('appli
 export const SCHEDULER = token<SchedulerService>('application.Scheduler');
 export const RECOVERY_SERVICE = token<RecoveryService>('application.RecoveryService');
 export const METRICS_SERVICE = token<MetricsService>('application.MetricsService');
+export const STAFFING_RESOLVER = token<StaffingResolver>('application.StaffingResolver');
+export const REVIEW_PIPELINE = token<ReviewPipeline>('application.ReviewPipeline');
+/** Feedback items, downstream impact and round starts: shared by the mission service, the executor and reviews. */
+export const FEEDBACK_ROUNDS = token<FeedbackRounds>('application.FeedbackRounds');
+/** Who requests act as until accounts exist. The local person's name comes from the module options. */
+export const IDENTITY = token<IdentityPort>('application.Identity');
 export const RUNTIME_OVERRIDES = token<RuntimeOverrides>('application.RuntimeOverrides');
 export const APPROVAL_WAITER = token<ApprovalWaiter>('application.ApprovalWaiter');
 /** Live run budgets, shared by the executor that owns them and `ask_human`, which pauses them. */
@@ -133,6 +148,9 @@ export const RUNTIME_SERVICE = token<RuntimeService>('application.RuntimeService
 export const ROLE_SERVICE = token<RoleService>('application.RoleService');
 export const INTEGRATION_SERVICE = token<IntegrationService>('application.IntegrationService');
 export const PROJECTION_SERVICE = token<ProjectionService>('application.ProjectionService');
+export const TEAM_SERVICE = token<TeamService>('application.TeamService');
+export const STAFFING_SERVICE = token<StaffingService>('application.StaffingService');
+export const FEEDBACK_SERVICE = token<FeedbackService>('application.FeedbackService');
 
 export const TANDEMISE_SERVICES = token<TandemiseServices>('application.TandemiseServices');
 
@@ -160,4 +178,8 @@ export const PERSISTENCE_PORT_TOKENS = {
   EVALUATION_REPOSITORY,
   CHECKPOINT_REPOSITORY,
   LEASE_REPOSITORY,
+  PERSON_REPOSITORY,
+  MEMBER_REPOSITORY,
+  FEEDBACK_REPOSITORY,
+  RUN_INPUT_REPOSITORY,
 } as const satisfies Readonly<Record<string, Token<unknown>>>;

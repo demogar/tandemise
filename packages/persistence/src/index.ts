@@ -38,4 +38,8 @@ export { SqliteDecisionRepository } from './repositories/decision-repository.js'
 export { SqliteEvaluationRepository } from './repositories/evaluation-repository.js';
 export { SqliteCheckpointRepository } from './repositories/checkpoint-repository.js';
 export { SqliteLeaseRepository } from './repositories/lease-repository.js';
+export { SqlitePersonRepository } from './repositories/person-repository.js';
+export { SqliteMemberRepository } from './repositories/member-repository.js';
+export { SqliteFeedbackRepository } from './repositories/feedback-repository.js';
+export { SqliteRunInputRepository } from './repositories/run-input-repository.js';
 export { createUnitOfWork } from './repositories/unit-of-work.js';

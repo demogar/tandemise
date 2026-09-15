@@ -1,5 +1,6 @@
 import type { MissionId, RepositoryId, TaskId, WorkspaceId, Timestamp } from '@tandemise/shared';
 import type { Capability } from '../capability.js';
+import type { RoleStaffing } from '../staffing.js';
 
 /** MVP.md §9.1. Terminal states are RELEASED-adjacent or explicit failures. */
 export const MISSION_STATUSES = [
@@ -25,7 +26,8 @@ export function isTerminalMissionStatus(s: MissionStatus): boolean {
 const TRANSITIONS: Record<MissionStatus, readonly MissionStatus[]> = {
   DRAFT: ['PLANNING', 'CANCELLED'],
   PLANNING: ['AWAITING_PLAN_APPROVAL', 'EXECUTING', 'FAILED', 'CANCELLED', 'BLOCKED'],
-  AWAITING_PLAN_APPROVAL: ['EXECUTING', 'PLANNING', 'CANCELLED', 'FAILED'],
+  // BLOCKED is where a rejected plan leaves the mission, until it is re-planned or its goal changes.
+  AWAITING_PLAN_APPROVAL: ['EXECUTING', 'PLANNING', 'BLOCKED', 'CANCELLED', 'FAILED'],
   EXECUTING: ['REVIEWING', 'QA', 'READY_TO_SHIP', 'BLOCKED', 'PAUSED', 'FAILED', 'CANCELLED', 'COMPLETE'],
   REVIEWING: ['EXECUTING', 'QA', 'BLOCKED', 'PAUSED', 'FAILED', 'CANCELLED'],
   QA: ['EXECUTING', 'READY_TO_SHIP', 'BLOCKED', 'PAUSED', 'FAILED', 'CANCELLED'],
@@ -78,6 +80,10 @@ export interface Mission {
   readonly integrationBranch: string | null;
   readonly baseBranch: string | null;
   readonly statusReason: string | null;
+  /** The member who started the mission, or null for one created before members existed. */
+  readonly createdBy?: string | null;
+  /** Per-role staffing for this mission, layered over the workspace's. */
+  readonly staffing?: RoleStaffing;
   readonly createdAt: Timestamp;
   readonly updatedAt: Timestamp;
   readonly startedAt: Timestamp | null;
@@ -95,6 +101,8 @@ export interface MissionDraft {
   readonly workflowPreset?: string;
   readonly workflowInputs?: Readonly<Record<string, string>>;
   readonly baseBranch?: string | null;
+  readonly createdBy?: string | null;
+  readonly staffing?: RoleStaffing;
 }
 
 /** Aggregate counters projected for the mission list, computed not stored. */

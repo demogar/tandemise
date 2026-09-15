@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Route, Router, Switch, useLocation } from 'wouter';
+import { Redirect, Route, Router, Switch, useLocation } from 'wouter';
 import { useHashLocation } from 'wouter/use-hash-location';
 import { Sidebar } from './components/Sidebar.js';
 import { CommandPalette } from './components/CommandPalette.js';
@@ -9,20 +9,24 @@ import { FirstProject } from './screens/FirstProject.js';
 import { Home } from './screens/Home.js';
 import { Missions } from './screens/Missions.js';
 import { NewMission } from './screens/NewMission.js';
-import { MissionDetail, type MissionTab } from './screens/mission/MissionDetail.js';
-import { Approvals } from './screens/Approvals.js';
+import { MISSION_TABS, MissionDetail, type MissionTab } from './screens/mission/MissionDetail.js';
+import { Inbox } from './screens/Inbox.js';
 import { Artifacts } from './screens/Artifacts.js';
-import { Workforce } from './screens/Workforce.js';
+import { Team, type TeamTab } from './screens/team/Team.js';
 import { Runtimes } from './screens/Runtimes.js';
 import { Integrations } from './screens/Integrations.js';
 import { Settings } from './screens/Settings.js';
 import { Project } from './screens/Project.js';
 import { useConnection } from './lib/connection.js';
 import { useDaemonStream } from './lib/stream.js';
-import { useApprovals, useWorkspaces } from './lib/queries.js';
+import { useWorkspaces } from './lib/queries.js';
+import { useInbox } from './lib/inbox.js';
 import { WorkspaceProvider } from './lib/workspace.js';
 import { useHotkey } from './lib/keyboard.js';
 import { useThemePreference } from './lib/theme.js';
+import { useFlash } from './lib/notices.js';
+import { ImpactHost } from './components/ImpactDialog.js';
+import { ComposerHost } from './components/RequestChanges.js';
 
 export function App(): JSX.Element {
   // Hash routing: the production build is loaded from `file://`, where a path
@@ -68,16 +72,27 @@ function ConnectedShell(): JSX.Element {
   );
 }
 
+/** The one-line result of an action whose effect lands somewhere else on screen; announced, never focused. */
+function Flash(): JSX.Element | null {
+  const text = useFlash();
+  return text === null ? null : (
+    <div className="flash" role="status">
+      {text}
+    </div>
+  );
+}
+
 function ProjectShell(): JSX.Element {
   const stream = useDaemonStream();
-  const approvals = useApprovals();
+  const inbox = useInbox();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [location, navigate] = useLocation();
 
   useHotkey('mod+k', () => setPaletteOpen((open) => !open));
   useHotkey('mod+n', () => navigate('/missions/new'));
 
-  const pending = (approvals.data ?? []).filter((view) => view.approval.status === 'PENDING').length;
+  // Approvals addressed to me plus human tasks I can pick up: what is actually mine to do.
+  const pending = inbox.forMeCount;
 
   return (
     <div className="app">
@@ -94,9 +109,15 @@ function ProjectShell(): JSX.Element {
             <Route path="/missions/:id/:tab?">
               {(params) => <MissionDetail id={params.id ?? ''} tab={normalizeTab(params.tab)} />}
             </Route>
-            <Route path="/approvals" component={Approvals} />
+            <Route path="/inbox" component={Inbox} />
+            <Route path="/approvals">
+              <Redirect to="/inbox" replace />
+            </Route>
             <Route path="/artifacts" component={Artifacts} />
-            <Route path="/workforce" component={Workforce} />
+            <Route path="/team/:tab?">{(params) => <Team tab={normalizeTeamTab(params.tab)} />}</Route>
+            <Route path="/workforce">
+              <Redirect to="/team" replace />
+            </Route>
             <Route path="/runtimes" component={Runtimes} />
             <Route path="/integrations" component={Integrations} />
             <Route path="/project" component={Project} />
@@ -106,12 +127,20 @@ function ProjectShell(): JSX.Element {
         </ErrorBoundary>
       </main>
       {paletteOpen ? <CommandPalette onClose={() => setPaletteOpen(false)} /> : null}
+      <Flash />
+      <ComposerHost />
+      <ImpactHost />
     </div>
   );
 }
 
-const TABS: readonly MissionTab[] = ['plan', 'timeline', 'artifacts', 'checks', 'metrics'];
-
+/** A mission opens on its feed; an unknown tab does too, rather than on an empty pane. */
 function normalizeTab(value: string | undefined): MissionTab {
-  return TABS.includes(value as MissionTab) ? (value as MissionTab) : 'plan';
+  return (MISSION_TABS as readonly string[]).includes(value ?? '') ? (value as MissionTab) : 'feed';
+}
+
+const TEAM_TABS: readonly TeamTab[] = ['people', 'staffing', 'roles'];
+
+function normalizeTeamTab(value: string | undefined): TeamTab {
+  return TEAM_TABS.includes(value as TeamTab) ? (value as TeamTab) : 'people';
 }

@@ -1,14 +1,15 @@
 import type {
-  ArtifactManifest, ArtifactRepositoryPort, ArtifactStorePort, ArtifactType,
+  ArtifactHandoff, ArtifactManifest, ArtifactRepositoryPort, ArtifactStorePort, ArtifactType,
   EvaluationRepositoryPort, ExternalRef, Mission, MissionTask, TaskRepositoryPort,
 } from '@tandemise/domain';
-import { ARTIFACT_OUT_DIR, isArtifactType } from '@tandemise/domain';
+import { ARTIFACT_OUT_DIR, RUNTIME_ACTOR, SYSTEM_ACTOR, isArtifactType } from '@tandemise/domain';
 import type { ExecutionTarget } from '@tandemise/execution-core';
-import type { Clock, RunId } from '@tandemise/shared';
+import type { ArtifactId, Clock, RunId } from '@tandemise/shared';
 import { errorMessage, summarize } from '@tandemise/shared';
-import type { ArtifactParserPort } from '../ports.js';
+import type { ArtifactMeasurePort, ArtifactParserPort } from '../ports.js';
 import { supersededBy } from '../support/lineage.js';
 import type { EventRecorder, EventScope } from '../support/event-recorder.js';
+import { checkRoundHandoff, owedUncited, type RoundContract } from '../support/feedback-rules.js';
 import { evaluationFrom } from './evaluations.js';
 
 export { ARTIFACT_OUT_DIR };
@@ -51,6 +52,37 @@ export interface HarvestRequest {
   readonly scope: EventScope;
   /** Provenance recorded on every artifact collected from this run. */
   readonly sourceRefs: readonly ExternalRef[];
+  /** The agent member that did the run; the runtime itself when omitted. */
+  readonly authorId?: string;
+  /**
+   * Artifacts this run was asked to revise in place - a tighten pass's first
+   * draft. A file left exactly as it was is that artifact again, not a new
+   * version: storing it twice would supersede a draft with itself.
+   */
+  readonly revising?: readonly ArtifactManifest[];
+  /**
+   * Set when the pass carries feedback: a handoff that does not cite what it
+   * owes is refused like any malformed artifact, so the retry names the ids.
+   */
+  readonly roundContract?: RoundContract;
+}
+
+/** A file refused only because it left notes of its round unanswered. */
+export interface UnansweredNotes {
+  readonly type: ArtifactType;
+  /** Exactly as it appears in `HarvestResult.issues`. */
+  readonly issue: string;
+  readonly round: number;
+  /** Notes it owed and did not cite; 0 when it only cited a note that is not on the task. */
+  readonly notes: number;
+}
+
+/** An artifact whose main body is over its type's word budget. */
+export interface OverBudgetArtifact {
+  readonly artifactId: ArtifactId;
+  readonly type: ArtifactType;
+  readonly words: number;
+  readonly budget: number;
 }
 
 export interface HarvestResult {
@@ -59,6 +91,17 @@ export interface HarvestResult {
   readonly missing: readonly ArtifactType[];
   /** One entry per rejected file, already formatted for a retry prompt. */
   readonly issues: readonly string[];
+  /**
+   * The rejected files whose only fault was the round's contract: written and
+   * valid, but not citing every note they owe. Their issues are in `issues`
+   * too; this says which ones they are, so the line a person reads can speak
+   * of an unanswered note instead of the retry prompt's ids and paths.
+   */
+  readonly unanswered: readonly UnansweredNotes[];
+  /** What this run's ChangeSet says it changed; absent when it wrote none. */
+  readonly filesChanged?: number;
+  /** Collected artifacts over their word budget. Never a reason to fail: it earns a tighten pass. */
+  readonly overBudget: readonly OverBudgetArtifact[];
 }
 
 /**
@@ -82,6 +125,7 @@ export class ArtifactHarvester {
     private readonly artifacts: ArtifactRepositoryPort,
     private readonly evaluations: EvaluationRepositoryPort,
     private readonly parser: ArtifactParserPort,
+    private readonly measure: ArtifactMeasurePort,
     private readonly recorder: EventRecorder,
     private readonly clock: Clock,
     /** Optional so older compositions keep mission-wide superseding. */
@@ -149,8 +193,11 @@ export class ArtifactHarvester {
     const { task, target } = request;
     const fs = target.filesystem();
     const manifests: ArtifactManifest[] = [];
+    const overBudget: OverBudgetArtifact[] = [];
     const issues: string[] = [];
+    const unanswered: UnansweredNotes[] = [];
     const collected = new Set<ArtifactType>();
+    let filesChanged: number | undefined;
 
     // This task's own folder, then loose top-level files for a worker that
     // wrote to the directory itself. Collected once per type, own folder first.
@@ -163,7 +210,7 @@ export class ArtifactHarvester {
       }
     }
     if (entries.length === 0) {
-      return { manifests, missing: task.expectedOutputs, issues };
+      return { manifests, missing: task.expectedOutputs, issues, unanswered, overBudget };
     }
 
     for (const { dir, name } of entries) {
@@ -178,8 +225,18 @@ export class ArtifactHarvester {
       if (stored.ok) {
         manifests.push(stored.manifest);
         collected.add(typeName);
+        if (stored.manifest.overBudget === true) {
+          overBudget.push({
+            artifactId: stored.manifest.id,
+            type: typeName,
+            words: stored.manifest.wordCount ?? 0,
+            budget: stored.budget,
+          });
+        }
+        if (stored.filesChanged !== undefined) filesChanged = stored.filesChanged;
       } else {
         issues.push(stored.issue);
+        if (stored.unanswered !== undefined) unanswered.push({ type: typeName, issue: stored.issue, ...stored.unanswered });
       }
     }
 
@@ -187,6 +244,9 @@ export class ArtifactHarvester {
       manifests,
       missing: task.expectedOutputs.filter((type) => !collected.has(type)),
       issues,
+      unanswered,
+      ...(filesChanged === undefined ? {} : { filesChanged }),
+      overBudget,
     };
   }
 
@@ -194,7 +254,10 @@ export class ArtifactHarvester {
     request: HarvestRequest,
     type: ArtifactType,
     path: string,
-  ): Promise<{ ok: true; manifest: ArtifactManifest } | { ok: false; issue: string }> {
+  ): Promise<
+    | { ok: true; manifest: ArtifactManifest; budget: number; filesChanged?: number }
+    | { ok: false; issue: string; unanswered?: { readonly round: number; readonly notes: number } }
+  > {
     let source: string;
     try {
       source = await request.target.filesystem().read(path);
@@ -208,8 +271,32 @@ export class ArtifactHarvester {
       return { ok: false, issue: `\`${path}\` does not satisfy the ${type} contract — ${detail}` };
     }
 
+    // Before the unchanged check, so an untouched draft that owes a citation is refused too.
+    if (request.roundContract !== undefined) {
+      const handoff = readHandoff(parsed.value.frontMatter);
+      const problems = checkRoundHandoff(type, handoff, request.roundContract);
+      if (problems.length > 0) {
+        return {
+          ok: false,
+          issue: `\`${path}\` does not answer the feedback for round ${request.roundContract.round}: ${problems.join('; ')}`,
+          unanswered: { round: request.roundContract.round, notes: owedUncited(type, handoff, request.roundContract).length },
+        };
+      }
+    }
+
+    const measure = this.measure.measure(type, parsed.value.body);
+    const changed = type === 'ChangeSet' ? parsed.value.frontMatter['filesChanged'] : undefined;
+    const counted = typeof changed === 'number' ? { filesChanged: changed } : {};
+
+    const unchanged = await this.#unchanged(request, type, source);
+    if (unchanged !== null) return { ok: true, manifest: unchanged, budget: measure.budget, ...counted };
+
     const title = readTitle(parsed.value.frontMatter) ?? `${type} for ${request.task.title}`;
-    const summary = summarize(firstParagraph(parsed.value.body), 300);
+    const handoff = readHandoff(parsed.value.frontMatter);
+    // The headline is what the author wrote for a busy reader; the first
+    // paragraph cut to 300 characters was sometimes a table row. The fallback
+    // only serves a parser bound without the handoff contract.
+    const summary = handoff?.headline ?? summarize(firstParagraph(parsed.value.body), 300);
     // Supersede in the same breath as the write, so a downstream task never
     // reads last attempt's work - but only work this one actually replaces.
     const previous = this.tasks === undefined
@@ -228,7 +315,18 @@ export class ArtifactHarvester {
       supersedes: previous?.id ?? null,
       summary,
     });
-    this.artifacts.create(manifest);
+    // The author is who did the work, the responsible person who answers for
+    // it; the engine is what put it on record, since nobody uploaded it.
+    const recorded = this.artifacts.create({
+      ...manifest,
+      authorId: request.authorId ?? RUNTIME_ACTOR,
+      responsibleId: request.task.responsibleId ?? null,
+      recordedBy: SYSTEM_ACTOR,
+      handoff,
+      wordCount: measure.mainWords,
+      overBudget: measure.overBudget,
+      round: request.task.round ?? 1,
+    });
 
     const evaluation = evaluationFrom({
       missionId: request.mission.id,
@@ -241,15 +339,34 @@ export class ArtifactHarvester {
     }, this.clock);
     if (evaluation !== null) this.evaluations.createEvaluation(evaluation);
 
-    this.recorder.record(request.scope, { type: 'artifact.created', artifactId: manifest.id });
+    this.recorder.record(request.scope, { type: 'artifact.created', artifactId: recorded.id });
     this.recorder.invalidate('artifacts', request.mission.id);
-    return { ok: true, manifest };
+    return { ok: true, manifest: recorded, budget: measure.budget, ...counted };
+  }
+
+  /** The artifact being revised, when the file on disk is still exactly its body. */
+  async #unchanged(request: HarvestRequest, type: ArtifactType, source: string): Promise<ArtifactManifest | null> {
+    const previous = request.revising?.find((a) => a.type === type);
+    if (previous === undefined) return null;
+    try {
+      return (await this.store.read(previous.id)).body === source ? previous : null;
+    } catch {
+      // An unreadable draft cannot be compared, so the file is stored as new.
+      return null;
+    }
   }
 }
 
 function readTitle(frontMatter: Readonly<Record<string, unknown>>): string | null {
   const title = frontMatter['title'];
   return typeof title === 'string' && title.trim().length > 0 ? title.trim() : null;
+}
+
+function readHandoff(frontMatter: Readonly<Record<string, unknown>>): ArtifactHandoff | null {
+  const handoff = frontMatter['handoff'];
+  return typeof handoff === 'object' && handoff !== null && typeof (handoff as { headline?: unknown }).headline === 'string'
+    ? handoff as ArtifactHandoff
+    : null;
 }
 
 function firstParagraph(body: string): string {

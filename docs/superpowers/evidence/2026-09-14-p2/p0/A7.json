@@ -1,0 +1,46 @@
+{
+  "id": "A7",
+  "title": "Pool and claim",
+  "ok": true,
+  "checks": [
+    {
+      "label": "qa is unassigned and claimable by Ana and Bo; you are responsible until claimed",
+      "ok": true,
+      "observed": [
+        "Bo Chen",
+        "Ana Ruiz"
+      ]
+    },
+    {
+      "label": "\"Claim for\" offers only Ana and Bo",
+      "ok": true,
+      "observed": [
+        "Ana Ruiz",
+        "Bo Chen"
+      ]
+    },
+    {
+      "label": "Bo is the assignee and now responsible",
+      "ok": true
+    },
+    {
+      "label": "\"Done by\" offers only Bo",
+      "ok": true,
+      "observed": [
+        "Bo Chen"
+      ]
+    },
+    {
+      "label": "QAPlan: by Bo, recorded by you, Bo responsible",
+      "ok": true,
+      "observed": {
+        "author": "Bo Chen",
+        "recordedBy": "Demostenes Garcia G."
+      }
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/A7-claim.png"
+  ]
+}

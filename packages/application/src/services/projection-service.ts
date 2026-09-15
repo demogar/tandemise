@@ -1,21 +1,32 @@
 import type {
-  ApprovalRepositoryPort, ArtifactRepositoryPort, DecisionRepositoryPort,
-  EvaluationRepositoryPort, EventRepositoryPort, ExecutionTargetRecord,
+  Approval, ApprovalRepositoryPort, ArtifactRepositoryPort, DecisionRepositoryPort,
+  EvaluationRepositoryPort, EventRepositoryPort, ExecutionTargetRecord, FeedbackItem, FeedbackRepositoryPort,
   ExecutionTargetRepositoryPort, Mission, MissionRepositoryPort, MissionStatus, MissionTask,
-  PlanValidationIssue, RepoRepositoryPort, RoleRepositoryPort, RunEventRecord, RunRepositoryPort,
-  RuntimeProfileRepositoryPort, TaskRepositoryPort, WorkspaceRepositoryPort,
+  MemberRepositoryPort, PlanValidationIssue, RepoRepositoryPort, RoleRepositoryPort, RunEventRecord, RunRepositoryPort,
+  RuntimeProfileRepositoryPort, Run, TaskRepositoryPort, TaskStatus, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
-import { planLevels } from '@tandemise/domain';
+import { PENDING_FEEDBACK_STATUSES, planLevels } from '@tandemise/domain';
 import type {
-  HomeView, MissionDetail, MissionSummary, RuntimeView, TaskView,
+  ActorRef, FeedCard, HomeView, InboxView, MissionDetail, MissionFeedView, MissionSummary, RuntimeView, TaskView,
 } from '@tandemise/api-contract';
-import type { MissionId, WorkspaceId } from '@tandemise/shared';
+import { humanActionForMember, isApprovalForMember, planStanding } from '@tandemise/api-contract';
+import type { MissionId, TaskId, WorkspaceId } from '@tandemise/shared';
 import { TandemiseError, asId } from '@tandemise/shared';
 import type { ProjectionService, RuntimeService } from '../services.js';
 import type { GateService } from '../engine/gates.js';
 import type { MetricsService } from '../engine/metrics.js';
 import { asPlannedTasks, validateTaskGraph } from '../support/dag.js';
-import { toApprovalView } from '../support/approval-view.js';
+import { toApprovalView, toApprovalViews } from '../support/approval-view.js';
+import { actorRef, actorRefs, toArtifactView } from '../support/actors.js';
+import type { StaffingContext, StaffingResolver } from '../engine/staffing-resolver.js';
+import type { Caller } from '../support/identity.js';
+import { versionLines } from '../support/artifact-versions.js';
+import { currentHandoff, isPlanAsking, isTaskAsking, primaryArtifact } from '../support/handoff-rules.js';
+import { resolveChanges, toFeedbackView } from '../support/feedback-view.js';
+import { missionTakesRounds } from '../support/feedback-rules.js';
+
+/** Where a task that carries an in-round note has not started that round's pass yet. */
+const ROUND_NOT_RUN: readonly MissionTask['status'][] = ['READY', 'PENDING'];
 
 /** Enough of the timeline for the home screen to show what is happening now. */
 const HOME_EVENT_LIMIT = 30;
@@ -25,6 +36,11 @@ const ACTIVE_MISSION_STATUSES: readonly MissionStatus[] = [
   'PLANNING', 'EXECUTING', 'REVIEWING', 'QA', 'READY_TO_SHIP', 'RELEASED', 'OBSERVING',
 ];
 const ATTENTION_MISSION_STATUSES: readonly MissionStatus[] = ['BLOCKED', 'AWAITING_PLAN_APPROVAL'];
+
+/** The feed shows the latest few finished cards; the rest sit behind "Show N more". */
+const DEFAULT_FEED_DONE_LIMIT = 5;
+/** Finished for good: these cards are history, not work in flight. */
+const FEED_DONE_STATUSES: readonly TaskStatus[] = ['SUCCEEDED', 'FAILED', 'SKIPPED', 'CANCELLED'];
 
 export interface ProjectionDeps {
   readonly workspaces: WorkspaceRepositoryPort;
@@ -43,6 +59,9 @@ export interface ProjectionDeps {
   readonly runtimes: RuntimeService;
   readonly gates: GateService;
   readonly metrics: MetricsService;
+  readonly members: MemberRepositoryPort;
+  readonly staffing: StaffingResolver;
+  readonly feedback: FeedbackRepositoryPort;
 }
 
 /**
@@ -75,11 +94,244 @@ export class ProjectionServiceImpl implements ProjectionService {
       activeMissions: summaries.filter((s) => ACTIVE_MISSION_STATUSES.includes(s.mission.status)),
       blockedMissions: summaries.filter((s) => ATTENTION_MISSION_STATUSES.includes(s.mission.status)),
       recentMissions: summaries,
-      pendingApprovals: this.deps.approvals
-        .list({ ...scope, statuses: ['PENDING'] })
-        .map((a) => toApprovalView(this.deps, a)),
+      pendingApprovals: toApprovalViews(this.deps, this.deps.approvals.list({ ...scope, statuses: ['PENDING'] })),
       runtimes: await this.#runtimeViews(workspace?.id),
       recentEvents: this.#recentEvents(missions),
+    };
+  }
+
+  inbox(workspaceId: WorkspaceId): InboxView {
+    if (this.deps.workspaces.get(workspaceId) === undefined) throw TandemiseError.notFound('Workspace', workspaceId);
+    // The team is read once and every name comes from it: this is behind the
+    // always-mounted nav badge, and a lookup per addressee per card adds up.
+    const team = new Map(this.deps.members.listByWorkspace(workspaceId, { includeRemoved: true }).map((m) => [m.id as string, m]));
+    const named = { ...this.deps, members: { get: (id: string) => team.get(id) ?? this.deps.members.get(asId<'MemberId'>(id)) } };
+
+    const missions = new Map<string, Mission | undefined>();
+    const missionOf = (id: MissionId): Mission | undefined => {
+      if (!missions.has(id)) missions.set(id, this.deps.missions.get(id));
+      return missions.get(id);
+    };
+    const tasks = this.deps.tasks.listByStatus(['AWAITING_HUMAN']).flatMap((task) => {
+      const mission = missionOf(task.missionId);
+      if (mission === undefined || mission.workspaceId !== workspaceId) return [];
+      return [{
+        id: task.id,
+        key: task.key,
+        title: task.title,
+        missionId: mission.id,
+        missionTitle: mission.title,
+        assignee: actorRef(named, task.assigneeId),
+        responsible: actorRef(named, task.responsibleId),
+        claimable: actorRefs(named, task.staffing?.claimable),
+        escalatedTo: actorRefs(named, task.staffing?.escalatedTo),
+        statusReason: task.statusReason,
+        updatedAt: task.updatedAt,
+      }];
+    });
+    return {
+      approvals: toApprovalViews(named, this.deps.approvals.list({ workspaceId, statuses: ['PENDING'] })),
+      tasks,
+    };
+  }
+
+  /**
+   * A mission's cards for one caller, in a single pass.
+   *
+   * The team, the tasks, the artifacts, the pending approvals and the runs are
+   * each read once and joined here; nothing below asks the database per card.
+   * This is the screen a mission opens on and it refreshes on every task
+   * event, so a query per card would be paid over and over.
+   *
+   * Who a card is for comes from `@tandemise/api-contract/for-me`, the rule
+   * the Inbox uses, so a card in "Needs you" is always also in "For me".
+   */
+  missionFeed(id: MissionId, caller: Caller, options: { doneLimit?: number } = {}): MissionFeedView {
+    const mission = this.#requireMission(id);
+    const doneLimit = options.doneLimit ?? DEFAULT_FEED_DONE_LIMIT;
+
+    const team = new Map(this.deps.members.listByWorkspace(mission.workspaceId, { includeRemoved: true }).map((m) => [m.id as string, m]));
+    // Removed seats stay in `team` so old work is still named, but a removed seat is nobody's "me".
+    const meId = [...team.values()].find((m) => m.kind === 'person' && m.personId === caller.personId && m.status === 'active')?.id ?? null;
+    const tasks = this.deps.tasks.listByMission(id);
+    const taskById = new Map(tasks.map((t) => [t.id as string, t]));
+    const roles = new Map(this.deps.roles.list(mission.workspaceId).map((r) => [r.id, r]));
+    const runsByTask = groupBy(this.deps.runs.listByMission(id), (r: Run) => r.taskId);
+    const artifacts = this.deps.artifacts.listByMission(id);
+    const lines = versionLines(artifacts);
+    // Newest first, as the repository returns them.
+    const live = artifacts.filter((a) => lines.get(a.id)?.supersededBy === null);
+    const liveByTask = groupBy(live.filter((a) => a.taskId !== null), (a) => a.taskId as string);
+    const allByTask = groupBy(artifacts.filter((a) => a.taskId !== null), (a) => a.taskId as string);
+    const artifactById = new Map(artifacts.map((a) => [a.id as string, a]));
+    // Every status, read once: the plan card is labelled from its decided approval, and the task cards need only the pending ones.
+    const missionApprovals = this.deps.approvals.list({ missionId: id });
+    const pending = missionApprovals.filter((a) => a.status === 'PENDING');
+    const pendingByTask = groupBy(pending.filter((a) => a.taskId !== null), (a) => a.taskId as string);
+    // One read for every card's notes, like everything else here.
+    const notes = this.deps.feedback.listByMission(id);
+    const notesByTask = groupBy(notes, (i: FeedbackItem) => i.taskId);
+
+    const named = {
+      members: { get: (memberId: string) => team.get(memberId) },
+      missions: { get: (missionId: MissionId) => (missionId === mission.id ? mission : undefined) },
+      tasks: { get: (taskId: TaskId) => taskById.get(taskId) },
+      roles: { get: (roleId: string) => roles.get(roleId) },
+      runs: { listByTask: (taskId: TaskId) => runsByTask.get(taskId) ?? [] },
+      // Already loaded for the cards, so a pending approval's headline costs no query.
+      artifacts: { get: (artifactId: string) => artifactById.get(artifactId), listByMission: () => artifacts },
+    };
+    // Addressed to me, checks included: spec §4.1 puts a check for me under "Needs you", the Inbox's own "for me".
+    const forMe = (a: Approval): boolean => isApprovalForMember(a.addressees ?? [], meId);
+
+    const needsYou: FeedCard[] = [];
+    const inProgress: FeedCard[] = [];
+    // `oldest` pins a card to the end of done regardless of its timestamp.
+    const done: { card: FeedCard; finishedAt: string; oldest: boolean }[] = [];
+
+    for (const task of tasks) {
+      // Planned but not started: the feed is what has happened, and the Plan tab shows what will.
+      if (task.status === 'PENDING') continue;
+      // READY is not always fresh. A retry after gate feedback or a recovery
+      // requeue has started before, and a task deferred for a runtime carries
+      // the scheduler's reason; both are work in flight a person should see.
+      if (task.status === 'READY' && task.startedAt === null && task.statusReason === null) continue;
+      // Skipped or cancelled before it ever ran: nothing happened worth a card.
+      if ((task.status === 'SKIPPED' || task.status === 'CANCELLED') && task.startedAt === null) continue;
+
+      const own = liveByTask.get(task.id) ?? [];
+      // A later fix or revision task can supersede this task's output. The card
+      // still shows what this task produced, marked as updated, rather than
+      // going blank as if it had done nothing.
+      const primary = primaryArtifact(own, task.expectedOutputs, allByTask.get(task.id) ?? []);
+      const superseded = primary !== undefined && (lines.get(primary.id)?.supersededBy ?? null) !== null;
+      const successorId = superseded ? lines.get(primary.id)?.supersededBy ?? null : null;
+      const successorTaskId = successorId === null ? null : artifactById.get(successorId)?.taskId ?? null;
+      const supersededByTaskKey = successorTaskId === null ? null : taskById.get(successorTaskId)?.key ?? null;
+      const approvals = pendingByTask.get(task.id) ?? [];
+      // A request that holds work up leads; a check for me shows only when nothing else is asked of me.
+      const mine = approvals.find((a) => a.kind !== 'check' && forMe(a)) ?? approvals.find(forMe);
+      const humanAction = task.status === 'AWAITING_HUMAN'
+        ? humanActionForMember({
+          assigneeId: task.assigneeId ?? null,
+          claimableIds: task.staffing?.claimable ?? [],
+          escalatedToIds: task.staffing?.escalatedTo ?? [],
+        }, meId)
+        : null;
+      // `needs` describes a request; once nothing is being asked, it is stale and hidden.
+      const asking = isTaskAsking(task, approvals);
+      const section: FeedCard['section'] = mine !== undefined || humanAction !== null
+        ? 'needs_you'
+        : FEED_DONE_STATUSES.includes(task.status) ? 'done' : 'in_progress';
+      const doneBy = actorRef(named, primary?.authorId ?? task.assigneeId);
+
+      const card: FeedCard = {
+        taskId: task.id,
+        key: task.key,
+        title: task.title,
+        // A role that no longer resolves has no name worth showing; a raw id is not one.
+        roleName: roles.get(task.roleId)?.name ?? null,
+        status: task.status,
+        statusReason: task.statusReason,
+        section,
+        doneBy,
+        responsible: actorRef(named, task.responsibleId ?? primary?.responsibleId),
+        recordedBy: differentActor(actorRef(named, primary?.recordedBy), doneBy),
+        artifactId: primary?.id ?? null,
+        artifactTitle: primary?.title ?? null,
+        handoff: currentHandoff(primary, asking),
+        // A superseded primary is not among the live ones, so every live artifact is "more".
+        moreArtifacts: own.filter((a) => a.id !== primary?.id).length,
+        overBudget: primary?.overBudget ?? false,
+        superseded,
+        supersededByTaskKey,
+        pendingApproval: section === 'needs_you' && mine !== undefined ? toApprovalView(named, mine) : null,
+        humanAction,
+        planDecision: null,
+        updatedAt: task.updatedAt,
+        round: task.round ?? 1,
+        // A round that has started but not run yet still carries its notes: "2 notes for round 2",
+        // rather than a count that missed the one the round started with.
+        openFeedback: (notesByTask.get(task.id) ?? [])
+          .filter((i) => PENDING_FEEDBACK_STATUSES.includes(i.status) || (i.status === 'in_round' && ROUND_NOT_RUN.includes(task.status)))
+          .map((i) => toFeedbackView(named, i)),
+        // Only this task's notes, as the reader resolves them: a change answers the notes on its own task.
+        changed: resolveChanges(named, primary?.handoff, new Map((notesByTask.get(task.id) ?? []).map((i) => [i.id as string, i]))),
+        // A wait step reads nothing, a task with nothing done has nothing to change yet, and a cancelled mission takes no more rounds.
+        canRequestChanges: task.executor !== 'wait' && (task.startedAt !== null || primary !== undefined) && missionTakesRounds(mission),
+      };
+      if (section === 'needs_you') needsYou.push(card);
+      else if (section === 'in_progress') inProgress.push(card);
+      else done.push({ card, finishedAt: task.finishedAt ?? task.updatedAt, oldest: false });
+    }
+
+    // The plan gates everything after it, so an open plan approval for me leads
+    // "Needs you"; once decided it is the oldest thing that happened and closes "Done".
+    const planArtifact = live.find((a) => a.type === 'MissionPlan');
+    const planAsking = isPlanAsking(mission, pending);
+    // The rule the Feed tab's count uses too, so the tab and this section never disagree.
+    const standing = planStanding({
+      missionStatus: mission.status,
+      planCreatedAt: planArtifact?.createdAt ?? null,
+      approvals: missionApprovals.map((a) => ({ id: a.id, kind: a.kind, status: a.status, createdAt: a.createdAt, addresseeIds: a.addressees ?? [] })),
+      tasks,
+    }, meId);
+    const planDecision = standing.decision;
+    const planApproval = standing.approvalId === undefined ? undefined : missionApprovals.find((a) => a.id === standing.approvalId);
+    if (planArtifact !== undefined || planApproval !== undefined) {
+      // Only a request the mission is still asking gets Approve on the card: a
+      // PENDING row a re-plan or a crash left behind would approve a plan that no longer stands.
+      const askingMe = planDecision === 'pending' && standing.forMe;
+      // A rejection that still stops the mission waits for a re-plan, on the person who was asked.
+      const rejectedOpen = planDecision === 'rejected' && standing.open;
+      const doneBy = actorRef(named, planArtifact?.authorId);
+      const plan: FeedCard = {
+        taskId: null,
+        key: 'plan',
+        title: planArtifact?.title ?? `Plan for ${mission.title}`,
+        roleName: null,
+        status: 'PLAN',
+        // The open request itself while it is asked; after a rejection, the mission's line, which says why and what to do next.
+        statusReason: planDecision === 'pending' ? planApproval?.title ?? null
+          : rejectedOpen ? mission.statusReason : null,
+        // Open for someone else: the plan is waiting on them, which is work in flight, not history.
+        section: standing.forMe ? 'needs_you' : standing.open ? 'in_progress' : 'done',
+        doneBy,
+        responsible: actorRef(named, planArtifact?.responsibleId),
+        recordedBy: differentActor(actorRef(named, planArtifact?.recordedBy), doneBy),
+        artifactId: planArtifact?.id ?? null,
+        artifactTitle: planArtifact?.title ?? null,
+        handoff: currentHandoff(planArtifact, planAsking),
+        moreArtifacts: 0,
+        overBudget: planArtifact?.overBudget ?? false,
+        superseded: false,
+        supersededByTaskKey: null,
+        pendingApproval: askingMe && planApproval !== undefined ? toApprovalView(named, planApproval) : null,
+        humanAction: null,
+        planDecision,
+        updatedAt: planArtifact?.createdAt ?? planApproval?.createdAt ?? mission.updatedAt,
+        // The plan is answered through its approval and re-planning, not through rounds.
+        round: 1,
+        openFeedback: [],
+        changed: [],
+        canRequestChanges: false,
+      };
+      if (plan.section === 'needs_you') needsYou.unshift(plan);
+      else if (plan.section === 'in_progress') inProgress.unshift(plan);
+      // The plan came before every task, so it is the oldest done card and belongs last.
+      else done.push({ card: plan, finishedAt: planArtifact?.createdAt ?? '', oldest: true });
+    }
+
+    // Longest waiting first: it has held things up the longest.
+    needsYou.sort((a, b) => (a.key === 'plan' ? -1 : b.key === 'plan' ? 1 : a.updatedAt.localeCompare(b.updatedAt)));
+    done.sort((a, b) => Number(a.oldest) - Number(b.oldest) || b.finishedAt.localeCompare(a.finishedAt));
+
+    return {
+      missionId: mission.id,
+      needsYou,
+      inProgress,
+      done: done.slice(0, doneLimit).map((d) => d.card),
+      doneTotal: done.length,
     };
   }
 
@@ -95,7 +347,7 @@ export class ProjectionServiceImpl implements ProjectionService {
         ? null
         : this.deps.repositories.get(mission.repositoryId) ?? null,
       tasks: this.#taskViews(mission, tasks),
-      artifacts: this.deps.artifacts.listByMission(id),
+      artifacts: this.deps.artifacts.listByMission(id).map((a) => toArtifactView(this.deps, a)),
       approvals: this.deps.approvals.list({ missionId: id }),
       decisions: this.deps.decisions.listByMission(id),
       targets: this.deps.targets.listByMission(id),
@@ -112,6 +364,16 @@ export class ProjectionServiceImpl implements ProjectionService {
   async missionTasks(id: MissionId): Promise<readonly TaskView[]> {
     const mission = this.#requireMission(id);
     return this.#taskViews(mission, this.deps.tasks.listByMission(id));
+  }
+
+  taskView(id: TaskId): TaskView {
+    const task = this.deps.tasks.get(id);
+    if (task === undefined) throw TandemiseError.notFound('Task', id);
+    const mission = this.#requireMission(task.missionId);
+    // Levels depend on the whole graph, so the task is projected among its siblings.
+    const view = this.#taskViews(mission, this.deps.tasks.listByMission(mission.id)).find((t) => t.id === id);
+    if (view === undefined) throw TandemiseError.notFound('Task', id);
+    return view;
   }
 
   missionEvents(
@@ -136,6 +398,20 @@ export class ProjectionServiceImpl implements ProjectionService {
   #taskViews(mission: Mission, tasks: readonly MissionTask[]): readonly TaskView[] {
     const levels = planLevels(asPlannedTasks(tasks));
     const targets = this.deps.targets.listByMission(mission.id);
+    // Loaded once for every PENDING task's would-be staffing, not once per task.
+    const pending = tasks.find((t) => t.status === 'PENDING');
+    const context = pending === undefined ? undefined : this.#staffingContext(pending);
+    const notesByTask = groupBy(this.deps.feedback.listByMission(mission.id), (i: FeedbackItem) => i.taskId);
+    // Why each flagged task stands out, read from its latest flag; the log is scanned only when something is flagged.
+    const flags = new Map<string, TaskView['attention']>();
+    if (tasks.some((t) => t.needsAttention === true)) {
+      for (const event of this.deps.events.listByMission(mission.id, { semanticOnly: true })) {
+        if (event.body.type !== 'task.attention') continue;
+        flags.set(event.body.taskId, event.body.kind === 'stale_input'
+          ? { kind: 'stale_input', upstream: event.body.upstream ?? null, note: event.body.note }
+          : { kind: 'changes_requested', upstream: null, note: event.body.note });
+      }
+    }
 
     return tasks.map((task): TaskView => {
       const runs = [...this.deps.runs.listByTask(task.id)]
@@ -152,7 +428,7 @@ export class ProjectionServiceImpl implements ProjectionService {
         level: levels.get(task.key) ?? 0,
         latestRun,
         runCount: runs.length,
-        outputArtifacts: this.deps.artifacts.listByTask(task.id),
+        outputArtifacts: this.deps.artifacts.listByTask(task.id).map((a) => toArtifactView(this.deps, a)),
         checks: this.deps.evaluations.listChecks(task.id),
         // Evaluated live rather than stored: a gate is a view of the evidence as
         // it stands now, and a re-run check has to move the badge.
@@ -160,14 +436,52 @@ export class ProjectionServiceImpl implements ProjectionService {
         // gate reads "Not met", and a plan full of red "Not met" badges looks
         // like a stuck mission when nothing has even started.
         gate: task.attempts > 0 && task.status !== 'RUNNING' ? this.deps.gates.evaluate(task) : null,
-        pendingApprovalId: this.deps.approvals.pendingForTask(task.id)[0]?.id ?? null,
+        pendingApprovalId: pendingCardFor(this.deps.approvals.pendingForTask(task.id)),
         runtimeName: profile?.name ?? latestRun?.runtimeProfileId ?? null,
         targetName: target?.name ?? null,
         repositoryName: task.repositoryId === null || task.repositoryId === mission.repositoryId
           ? null
           : this.deps.repositories.get(task.repositoryId)?.name ?? null,
+        assignee: actorRef(this.deps, task.assigneeId),
+        responsible: actorRef(this.deps, task.responsibleId),
+        claimable: actorRefs(this.deps, task.staffing?.claimable),
+        escalatedTo: actorRefs(this.deps, task.staffing?.escalatedTo),
+        wouldBe: this.#wouldBe(task, context),
+        round: task.round ?? 1,
+        feedback: (notesByTask.get(task.id) ?? []).map((i) => toFeedbackView(this.deps, i)),
+        attention: task.needsAttention === true ? flags.get(task.id) ?? { kind: 'changes_requested', upstream: null, note: '' } : null,
       };
     });
+  }
+
+  /**
+   * The resolution a PENDING task would get now, so the plan can say who is
+   * lined up before anything is decided. Any failure to resolve (a workspace
+   * that lost its owner) is shown as nothing rather than breaking the mission view.
+   */
+  #wouldBe(task: MissionTask, context: StaffingContext | null | undefined): TaskView['wouldBe'] {
+    if (task.status !== 'PENDING' || context === null) return null;
+    try {
+      const resolved = this.deps.staffing.resolve(task, context);
+      const responsible = actorRef(this.deps, resolved.responsibleId);
+      if (responsible === null) return null;
+      return {
+        assignee: actorRef(this.deps, resolved.assigneeId ?? resolved.agentCandidates[0]?.id ?? null),
+        responsible,
+        claimable: actorRefs(this.deps, resolved.claimable),
+        executor: resolved.executor,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  #staffingContext(task: MissionTask): StaffingContext | null {
+    try {
+      return this.deps.staffing.context(task);
+    } catch {
+      return null;
+    }
   }
 
   #summary(mission: Mission): MissionSummary {
@@ -234,4 +548,25 @@ export class ProjectionServiceImpl implements ProjectionService {
     if (mission === undefined) throw TandemiseError.notFound('Mission', id);
     return mission;
   }
+}
+
+/** The card a task is waiting on: a check waits on nobody, so any other pending card comes first. */
+function pendingCardFor(cards: readonly { readonly id: string; readonly kind: string }[]): string | null {
+  return (cards.find((c) => c.kind !== 'check') ?? cards[0])?.id ?? null;
+}
+
+function groupBy<T>(items: readonly T[], key: (item: T) => string): Map<string, T[]> {
+  const groups = new Map<string, T[]>();
+  for (const item of items) {
+    const k = key(item);
+    const group = groups.get(k);
+    if (group === undefined) groups.set(k, [item]);
+    else group.push(item);
+  }
+  return groups;
+}
+
+/** A second name on a card only when it is a different actor. */
+function differentActor(actor: ActorRef | null, than: ActorRef | null): ActorRef | null {
+  return actor === null || actor.id === than?.id ? null : actor;
 }

@@ -9,7 +9,19 @@ import type { Result } from '@tandemise/shared';
  * impersonate one. Every step is a direct statement about what the run should
  * look like, which is what makes a failing test readable.
  */
-export type FakeStep =
+/**
+ * A condition on the run a step belongs to. Steps without one always run.
+ *
+ * It exists so one script can stand in for an agent that answers a follow-up
+ * differently from its first request - a tighten pass, say - without a check
+ * having to swap profiles between two runs of the same task.
+ */
+export interface FakeStepCondition {
+  /** The step runs only when the run's prompt contains this text, case-sensitively. */
+  readonly promptIncludes?: string;
+}
+
+export type FakeStep = (
   | { readonly kind: 'message'; readonly text: string }
   | { readonly kind: 'thinking'; readonly text: string }
   | { readonly kind: 'tool'; readonly tool: string; readonly input?: string; readonly outcome?: 'ok' | 'error' }
@@ -20,7 +32,8 @@ export type FakeStep =
   | { readonly kind: 'rate-limit'; readonly detail?: string }
   | { readonly kind: 'delay'; readonly ms: number }
   | { readonly kind: 'complete'; readonly summary?: string }
-  | { readonly kind: 'fail'; readonly code: string; readonly message: string; readonly retryable?: boolean };
+  | { readonly kind: 'fail'; readonly code: string; readonly message: string; readonly retryable?: boolean }
+) & { readonly when?: FakeStepCondition };
 
 export interface FakeScript {
   readonly steps: readonly FakeStep[];
@@ -33,6 +46,14 @@ export interface FakeScript {
    * runtime's memory, not of the work the run performs.
    */
   readonly resume: 'ok' | 'missing';
+  /**
+   * Named values read out of the prompt: name to a regex source, applied with
+   * flags `gm`; `{{name}}` expands to every match's first group, joined with
+   * `, `. It lets a script answer with ids the engine minted during the run,
+   * such as the feedback ids a round asks it to cite, which no script can know
+   * when it is written.
+   */
+  readonly captures?: Readonly<Record<string, string>>;
 }
 
 const STEP_KINDS = new Set([
@@ -73,20 +94,67 @@ export function parseFakeScript(value: unknown): Result<FakeScript, TandemiseErr
   if (resume !== 'ok' && resume !== 'missing') {
     return Err(TandemiseError.validation("Fake script `resume` must be 'ok' or 'missing'"));
   }
+  const captures = parseCaptures((value as Record<string, unknown>)['captures']);
+  if (!captures.ok) return captures;
   const parsed: FakeStep[] = [];
   for (const [index, raw] of steps.entries()) {
     const step = parseStep(raw, index);
     if (!step.ok) return step;
     parsed.push(step.value);
   }
-  return Ok({ steps: parsed, resume });
+  return Ok({ steps: parsed, resume, ...(captures.value === undefined ? {} : { captures: captures.value }) });
+}
+
+function parseCaptures(raw: unknown): Result<Readonly<Record<string, string>> | undefined, TandemiseError> {
+  if (raw === undefined) return Ok(undefined);
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    return Err(TandemiseError.validation('Fake script `captures` must be an object of name to regex source'));
+  }
+  const out: Record<string, string> = {};
+  for (const [name, source] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof source !== 'string') {
+      return Err(TandemiseError.validation(`Fake script capture '${name}' must be a regex source string`));
+    }
+    try {
+      new RegExp(source, 'gm');
+    } catch (e) {
+      return Err(TandemiseError.validation(`Fake script capture '${name}' is not a valid regex: ${(e as Error).message}`));
+    }
+    out[name] = source;
+  }
+  return Ok(out);
 }
 
 function parseStep(raw: unknown, index: number): Result<FakeStep, TandemiseError> {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
     return Err(TandemiseError.validation(`Fake script step ${index} must be an object`));
   }
-  const step = raw as Record<string, unknown>;
+  const when = parseCondition((raw as Record<string, unknown>)['when'], index);
+  if (!when.ok) return when;
+  const step = parseStepBody(raw as Record<string, unknown>, index);
+  if (!step.ok || when.value === undefined) return step;
+  return Ok({ ...step.value, when: when.value });
+}
+
+function parseCondition(raw: unknown, index: number): Result<FakeStepCondition | undefined, TandemiseError> {
+  if (raw === undefined) return Ok(undefined);
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    return Err(TandemiseError.validation(`Fake script step ${index} \`when\` must be an object`));
+  }
+  const includes = (raw as Record<string, unknown>)['promptIncludes'];
+  if (includes !== undefined && typeof includes !== 'string') {
+    return Err(TandemiseError.validation(`Fake script step ${index} \`when.promptIncludes\` must be a string`));
+  }
+  return Ok(includes === undefined ? {} : { promptIncludes: includes });
+}
+
+/** Whether a step applies to a run with this prompt. */
+export function stepApplies(step: FakeStep, prompt: string): boolean {
+  const includes = step.when?.promptIncludes;
+  return includes === undefined || prompt.includes(includes);
+}
+
+function parseStepBody(step: Record<string, unknown>, index: number): Result<FakeStep, TandemiseError> {
   const kind = step['kind'];
   if (typeof kind !== 'string' || !STEP_KINDS.has(kind)) {
     return Err(TandemiseError.validation(`Fake script step ${index} has unknown kind '${String(kind)}'`, {

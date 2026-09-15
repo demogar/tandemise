@@ -3,11 +3,16 @@ export type { FrontMatterDocument } from './front-matter.js';
 
 export {
   ARTIFACT_SCHEMAS, ArchitecturePlanFrontMatter, ChangeSetFrontMatter, DecisionRecordFrontMatter,
-  DesignBriefFrontMatter, hasSchema, ImplementationPlanFrontMatter, ProblemBriefFrontMatter,
+  DesignBriefFrontMatter, EvidenceFrontMatter, FinanceReportFrontMatter, hasSchema, MissionPlanFrontMatter, ImplementationPlanFrontMatter, ProblemBriefFrontMatter,
   ProductSpecFrontMatter, QAPlanFrontMatter, QAReportFrontMatter, ReleaseCandidateFrontMatter,
   ReviewReportFrontMatter,
 } from './schemas.js';
 export type { FrontMatterFor, SchemaBackedArtifactType } from './schemas.js';
+
+export { deriveHandoff, HANDOFF_LIMITS, handoffSchema } from './handoff.js';
+export { budgetFor, measureArtifact, measureBody, overBudget, splitAppendix, WORD_BUDGETS } from './budget.js';
+export type { ArtifactMeasure, BodyMeasure } from './budget.js';
+export { stripFrontMatter } from './strip-front-matter.js';
 
 export { formatIssues, parseArtifact } from './parse.js';
 export type { ArtifactIssue, ParsedArtifact } from './parse.js';

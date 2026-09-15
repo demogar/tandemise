@@ -393,7 +393,7 @@ function ProfileModal({ view, mode, onClose }: { view: RuntimeView; mode: Profil
         {duplicating ? (
           <p className="muted">
             A second {view.adapterDisplayName} profile runs as its own worker. Give it a different config directory and it has its own login,
-            settings and MCP servers — then route roles to whichever you prefer under Workforce.
+            settings and MCP servers — then route roles to whichever you prefer under Team.
           </p>
         ) : null}
 

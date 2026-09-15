@@ -5,7 +5,9 @@ import {
   createRuntimeProfileRequest, createWorkspaceRequest, decideApprovalRequest, listMissionsQuery,
   missionEventsQuery, probeRepositoryRequest, retryTaskRequest, updateIntegrationRequest,
   updateRuntimeProfileRequest, updateWorkspaceRequest, upsertRoleRequest,
-  completeTaskRequest,
+  claimTaskRequest, completeTaskRequest, createPersonRequest, updatePersonRequest, addMemberRequest,
+  updateMemberRequest, roleStaffingPatchRequest, taskStaffingPatchRequest, missionFeedQuery, missionArtifactsQuery, artifactSearchQuery,
+  dismissFeedbackRequest, giveFeedbackRequest, startRoundRequest,
 } from '@tandemise/api-contract';
 import type { TandemiseServices } from '@tandemise/application';
 import { Router, formatZodIssues, type RequestContext } from './http/router.js';
@@ -24,9 +26,11 @@ export function buildRouter(services: TandemiseServices): Router {
   /**
    * Parses query parameters the same way `ctx.body()` parses bodies. A raw
    * ZodError escaping a handler is mapped to INTERNAL, which turns a mistyped
-   * `?limit=9999` into a 500 with the whole issue array in the message.
+   * `?limit=9999` into a 500 with the whole issue array in the message. The
+   * input side is `unknown` so a schema may transform its strings, e.g. 'true'
+   * into a boolean.
    */
-  const query = <T>(ctx: RequestContext, schema: z.ZodType<T>): T => {
+  const query = <T>(ctx: RequestContext, schema: z.ZodType<T, z.ZodTypeDef, unknown>): T => {
     const parsed = schema.safeParse(Object.fromEntries(ctx.query));
     if (!parsed.success) throw TandemiseError.validation(formatZodIssues(parsed.error));
     return parsed.data;
@@ -47,8 +51,10 @@ export function buildRouter(services: TandemiseServices): Router {
 
   // ------------------------------------------------------------ workspaces
   r.get('/v1/home', (ctx) => services.projections.home(ctx.query.get('workspaceId') ?? undefined));
+  r.get('/v1/inbox', (ctx) => services.projections.inbox(asId(required(ctx, 'workspaceId'))));
   r.get('/v1/workspaces', () => services.workspaces.list());
-  r.post('/v1/workspaces', async (ctx) => services.workspaces.create(await ctx.body(createWorkspaceRequest)));
+  r.post('/v1/workspaces', async (ctx) =>
+    services.workspaces.create(ctx.caller, await ctx.body(createWorkspaceRequest)));
   r.get('/v1/workspaces/:id', (ctx) => services.workspaces.view(asId(ctx.params.id!)));
   r.patch('/v1/workspaces/:id', async (ctx) =>
     services.workspaces.update(asId(ctx.params.id!), await ctx.body(updateWorkspaceRequest)));
@@ -70,7 +76,7 @@ export function buildRouter(services: TandemiseServices): Router {
   // navigates to `detail.mission.id`, and a bare Mission made that throw, so
   // "Plan mission" created the mission and left the user on the empty form.
   r.post('/v1/missions', async (ctx) => {
-    const mission = await services.missions.create(await ctx.body(createMissionRequest));
+    const mission = await services.missions.create(ctx.caller, await ctx.body(createMissionRequest));
     return services.projections.missionDetail(mission.id);
   });
   r.get('/v1/missions/:id', (ctx) => services.projections.missionDetail(asId(ctx.params.id!)));
@@ -86,19 +92,64 @@ export function buildRouter(services: TandemiseServices): Router {
   r.get('/v1/missions/:id/events', (ctx) => {
     return services.projections.missionEvents(asId(ctx.params.id!), query(ctx, missionEventsQuery));
   });
-  r.get('/v1/missions/:id/artifacts', (ctx) => services.artifacts.listByMission(asId(ctx.params.id!)));
+  r.get('/v1/missions/:id/artifacts', (ctx) =>
+    services.artifacts.listByMission(asId(ctx.params.id!), query(ctx, missionArtifactsQuery)));
+  // Judged against the caller: which cards "need you" depends on who asks.
+  r.get('/v1/missions/:id/feed', (ctx) =>
+    services.projections.missionFeed(asId(ctx.params.id!), ctx.caller, query(ctx, missionFeedQuery)));
   r.get('/v1/missions/:id/tasks', (ctx) => services.projections.missionTasks(asId(ctx.params.id!)));
 
   r.post('/v1/tasks/:id/retry', async (ctx) =>
-    services.missions.retryTask(asId(ctx.params.id!), await ctx.body(retryTaskRequest)));
-  r.post('/v1/tasks/:id/skip', (ctx) => services.missions.skipTask(asId(ctx.params.id!)));
+    services.missions.retryTask(ctx.caller, asId(ctx.params.id!), await ctx.body(retryTaskRequest)));
+  r.post('/v1/tasks/:id/skip', (ctx) => services.missions.skipTask(ctx.caller, asId(ctx.params.id!)));
   r.post('/v1/tasks/:id/complete', async (ctx) =>
-    services.missions.completeTask(asId(ctx.params.id!), await ctx.body(completeTaskRequest)));
+    services.missions.completeTask(ctx.caller, asId(ctx.params.id!), await ctx.body(completeTaskRequest)));
+  r.post('/v1/tasks/:id/claim', async (ctx) =>
+    services.missions.claimTask(ctx.caller, asId(ctx.params.id!), await ctx.body(claimTaskRequest)));
+
+  // ------------------------------------------------------- feedback and rounds
+  r.post('/v1/tasks/:id/feedback', async (ctx) =>
+    services.feedback.give(ctx.caller, asId(ctx.params.id!), await ctx.body(giveFeedbackRequest)));
+  r.get('/v1/tasks/:id/feedback', (ctx) => services.feedback.list(asId(ctx.params.id!)));
+  r.post('/v1/tasks/:id/rounds', async (ctx) =>
+    services.feedback.startRound(ctx.caller, asId(ctx.params.id!), await ctx.body(startRoundRequest)));
+  r.post('/v1/feedback/:id/dismiss', async (ctx) =>
+    services.feedback.dismiss(ctx.caller, asId(ctx.params.id!), await ctx.body(dismissFeedbackRequest)));
+
+  r.patch('/v1/tasks/:id/staffing', async (ctx) =>
+    services.staffing.patchTask(ctx.caller, asId(ctx.params.id!), await ctx.body(taskStaffingPatchRequest)));
+  r.get('/v1/tasks/:id/staffing/preview', (ctx) => services.staffing.preview(asId(ctx.params.id!)));
+
+  // ---------------------------------------------------------- people and team
+  r.get('/v1/me', (ctx) => services.team.me(ctx.caller));
+  // People are global to the installation, not to a workspace: their CRUD needs no seat anywhere.
+  r.get('/v1/people', () => services.team.listPeople());
+  r.post('/v1/people', async (ctx) => services.team.createPerson(ctx.caller, await ctx.body(createPersonRequest)));
+  // Global, like every person route: a rename shows in each workspace the person has a seat in.
+  r.patch('/v1/people/:id', async (ctx) =>
+    services.team.updatePerson(ctx.caller, asId(ctx.params.id!), await ctx.body(updatePersonRequest)));
+  r.delete('/v1/people/:id', (ctx) => services.team.removePerson(ctx.caller, asId(ctx.params.id!)));
+
+  r.get('/v1/workspaces/:id/team', (ctx) => services.team.team(asId(ctx.params.id!)));
+  r.get('/v1/workspaces/:id/members', (ctx) => services.team.team(asId(ctx.params.id!)).members);
+  r.post('/v1/workspaces/:id/members', async (ctx) =>
+    services.team.addMember(ctx.caller, asId(ctx.params.id!), await ctx.body(addMemberRequest)));
+  r.patch('/v1/members/:id', async (ctx) =>
+    services.team.updateMember(ctx.caller, asId(ctx.params.id!), await ctx.body(updateMemberRequest)));
+  r.delete('/v1/members/:id', (ctx) => services.team.removeMember(ctx.caller, asId(ctx.params.id!)));
+
+  // --------------------------------------------------------------- staffing
+  // Merged per role: a client that edits one role cannot erase the others.
+  r.get('/v1/workspaces/:id/staffing', (ctx) => services.staffing.workspace(asId(ctx.params.id!)));
+  r.patch('/v1/workspaces/:id/staffing', async (ctx) =>
+    services.staffing.patchWorkspace(ctx.caller, asId(ctx.params.id!), await ctx.body(roleStaffingPatchRequest)));
+  r.patch('/v1/missions/:id/staffing', async (ctx) =>
+    services.staffing.patchMission(ctx.caller, asId(ctx.params.id!), await ctx.body(roleStaffingPatchRequest)));
 
   // -------------------------------------------------------------- artifacts
   r.get('/v1/artifacts', (ctx) => {
-    const workspaceId = ctx.query.get('workspaceId');
-    return services.artifacts.search(workspaceId === null ? undefined : asId(workspaceId), ctx.query.get('q') ?? '');
+    const { workspaceId, q, includeSuperseded } = query(ctx, artifactSearchQuery);
+    return services.artifacts.search(workspaceId === undefined ? undefined : asId(workspaceId), q ?? '', { includeSuperseded });
   });
   r.get('/v1/artifacts/:id', (ctx) => services.artifacts.read(asId(ctx.params.id!)));
 
@@ -110,7 +161,7 @@ export function buildRouter(services: TandemiseServices): Router {
   }));
   r.get('/v1/approvals/:id', (ctx) => services.approvals.get(asId(ctx.params.id!)));
   r.post('/v1/approvals/:id/decide', async (ctx) =>
-    services.approvals.decide(asId(ctx.params.id!), await ctx.body(decideApprovalRequest)));
+    services.approvals.decide(ctx.caller, asId(ctx.params.id!), await ctx.body(decideApprovalRequest)));
 
   // --------------------------------------------------------------- runtimes
   r.get('/v1/runtimes', (ctx) => services.runtimes.list(ctx.query.get('workspaceId') ?? undefined));

@@ -2,6 +2,7 @@ import { createServer, type Server, type IncomingMessage, type ServerResponse } 
 import type { Duplex } from 'node:stream';
 import type { AddressInfo } from 'node:net';
 import { TandemiseError, type Logger } from '@tandemise/shared';
+import type { Caller } from '@tandemise/application';
 import { API_VERSION, API_VERSION_HEADER, AUTH_HEADER, STREAM_PATH } from '@tandemise/api-contract';
 import { HANDLED, Router, makeContext, sendError, sendJson } from './router.js';
 import { verifyBearer } from './identity.js';
@@ -11,6 +12,8 @@ export interface HttpServerOptions {
   readonly token: string;
   readonly router: Router;
   readonly log: Logger;
+  /** Maps a verified bearer token to the person the request acts as. */
+  readonly identityResolver: (token: string) => Caller;
   /** Invoked for an authenticated upgrade request on the stream path. */
   readonly onUpgrade: (req: IncomingMessage, socket: Duplex, head: Buffer) => void;
   /** 0 lets the OS pick, which is what MVP.md §7.2 asks for. */
@@ -137,7 +140,8 @@ export class HttpServer {
         return;
       }
 
-      if (!verifyBearer(req.headers[AUTH_HEADER] as string | undefined, this.#opts.token)) {
+      const authorization = req.headers[AUTH_HEADER] as string | undefined;
+      if (!verifyBearer(authorization, this.#opts.token)) {
         log.warn('daemon.unauthenticated_request');
         sendError(res, TandemiseError.permissionDenied('Missing or invalid daemon token.'), log);
         return;
@@ -156,7 +160,8 @@ export class HttpServer {
         return;
       }
 
-      const ctx = makeContext(req, matched.params, url.searchParams, log);
+      const bearer = bearerToken(authorization!);
+      const ctx = makeContext(req, matched.params, url.searchParams, log, () => this.#opts.identityResolver(bearer));
       const result = await matched.route.handler(ctx);
       if (result === HANDLED) return;
       sendJson(res, result === undefined ? 204 : 200, result);
@@ -187,4 +192,8 @@ export class HttpServer {
     socket.once('close', () => this.#upgraded.delete(socket));
     this.#opts.onUpgrade(req, socket, head);
   }
+}
+
+function bearerToken(header: string): string {
+  return header.startsWith('Bearer ') ? header.slice('Bearer '.length) : header;
 }

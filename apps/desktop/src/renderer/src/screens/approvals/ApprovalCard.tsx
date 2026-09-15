@@ -1,13 +1,15 @@
 import { useState } from 'react';
 import { Link } from 'wouter';
 import type { ApprovalView } from '@tandemise/api-contract';
-import type { Approval, ApprovalEvidence, ApprovalOption, RiskClass } from '@tandemise/domain';
-import { REJECT_OPTION } from '../../lib/domain.js';
+import type { Approval, ApprovalEvidence, RiskClass } from '@tandemise/domain';
 import { Icon, type IconName } from '../../components/Icon.js';
-import { ConfirmDialog } from '../../components/Modal.js';
-import { ErrorState, IdChip } from '../../components/primitives.js';
-import { useDaemonMutation } from '../../lib/queries.js';
+import { Modal } from '../../components/Modal.js';
+import { IdChip } from '../../components/primitives.js';
+import { useArtifact } from '../../lib/queries.js';
+import { actorsLine, type Actors } from '../../lib/team.js';
 import { relativeTime, titleCase } from '../../lib/format.js';
+import { ArtifactReader } from '../artifacts/ArtifactReader.js';
+import { DecisionForm, copyFor, riskLabel, useApprovalDecision } from '../../components/Decision.js';
 
 /**
  * MVP.md §23.4 is a hard requirement, not a style note: every card must answer
@@ -17,29 +19,13 @@ import { relativeTime, titleCase } from '../../lib/format.js';
  */
 export function ApprovalCard({ view, compact = false }: { view: ApprovalView; compact?: boolean }): JSX.Element {
   const { approval } = view;
-  const [selected, setSelected] = useState<string>(approval.recommendedOptionId ?? approval.options[0]?.id ?? 'approve');
-  const [note, setNote] = useState('');
-  const [confirming, setConfirming] = useState<ApprovalOption | null>(null);
-
-  const decide = useDaemonMutation(
-    (daemon, args: { optionId: string; note: string }) =>
-      daemon.decideApproval(approval.id, { optionId: args.optionId, note: args.note || undefined }),
-    ['approvals', 'missions', 'tasks'],
-  );
-
-  const chosen = approval.options.find((option) => option.id === selected) ?? approval.options[0];
-  const copy = copyFor(approval, chosen?.id, view.revisable);
-  const needsConfirm = copy.question ? false : isConsequential(approval.risk) || chosen?.id === REJECT_OPTION;
-  const missingAnswer = copy.noteRequired && note.trim().length === 0;
+  const decision = useApprovalDecision(view);
+  const { actors, copy } = decision;
   // The full question is kept as evidence because titles are cut at one line;
   // when it was not cut, repeating it under the title says nothing new.
-  const evidence = approval.evidence.filter((item) => !(copy.question && item.value === approval.title));
-
-  const submit = (): void => {
-    if (!chosen || missingAnswer) return;
-    decide.mutate({ optionId: chosen.id, note });
-    setConfirming(null);
-  };
+  // Pipeline markers are shown as one badge; as evidence rows they read as data.
+  const evidence = approval.evidence.filter((item) => !(copy.question && item.value === approval.title) && !isPipelineMarker(item));
+  const position = pipelinePosition(approval);
 
   return (
     <article className="approval" data-risk={approval.risk}>
@@ -57,6 +43,7 @@ export function ApprovalCard({ view, compact = false }: { view: ApprovalView; co
           <h3 className="approval__title">{approval.title}</h3>
           <div className="approval__context">
             <span className={copy.question ? 'chip chip--you' : 'chip chip--muted'}>{copy.kindLabel}</span>
+            {position ? <span className="badge badge--accent">{position}</span> : null}
             <IdChip id={approval.id} />
             {approval.taskId ? <IdChip id={approval.taskId} prefix="task" /> : null}
             {view.missionTitle ? (
@@ -81,6 +68,7 @@ export function ApprovalCard({ view, compact = false }: { view: ApprovalView; co
             <span className="sep">·</span>
             <span>{relativeTime(approval.createdAt)}</span>
           </div>
+          <AddressLine view={view} actors={actors} />
         </div>
       </header>
 
@@ -117,79 +105,8 @@ export function ApprovalCard({ view, compact = false }: { view: ApprovalView; co
           <Icon name="approvals" size={12} />
           {copy.question ? 'Your answer' : 'Your options'}
         </div>
-        {approval.options.map((option) => (
-          <button
-            key={option.id}
-            type="button"
-            className="option"
-            data-selected={option.id === selected}
-            data-recommended={option.id === approval.recommendedOptionId}
-            onClick={() => setSelected(option.id)}
-          >
-            <span className="option__radio" />
-            <span style={{ flex: 1, minWidth: 0 }}>
-              <span className="option__label">
-                {option.label}
-                {option.id === approval.recommendedOptionId ? (
-                  <span className="badge badge--accent" style={{ marginLeft: 8 }}>
-                    Recommended
-                  </span>
-                ) : null}
-              </span>
-              {option.description ? <span className="option__desc">{option.description}</span> : null}
-            </span>
-          </button>
-        ))}
-
-        <textarea
-          className="textarea"
-          style={{ minHeight: copy.noteRequired ? 88 : 56, marginTop: 4 }}
-          placeholder={copy.notePlaceholder}
-          aria-label={copy.notePlaceholder}
-          aria-required={copy.noteRequired}
-          value={note}
-          onChange={(event) => setNote(event.target.value)}
-        />
-
-        {decide.isError ? <ErrorState error={decide.error} /> : null}
-
-        <div className="row" style={{ justifyContent: 'flex-end', marginTop: 4 }}>
-          <span className="dim" style={{ fontSize: 'var(--fs-xs)', marginRight: 'auto' }}>
-            {missingAnswer
-              ? 'Write your answer to send it.'
-              : copy.question
-                ? 'The worker is waiting, and carries on as soon as you send this.'
-                : needsConfirm ? 'You will be asked to confirm.' : 'Applies immediately.'}
-          </span>
-          <button
-            type="button"
-            className={`btn ${chosen?.id === REJECT_OPTION && !copy.question ? 'btn--danger' : 'btn--primary'}`}
-            disabled={decide.isPending || !chosen || missingAnswer}
-            onClick={() => (needsConfirm && chosen ? setConfirming(chosen) : submit())}
-          >
-            {decide.isPending ? 'Submitting…' : submitLabel(copy, chosen)}
-          </button>
-        </div>
+        <DecisionForm decision={decision} />
       </div>
-
-      {confirming ? (
-        <ConfirmDialog
-          title={`${confirming.label}?`}
-          destructive={confirming.id === REJECT_OPTION || isConsequential(approval.risk)}
-          confirmLabel={confirming.label}
-          busy={decide.isPending}
-          onCancel={() => setConfirming(null)}
-          onConfirm={submit}
-          body={
-            <>
-              <p>{approval.effect}</p>
-              <p style={{ marginTop: 'var(--s3)' }}>
-                Risk class <strong>{riskLabel(approval.risk)}</strong>. This decision is recorded and shown to every downstream role.
-              </p>
-            </>
-          }
-        />
-      ) : null}
     </article>
   );
 }
@@ -198,7 +115,7 @@ export function ApprovalCard({ view, compact = false }: { view: ApprovalView; co
 export function ApprovalPreviewCard({ view }: { view: ApprovalView }): JSX.Element {
   const { approval } = view;
   return (
-    <Link href="/approvals" className="approval" style={{ display: 'block', textDecoration: 'none', color: 'inherit' }} data-risk={approval.risk}>
+    <Link href="/inbox" className="approval" style={{ display: 'block', textDecoration: 'none', color: 'inherit' }} data-risk={approval.risk}>
       <div className="approval__risk" />
       <header className="approval__head" style={{ paddingBottom: 'var(--s2)' }}>
         <span className={`badge ${riskBadgeClass(approval.risk)}`}>
@@ -207,6 +124,7 @@ export function ApprovalPreviewCard({ view }: { view: ApprovalView }): JSX.Eleme
         </span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <h3 className="approval__title">{approval.title}</h3>
+          {view.headline ? <p className="approval__headline truncate">{view.headline}</p> : null}
           <div className="approval__context">
             <span className={approval.kind === 'choice' ? 'chip chip--you' : 'chip chip--muted'}>
               {copyFor(approval, undefined).kindLabel}
@@ -229,62 +147,6 @@ export function ApprovalPreviewCard({ view }: { view: ApprovalView }): JSX.Eleme
   );
 }
 
-/** A question's button says it sends an answer; "Figma" alone reads like a link. */
-function submitLabel(copy: CardCopy, chosen: ApprovalOption | undefined): string {
-  if (chosen === undefined) return 'Decide';
-  if (!copy.question || chosen.id === 'answer' || chosen.id === REJECT_OPTION) return chosen.label;
-  return `Answer: ${chosen.label}`;
-}
-
-interface CardCopy {
-  /** A worker asked something, rather than asked to be allowed something. */
-  readonly question: boolean;
-  readonly kindLabel: string;
-  readonly effectQuestion: string;
-  readonly notePlaceholder: string;
-  /** An open question is answered in the note; there is nothing to send without one. */
-  readonly noteRequired: boolean;
-}
-
-/**
- * The words on the card depend on what is being asked.
- *
- * A `choice` is a worker asking you something and waiting on the answer. Asking
- * "what changes if you approve?" of it, painting "decide without me" red, and
- * making you confirm it as if it were destructive would all misdescribe what
- * the click does - and an open question whose answer box says "optional" would
- * invite sending nothing to a worker that is blocked on exactly that.
- *
- * Rejecting a task's output is the other case that changed: the note is no
- * longer a comment for the record, it is the brief the revision is built from.
- */
-function copyFor(approval: Approval, selectedId: string | undefined, revisable = false): CardCopy {
-  if (approval.kind === 'choice') {
-    const open = selectedId === 'answer';
-    return {
-      question: true,
-      kindLabel: 'Question',
-      effectQuestion: 'What happens when you answer?',
-      notePlaceholder: open
-        ? 'Your answer — the worker reads exactly what you write.'
-        : selectedId === REJECT_OPTION
-          ? 'Anything it should keep in mind while it decides? (optional)'
-          : 'Anything to add — a link, a detail? (optional)',
-      noteRequired: open,
-    };
-  }
-  const revising = revisable && selectedId === REJECT_OPTION;
-  return {
-    question: false,
-    kindLabel: titleCase(approval.kind),
-    effectQuestion: 'What changes if you approve?',
-    notePlaceholder: revising
-      ? 'What should change? It goes back to be revised, using exactly what you write.'
-      : 'Add a note for the record (optional) — downstream roles will read it.',
-    noteRequired: false,
-  };
-}
-
 function Question({ icon, question, answer }: { icon: IconName; question: string; answer: string }): JSX.Element {
   return (
     <div className="qa">
@@ -297,8 +159,48 @@ function Question({ icon, question, answer }: { icon: IconName; question: string
   );
 }
 
+/**
+ * Who the card is for and how far it has climbed, in one line. Only said when
+ * it adds something: a solo workspace whose every card is for you sees nothing.
+ */
+function AddressLine({ view, actors }: { view: ApprovalView; actors: Actors }): JSX.Element | null {
+  const onlyMe = view.addressees.length === 1 && view.addressees[0]?.id === actors.meId;
+  const escalatedTo = view.escalationLevel > 0 ? view.addressees[view.addressees.length - 1] : undefined;
+  // "For you" alone is the default; it earns a line only when it says something else.
+  if (view.addressees.length === 0 || (onlyMe && escalatedTo === undefined)) return null;
+  return (
+    <div className="approval__context">
+      <span>For {actorsLine(view.addressees, actors.meId)}</span>
+      {escalatedTo ? (
+        <>
+          <span className="sep">·</span>
+          <span className="inbox__escalated">Escalated to {escalatedTo.id === actors.meId ? 'you' : escalatedTo.name}</span>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+const REVIEW_LABEL = 'Review';
+const SIGN_OFF_LABEL = 'Sign-off';
+
+function isPipelineMarker(e: ApprovalEvidence): boolean {
+  return e.kind === 'text' && (e.label === REVIEW_LABEL || e.label === SIGN_OFF_LABEL);
+}
+
+/** "Review 1 of 2" or "Lead sign-off", read from the markers the review pipeline writes. */
+export function pipelinePosition(approval: Approval): string | null {
+  if (approval.evidence.some((e) => e.kind === 'text' && e.label === SIGN_OFF_LABEL)) return 'Lead sign-off';
+  const marker = approval.evidence.find((e) => e.kind === 'text' && e.label === REVIEW_LABEL);
+  const match = marker ? /^(\d+)\/(\d+)$/.exec(marker.value) : null;
+  if (!match) return null;
+  // A single review is just "the review"; numbering it says nothing.
+  return match[2] === '1' ? null : `Review ${match[1]} of ${match[2]}`;
+}
+
 function EvidenceRow({ evidence }: { evidence: ApprovalEvidence }): JSX.Element {
   const isLink = evidence.kind === 'link' && /^https?:\/\//.test(evidence.value);
+  if (evidence.kind === 'artifact') return <ArtifactEvidence evidence={evidence} />;
   return (
     <div className="evidence__row">
       <span className="evidence__kind">
@@ -325,6 +227,51 @@ function EvidenceRow({ evidence }: { evidence: ApprovalEvidence }): JSX.Element 
   );
 }
 
+/** An artifact by its title, opening in place; the id only when it cannot be found. */
+function ArtifactEvidence({ evidence }: { evidence: ApprovalEvidence }): JSX.Element {
+  const artifact = useArtifact(evidence.value);
+  const [open, setOpen] = useState(false);
+  const manifest = artifact.data?.manifest;
+  const headline = manifest ? evidenceHeadline(manifest) : null;
+  return (
+    <div className="evidence__row">
+      <span className="evidence__kind">
+        <Icon name="file" size={13} />
+      </span>
+      <span className="evidence__label">{titleCase(evidence.label)}</span>
+      <span className="evidence__value">
+        {manifest ? (
+          <>
+            <a
+              href="#"
+              onClick={(event) => {
+                event.preventDefault();
+                setOpen(true);
+              }}
+            >
+              {manifest.title}
+            </a>
+            {/* The headline says what the document concludes, so the card can be answered without opening it. */}
+            {headline ? <span className="evidence__headline">{headline}</span> : null}
+          </>
+        ) : (
+          <span className="mono dim">{evidence.value}</span>
+        )}
+      </span>
+      {open && manifest ? (
+        <Modal title={manifest.title} wide onClose={() => setOpen(false)}>
+          <ArtifactReader id={manifest.id} />
+        </Modal>
+      ) : null}
+    </div>
+  );
+}
+
+/** A legacy artifact has no handoff; its summary is the headline, as in the reader. */
+function evidenceHeadline(manifest: { handoff?: { headline: string } | null; summary: string | null }): string | null {
+  return manifest.handoff?.headline ?? manifest.summary;
+}
+
 function evidenceIcon(kind: ApprovalEvidence['kind']): IconName {
   switch (kind) {
     case 'artifact':
@@ -338,19 +285,6 @@ function evidenceIcon(kind: ApprovalEvidence['kind']): IconName {
     default:
       return 'message';
   }
-}
-
-const RISK_LABELS: Readonly<Record<RiskClass, string>> = {
-  read: 'Read only',
-  write_reversible: 'Reversible',
-  external_side_effect: 'Leaves this machine',
-  destructive: 'Destructive',
-  financial: 'Financial',
-  release: 'Release',
-};
-
-function riskLabel(risk: RiskClass): string {
-  return RISK_LABELS[risk] ?? titleCase(risk);
 }
 
 function riskIcon(risk: RiskClass): IconName {
@@ -384,8 +318,4 @@ function riskBadgeClass(risk: RiskClass): string {
     default:
       return 'badge badge--release';
   }
-}
-
-function isConsequential(risk: RiskClass): boolean {
-  return risk === 'destructive' || risk === 'financial' || risk === 'release' || risk === 'external_side_effect';
 }

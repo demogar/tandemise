@@ -1,0 +1,20 @@
+{
+  "id": "B7",
+  "title": "Superseded versions are hidden until asked for",
+  "ok": true,
+  "checks": [
+    {
+      "label": "one DesignBrief row by default",
+      "ok": true,
+      "observed": 1
+    },
+    {
+      "label": "\"Show older versions\" reveals v1 under the live version",
+      "ok": true
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/B7-older.png"
+  ]
+}

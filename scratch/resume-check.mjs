@@ -28,7 +28,7 @@ import { persistenceModule, DATABASE } from '@tandemise/persistence';
 import * as persistenceTokens from '@tandemise/persistence';
 import {
   createArtifactsModule, ARTIFACT_STORE as ARTIFACTS_STORE_TOKEN,
-  renderArtifactTemplate, parseArtifact,
+  renderArtifactTemplate, parseArtifact, measureArtifact, deriveHandoff, splitAppendix,
 } from '@tandemise/artifacts';
 import { policyModule } from '@tandemise/policy';
 import { contextModule } from '@tandemise/context';
@@ -168,6 +168,7 @@ const noopBus = { publish: () => {}, subscribe: () => () => {} };
 container.bind(app.ARTIFACT_STORE, (r) => r.resolve(ARTIFACTS_STORE_TOKEN), { source: 'alias' });
 container.bind(app.ARTIFACT_TEMPLATES, () => ({ render: renderArtifactTemplate }), { source: 'check' });
 container.bind(app.ARTIFACT_PARSER, () => ({ parse: parseArtifact }), { source: 'check' });
+container.bind(app.ARTIFACT_MEASURE, () => ({ measure: measureArtifact, deriveHandoff, splitAppendix }), { source: 'check' });
 container.bind(app.EVENT_BUS, () => noopBus, { source: 'check' });
 container.bind(app.PROJECTION_BUS, () => ({ invalidate: () => {}, subscribe: () => () => {} }), { source: 'check' });
 container.bind(app.SECRET_STORE, () => ({ backend: 'memory', store: async () => 'x', resolve: async () => undefined, remove: async () => {}, list: async () => [] }), { source: 'check' });
@@ -195,7 +196,7 @@ writeFileSync(SCRIPT, JSON.stringify({
   ],
 }, null, 2));
 
-const workspace = await services.workspaces.create({ name: 'Resume Check' });
+const workspace = await services.workspaces.create({ personId: services.identity.localPerson().id }, { name: 'Resume Check' });
 const workspaceId = workspace.workspace.id;
 const runtime = await services.runtimes.create({
   adapterId: FAKE_ADAPTER_ID, name: 'forgetful', workspaceId,

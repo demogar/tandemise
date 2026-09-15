@@ -1,8 +1,8 @@
 import type {
   Approval, ApprovalKind, ArtifactManifest, ArtifactType, CheckOutcome, CheckResult, CriterionResult,
-  Evaluation, GateFacts, GateValue,
+  Evaluation, GateFacts, GateValue, RiskClass,
 } from '@tandemise/domain';
-import { blockingFindings, criteriaCoveragePercent } from '@tandemise/domain';
+import { RISK_CLASSES, blockingFindings, criteriaCoveragePercent } from '@tandemise/domain';
 
 /**
  * The complete gate fact vocabulary (MVP.md §17.2).
@@ -131,8 +131,38 @@ export const GATE_FACT_VOCABULARY: readonly FactDefinition[] = [
   {
     name: 'approval.<kind>',
     type: 'approval',
-    description: 'Status of any other approval kind: choice, exception, action, intervention.',
+    description: 'Status of any other approval kind: choice, exception, action, intervention, check.',
     example: 'approval.exception == APPROVED',
+  },
+  {
+    name: 'task.attempt',
+    type: 'number',
+    description: 'Which attempt at the task this is; 0 before it first runs.',
+    example: 'task.attempt >= 2',
+  },
+  {
+    name: 'task.role',
+    type: 'verdict',
+    description: 'The role the task is staffed under.',
+    example: 'task.role == "development"',
+  },
+  {
+    name: 'task.risk',
+    type: 'verdict',
+    description: "The highest risk class among the task's capabilities: read, write_reversible, external_side_effect, destructive, financial or release.",
+    example: 'task.risk == "release"',
+  },
+  {
+    name: 'task.risk_level',
+    type: 'number',
+    description: 'task.risk as its position in that list, 0 (read) to 5 (release), so a condition can use >=.',
+    example: 'task.risk_level >= 2',
+  },
+  {
+    name: 'diff.files_changed',
+    type: 'number',
+    description: "How many files the task's ChangeSet says it changed. Not measured when it wrote no ChangeSet.",
+    example: 'diff.files_changed > 20',
   },
   {
     name: 'git.clean',
@@ -151,6 +181,7 @@ const APPROVAL_FACT_NAME: Readonly<Record<ApprovalKind, string>> = {
   // MVP.md §17.2 names this gate condition `approval.release_candidate`.
   release: 'approval.release_candidate',
   intervention: 'approval.intervention',
+  check: 'approval.check',
 };
 
 /**
@@ -257,6 +288,24 @@ export class GateFactBuilder {
         : group.every((a) => a.status === 'APPROVED') ? 'APPROVED'
         : 'PENDING';
     }
+    return this;
+  }
+
+  /**
+   * Facts about the task itself, for conditions such as "a second opinion on
+   * anything that ships". The caller classifies the risk: this package knows
+   * the order of the classes, not which capability falls in which.
+   */
+  withTask(input: { readonly attempt: number; readonly roleId: string; readonly risk: RiskClass }): this {
+    this.#facts['task.attempt'] = input.attempt;
+    this.#facts['task.role'] = input.roleId;
+    this.#facts['task.risk'] = input.risk;
+    this.#facts['task.risk_level'] = RISK_CLASSES.indexOf(input.risk);
+    return this;
+  }
+
+  withDiff(input: { readonly filesChanged: number }): this {
+    this.#facts['diff.files_changed'] = input.filesChanged;
     return this;
   }
 

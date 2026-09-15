@@ -3,8 +3,11 @@ export * from './workflow.js';
 export * from './gate.js';
 export * from './plan.js';
 export * from './event.js';
+export * from './staffing.js';
+export * from './staffing-presets.js';
 
 export * from './entities/mission.js';
+export * from './entities/member.js';
 export * from './entities/task.js';
 export * from './entities/run.js';
 export * from './entities/artifact.js';
@@ -17,6 +20,7 @@ export * from './entities/integration.js';
 export * from './entities/assignment.js';
 export * from './entities/decision.js';
 export * from './entities/evaluation.js';
+export * from './entities/feedback.js';
 
 export * from './ports/repositories.js';
 export * from './ports/artifact-store.js';

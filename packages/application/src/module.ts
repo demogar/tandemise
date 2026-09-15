@@ -23,6 +23,7 @@ import { GateService } from './engine/gates.js';
 import { MetricsService } from './engine/metrics.js';
 import { RecoveryService } from './engine/recovery.js';
 import { RemediationPlanner } from './engine/remediation.js';
+import { FeedbackRounds } from './engine/feedback-rounds.js';
 import { SchedulerService } from './engine/scheduler.js';
 import { McpGatewayProvisioner } from './engine/mcp-gateway.js';
 import { TaskExecutor } from './engine/task-executor.js';
@@ -35,23 +36,34 @@ import { RunDeadlines } from './engine/run-deadline.js';
 import { ConnectFlow } from './services/connect-flow.js';
 import { IntegrationCredentials } from './support/integration-credentials.js';
 import { ApprovalServiceImpl } from './services/approval-service.js';
+import { ReviewPipeline } from './engine/reviews.js';
 import { ArtifactServiceImpl } from './services/artifact-service.js';
 import { WorkflowServiceImpl } from './services/workflow-service.js';
 import { Waiter } from './engine/waiter.js';
 import { IntegrationServiceImpl } from './services/integration-service.js';
 import { MissionServiceImpl } from './services/mission-service.js';
+import { FeedbackServiceImpl } from './services/feedback-service.js';
 import { PlanningServiceImpl } from './services/planning-service.js';
 import { ProjectionServiceImpl } from './services/projection-service.js';
 import { RoleServiceImpl } from './services/role-service.js';
 import { RuntimeServiceImpl } from './services/runtime-service.js';
 import { SystemServiceImpl } from './services/system-service.js';
 import { WorkspaceServiceImpl } from './services/workspace-service.js';
+import { TeamServiceImpl } from './services/team-service.js';
+import { StaffingServiceImpl } from './services/staffing-service.js';
+import { StaffingResolver } from './engine/staffing-resolver.js';
+import { DEFAULT_LOCAL_PERSON_NAME, LocalIdentity } from './support/identity.js';
 
 const SOURCE = 'application';
 
 export interface ApplicationModuleOptions {
   /** Scheduler tick interval. The daemon passes its configured value. */
   readonly tickIntervalMs?: number;
+  /**
+   * The name given to the local person if none exists yet. The daemon passes
+   * `git config user.name`; this layer may not run processes to find it.
+   */
+  readonly localPersonName?: string;
 }
 
 /**
@@ -86,6 +98,17 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       clock(r),
     ), { source: SOURCE });
 
+    bind(t.IDENTITY, (r) => new LocalIdentity(
+      r.resolve(t.PERSON_REPOSITORY),
+      options.localPersonName ?? DEFAULT_LOCAL_PERSON_NAME,
+    ), { source: SOURCE });
+
+    bind(t.STAFFING_RESOLVER, (r) => new StaffingResolver({
+      members: r.resolve(t.MEMBER_REPOSITORY),
+      workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
+      missions: r.resolve(t.MISSION_REPOSITORY),
+    }), { source: SOURCE });
+
     bind(t.REPOSITORY_PROBER, (r) => new RepositoryProber(r.resolve(PROCESS_SUPERVISOR)), { source: SOURCE });
 
     // ------------------------------------------------- the tool path's policy
@@ -108,6 +131,10 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       missions: r.resolve(t.MISSION_REPOSITORY),
       waiter: r.resolve(t.APPROVAL_WAITER),
       recorder: r.resolve(t.EVENT_RECORDER),
+      runs: r.resolve(t.RUN_REPOSITORY),
+      // Resolved per card: the pipeline reads the team as it is when the tool asks.
+      clock: clock(r),
+      address: (task, workspaceId) => r.resolve(t.REVIEW_PIPELINE).addressFor(task, workspaceId),
     }), { source: SOURCE });
 
     // Asking the supervising human a question is a capability every worker has,
@@ -117,6 +144,8 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       approvals: r.resolve(t.APPROVAL_REPOSITORY),
       approvalFactory: r.resolve(APPROVAL_FACTORY),
       tasks: r.resolve(t.TASK_REPOSITORY),
+      runs: r.resolve(t.RUN_REPOSITORY),
+      address: (task, workspaceId) => r.resolve(t.REVIEW_PIPELINE).questionAddressFor(task, workspaceId),
       waiter: r.resolve(t.APPROVAL_WAITER),
       deadlines: r.resolve(t.RUN_DEADLINES),
       recorder: r.resolve(t.EVENT_RECORDER),
@@ -140,6 +169,22 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       r.resolve(t.APPROVAL_REPOSITORY),
     ), { source: SOURCE });
 
+    bind(t.REVIEW_PIPELINE, (r) => new ReviewPipeline({
+      approvals: r.resolve(t.APPROVAL_REPOSITORY),
+      approvalFactory: r.resolve(APPROVAL_FACTORY),
+      tasks: r.resolve(t.TASK_REPOSITORY),
+      missions: r.resolve(t.MISSION_REPOSITORY),
+      members: r.resolve(t.MEMBER_REPOSITORY),
+      roles: r.resolve(t.ROLE_REPOSITORY),
+      artifacts: r.resolve(t.ARTIFACT_REPOSITORY),
+      runs: r.resolve(t.RUN_REPOSITORY),
+      gates: r.resolve(t.GATE_SERVICE),
+      staffing: r.resolve(t.STAFFING_RESOLVER),
+      recorder: r.resolve(t.EVENT_RECORDER),
+      clock: clock(r),
+      log: log(r).child({ component: 'reviews' }),
+    }), { source: SOURCE });
+
     bind(t.CHECK_SERVICE, (r) => new CheckService(
       r.resolve(t.EVALUATION_REPOSITORY),
       r.resolve(t.EVENT_RECORDER),
@@ -151,6 +196,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       r.resolve(t.ARTIFACT_REPOSITORY),
       r.resolve(t.EVALUATION_REPOSITORY),
       r.resolve(t.ARTIFACT_PARSER),
+      r.resolve(t.ARTIFACT_MEASURE),
       r.resolve(t.EVENT_RECORDER),
       clock(r),
       r.resolve(t.TASK_REPOSITORY),
@@ -180,6 +226,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       approvals: r.resolve(t.APPROVAL_REPOSITORY),
       roles: r.resolve(t.ROLE_REPOSITORY),
       runtimeProfiles: r.resolve(t.RUNTIME_PROFILE_REPOSITORY),
+      members: r.resolve(t.MEMBER_REPOSITORY),
       decisions: r.resolve(t.DECISION_REPOSITORY),
       checkpoints: r.resolve(t.CHECKPOINT_REPOSITORY),
       runtimeManager: r.resolve(RUNTIME_MANAGER),
@@ -198,9 +245,14 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       toolBroker: r.tryResolve(TOOL_BROKER) ?? null,
       overrides: r.resolve(t.RUNTIME_OVERRIDES),
       templates: r.resolve(t.ARTIFACT_TEMPLATES),
+      measure: r.resolve(t.ARTIFACT_MEASURE),
+      events: r.resolve(t.EVENT_REPOSITORY),
       harvester: r.resolve(t.ARTIFACT_HARVESTER),
       checks: r.resolve(t.CHECK_SERVICE),
       gates: r.resolve(t.GATE_SERVICE),
+      reviews: r.resolve(t.REVIEW_PIPELINE),
+      rounds: r.resolve(t.FEEDBACK_ROUNDS),
+      runInputs: r.resolve(t.RUN_INPUT_REPOSITORY),
       recorder: r.resolve(t.EVENT_RECORDER),
       deadlines: r.resolve(t.RUN_DEADLINES),
       paths: paths(r),
@@ -217,6 +269,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       r.resolve(APPROVAL_FACTORY),
       r.resolve(t.EVENT_RECORDER),
       clock(r),
+      (task, workspaceId) => r.resolve(t.REVIEW_PIPELINE).addressFor(task, workspaceId),
     ), { source: SOURCE });
 
     bind(t.BRANCH_INTEGRATION_SERVICE, (r) => new BranchIntegrationService(
@@ -228,6 +281,15 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       r.resolve(t.EVENT_RECORDER),
       clock(r),
     ), { source: SOURCE });
+
+    bind(t.FEEDBACK_ROUNDS, (r) => new FeedbackRounds({
+      missions: r.resolve(t.MISSION_REPOSITORY), tasks: r.resolve(t.TASK_REPOSITORY), runs: r.resolve(t.RUN_REPOSITORY),
+      artifacts: r.resolve(t.ARTIFACT_REPOSITORY), artifactStore: r.resolve(t.ARTIFACT_STORE), approvals: r.resolve(t.APPROVAL_REPOSITORY),
+      evaluations: r.resolve(t.EVALUATION_REPOSITORY), feedback: r.resolve(t.FEEDBACK_REPOSITORY), runInputs: r.resolve(t.RUN_INPUT_REPOSITORY),
+      members: r.resolve(t.MEMBER_REPOSITORY), events: r.resolve(t.EVENT_REPOSITORY), unitOfWork: r.resolve(t.UNIT_OF_WORK),
+      recorder: r.resolve(t.EVENT_RECORDER), clock: clock(r),
+      cancelTask: (taskId) => r.resolve(t.SCHEDULER).cancelTask(taskId),
+    }), { source: SOURCE });
 
     bind(t.SCHEDULER, (r) => new SchedulerService({
       workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
@@ -244,6 +306,10 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       remediation: r.resolve(t.REMEDIATION_PLANNER),
       integration: r.resolve(t.BRANCH_INTEGRATION_SERVICE),
       recorder: r.resolve(t.EVENT_RECORDER),
+      staffing: r.resolve(t.STAFFING_RESOLVER),
+      members: r.resolve(t.MEMBER_REPOSITORY),
+      reviews: r.resolve(t.REVIEW_PIPELINE),
+      rounds: r.resolve(t.FEEDBACK_ROUNDS),
       clock: clock(r),
       log: log(r).child({ component: 'scheduler' }),
       ...(options.tickIntervalMs === undefined ? {} : { tickIntervalMs: options.tickIntervalMs }),
@@ -285,7 +351,32 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       r.resolve(t.RUNTIME_PROFILE_REPOSITORY),
       r.resolve(t.REPOSITORY_PROBER),
       clock(r),
+      {
+        people: r.resolve(t.PERSON_REPOSITORY),
+        members: r.resolve(t.MEMBER_REPOSITORY),
+        unitOfWork: r.resolve(t.UNIT_OF_WORK),
+      },
     ), { source: SOURCE });
+
+    bind(t.TEAM_SERVICE, (r) => new TeamServiceImpl({
+      people: r.resolve(t.PERSON_REPOSITORY),
+      members: r.resolve(t.MEMBER_REPOSITORY),
+      workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
+      unitOfWork: r.resolve(t.UNIT_OF_WORK),
+      clock: clock(r),
+    }), { source: SOURCE });
+
+    bind(t.STAFFING_SERVICE, (r) => new StaffingServiceImpl({
+      workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
+      missions: r.resolve(t.MISSION_REPOSITORY),
+      tasks: r.resolve(t.TASK_REPOSITORY),
+      members: r.resolve(t.MEMBER_REPOSITORY),
+      resolver: r.resolve(t.STAFFING_RESOLVER),
+      projections: r.resolve(t.PROJECTION_SERVICE),
+      unitOfWork: r.resolve(t.UNIT_OF_WORK),
+      recorder: r.resolve(t.EVENT_RECORDER),
+      clock: clock(r),
+    }), { source: SOURCE });
 
     bind(t.ROLE_SERVICE, (r) => new RoleServiceImpl(r.resolve(t.ROLE_REPOSITORY), clock(r)), { source: SOURCE });
 
@@ -293,6 +384,14 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       r.resolve(t.ARTIFACT_REPOSITORY),
       r.resolve(t.ARTIFACT_STORE),
       r.resolve(t.WORKSPACE_REPOSITORY),
+      r.resolve(t.MEMBER_REPOSITORY),
+      r.resolve(t.ARTIFACT_MEASURE),
+      {
+        missions: r.resolve(t.MISSION_REPOSITORY),
+        tasks: r.resolve(t.TASK_REPOSITORY),
+        approvals: r.resolve(t.APPROVAL_REPOSITORY),
+        feedback: r.resolve(t.FEEDBACK_REPOSITORY),
+      },
     ), { source: SOURCE });
 
     bind(t.RUNTIME_SERVICE, (r) => new RuntimeServiceImpl(
@@ -354,6 +453,9 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       runtimes: r.resolve(t.RUNTIME_SERVICE),
       gates: r.resolve(t.GATE_SERVICE),
       metrics: r.resolve(t.METRICS_SERVICE),
+      members: r.resolve(t.MEMBER_REPOSITORY),
+      staffing: r.resolve(t.STAFFING_RESOLVER),
+      feedback: r.resolve(t.FEEDBACK_REPOSITORY),
     }), { source: SOURCE });
 
     // Default: this installation has no workflow files. A composition root that
@@ -376,8 +478,10 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       runtimeProfiles: r.resolve(t.RUNTIME_PROFILE_REPOSITORY),
       approvals: r.resolve(t.APPROVAL_REPOSITORY),
       approvalFactory: r.resolve(APPROVAL_FACTORY),
+      members: r.resolve(t.MEMBER_REPOSITORY),
       artifacts: r.resolve(t.ARTIFACT_REPOSITORY),
       artifactStore: r.resolve(t.ARTIFACT_STORE),
+      measure: r.resolve(t.ARTIFACT_MEASURE),
       runtimeManager: r.resolve(RUNTIME_MANAGER),
       targetManager: r.resolve(EXECUTION_TARGET_MANAGER),
       projections: r.resolve(t.PROJECTION_SERVICE),
@@ -404,10 +508,30 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       roles: r.resolve(t.ROLE_REPOSITORY),
       scheduler: r.resolve(t.SCHEDULER),
       waiter: r.resolve(t.APPROVAL_WAITER),
-      remediation: r.resolve(t.REMEDIATION_PLANNER),
+      rounds: r.resolve(t.FEEDBACK_ROUNDS),
+      unitOfWork: r.resolve(t.UNIT_OF_WORK),
+      reviews: r.resolve(t.REVIEW_PIPELINE),
       recorder: r.resolve(t.EVENT_RECORDER),
+      members: r.resolve(t.MEMBER_REPOSITORY),
+      artifacts: r.resolve(t.ARTIFACT_REPOSITORY),
       clock: clock(r),
       log: log(r).child({ component: 'approvals' }),
+    }), { source: SOURCE });
+
+    // Depends on no service but projections, so the mission service can use it for a retry with a note without a cycle.
+    bind(t.FEEDBACK_SERVICE, (r) => new FeedbackServiceImpl({
+      missions: r.resolve(t.MISSION_REPOSITORY),
+      tasks: r.resolve(t.TASK_REPOSITORY),
+      runs: r.resolve(t.RUN_REPOSITORY),
+      approvals: r.resolve(t.APPROVAL_REPOSITORY),
+      artifacts: r.resolve(t.ARTIFACT_REPOSITORY),
+      feedback: r.resolve(t.FEEDBACK_REPOSITORY),
+      members: r.resolve(t.MEMBER_REPOSITORY),
+      rounds: r.resolve(t.FEEDBACK_ROUNDS),
+      projections: r.resolve(t.PROJECTION_SERVICE),
+      unitOfWork: r.resolve(t.UNIT_OF_WORK),
+      recorder: r.resolve(t.EVENT_RECORDER),
+      scheduler: r.resolve(t.SCHEDULER),
     }), { source: SOURCE });
 
     bind(t.MISSION_SERVICE, (r) => new MissionServiceImpl({
@@ -415,12 +539,21 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       repositories: r.resolve(t.REPO_REPOSITORY),
       missions: r.resolve(t.MISSION_REPOSITORY),
       tasks: r.resolve(t.TASK_REPOSITORY),
+      runs: r.resolve(t.RUN_REPOSITORY),
       approvals: r.resolve(t.APPROVAL_REPOSITORY),
       artifactStore: r.resolve(t.ARTIFACT_STORE),
+      artifacts: r.resolve(t.ARTIFACT_REPOSITORY),
+      measure: r.resolve(t.ARTIFACT_MEASURE),
+      members: r.resolve(t.MEMBER_REPOSITORY),
+      roles: r.resolve(t.ROLE_REPOSITORY),
+      reviews: r.resolve(t.REVIEW_PIPELINE),
       planning: r.resolve(t.PLANNING_SERVICE),
       projections: r.resolve(t.PROJECTION_SERVICE),
       scheduler: r.resolve(t.SCHEDULER),
+      feedback: r.resolve(t.FEEDBACK_SERVICE),
+      rounds: r.resolve(t.FEEDBACK_ROUNDS),
       overrides: r.resolve(t.RUNTIME_OVERRIDES),
+      unitOfWork: r.resolve(t.UNIT_OF_WORK),
       recorder: r.resolve(t.EVENT_RECORDER),
       clock: clock(r),
       log: log(r).child({ component: 'missions' }),
@@ -438,6 +571,10 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       roles: r.resolve(t.ROLE_SERVICE),
       integrations: r.resolve(t.INTEGRATION_SERVICE),
       projections: r.resolve(t.PROJECTION_SERVICE),
+      identity: r.resolve(t.IDENTITY),
+      team: r.resolve(t.TEAM_SERVICE),
+      staffing: r.resolve(t.STAFFING_SERVICE),
+      feedback: r.resolve(t.FEEDBACK_SERVICE),
     }), { source: SOURCE });
   });
 }

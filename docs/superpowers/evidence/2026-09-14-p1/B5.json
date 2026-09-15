@@ -1,0 +1,29 @@
+{
+  "id": "B5",
+  "title": "Still too long after tightening → accepted, flagged, mission continues",
+  "ok": true,
+  "checks": [
+    {
+      "label": "one tighten pass, then an over_budget event",
+      "ok": true
+    },
+    {
+      "label": "design still succeeded",
+      "ok": true,
+      "observed": "SUCCEEDED"
+    },
+    {
+      "label": "the design card shows an \"Over budget\" marker",
+      "ok": true
+    },
+    {
+      "label": "the mission kept going",
+      "ok": true,
+      "observed": "RUNNING"
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/B5-card.png"
+  ]
+}

@@ -1,5 +1,6 @@
 import type { RepositoryId, Timestamp, WorkspaceId } from '@tandemise/shared';
 import type { AutonomyLevel } from './mission.js';
+import type { RoleStaffing } from '../staffing.js';
 
 /**
  * Autonomy is expressed per action class rather than as one global dial, so a
@@ -47,6 +48,12 @@ export interface Workspace {
   readonly defaultAutonomyLevel: AutonomyLevel;
   /** Workspace knowledge injected by the context compiler (MVP.md §14.2). */
   readonly knowledge: WorkspaceKnowledge;
+  /**
+   * Who does each role's work in this workspace, as per-role patches over the
+   * built-in staffing. Optional so a workspace built without it still
+   * typechecks; read back as `{}`.
+   */
+  readonly staffing?: RoleStaffing;
   readonly createdAt: Timestamp;
   readonly updatedAt: Timestamp;
 }

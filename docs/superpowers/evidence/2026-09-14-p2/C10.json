@@ -1,0 +1,119 @@
+{
+  "id": "C10",
+  "title": "Real Claude: round 2 continues the session; the reader shows the tweak between versions",
+  "ok": true,
+  "checks": [
+    {
+      "label": "solo workspace: you are the only person",
+      "ok": true,
+      "observed": [
+        "Demostenes Garcia G."
+      ]
+    },
+    {
+      "label": "round 1 finished on Claude Code",
+      "ok": true,
+      "observed": {
+        "status": "SUCCEEDED",
+        "reason": null
+      }
+    },
+    {
+      "label": "no \"Recording for\" on screen (composer)",
+      "ok": true
+    },
+    {
+      "label": "the flash says \"Round 2 started\"",
+      "ok": true,
+      "observed": "Round 2 started"
+    },
+    {
+      "label": "round 2 finished",
+      "ok": true,
+      "observed": {
+        "status": "SUCCEEDED",
+        "round": 2,
+        "reason": null
+      }
+    },
+    {
+      "label": "every run is on the Claude profile",
+      "ok": true,
+      "observed": [
+        "rt_01m2h02w8tyr9v42p3yc",
+        "rt_01m2h02w8tyr9v42p3yc"
+      ]
+    },
+    {
+      "label": "the round-2 run continued round 1's session (same session id)",
+      "ok": true,
+      "observed": {
+        "r1": "0e95d6c1-19c8-4ece-92da-a6b6482cba82",
+        "r2": "0e95d6c1-19c8-4ece-92da-a6b6482cba82"
+      }
+    },
+    {
+      "label": "the v2 handoff cites the note in changed",
+      "ok": true,
+      "observed": {
+        "changed": [
+          {
+            "what": "Shortened the Scope intro to a single sentence; requirements and acceptance criteria are unchanged.",
+            "feedback": "fb_01m2h04g7k3yr2ahgjv6"
+          }
+        ],
+        "item": {
+          "id": "fb_01m2h04g7k3yr2ahgjv6",
+          "taskId": "tsk_01m2h02y3jr5hh0wyvkb",
+          "artifactId": null,
+          "author": {
+            "id": "mem_01m2gzkc83k859hctqeb",
+            "name": "Demostenes Garcia G.",
+            "kind": "person"
+          },
+          "recordedBy": null,
+          "text": "Make the intro one sentence",
+          "status": "addressed",
+          "round": 2,
+          "createdAt": "2026-09-14T22:20:51.827Z"
+        }
+      }
+    },
+    {
+      "label": "the reader has a version switcher v1, v2 and \"Changes in v2\" linked to the note",
+      "ok": true,
+      "observed": {
+        "versions": [
+          "v1",
+          "v2"
+        ]
+      }
+    },
+    {
+      "label": "switching to v1 opens the older version in place",
+      "ok": true
+    },
+    {
+      "label": "\"Compare with v1\" shows removed and added lines",
+      "ok": true,
+      "observed": {
+        "summary": "v1 → v2: 1 line added, 1 line removed",
+        "added": [
+          "+\nAdd one self-contained static page, `hello.html`, at the repository root that shows \"Hello, world!\" when opened in a browser, since the repo today holds only `README.md` and a `package.json` with no-op `test`/`build` scripts and has no app, server, or framework."
+        ],
+        "removed": [
+          "−\nAdd one static page, `hello.html`, at the repository root that greets the visitor with \"Hello, world!\". The repository currently contains only `README.md` (\"# Acceptance project\") and `package.json`, whose `test` and `build` scripts are no-ops (`node -e \"process.exit(0)\"`). There is no app, server, or framework, so the smallest change that delivers a hello page is a single self-contained HTML file viewable by opening it in a browser."
+        ]
+      }
+    }
+  ],
+  "notes": [
+    "mission msn_01m2h02y3d6psgbbyyr8",
+    "runs: [{\"round\":1,\"purpose\":\"round\",\"status\":\"SUCCEEDED\",\"session\":\"0e95d6c1-19c8-4ece-92da-a6b6482cba82\"},{\"round\":2,\"purpose\":\"round\",\"status\":\"SUCCEEDED\",\"session\":\"0e95d6c1-19c8-4ece-92da-a6b6482cba82\"}]"
+  ],
+  "shots": [
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/C10-reader-v2-changes.png",
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/C10-reader-v1.png",
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/C10-reader-compare.png"
+  ]
+}

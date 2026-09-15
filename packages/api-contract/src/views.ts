@@ -1,8 +1,10 @@
+import type { PlanDecision } from './for-me.js';
 import type {
   Approval, ArtifactManifest, CheckResult, Decision, Evaluation, ExecutionTargetRecord,
   Integration, Mission, MissionProgress, MissionTask, Repository, RoleTemplate, Run,
   RunEventRecord, RuntimeHealth, RuntimeProfile, RuntimeDiscovery, RuntimeSettingField, Workspace,
-  MissionPlan, PlanValidationIssue, GateOutcome,
+  MissionPlan, PlanValidationIssue, GateOutcome, AccessLevel, Member, Person, Staffing,
+  ArtifactHandoff, TaskStatus, FeedbackStatus,
 } from '@tandemise/domain';
 
 /**
@@ -13,6 +15,233 @@ import type {
  * UI assemble them from six endpoints - is what keeps a mission screen one
  * request instead of a waterfall.
  */
+
+/**
+ * Whoever did something, named. Views carry this rather than a bare id so the
+ * renderer never has to fetch the team to print "Ana" next to a decision.
+ */
+export interface ActorRef {
+  readonly id: string;
+  readonly name: string;
+  readonly kind: 'person' | 'agent' | 'system';
+}
+
+/** An artifact with the people behind it. */
+export interface ArtifactView extends ArtifactManifest {
+  readonly author: ActorRef | null;
+  readonly responsible: ActorRef | null;
+  readonly recordedByRef: ActorRef | null;
+}
+
+/**
+ * An artifact in a mission's list, placed in its line of versions.
+ *
+ * The list hides superseded versions unless asked, and a reader that does ask
+ * needs "v2 of 3" without walking the chain itself.
+ */
+export interface MissionArtifactView extends ArtifactView {
+  /** 1-based position along the `supersedes` chain: the first version is 1. */
+  readonly version: number;
+  /** The artifact that replaced this one, or null while it is the live version. */
+  readonly supersededBy: string | null;
+}
+
+/**
+ * One artifact opened in the reader: its manifest placed in its line of
+ * versions, the stored body, and the appendix already found.
+ *
+ * The rule that finds `## Appendix` has to skip code fences and tables, and it
+ * lives in `@tandemise/artifacts` next to the word budgets, which the sandboxed
+ * renderer cannot import. Splitting here means the collapsed "Appendix (N
+ * words)" section counts exactly what the tighten pass counted.
+ */
+export interface ArtifactReadView {
+  readonly manifest: MissionArtifactView;
+  readonly body: string;
+  /** Words in the appendix, measured like the budget measures them; null when there is none. */
+  readonly appendixWords: number | null;
+  /**
+   * The body cut at its first `## Appendix` heading, front matter removed, the
+   * heading itself in neither part. Null when there is no appendix, so the
+   * common case does not carry the body twice.
+   */
+  readonly split: { readonly main: string; readonly appendix: string } | null;
+  /**
+   * Who the request the handoff's `needs` names is waiting on, while that
+   * request is open; null when nothing is being asked. The reader shows
+   * `needs` to someone the request is for and "Waiting for ..." to everyone
+   * else, judged with the shared for-me rules, as the feed does.
+   */
+  readonly openRequest: OpenRequest | null;
+  /**
+   * When this output was set aside, unjudged, because a round reset its task
+   * while its pass was settling; null otherwise. A set-aside artifact is not
+   * any task's current output and asks for nothing, whatever its handoff says.
+   */
+  readonly withdrawnAt: string | null;
+  /** The round that produced this version; null for output from before rounds were recorded. */
+  readonly round: number | null;
+  /** Every version of this output of its task, oldest first, for the version switcher. */
+  readonly versions: readonly {
+    readonly artifactId: string;
+    readonly version: number;
+    readonly round: number | null;
+    readonly createdAt: string;
+  }[];
+  /** "Changes in vN": the handoff's `changed`, each with the notes it answers. */
+  readonly changes: readonly FeedChange[];
+  /** The same signal FeedCard uses: false when the task reads no notes, or its mission takes no more rounds. */
+  readonly canRequestChanges: boolean;
+}
+
+/** One note on a task, named. */
+export interface FeedbackView {
+  readonly id: string;
+  readonly taskId: string;
+  readonly artifactId: string | null;
+  readonly author: ActorRef | null;
+  /** Only when it differs from `author`. */
+  readonly recordedBy: ActorRef | null;
+  readonly text: string;
+  readonly status: FeedbackStatus;
+  readonly round: number | null;
+  readonly createdAt: string;
+}
+
+/** One `handoff.changed` entry with the notes it answers resolved. */
+export interface FeedChange {
+  readonly what: string;
+  readonly declined: boolean;
+  /** Unknown ids are dropped: a card never shows a raw id. */
+  readonly feedback: readonly Pick<FeedbackView, 'id' | 'text' | 'author' | 'status'>[];
+}
+
+/** What reopening a finished task would touch, for the "redo or keep" dialog (spec §3). */
+export interface DownstreamImpactView {
+  readonly taskId: string;
+  readonly taskKey: string;
+  readonly taskTitle: string;
+  readonly nextRound: number;
+  /** The open items the confirmed round will carry. */
+  readonly feedbackIds: readonly string[];
+  readonly dependents: readonly {
+    readonly taskId: string;
+    readonly key: string;
+    readonly title: string;
+    readonly status: TaskStatus;
+    /** The version of this task's output the dependent worked from. */
+    readonly usedVersion: number;
+    readonly running: boolean;
+  }[];
+  readonly defaultChoice: 'redo' | 'keep';
+}
+
+export interface FeedbackGivenView {
+  readonly feedback: FeedbackView;
+  /** Set when the task finished and its output was used: the round waits for `POST /v1/tasks/:id/rounds`. */
+  readonly impact: DownstreamImpactView | null;
+  /** The round that started because of this item, when one did. */
+  readonly roundStarted: number | null;
+  /** Notes that round carries, this one included: open notes waiting on the task join it too. 0 when no round started. */
+  readonly roundNotes: number;
+}
+
+/** A task's feedback thread: a flat list, not a chat. */
+export interface TaskFeedbackView {
+  readonly taskId: string;
+  readonly round: number;
+  readonly items: readonly FeedbackView[];
+  /** Non-null while open items wait for a round the task can start; `dependents` may be empty. */
+  readonly pendingImpact: DownstreamImpactView | null;
+}
+
+export type OpenRequest =
+  | { readonly kind: 'approval'; readonly addresseeIds: readonly string[] }
+  | {
+    readonly kind: 'person_step';
+    readonly assigneeId: string | null;
+    readonly claimableIds: readonly string[];
+    readonly escalatedToIds: readonly string[];
+  };
+
+/**
+ * One card in a mission's feed: a task that has started, or the plan.
+ *
+ * Everything a card shows is here, already joined and already judged against
+ * the caller, so the feed is one request and the renderer decides nothing
+ * about who a card is for.
+ */
+export interface FeedCard {
+  /** Null for the plan card. */
+  readonly taskId: string | null;
+  /** The task key, or 'plan'. */
+  readonly key: string;
+  readonly title: string;
+  /** Null for the plan, and for a role that no longer resolves. */
+  readonly roleName: string | null;
+  readonly status: TaskStatus | 'PLAN';
+  readonly statusReason: string | null;
+  readonly section: 'needs_you' | 'in_progress' | 'done';
+  readonly doneBy: ActorRef | null;
+  readonly responsible: ActorRef | null;
+  /** Only when it differs from `doneBy`, so a card names a second person only when there is one. */
+  readonly recordedBy: ActorRef | null;
+  /** The primary live artifact: the first expected output that exists, else the newest. */
+  readonly artifactId: string | null;
+  readonly artifactTitle: string | null;
+  /**
+   * The primary artifact's handoff. Legacy rows fall back to their summary as
+   * the headline. `needs` is shown only while the request it describes is
+   * still open, and is null otherwise.
+   */
+  readonly handoff: ArtifactHandoff | null;
+  /** Other live artifacts the task produced, for "+N more". */
+  readonly moreArtifacts: number;
+  readonly overBudget: boolean;
+  /**
+   * True when every artifact the task produced has since been replaced, e.g.
+   * by a fix task; the card then shows the task's own newest artifact.
+   */
+  readonly superseded: boolean;
+  /** The key of the task whose artifact replaced this card's, when known; for "updated by". */
+  readonly supersededByTaskKey: string | null;
+  /** The open approval waiting on the caller; only on a needs_you card. */
+  readonly pendingApproval: ApprovalView | null;
+  /** What the caller can do with a person task that is for them. */
+  readonly humanAction: 'complete' | 'claim' | null;
+  /**
+   * Where the plan stands, on the plan card only (null on a task card):
+   * still asked, approved by a person, accepted without asking, rejected, or
+   * no longer asked because the request was withdrawn (a cancel or a re-plan).
+   * A plan card is never "Approved" unless a decision says so.
+   */
+  readonly planDecision: PlanDecision | null;
+  readonly updatedAt: string;
+  /** The task's current round; 1 on the plan card. */
+  readonly round: number;
+  /**
+   * Notes the task has yet to act on, oldest first: open and queued ones, plus
+   * in-round ones while that round has not run (READY or PENDING). The card
+   * shows the count and the latest.
+   */
+  readonly openFeedback: readonly FeedbackView[];
+  /** The primary artifact's `handoff.changed`, each with the notes it answers. */
+  readonly changed: readonly FeedChange[];
+  /** A task (not the plan, not a wait step) that has run or has output. */
+  readonly canRequestChanges: boolean;
+}
+
+
+
+export interface MissionFeedView {
+  readonly missionId: string;
+  readonly needsYou: readonly FeedCard[];
+  readonly inProgress: readonly FeedCard[];
+  /** Newest first, cut to the requested limit. */
+  readonly done: readonly FeedCard[];
+  /** Every done card, including those cut from `done`. */
+  readonly doneTotal: number;
+}
 
 export interface SystemInfo {
   readonly daemonVersion: string;
@@ -31,7 +260,6 @@ export interface TaskView extends MissionTask {
   readonly level: number;
   readonly latestRun: Run | null;
   readonly runCount: number;
-  readonly outputArtifacts: readonly ArtifactManifest[];
   readonly checks: readonly CheckResult[];
   readonly gate: GateOutcome | null;
   readonly pendingApprovalId: string | null;
@@ -44,6 +272,37 @@ export interface TaskView extends MissionTask {
    * only a task that genuinely works somewhere else is called out.
    */
   readonly repositoryName: string | null;
+  readonly outputArtifacts: readonly ArtifactView[];
+  readonly assignee: ActorRef | null;
+  readonly responsible: ActorRef | null;
+  /** People who may pick the task up; empty unless it waits in a pool. */
+  readonly claimable: readonly ActorRef[];
+  /** Who an unanswered pool was opened to: they may take it from its assignee. Empty unless it escalated. */
+  readonly escalatedTo: readonly ActorRef[];
+  /**
+   * Who the task would go to if it became ready now. Set only while PENDING:
+   * afterwards `assignee` and `responsible` hold the decided answer.
+   */
+  readonly wouldBe: {
+    readonly assignee: ActorRef | null;
+    readonly responsible: ActorRef;
+    readonly claimable: readonly ActorRef[];
+    readonly executor: 'agent' | 'human';
+  } | null;
+  /** Required here, unlike on the stored task: a row from before rounds reads as round 1. */
+  readonly round: number;
+  /** Every note on the task, oldest first, with its status. */
+  readonly feedback: readonly FeedbackView[];
+  /**
+   * Why a task with `needsAttention` stands out; null when it does not.
+   * `stale_input`: it was kept on an older version of `upstream` (a task title).
+   * `changes_requested`: someone looked at it and said it needs changes.
+   */
+  readonly attention: {
+    readonly kind: 'stale_input' | 'changes_requested';
+    readonly upstream: string | null;
+    readonly note: string;
+  } | null;
 }
 
 export interface MissionSummary {
@@ -60,7 +319,7 @@ export interface MissionDetail {
   readonly progress: MissionProgress;
   readonly repository: Repository | null;
   readonly tasks: readonly TaskView[];
-  readonly artifacts: readonly ArtifactManifest[];
+  readonly artifacts: readonly ArtifactView[];
   readonly approvals: readonly Approval[];
   readonly decisions: readonly Decision[];
   readonly targets: readonly ExecutionTargetRecord[];
@@ -155,8 +414,44 @@ export interface ApprovalView {
   readonly missionTitle: string | null;
   readonly taskTitle: string | null;
   readonly roleName: string | null;
-  /** Rejecting this with a note sends the task back to be revised. */
+  /** Request changes on this card (or, on a card from before it, a reject with a note) starts the task's next round. */
   readonly revisable: boolean;
+  /** Who the card is for. Advisory until accounts exist: anyone can still answer. */
+  readonly addressees: readonly ActorRef[];
+  readonly decidedByRef: ActorRef | null;
+  readonly recordedByRef: ActorRef | null;
+  readonly escalationLevel: number;
+  /**
+   * The headline of the first artifact the card cites as evidence, or that
+   * artifact's summary when it predates handoffs. Lets an inbox line say what
+   * is being approved without opening the document.
+   */
+  readonly headline: string | null;
+}
+
+/** A task waiting on a person, with just what an inbox line needs. */
+export interface InboxTaskView {
+  readonly id: string;
+  readonly key: string;
+  readonly title: string;
+  readonly missionId: string;
+  readonly missionTitle: string;
+  readonly assignee: ActorRef | null;
+  readonly responsible: ActorRef | null;
+  readonly claimable: readonly ActorRef[];
+  readonly escalatedTo: readonly ActorRef[];
+  readonly statusReason: string | null;
+  readonly updatedAt: string;
+}
+
+/**
+ * Everything in a workspace waiting on a person, in one read: open approvals
+ * and tasks parked for a human. The nav badge is always mounted, so this is
+ * one projection rather than a mission detail per working mission.
+ */
+export interface InboxView {
+  readonly approvals: readonly ApprovalView[];
+  readonly tasks: readonly InboxTaskView[];
 }
 
 export interface WorkspaceView {
@@ -214,4 +509,44 @@ export interface WorkflowSummary {
   readonly steps: readonly { key: string; title: string; executor: 'agent' | 'human' | 'wait' }[];
   /** Non-empty when the file exists but cannot be used. */
   readonly issues: readonly { path: string; message: string }[];
+}
+
+// ------------------------------------------------------------ people and team
+
+export interface PersonView extends Person {}
+
+export interface MemberView extends Member {
+  /** For an agent, the person it acts for; null for a person member. */
+  readonly ownerName: string | null;
+  /** Usable right now: not removed, and for an agent, its owner is not removed either. */
+  readonly active: boolean;
+}
+
+export interface TeamView {
+  readonly workspaceId: string;
+  /** Removed members included, so work they left behind can still be named. */
+  readonly members: readonly MemberView[];
+  /** Where the tree starts: members with no manager, or whose manager has left. */
+  readonly roots: readonly string[];
+  /** What is wrong with the tree as it stands, e.g. an agent whose owner is gone. */
+  readonly issues: readonly string[];
+}
+
+export interface MeView {
+  readonly person: PersonView;
+  readonly memberships: readonly { workspaceId: string; memberId: string; access: AccessLevel }[];
+}
+
+/** Who a task would go to if it became ready now, and who it escalates to. */
+export interface StaffingPreviewView {
+  readonly taskId: string;
+  readonly resolved: {
+    executor: 'agent' | 'human';
+    assignee: ActorRef | null;
+    responsible: ActorRef;
+    claimable: readonly ActorRef[];
+    agentCandidates: readonly ActorRef[];
+  };
+  readonly staffing: Staffing;
+  readonly escalation: readonly ActorRef[];
 }

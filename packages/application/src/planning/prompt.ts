@@ -275,5 +275,5 @@ export function describePlan(plan: MissionPlan): string {
   const byRole = new Map<string, number>();
   for (const t of plan.tasks) byRole.set(t.roleId, (byRole.get(t.roleId) ?? 0) + 1);
   const roles = [...byRole.entries()].map(([role, n]) => (n > 1 ? `${role} ×${n}` : role)).join(' → ');
-  return `${plan.tasks.length} tasks: ${roles}`;
+  return `${plan.tasks.length} ${plan.tasks.length === 1 ? 'task' : 'tasks'}: ${roles}`;
 }

@@ -1,0 +1,52 @@
+{
+  "id": "A16",
+  "title": "One-person pool: nobody responds, the owner takes it",
+  "ok": true,
+  "checks": [
+    {
+      "label": "QA staffed as a pool of Bo only",
+      "ok": true,
+      "observed": {
+        "assignees": [
+          "mem_01m2gysemjqaeydhhtvq"
+        ],
+        "mode": "pool",
+        "responsible": null,
+        "reviews": [],
+        "escalateAfterMs": 60000
+      }
+    },
+    {
+      "label": "qa goes straight to Bo (a pool of one is his)",
+      "ok": true,
+      "observed": "Bo Chen"
+    },
+    {
+      "label": "not in your For me yet",
+      "ok": true
+    },
+    {
+      "label": "after about a minute you (owner) can take it; Bo stays assigned",
+      "ok": true
+    },
+    {
+      "label": "now in your For me",
+      "ok": true
+    },
+    {
+      "label": "you finished it: QAPlan by you",
+      "ok": true,
+      "observed": {
+        "author": "Demostenes Garcia G.",
+        "assignee": "Demostenes Garcia G."
+      }
+    }
+  ],
+  "notes": [
+    "task view offers {\"label\":\"Claim for\",\"options\":[\"Demostenes Garcia G. (you)\",\"Bo Chen\"]}"
+  ],
+  "shots": [
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/A16-inbox.png",
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/A16-taken.png"
+  ]
+}

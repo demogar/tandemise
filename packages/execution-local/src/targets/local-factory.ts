@@ -1,4 +1,4 @@
-import { stat } from 'node:fs/promises';
+import { realpath, stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import {
   TandemiseError,
@@ -48,8 +48,12 @@ export class LocalTargetFactory implements ExecutionTargetFactory {
   }
 
   async provision(request: ProvisionRequest): Promise<ExecutionTarget> {
-    const directory = resolve(request.repositoryPath);
-    await assertDirectory(directory);
+    await assertDirectory(resolve(request.repositoryPath));
+    // The resolved path, because that is what the runtime's process sees as
+    // its cwd. A repository reached through a symlink (macOS /tmp is one)
+    // otherwise has the prompt name one path and the process trust another:
+    // Claude Code refused to write its own artifacts under the linked spelling.
+    const directory = await realpath(resolve(request.repositoryPath));
     const branch = await this.deps.git.currentBranch(directory);
     const record: ExecutionTargetRecord = {
       id: request.id ?? ids.executionTarget(),

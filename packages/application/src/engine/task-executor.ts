@@ -1,32 +1,39 @@
 import type {
-  Approval, ApprovalRepositoryPort, ArtifactRepositoryPort, ArtifactStorePort, ArtifactType,
+  Approval, ApprovalRepositoryPort, ArtifactManifest, ArtifactRepositoryPort, ArtifactStorePort, ArtifactType,
   AssignmentRepositoryPort, CapabilityGrant, CheckResult, CheckpointRepositoryPort,
-  DecisionRepositoryPort, ExecutionTargetRepositoryPort, ExecutionTargetRecord, ExternalRef,
-  GateOutcome, LoadedArtifact, Mission, MissionRepositoryPort, MissionTask, RepoRepositoryPort,
-  Repository, ResourceLease, RoleRepositoryPort, RoleTemplate, Run, RunRepositoryPort, RunUsage,
+  DecisionRepositoryPort, EventRepositoryPort, ExecutionTargetRepositoryPort, ExecutionTargetRecord, ExternalRef,
+  GateOutcome, LoadedArtifact, Member, MemberRepositoryPort, Mission, MissionRepositoryPort, MissionTask, RepoRepositoryPort,
+  Repository, ResourceLease, RoleRepositoryPort, RoleTemplate, Run, RunEventRecord, RunInputRepositoryPort, RunPurpose,
+  RunRepositoryPort, RunUsage,
   RuntimeProfile, RuntimeProfileRepositoryPort, TargetKind, TaskRepositoryPort, TaskStatus,
   Workspace, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
-import { ACCEPT_RESULT_OPTION, CORE_CAPABILITIES, anyCapabilityMatches } from '@tandemise/domain';
+import {
+  ACCEPT_RESULT_OPTION, CORE_CAPABILITIES, RUNTIME_ACTOR, anyCapabilityMatches, gateDependencies, indexTeam, isActiveMember, responsibleFor,
+} from '@tandemise/domain';
 import { isDaemonStopping } from '../support/shutdown.js';
+import { LIVE_RUN_STATUSES } from '../support/downstream.js';
 import { liveArtifacts, upstreamTaskIds } from '../support/lineage.js';
 import { githubSlug } from '../support/repository-slug.js';
+import { capDraft, renderRoundBrief, roundRequest, type RoundBrief } from '../support/feedback-rules.js';
 import type { ContextCompiler, ExpectedArtifact } from '@tandemise/context';
 import type { ExecutionTarget, ExecutionTargetManager } from '@tandemise/execution-core';
 import type { ApprovalFactory, GrantBuilder, PolicyEngine } from '@tandemise/policy';
 import type { ToolBroker } from '@tandemise/integrations-core';
 import { McpGatewayProvisioner, NO_TOOL_SURFACE, type RunToolSurface } from './mcp-gateway.js';
-import { RUNTIME_SIGNED_OUT, SESSION_NOT_FOUND, onlyBusy, onlyWaiting } from '@tandemise/runtimes-core';
-import type { RunRequest, RuntimeManager, RuntimeSelection, SlotReservation } from '@tandemise/runtimes-core';
-import type { Clock, Logger, RunId, TandemisePaths, TaskId } from '@tandemise/shared';
+import { RUNTIME_SIGNED_OUT, SESSION_NOT_FOUND, describeRejections, onlyBusy, onlyWaiting } from '@tandemise/runtimes-core';
+import type { RunRequest, RuntimeManager, RuntimeSelection, SlotReservation, SlotRetention } from '@tandemise/runtimes-core';
+import type { ArtifactId, Clock, Logger, RunId, TandemisePaths, TaskId } from '@tandemise/shared';
 import { TandemiseError, errorMessage, ids, slugify, summarize } from '@tandemise/shared';
-import type { ArtifactTemplatePort } from '../ports.js';
+import type { ArtifactMeasurePort, ArtifactTemplatePort } from '../ports.js';
 import type { EventRecorder, EventScope } from '../support/event-recorder.js';
 import { runtimeCapabilitiesFor } from '../support/capabilities.js';
 import type { RuntimeOverrides } from '../support/runtime-overrides.js';
-import { ArtifactHarvester, outDirFor, type HarvestResult } from './harvester.js';
+import { ArtifactHarvester, outDirFor, type HarvestResult, type OverBudgetArtifact } from './harvester.js';
 import type { CheckService } from './checks.js';
 import type { GateService } from './gates.js';
+import type { ReviewPipeline } from './reviews.js';
+import type { FeedbackRounds } from './feedback-rounds.js';
 import { MAX_PARKED_MS, type RunDeadlines } from './run-deadline.js';
 
 /** How long a resource lease is held before the scheduler must renew it. */
@@ -46,6 +53,13 @@ const AWAITING_PERSON_RETRY_MS = 15_000;
  * wait for a person into a failure.
  */
 const MAX_SIGNED_OUT_BACKOFF_MS = 10 * 60_000;
+
+/**
+ * The most passes one attempt spends delivering notes that arrived while it
+ * ran. A person who keeps adding notes could otherwise hold the task running
+ * forever; later notes wait as open, with "Start round" (plan ruling 7).
+ */
+const MAX_FEEDBACK_PASSES = 5;
 
 export type TaskAttemptOutcome =
   /** Admission failed for a reason that will resolve on its own. Try again shortly. */
@@ -77,6 +91,8 @@ export interface TaskExecutorDeps {
   readonly approvals: ApprovalRepositoryPort;
   readonly roles: RoleRepositoryPort;
   readonly runtimeProfiles: RuntimeProfileRepositoryPort;
+  /** The agent members a task's staffing names, and their owners. */
+  readonly members: MemberRepositoryPort;
   readonly decisions: DecisionRepositoryPort;
   readonly checkpoints: CheckpointRepositoryPort;
   readonly runtimeManager: RuntimeManager;
@@ -92,9 +108,19 @@ export interface TaskExecutorDeps {
   readonly mcpGateway: McpGatewayProvisioner;
   readonly overrides: RuntimeOverrides;
   readonly templates: ArtifactTemplatePort;
+  /** Word budgets, stated in the output contract. */
+  readonly measure: ArtifactMeasurePort;
+  /** The durable log, read to learn whether this round already had its tighten pass. */
+  readonly events: EventRepositoryPort;
   readonly harvester: ArtifactHarvester;
   readonly checks: CheckService;
   readonly gates: GateService;
+  /** Who looks at a passed round, and who every card about a task is addressed to. */
+  readonly reviews: ReviewPipeline;
+  /** Reads a round's brief and contract, and settles the notes a pass answered. */
+  readonly rounds: FeedbackRounds;
+  /** What each run was given, so a round knows whose work used the old version. */
+  readonly runInputs: RunInputRepositoryPort;
   readonly recorder: EventRecorder;
   /** Live run budgets, so a worker waiting on a person is not timed out. */
   readonly deadlines: RunDeadlines;
@@ -142,6 +168,12 @@ export class TaskExecutor {
       return this.#block(task, scope, `No role template '${task.roleId}' exists in this workspace.`);
     }
 
+    // A round that passed and was mid-tighten when the daemon died is settled
+    // from the drafts on record: re-running it would redo accepted work and
+    // spend an attempt on a restart.
+    const concluded = this.#concludeInterruptedTighten(task, mission, workspace, role, scope);
+    if (concluded !== null) return concluded;
+
     // 12(a). An approval demanded *before* the task starts is checked here
     // rather than in the scheduler, because this is the only place that knows
     // what the task is about to be permitted to do.
@@ -161,7 +193,13 @@ export class TaskExecutor {
       // Re-read: `task` is from before the attempt marked it RUNNING, and
       // settling from that stale copy compared READY with READY, skipped the
       // write, and left the row RUNNING with nothing running.
-      return this.#settleFailure(this.#requireTask(task.id), scope, errorMessage(e));
+      const current = this.#requireTask(task.id);
+      // Reset or cancelled by someone else while this attempt was failing (a
+      // Redo aborts the pass, which can surface as a throw): that status stands.
+      if (current.status === 'PENDING' || current.status === 'CANCELLED') {
+        return { kind: 'settled', status: current.status, reason: current.statusReason };
+      }
+      return this.#settleFailure(current, scope, errorMessage(e));
     } finally {
       for (const lease of leases.held) this.deps.leases.release(lease.id);
     }
@@ -176,14 +214,33 @@ export class TaskExecutor {
     // 2. Routing. A role with an explicit routing policy is never given a
     //    runtime that policy excluded - the fallback is "no candidates", which
     //    blocks with a reason, not a silent substitution.
-    const candidates = this.#candidateProfiles(workspace, task);
+    const routing = this.#candidateProfiles(workspace, task);
+    if (routing.kind === 'nobody_active') {
+      // Someone staffed left between promotion and this attempt. The next
+      // dispatch sees the stale snapshot and hands the task to a person; widening
+      // to any runtime here is exactly what staffing it was meant to prevent.
+      return { kind: 'deferred', reason: 'Nobody staffed for this task is active any more.' };
+    }
+    if (routing.kind === 'no_runtime') {
+      const names = routing.agents.map((a) => a.name);
+      const who = names.length <= 1 ? names[0] ?? 'The staffed agent' : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+      return this.#block(task, scope, `${who} ${names.length > 1 ? 'have' : 'has'} no enabled runtime.`);
+    }
+    const { profiles: candidates, agents } = routing;
     if (candidates.length === 0) {
       return this.#block(task, scope, `No runtime profile is routed to role '${task.roleId}'.`);
     }
     const required = runtimeCapabilitiesFor(task);
     const selected = await deps.runtimeManager.select(candidates, required);
+    // Selection awaits a health probe; a round upstream can hold this task
+    // back meanwhile, and starting it then would run on the old version.
+    const reset = this.#changedSince(task);
+    if (reset !== null) {
+      if (selected.ok) selected.value.reservation.release();
+      return reset;
+    }
     if (!selected.ok) {
-      const detail = selected.error.rejections.map((r) => `${r.profileId}: ${r.reason}`).join('; ');
+      const detail = describeRejections(selected.error.rejections);
       // Every capable runtime is busy: that is contention, not a failure. The
       // task stays READY and is offered again once a slot frees up.
       if (onlyBusy(selected.error)) return { kind: 'deferred', reason: `Waiting for a runtime slot. ${detail}` };
@@ -204,22 +261,32 @@ export class TaskExecutor {
     // back here on every path that never gets that far - a failed provision,
     // a vetting block - so an attempt that never ran cannot hold a worker.
     try {
-      return await this.#runRouted(ctx, selected.value);
+      return await this.#runRouted(ctx, selected.value, agentFor(agents, selected.value.profile.id));
     } finally {
       selected.value.reservation.release();
     }
   }
 
-  async #runRouted(ctx: AttemptContext, selection: RuntimeSelection): Promise<TaskAttemptOutcome> {
-    const { task, mission, workspace, repository, role, scope, signal } = ctx;
+  async #runRouted(ctx: AttemptContext, selection: RuntimeSelection, agent: Member | null): Promise<TaskAttemptOutcome> {
+    const { task, mission, workspace, repository, role, signal } = ctx;
     const { deps } = this;
     const { profile, adapter, reservation } = selection;
+    // Everything from here on is done by the agent the runtime was chosen for,
+    // or by the runtime itself when no agent member stands behind it.
+    const scope: EventScope = { ...ctx.scope, actorId: agent?.id ?? RUNTIME_ACTOR };
     // Resuming a session a restart interrupted continues that attempt rather
     // than starting a new one. Counting it spent the retry budget on restarts:
     // a task with two attempts had used five before it had failed once, so its
     // first real gate failure would have blocked it outright.
-    const resuming = this.#resumableRun(task.id, adapter.resume !== undefined) !== null && task.attempts > 0;
+    const resumable = this.#resumableRun(task.id, adapter.resume !== undefined);
+    const resuming = resumable !== null && task.attempts > 0;
     const attempt = resuming ? task.attempts : task.attempts + 1;
+    const round = task.round ?? 1;
+    // Only counted attempts make a round "started"; a tighten or delivery pass
+    // does not. Runs from before rounds existed count as round 1's.
+    const firstOfRound = !deps.runs.listByTask(task.id)
+      .some((r) => (r.round ?? 1) === round && (r.purpose === 'round' || r.purpose === 'retry' || r.purpose == null));
+    const purpose: RunPurpose = resuming ? resumable.purpose ?? 'retry' : firstOfRound ? 'round' : 'retry';
 
     // The previous attempt's measured failure, read from its own column rather
     // than `statusReason`: that is the line a person reads, and any wait between
@@ -231,6 +298,7 @@ export class TaskExecutor {
     const running = this.#setStatus(task, scope, 'RUNNING', null, {
       attempts: attempt,
       startedAt: task.startedAt ?? deps.clock.now(),
+      ...this.#assignment(task, workspace, agent),
     });
 
     // 3. Target. The row exists before the worktree does, so a crash between
@@ -246,7 +314,7 @@ export class TaskExecutor {
       kind, running, mission, workspace, repository, scope, upstreamBranch,
     );
     if (!provisioned.ok) {
-      return this.#settleFailure(running, scope, provisioned.reason);
+      return this.#overtaken(running, scope, signal) ?? this.#settleFailure(running, scope, provisioned.reason);
     }
     const target = provisioned.target;
 
@@ -254,8 +322,16 @@ export class TaskExecutor {
     // attempt ends. A leftover socket would be a second, unauthenticated door
     // into the tool broker.
     let toolSurface: RunToolSurface = NO_TOOL_SURFACE;
+    // The first run keeps its runtime slot when it ends, in case the round
+    // needs a tighten pass: freed, it would go to another task while this one
+    // harvests and checks, and the pass would run the profile over its limit.
+    const retained: SlotRetention = { reservation: undefined };
 
     try {
+      // Provisioning awaited; inside the try, so the target is released however this ends.
+      const overtakenProvisioning = this.#overtaken(running, scope, signal);
+      if (overtakenProvisioning !== null) return overtakenProvisioning;
+
       // 4. Grants: least privilege, scoped to this target and this mission.
       const requested = deps.grantBuilder.build({
         role,
@@ -318,31 +394,37 @@ export class TaskExecutor {
         signal,
       });
       await deps.harvester.prepare(target, scope, running);
-      const prompt = await this.#compilePrompt({
-        ...ctx, task: running, workspace, role, grants, target, tools: toolSurface.toolNames, feedback,
+      const brief = await deps.rounds.openRound(running);
+      const compiled = await this.#compilePrompt({
+        ...ctx, task: running, workspace, role, grants, target, tools: toolSurface.toolNames, feedback, round: brief,
       });
+      const destinations = running.expectedOutputs.map((type) => `${outDirFor(running)}/${type}.md`);
+      // Spec §5: a round continues the last settled session whenever the runtime can, whatever that run's status.
+      const session = firstOfRound && round > 1 && !resuming && brief !== null
+        ? this.#settledSession(running.id, profile, adapter)
+        : null;
+
+      // Nothing is started for a task that was reset while its prompt was compiled.
+      const overtakenBeforeRun = this.#overtaken(running, scope, signal);
+      if (overtakenBeforeRun !== null) return overtakenBeforeRun;
 
       // 7. Run.
       const outcome = await this.#drive({
-        task: running, mission, profile, adapter, target, assignment, prompt, grants, scope, signal,
-        runId, mcpConfigPath: toolSurface.mcpConfigPath, reservation,
+        task: running, mission, profile, adapter, target, assignment, grants, scope, signal, agent,
+        runId, mcpConfigPath: toolSurface.mcpConfigPath, reservation, retainSlot: retained,
+        prompt: session !== null && brief !== null ? roundRequest(brief, destinations) : compiled.prompt,
+        ...(session === null ? {} : { continueSession: session, freshPrompt: compiled.prompt }),
+        purpose, round, inputs: compiled.includedArtifactIds,
       });
 
-      if (outcome.interrupted) {
-        // Back to the queue with its attempt count kept, exactly as recovery
-        // treats a run the last daemon left behind; the next start resumes it.
-        return this.#settle(running, scope, 'READY', 'Tandemise stopped mid-run; this task resumes when it starts again.');
-      }
-      if (outcome.cancelled) {
-        // Cancelled so that something else could happen - a retry with more
-        // access requeues the task and stops its run. The run ends after that
-        // decision, and settling it CANCELLED here overwrote the retry.
-        const current = deps.tasks.get(running.id);
-        if (current !== undefined && current.status !== 'RUNNING' && current.status !== 'AWAITING_INPUT') {
-          return { kind: 'settled', status: current.status, reason: current.statusReason };
-        }
-        return this.#settle(running, scope, 'CANCELLED', 'Cancelled before the run finished.');
-      }
+      const stopped = this.#stopped(outcome, running, scope);
+      if (stopped !== null) return stopped;
+
+      // A round of an upstream task can reset this one after its run ended
+      // but before the pass settles; nothing of the pass is recorded then,
+      // and not even a sign-out's READY may overwrite the reset.
+      const overtaken = this.#overtaken(running, scope, signal);
+      if (overtaken !== null) return overtaken;
 
       if (outcome.failure?.code === RUNTIME_SIGNED_OUT) {
         // Nothing about the work was tried, so nothing about it is judged: the
@@ -351,6 +433,8 @@ export class TaskExecutor {
         // makes routing see that now rather than after the cache lapses.
         deps.runtimeManager.invalidateHealth(profile.id);
         const reason = `Waiting for you: ${outcome.failure.message}`;
+        // The attempt that runs after the sign-in carries the notes that waited for this one.
+        deps.rounds.promoteQueued(running);
         // Only the row's line changes; `retryFeedback` keeps what the last real
         // attempt failed on, for the attempt that eventually runs.
         this.#setStatus(running, scope, 'READY', reason, { attempts: task.attempts });
@@ -369,10 +453,18 @@ export class TaskExecutor {
         roleId: role.id,
         scope: { ...scope, runId: outcome.runId, runtimeProfileId: profile.id },
         sourceRefs: refs,
+        authorId: agent?.id ?? RUNTIME_ACTOR,
+        ...(brief === null ? {} : { roundContract: deps.rounds.roundContract(running, brief) }),
       });
+      // Everything this attempt stored, so an overtaken attempt sets all of it aside.
+      const produced: ArtifactManifest[] = [...harvest.manifests];
+      const setAside = (): void => this.#withdrawOutput(running, scope, produced);
+      // Nothing ran long and no note waits, so no pass can follow: the slot
+      // goes back now rather than being held idle through the checks.
+      if (harvest.overBudget.length === 0 && !deps.rounds.hasQueued(running.id)) releaseSlot(retained);
 
       // 10. Checks.
-      const checks = outcome.status === 'CANCELLED'
+      let checks = outcome.status === 'CANCELLED'
         ? []
         : await deps.checks.run({
           task: running,
@@ -383,14 +475,78 @@ export class TaskExecutor {
           signal,
         });
 
+      // Checks take time, and the harvest awaited too: judging a pass whose
+      // task was reset meanwhile would overwrite PENDING and raise a card
+      // about output made from the old version. That output is set aside.
+      const overtakenAfterChecks = this.#overtaken(running, scope, signal);
+      if (overtakenAfterChecks !== null) {
+        setAside();
+        return overtakenAfterChecks;
+      }
+
       // 11. Gate.
+      let assessed = this.#assess(running, harvest, outcome.failure, scope, outcome.runId);
+      let final = harvest;
+      let lastRunId = outcome.runId;
+
+      // 11(b'). Notes that arrived while the pass ran are delivered before it
+      //         settles (spec §4).
+      if (assessed.verdict.passed) {
+        const delivered = await this.#deliverQueued({
+          ...ctx, task: running, harvest, assessed, profile, adapter, target, assignment, grants, agent, scope,
+          firstRunId: outcome.runId, tools: toolSurface.toolNames, mcpConfigPath: toolSurface.mcpConfigPath,
+          retained, produced, checks,
+        });
+        if (delivered.kind === 'stopped') {
+          if (!isDaemonStopping(signal)) setAside();
+          return delivered.outcome;
+        }
+        ({ harvest: final, assessed, lastRunId, checks } = delivered);
+        const overtakenAfterDelivery = this.#overtaken(running, scope, signal);
+        if (overtakenAfterDelivery !== null) {
+          setAside();
+          return overtakenAfterDelivery;
+        }
+        // A delivery pass broke the round: notes that arrived during it ride with the retry too.
+        if (!assessed.verdict.passed) deps.rounds.promoteQueued(running);
+      } else {
+        // A failed pass is retried anyway; the notes ride with the retry, which must cite them.
+        deps.rounds.promoteQueued(running);
+      }
+
+      // 11(c). A passed round whose artifacts ran long gets one tighten pass
+      //        before anyone reviews it, so reviewers read the final version.
+      if (assessed.verdict.passed && final.overBudget.length > 0) {
+        const tightened = await this.#tighten({
+          ...ctx, task: running, harvest: final, profile, adapter, target, assignment, grants, agent, scope,
+          firstRunId: lastRunId, tools: toolSurface.toolNames, mcpConfigPath: toolSurface.mcpConfigPath,
+          retained,
+        });
+        if (tightened.kind === 'stopped') {
+          // A daemon stop keeps the drafts: the restart settles the round from them.
+          if (!isDaemonStopping(signal)) setAside();
+          return tightened.outcome;
+        }
+        final = tightened.harvest;
+        produced.push(...final.manifests);
+        const overtakenAfterTighten = this.#overtaken(running, scope, signal);
+        if (overtakenAfterTighten !== null) {
+          setAside();
+          return overtakenAfterTighten;
+        }
+      }
+
+      // The round landed: the notes it cited are answered, and work kept on the old version is told.
+      if (assessed.verdict.passed) deps.rounds.onRoundLanded(running, final.manifests, scope);
+
       return this.#judge({
-        task: running, mission, workspace, role, scope, harvest, checks,
-        runFailure: outcome.failure, runId: outcome.runId,
+        task: running, mission, workspace, role, scope, harvest: final, checks,
+        runFailure: outcome.failure, runId: lastRunId, assessed,
       });
     } finally {
       // 13. Release. A worktree is left intact: it is the reviewable artifact,
       //     but the run's private tool surface dies with the run.
+      retained.reservation?.release();
       await toolSurface.dispose();
       await this.#releaseTarget(target, kind);
     }
@@ -407,8 +563,12 @@ export class TaskExecutor {
     // forgotten session and failed identically, so the task could never leave
     // BLOCKED however many times it was retried. The new run below carries the
     // same handle, so a daemon that dies again loses nothing.
-    const source = this.#resumableRun(task.id, input.adapter.resume !== undefined);
-    const resumeFrom = source?.externalSessionId ?? null;
+    // A tighten pass names the session it continues: the run that holds it
+    // finished successfully and is not a handle waiting to be taken over.
+    const source = input.continueSession === undefined
+      ? this.#resumableRun(task.id, input.adapter.resume !== undefined)
+      : null;
+    const resumeFrom = input.continueSession === undefined ? source?.externalSessionId ?? null : input.continueSession;
     const { runId } = input;
     const startedAt = deps.clock.now();
 
@@ -435,7 +595,12 @@ export class TaskExecutor {
       startedAt,
       finishedAt: null,
       heartbeatAt: startedAt,
+      agentMemberId: input.agent?.id ?? null,
+      round: input.round,
+      purpose: input.purpose,
     });
+    // Recorded before the run starts, so a round started while it runs already sees it as a consumer.
+    deps.runInputs.record(runId, input.inputs);
     // Only now, with the new run holding the handle, is the old one released:
     // a daemon that dies between the two writes still leaves a run to resume.
     // Consumed whether or not the resume then works - a handle that failed
@@ -458,6 +623,12 @@ export class TaskExecutor {
     // The budget is enforced here, where it can be paused while the worker waits
     // on a person, and not only inside the adapter - an adapter that ignores it
     // must not be able to hold a worker slot forever.
+    // A resumed session may have to start over, and the restart must reuse the
+    // slot the stale attempt held rather than claim a second one.
+    const ownRetention: SlotRetention | undefined = input.retainSlot === undefined && resumeFrom !== null
+      ? { reservation: undefined }
+      : undefined;
+    const retention = input.retainSlot ?? ownRetention;
     const deadline = deps.deadlines.open(assignment.id, task.executionPolicy.maxWallTimeMs);
     const combined = AbortSignal.any([signal, deadline.signal]);
 
@@ -477,6 +648,7 @@ export class TaskExecutor {
       signal: combined,
       log: deps.log.child({ runId, taskId: task.id, missionId: mission.id, runtime: profile.adapterId }),
       reservation: input.reservation,
+      retainSlot: retention,
     };
 
     let usage: RunUsage = {};
@@ -499,12 +671,19 @@ export class TaskExecutor {
           `The previous session for '${task.key}' could no longer be resumed, so this attempt started fresh.`,
           'warn',
         );
-        const fresh = await this.#stream(request, runScope, null);
+        const slot = retention?.reservation;
+        if (retention !== undefined) retention.reservation = undefined;
+        const fresh = await this.#stream(
+          { ...request, reservation: slot, ...(input.freshPrompt === undefined ? {} : { prompt: input.freshPrompt }) },
+          runScope,
+          null,
+        );
         usage = mergeUsage(usage, fresh.usage);
         failure = fresh.failure;
       }
     } finally {
       deps.deadlines.close(assignment.id);
+      ownRetention?.reservation?.release();
     }
 
     const cancelled = signal.aborted;
@@ -634,29 +813,43 @@ export class TaskExecutor {
 
   // ------------------------------------------------------------------ decision
 
-  #judge(input: JudgeInput): TaskAttemptOutcome {
-    const { task, mission, workspace, role, scope, harvest, checks, runFailure } = input;
-    const gate = this.deps.gates.evaluate(task);
+  /**
+   * The gate's verdict on the round as it was first harvested.
+   *
+   * Separate from `#judge` because a tighten pass sits between the two: it
+   * only runs on a round that passed, and it must not re-open that verdict.
+   */
+  #assess(
+    task: MissionTask,
+    harvest: HarvestResult,
+    runFailure: RunFailure | null,
+    scope: EventScope,
+    runId: RunId,
+  ): Assessment {
+    const measured = harvest.filesChanged === undefined ? {} : { filesChanged: harvest.filesChanged };
+    const gate = this.deps.gates.evaluate(task, measured);
     const verdict = decide(gate, harvest, runFailure);
-
     if (gate !== null) {
-      this.deps.recorder.record({ ...scope, runId: input.runId }, {
+      this.deps.recorder.record({ ...scope, runId }, {
         type: 'gate.evaluated',
         gate: gate.expression,
         passed: gate.passed,
         detail: gate.detail,
       });
     }
+    return { gate, verdict, measured };
+  }
+
+  #judge(input: JudgeInput): TaskAttemptOutcome {
+    const { task, mission, workspace, role, scope, harvest, checks, runFailure } = input;
+    const { gate, verdict, measured } = input.assessed;
 
     if (verdict.passed) {
-      // 12(b). An approval on completion holds the task - and everything
-      //        downstream of it - until a human decides.
-      if (task.approvalPolicy.onCompletion) {
-        const approval = this.#createCompletionApproval(task, mission, workspace, role, gate, checks);
-        this.deps.recorder.record(scope, { type: 'approval.requested', approvalId: approval.id });
-        return this.#settle(task, scope, 'AWAITING_APPROVAL', approval.title);
-      }
-      return this.#settle(task, scope, 'SUCCEEDED', null);
+      // 12(b). The task's reviews - or the one `approvalPolicy.onCompletion`
+      //        implies - decide whether it, and everything downstream of it,
+      //        waits for a person.
+      const outcome = this.deps.reviews.onRoundPassed({ task, mission, workspace, role, gate, checks, scope, measured });
+      return this.#settle(task, scope, outcome.status, outcome.reason);
     }
 
     // 11(a'). An evaluator whose gate failed only because it found problems did
@@ -679,20 +872,28 @@ export class TaskExecutor {
     //        `retryFeedback` so the next attempt's prompt can quote it verbatim
     //        however long the task waits - even past a block and a manual retry.
     const feedback = verdict.detail;
-    if (task.attempts < task.retryPolicy.maxAttempts) {
-      this.#setStatus(task, scope, 'READY', feedback, { retryFeedback: feedback });
+    const retrying = task.attempts < task.retryPolicy.maxAttempts;
+    // The agent gets the measurement verbatim; a person reading the row gets the
+    // round's line when that measurement is only an unanswered note, since its
+    // ids and paths say nothing to them.
+    const reason = unansweredLine(harvest, gate, runFailure, retrying) ?? feedback;
+    if (retrying) {
+      this.#setStatus(task, scope, 'READY', reason, { retryFeedback: feedback });
       return {
         kind: 'settled',
         status: 'READY',
-        reason: feedback,
+        reason,
         retryAfterMs: task.retryPolicy.backoffMs,
       };
     }
     if (task.retryPolicy.onExhausted === 'fail') {
-      return this.#settle(task, scope, 'FAILED', feedback, { retryFeedback: feedback });
+      return this.#settle(task, scope, 'FAILED', reason, { retryFeedback: feedback });
     }
-    this.#createInterventionApproval(task, mission, workspace, feedback);
-    return this.#settle(task, scope, 'BLOCKED', feedback, { retryFeedback: feedback });
+    // The card's evidence is a person-readable summary, never the gate's
+    // verbatim detail: `feedback` can carry ids and file paths, and stays
+    // verbatim only in `retryFeedback`, for the agent's own next attempt.
+    this.#createInterventionApproval(task, mission, workspace, interventionSummary(task, harvest, gate, runFailure));
+    return this.#settle(task, scope, 'BLOCKED', reason, { retryFeedback: feedback });
   }
 
   /**
@@ -708,6 +909,428 @@ export class TaskExecutor {
       && typeof gate.facts[fact] === 'number' && (gate.facts[fact] as number) > 0);
     if (!reported) return false;
     return !this.deps.tasks.listByMission(task.missionId).some((t) => t.remediatesTaskId === task.id);
+  }
+
+  // ------------------------------------------------------------------ tighten
+
+  /**
+   * One tighten pass over a passed round whose artifacts ran over budget.
+   *
+   * It belongs to the same attempt: the work was accepted, so charging it an
+   * attempt would let length exhaust a retry budget meant for failures. It
+   * continues the author's session when the runtime can, because editing in
+   * context is cheaper and better than starting over; otherwise it runs fresh
+   * with the draft in the prompt, so the author still edits rather than
+   * rewrites. Whatever happens, it never fails the round: a pass that breaks
+   * leaves the first draft standing, over budget.
+   */
+  async #tighten(input: TightenInput): Promise<
+    { readonly kind: 'harvest'; readonly harvest: HarvestResult } | { readonly kind: 'stopped'; readonly outcome: TaskAttemptOutcome }
+  > {
+    const { deps } = this;
+    const { task, harvest, profile, scope } = input;
+    const firstScope: EventScope = { ...scope, runId: input.firstRunId, runtimeProfileId: profile.id };
+
+    // Asked once per round, and the record of asking is the event itself: a
+    // daemon that restarts mid-pass resumes this attempt and must accept what
+    // it gets rather than ask again.
+    if (this.#tightenedThisRound(task)) {
+      this.#recordOverBudget(firstScope, harvest.overBudget);
+      return { kind: 'harvest', harvest };
+    }
+    deps.recorder.record(firstScope, {
+      type: 'artifact.tighten_requested',
+      types: [...new Set(harvest.overBudget.map((o) => o.type))],
+      attempt: task.attempts,
+      // Kept so a restart can settle the round on the facts its reviews read.
+      ...(harvest.filesChanged === undefined ? {} : { filesChanged: harvest.filesChanged }),
+    });
+
+    const feedback = harvest.overBudget.map(tightenLine).join('\n');
+    const drafts: LoadedArtifact[] = [];
+    for (const over of harvest.overBudget) {
+      try {
+        drafts.push(await deps.artifactStore.read(over.artifactId));
+      } catch (e) {
+        deps.recorder.note(scope, `Could not read the ${over.type} draft for its tighten pass: ${errorMessage(e)}`, 'warn');
+      }
+    }
+    // The round's brief rides along so a fresh pass keeps the citations; the drafts are already inlined above it.
+    const brief = await deps.rounds.openRound(task);
+    const round = brief === null ? null : { ...brief, previous: [] };
+    const fresh = await this.#compilePrompt({ ...input, feedback: null, tighten: { feedback, drafts }, round });
+    const session = deps.runs.get(input.firstRunId)?.externalSessionId ?? null;
+    const resumable = session !== null
+      && input.adapter.resume !== undefined
+      && deps.runtimeManager.capabilities(profile).includes('session_resume');
+
+    const outcome = await this.#drive({
+      task, mission: input.mission, profile, adapter: input.adapter, target: input.target, assignment: input.assignment,
+      prompt: resumable ? tightenRequest(feedback, harvest.overBudget.map((o) => `${outDirFor(task)}/${o.type}.md`)) : fresh.prompt,
+      freshPrompt: fresh.prompt,
+      continueSession: resumable ? session : null,
+      grants: input.grants, scope, signal: input.signal, agent: input.agent, runId: ids.run(),
+      mcpConfigPath: input.mcpConfigPath,
+      // The slot the first run kept, handed straight on.
+      reservation: takeReservation(input.retained),
+      purpose: 'tighten', round: task.round ?? 1, inputs: fresh.includedArtifactIds,
+    });
+
+    if (outcome.interrupted) {
+      // The daemon is stopping. The round already passed, so it is settled now
+      // from the first draft instead of going back to the queue, where a
+      // restart would redo it and could spend an attempt. The run's session is
+      // not worth resuming for a round that is closed.
+      deps.runs.update(outcome.runId, {
+        status: 'INTERRUPTED',
+        errorMessage: 'Tandemise stopped during the tighten pass; the round was settled from its first draft.',
+      });
+      deps.recorder.note(scope, `Tandemise stopped during the tighten pass for '${task.key}'. The first draft stands, over its length budget.`, 'warn');
+      this.#recordOverBudget(firstScope, harvest.overBudget);
+      return { kind: 'harvest', harvest };
+    }
+    const stopped = this.#stopped(outcome, task, scope) ?? this.#overtaken(task, scope, input.signal);
+    if (stopped !== null) return { kind: 'stopped', outcome: stopped };
+    if (outcome.failure !== null) {
+      deps.recorder.note(
+        scope,
+        `The tighten pass for '${task.key}' did not finish (${outcome.failure.code}: ${summarize(outcome.failure.message, 300)}). `
+        + 'The first draft stands, over its length budget.',
+        'warn',
+      );
+      this.#recordOverBudget(firstScope, harvest.overBudget);
+      return { kind: 'harvest', harvest };
+    }
+
+    const refs = await this.#commit(input.target, task, input.role, profile, outcome.runId, scope);
+    const second = await deps.harvester.harvest({
+      mission: input.mission,
+      task,
+      target: input.target,
+      runId: outcome.runId,
+      roleId: input.role.id,
+      scope: { ...scope, runId: outcome.runId, runtimeProfileId: profile.id },
+      sourceRefs: refs,
+      authorId: input.agent?.id ?? RUNTIME_ACTOR,
+      revising: harvest.manifests,
+      // A tightened draft still answers the round's notes; one that dropped a citation keeps its draft.
+      ...(brief === null ? {} : { roundContract: deps.rounds.roundContract(task, brief) }),
+    });
+
+    // Per type: a valid rewrite replaces its draft (the harvester has already
+    // superseded it), and a type the pass broke or deleted keeps its draft.
+    const rewritten = new Map(second.manifests.map((m) => [m.type, m]));
+    const manifests = harvest.manifests.map((m) => rewritten.get(m.type) ?? m);
+    const kept = harvest.manifests.filter((m) => !rewritten.has(m.type)).map((m) => m.type);
+    const issues = second.issues.length > 0 ? ` (${summarize(second.issues.join(' '), 500)})` : '';
+    if (kept.length > 0) {
+      deps.recorder.note(
+        scope,
+        `The tighten pass for '${task.key}' did not leave a valid ${kept.join(', ')}${issues}; the first draft stands for ${kept.length === 1 ? 'it' : 'them'}.`,
+        'warn',
+      );
+    } else if (second.issues.length > 0) {
+      deps.recorder.note(scope, `The tighten pass for '${task.key}' also left files Tandemise did not use${issues}.`, 'warn');
+    }
+    const live = new Set(manifests.map((m) => m.id));
+    // A file the pass left untouched comes back as its draft, which the first run wrote.
+    const drafted = new Set(harvest.manifests.map((m) => m.id));
+    const rewrittenIds = new Set(second.manifests.map((m) => m.id).filter((id) => !drafted.has(id)));
+    const overBudget = [...second.overBudget, ...harvest.overBudget]
+      .filter((o, i, all) => live.has(o.artifactId) && all.findIndex((x) => x.artifactId === o.artifactId) === i);
+    // Each event carries the run that produced the artifact it is about.
+    const tightenScope: EventScope = { ...scope, runId: outcome.runId, runtimeProfileId: profile.id };
+    this.#recordOverBudget(tightenScope, overBudget.filter((o) => rewrittenIds.has(o.artifactId)));
+    this.#recordOverBudget(firstScope, overBudget.filter((o) => !rewrittenIds.has(o.artifactId)));
+    return { kind: 'harvest', harvest: { ...harvest, manifests, overBudget } };
+  }
+
+  /**
+   * Spec §4: notes that arrived while the pass ran are delivered before the task
+   * settles, as further passes in the same round. They are not attempts: a person
+   * asked for more, nothing failed. The session continues when the runtime can;
+   * otherwise the pass runs fresh with the draft and the notes in its prompt.
+   * It hands the slot on and treats a stop the way the tighten pass does.
+   */
+  async #deliverQueued(input: DeliveryInput): Promise<
+    | {
+      readonly kind: 'harvest'; readonly harvest: HarvestResult; readonly assessed: Assessment; readonly lastRunId: RunId;
+      readonly checks: readonly CheckResult[];
+    }
+    | { readonly kind: 'stopped'; readonly outcome: TaskAttemptOutcome }
+  > {
+    const { deps } = this;
+    const { task, profile, scope } = input;
+    let harvest = input.harvest;
+    let assessed = input.assessed;
+    let lastRunId = input.firstRunId;
+    let checks = input.checks;
+    for (let pass = 0; pass < MAX_FEEDBACK_PASSES; pass++) {
+      if (!deps.rounds.hasQueued(task.id)) break;
+      // The first run may have given its slot back when no note waited yet. A
+      // pass never runs without an admitted slot: that would put the profile
+      // over its limit. With none free, the notes wait, open, for "Start round".
+      if (input.retained.reservation === undefined) {
+        const selected = await deps.runtimeManager.select([profile], runtimeCapabilitiesFor(task));
+        if (selected.ok) input.retained.reservation = selected.value.reservation;
+        const overtakenWhileSelecting = this.#overtaken(task, scope, input.signal);
+        if (overtakenWhileSelecting !== null) return { kind: 'stopped', outcome: overtakenWhileSelecting };
+        if (!selected.ok) {
+          deps.recorder.note(
+            scope,
+            `A note arrived while '${task.key}' was running, but its runtime cannot take another pass now (${summarize(describeRejections(selected.error.rejections), 200)}). The note waits as an open note; start a round to deliver it.`,
+            'warn',
+          );
+          break;
+        }
+      }
+      const delivered = deps.rounds.promoteQueued(task);
+      if (delivered.length === 0) break;
+      deps.recorder.note(scope, `Delivering ${delivered.length === 1 ? 'a note' : `${delivered.length} notes`} to '${task.key}' now that its pass has ended.`);
+      const opened = (await deps.rounds.openRound(task))!;
+      // The pass edits what this attempt just wrote, in every round, not the last round's output.
+      const drafts: LoadedArtifact[] = [];
+      for (const manifest of harvest.manifests) {
+        try {
+          drafts.push(await deps.artifactStore.read(manifest.id));
+        } catch (e) {
+          deps.recorder.note(scope, `Could not read the ${manifest.type} draft for the note: ${errorMessage(e)}`, 'warn');
+        }
+      }
+      const brief: RoundBrief = { ...opened, previous: drafts, delivery: true };
+      const fresh = await this.#compilePrompt({ ...input, feedback: null, round: brief });
+      const session = deps.runs.get(lastRunId)?.externalSessionId ?? null;
+      const resumable = session !== null && input.adapter.resume !== undefined
+        && deps.runtimeManager.capabilities(profile).includes('session_resume');
+      const destinations = task.expectedOutputs.map((type) => `${outDirFor(task)}/${type}.md`);
+      const overtakenBeforeRun = this.#overtaken(task, scope, input.signal);
+      if (overtakenBeforeRun !== null) return { kind: 'stopped', outcome: overtakenBeforeRun };
+      const outcome = await this.#drive({
+        task, mission: input.mission, profile, adapter: input.adapter, target: input.target, assignment: input.assignment,
+        prompt: resumable ? roundRequest(brief, destinations, { inPlace: true }) : fresh.prompt, freshPrompt: fresh.prompt,
+        continueSession: resumable ? session : null, grants: input.grants, scope, signal: input.signal, agent: input.agent,
+        runId: ids.run(), mcpConfigPath: input.mcpConfigPath,
+        // The slot is handed on and kept again, since another pass may follow this one.
+        reservation: takeReservation(input.retained), retainSlot: input.retained,
+        purpose: 'feedback', round: task.round ?? 1, inputs: fresh.includedArtifactIds,
+      });
+      if (outcome.interrupted) {
+        // As for a tighten pass: the round already passed, so it settles from
+        // what it had, and the notes go back to waiting; the sweep shows them
+        // as open once the task has settled. Nothing should resume this run.
+        deps.runs.update(outcome.runId, {
+          status: 'INTERRUPTED',
+          errorMessage: 'Tandemise stopped while delivering a note; the round was settled from the output before it.',
+        });
+        deps.rounds.requeue(delivered);
+        deps.recorder.note(scope, `Tandemise stopped while '${task.key}' was taking a note. The output before it stands, and the note waits.`, 'warn');
+        return { kind: 'harvest', harvest, assessed, lastRunId, checks };
+      }
+      const stopped = this.#stopped(outcome, task, scope) ?? this.#overtaken(task, scope, input.signal);
+      if (stopped !== null) return { kind: 'stopped', outcome: stopped };
+      if (outcome.failure !== null) {
+        // Spec §4, the tighten pass's rule: a pass that broke at the runtime
+        // never fails the attempt that passed before it. That output stands,
+        // and the notes wait for a round a person starts.
+        if (outcome.failure.code === RUNTIME_SIGNED_OUT) deps.runtimeManager.invalidateHealth(profile.id);
+        // A sign-out hands a continued session on as resumable; this round is closing, so nothing may resume it.
+        if (outcome.status === 'RESUMABLE') {
+          deps.runs.update(outcome.runId, { status: 'INTERRUPTED', errorMessage: 'The pass delivering a note did not finish; the round was settled from the output before it.' });
+        }
+        deps.rounds.requeue(delivered);
+        deps.recorder.note(
+          scope,
+          `The pass delivering ${delivered.length === 1 ? 'a note' : `${delivered.length} notes`} to '${task.key}' did not finish (${outcome.failure.code}: ${summarize(outcome.failure.message, 300)}). `
+          + 'The output before it stands; start a round to deliver the notes.',
+          'warn',
+        );
+        return { kind: 'harvest', harvest, assessed, lastRunId, checks };
+      }
+      const refs = await this.#commit(input.target, task, input.role, profile, outcome.runId, scope);
+      const second = await deps.harvester.harvest({
+        mission: input.mission, task, target: input.target, runId: outcome.runId, roleId: input.role.id,
+        scope: { ...scope, runId: outcome.runId, runtimeProfileId: profile.id }, sourceRefs: refs,
+        authorId: input.agent?.id ?? RUNTIME_ACTOR, revising: harvest.manifests, roundContract: deps.rounds.roundContract(task, brief),
+      });
+      input.produced.push(...second.manifests);
+      const rewritten = new Map(second.manifests.map((m) => [m.type, m]));
+      const manifests = harvest.manifests.map((m) => rewritten.get(m.type) ?? m);
+      const live = new Set(manifests.map((m) => m.id));
+      harvest = {
+        ...harvest,
+        manifests,
+        // A type the pass broke (a citation missing) is missing now, so the gate fails and the retry names it.
+        // Deliberately a counted failure, unlike a pass that broke at the runtime: spec §5 makes a handoff
+        // that drops a note it owes a malformed artifact, whichever pass wrote it.
+        missing: task.expectedOutputs.filter((type) => !rewritten.has(type)),
+        issues: second.issues,
+        unanswered: second.unanswered,
+        // As in the tighten pass: a draft the pass left standing keeps its over-budget flag.
+        overBudget: [...second.overBudget, ...harvest.overBudget]
+          .filter((o, i, all) => live.has(o.artifactId) && all.findIndex((x) => x.artifactId === o.artifactId) === i),
+        ...(second.filesChanged === undefined ? {} : { filesChanged: second.filesChanged }),
+      };
+      lastRunId = outcome.runId;
+      if (harvest.overBudget.length === 0 && !deps.rounds.hasQueued(task.id)) releaseSlot(input.retained);
+      // The pass edited the work the first checks measured. The gate reads the
+      // newest results and the reviews are handed these, so a note that broke
+      // the tests is judged on the tests as they are now, not as they were.
+      checks = await deps.checks.run({
+        task, repository: input.repository, target: input.target, runId: outcome.runId, scope: { ...scope, runId: outcome.runId }, signal: input.signal,
+      });
+      const overtakenAfterChecks = this.#overtaken(task, scope, input.signal);
+      if (overtakenAfterChecks !== null) return { kind: 'stopped', outcome: overtakenAfterChecks };
+      assessed = this.#assess(task, harvest, null, scope, outcome.runId);
+      if (!assessed.verdict.passed) break;
+    }
+    return { kind: 'harvest', harvest, assessed, lastRunId, checks };
+  }
+
+  /**
+   * Settles a round whose tighten pass a daemon death cut short.
+   *
+   * Recognised by its `artifact.tighten_requested` for the current attempt
+   * with no settling `task.status` after it: recovery requeues a task without
+   * recording a transition, so nothing has concluded that round. Its drafts
+   * are already stored and its gate already passed, so it goes straight to
+   * the reviews, exactly as a pass that failed would have.
+   */
+  #concludeInterruptedTighten(
+    task: MissionTask,
+    mission: Mission,
+    workspace: Workspace,
+    role: RoleTemplate,
+    scope: EventScope,
+  ): TaskAttemptOutcome | null {
+    const { deps } = this;
+    if (task.attempts === 0) return null;
+    // The scan below reads every semantic event of the mission, and this runs on
+    // every start. A tighten pass is only ever requested for artifacts stored
+    // over budget, and a pass cut short leaves its run RESUMABLE or INTERRUPTED,
+    // so a task with neither cannot have one to settle and skips the scan.
+    const cutShort = deps.runs.listByTask(task.id).some((r) => r.status === 'RESUMABLE' || r.status === 'INTERRUPTED');
+    if (!cutShort && !deps.artifacts.listByTask(task.id).some((a) => a.overBudget === true)) return null;
+    const events = deps.events.listByMission(task.missionId, { semanticOnly: true }).filter((e) => e.taskId === task.id);
+    let at = -1;
+    events.forEach((e, i) => {
+      if (e.body.type === 'artifact.tighten_requested' && e.body.attempt === task.attempts) at = i;
+    });
+    if (at === -1) return null;
+    const request = events[at]!.body as Extract<RunEventRecord['body'], { type: 'artifact.tighten_requested' }>;
+    const settled = events.slice(at + 1).some((e) => e.body.type === 'task.status'
+      && e.body.to !== 'RUNNING' && e.body.to !== 'AWAITING_INPUT');
+    if (settled) return null;
+
+    // The pass's session belongs to a closed round; nothing should resume it.
+    for (const run of deps.runs.listByTask(task.id)) {
+      if (run.status !== 'RESUMABLE') continue;
+      deps.runs.update(run.id, {
+        status: 'INTERRUPTED',
+        errorMessage: 'Tandemise restarted during the tighten pass; the round was settled from its first draft.',
+      });
+    }
+    deps.recorder.note(
+      scope,
+      `Tandemise restarted during the tighten pass for '${task.key}'. The round had already passed, so it is settled from the drafts on record.`,
+      'warn',
+    );
+    const all = deps.artifacts.listByTask(task.id);
+    const superseded = new Set(all.map((a) => a.supersedes).filter((id) => id !== null));
+    this.#recordOverBudget(scope, all
+      .filter((a) => !superseded.has(a.id) && a.overBudget === true)
+      .map((a) => ({ artifactId: a.id, type: a.type, words: a.wordCount ?? 0, budget: deps.measure.measure(a.type, '').budget })));
+
+    // The round passed before the daemon died, so it lands here as it would have
+    // after the pass: its cited notes are answered and work kept on the old
+    // version is told. Otherwise the notes stay in the round for good.
+    deps.rounds.onRoundLanded(task, all.filter((a) => !superseded.has(a.id)), scope);
+    const measured = request.filesChanged === undefined ? {} : { filesChanged: request.filesChanged };
+    const gate = deps.gates.evaluate(task, measured);
+    const outcome = deps.reviews.onRoundPassed({ task, mission, workspace, role, gate, checks: [], scope, measured });
+    return this.#settle(task, scope, outcome.status, outcome.reason);
+  }
+
+  /** Called only for a passed round with artifacts over budget, so the scan is already that rare. */
+  #tightenedThisRound(task: MissionTask): boolean {
+    return this.deps.events.listByMission(task.missionId, { semanticOnly: true }).some((e) => e.taskId === task.id
+      && e.body.type === 'artifact.tighten_requested'
+      && e.body.attempt === task.attempts);
+  }
+
+  #recordOverBudget(scope: EventScope, overBudget: readonly OverBudgetArtifact[]): void {
+    for (const over of overBudget) {
+      this.deps.recorder.record(scope, {
+        type: 'artifact.over_budget',
+        artifactId: over.artifactId,
+        artifactType: over.type,
+        words: over.words,
+        budget: over.budget,
+      });
+    }
+  }
+
+  /**
+   * The outcome of a pass whose task was taken from it after its run ended:
+   * the row moved on (a Redo reset it to PENDING, a cancel settled it), or a
+   * person cancelled the pass. The row's status stands, as it does for a run
+   * cancelled mid-way. Null when the pass should settle as usual; a daemon
+   * stopping is left to finish settling, since the work itself is done.
+   */
+  #overtaken(running: MissionTask, scope: EventScope, signal: AbortSignal): TaskAttemptOutcome | null {
+    const current = this.deps.tasks.get(running.id);
+    if (current !== undefined && !LIVE_RUN_STATUSES.includes(current.status)) {
+      return { kind: 'settled', status: current.status, reason: current.statusReason };
+    }
+    if (!signal.aborted || isDaemonStopping(signal)) return null;
+    return this.#stopped({ cancelled: true, interrupted: false }, running, scope);
+  }
+
+  /**
+   * The outcome for an attempt whose task row changed before it marked the
+   * task RUNNING (a round upstream held it back to PENDING), or null.
+   */
+  #changedSince(task: MissionTask): TaskAttemptOutcome | null {
+    const current = this.deps.tasks.get(task.id);
+    if (current === undefined || current.status === task.status) return null;
+    return { kind: 'settled', status: current.status, reason: current.statusReason };
+  }
+
+  /**
+   * Sets aside what an overtaken pass harvested. It was never judged, and a
+   * card or a reader showing it as the task's output would present work made
+   * from the old version as current.
+   */
+  #withdrawOutput(task: MissionTask, scope: EventScope, manifests: readonly ArtifactManifest[]): void {
+    const ids = [...new Set(manifests.map((m) => m.id))];
+    if (ids.length === 0) return;
+    this.deps.artifacts.withdraw(ids, this.deps.clock.now());
+    this.deps.recorder.note(
+      scope,
+      `'${task.key}' was reset before its pass was judged, so the ${ids.length === 1 ? 'output it produced was' : `${ids.length} outputs it produced were`} set aside.`,
+    );
+    this.deps.recorder.invalidate('artifacts', task.missionId);
+  }
+
+  /** The outcome of a run the daemon or a person stopped, or null when it ran to an end. */
+  #stopped(outcome: Pick<DriveOutcome, 'cancelled' | 'interrupted'>, running: MissionTask, scope: EventScope): TaskAttemptOutcome | null {
+    if (outcome.interrupted) {
+      // Back to the queue with its attempt count kept, exactly as recovery
+      // treats a run the last daemon left behind; the next start resumes it.
+      // A note that waited for this pass rides with that start instead.
+      this.deps.rounds.promoteQueued(running);
+      return this.#settle(running, scope, 'READY', 'Tandemise stopped mid-run; this task resumes when it starts again.');
+    }
+    if (outcome.cancelled) {
+      // Cancelled so that something else could happen - a retry with more
+      // access requeues the task and stops its run. The run ends after that
+      // decision, and settling it CANCELLED here overwrote the retry.
+      const current = this.deps.tasks.get(running.id);
+      if (current !== undefined && !LIVE_RUN_STATUSES.includes(current.status)) {
+        return { kind: 'settled', status: current.status, reason: current.statusReason };
+      }
+      return this.#settle(running, scope, 'CANCELLED', 'Cancelled before the run finished.');
+    }
+    return null;
   }
 
   // -------------------------------------------------------------------- policy
@@ -765,7 +1388,7 @@ export class TaskExecutor {
 
   // ------------------------------------------------------------------- context
 
-  async #compilePrompt(input: PromptInput): Promise<string> {
+  async #compilePrompt(input: PromptInput): Promise<{ readonly prompt: string; readonly includedArtifactIds: readonly ArtifactId[] }> {
     const { task, mission, workspace, role, grants, target, scope } = input;
     const dependencies = await this.#loadDependencies(task, scope);
 
@@ -773,6 +1396,7 @@ export class TaskExecutor {
       type,
       template: this.deps.templates.render(type) ?? `(no template is defined for ${type}; write clear Markdown.)`,
       destination: `${outDirFor(task)}/${type}.md`,
+      wordBudget: this.deps.measure.measure(type, '').budget,
     }));
 
     const compiled = this.deps.contextCompiler.compile({
@@ -789,7 +1413,7 @@ export class TaskExecutor {
         artifacts: expected,
         workingDirectory: target.workingDirectory,
         completionGate: task.completionGate,
-        notes: this.#contractNotes(task, target, input.tools, input.feedback),
+        notes: this.#contractNotes(task, target, input.tools, input.feedback, input.tighten, input.round ?? null),
       },
     });
 
@@ -800,7 +1424,7 @@ export class TaskExecutor {
         'warn',
       );
     }
-    return compiled.prompt;
+    return { prompt: compiled.prompt, includedArtifactIds: compiled.includedArtifactIds };
   }
 
   #contractNotes(
@@ -808,6 +1432,8 @@ export class TaskExecutor {
     target: ExecutionTarget,
     tools: readonly string[],
     feedback: string | null,
+    tighten: TightenPrompt | undefined,
+    round: RoundBrief | null,
   ): readonly string[] {
     const notes = [
       `Write each artifact to its own file under \`${outDirFor(task)}/\` in ${target.workingDirectory}. `
@@ -845,6 +1471,18 @@ export class TaskExecutor {
         `Your previous attempt did not satisfy this task's completion gate. `
         + `Tandemise measured: ${feedback} `
         + 'Fix exactly that before you finish; nothing else about the task has changed.',
+      );
+    }
+    // An owner's request, not a gate failure (P0 lesson): the round passed, or the person chose to go again.
+    if (round !== null) notes.push(renderRoundBrief(round, (type) => `${outDirFor(task)}/${type}.md`));
+    // An editor's request, not a gate failure: the round already passed, and
+    // an author told it failed rewrites from scratch instead of cutting.
+    if (tighten !== undefined) {
+      notes.push(
+        `${tightenPreamble()}\n${tighten.feedback}\n`
+        + 'Edit your draft rather than rewriting it: keep what it says, say it in fewer words.'
+        + tighten.drafts.map((draft) => `\n\nYour ${draft.manifest.type} draft, to edit and write back to `
+          + `\`${outDirFor(task)}/${draft.manifest.type}.md\`:\n\n\`\`\`\`markdown\n${capDraft(draft.body.trimEnd())}\n\`\`\`\``).join(''),
       );
     }
     return notes;
@@ -1145,44 +1783,12 @@ export class TaskExecutor {
         { kind: 'text', label: 'Objective', value: summarize(task.objective, 600) },
         { kind: 'text', label: 'Mission goal', value: summarize(mission.goal, 400) },
       ],
+      ...this.deps.reviews.addressFor(task, workspace.id),
     });
     this.deps.approvals.create(approval);
     this.deps.recorder.record(scope, { type: 'approval.requested', approvalId: approval.id });
     this.deps.recorder.invalidate('approvals', mission.id);
     return this.#settle(task, scope, 'AWAITING_APPROVAL', approval.title);
-  }
-
-  #createCompletionApproval(
-    task: MissionTask,
-    mission: Mission,
-    workspace: Workspace,
-    role: RoleTemplate,
-    gate: GateOutcome | null,
-    checks: readonly CheckResult[],
-  ): Approval {
-    const outputs = this.deps.artifacts.listByTask(task.id);
-    const approval = this.deps.approvalFactory.createOrThrow({
-      workspaceId: workspace.id,
-      missionId: mission.id,
-      taskId: task.id,
-      kind: task.expectedOutputs.includes('ReleaseCandidate') ? 'release' : 'action',
-      risk: task.expectedOutputs.includes('ReleaseCandidate') ? 'release' : 'write_reversible',
-      title: `Approve the output of ${task.title}?`,
-      rationale: task.approvalPolicy.reason
-        ?? `${role.name} finished '${task.key}' and its output authorizes the work that follows.`,
-      effect: 'Approving releases every task that depends on this one. Rejecting with a note sends it back to '
-        + `${role.name} to revise, with your note as the brief; rejecting without one leaves it blocked.`,
-      evidence: [
-        ...(gate === null
-          ? [{ kind: 'text' as const, label: 'Gate', value: 'This task declares no completion gate.' }]
-          : [{ kind: 'check' as const, label: `Gate ${gate.passed ? 'passed' : 'failed'}`, value: gate.detail }]),
-        ...checks.map((c) => ({ kind: 'check' as const, label: c.name, value: `${c.outcome} — ${summarize(c.detail, 200)}` })),
-        ...outputs.map((a) => ({ kind: 'artifact' as const, label: a.type, value: a.id })),
-      ],
-    });
-    this.deps.approvals.create(approval);
-    this.deps.recorder.invalidate('approvals', mission.id);
-    return approval;
   }
 
   #createInterventionApproval(
@@ -1212,6 +1818,7 @@ export class TaskExecutor {
         { id: 'reject', label: 'Leave blocked' },
       ],
       recommendedOptionId: null,
+      ...this.deps.reviews.addressFor(task, workspace.id),
     });
     this.deps.approvals.create(approval);
     this.deps.recorder.invalidate('approvals', mission.id);
@@ -1260,7 +1867,10 @@ export class TaskExecutor {
   }
 
   #settleFailure(task: MissionTask, scope: EventScope, reason: string): TaskAttemptOutcome {
+    // Notes queued on a pass that failed go with the next attempt, which must cite them;
+    // left queued, the sweep would turn them open and that attempt would miss them.
     if (task.attempts < task.retryPolicy.maxAttempts) {
+      this.deps.rounds.promoteQueued(task);
       this.#setStatus(task, scope, 'READY', reason, { retryFeedback: reason });
       return { kind: 'settled', status: 'READY', reason, retryAfterMs: task.retryPolicy.backoffMs };
     }
@@ -1275,8 +1885,21 @@ export class TaskExecutor {
 
   // ----------------------------------------------------------------- lookups
 
-  #candidateProfiles(workspace: Workspace, task: MissionTask): readonly RuntimeProfile[] {
+  /**
+   * The runtimes this attempt may use, most preferred first, and the agents
+   * they belong to.
+   *
+   * In order: a manual retry's named runtime; the ranked runtimes of the agent
+   * members the task's staffing resolved to; and, only for a task whose
+   * staffing named nobody, the workspace's legacy routing for the role and
+   * then every enabled runtime. A task staffed to agents never widens: when
+   * none of them is active, or none has an enabled runtime, it says so
+   * instead of running on a runtime nobody chose (F11). A workspace nobody
+   * has staffed runs exactly as it always did.
+   */
+  #candidateProfiles(workspace: Workspace, task: MissionTask): CandidateRouting {
     const all = this.deps.runtimeProfiles.list(workspace.id).filter((p) => p.enabled);
+    const agents = this.#activeAgentCandidates(workspace, task);
 
     // A manual retry may name a runtime. It is a preference, not a bypass: the
     // profile still has to pass health and capability selection, so overriding
@@ -1285,14 +1908,54 @@ export class TaskExecutor {
     const override = this.deps.overrides.take(task.id);
     if (override !== undefined) {
       const chosen = all.filter((p) => p.id === override);
-      if (chosen.length > 0) return chosen;
+      if (chosen.length > 0) return { kind: 'profiles', profiles: chosen, agents };
+    }
+
+    // An agent's runtime that was deleted or disabled is skipped, not an error:
+    // the next agent, or the next runtime of the same agent, can still do it.
+    const staffed = [...new Set(agents.flatMap((a) => a.runtimeProfileIds))]
+      .flatMap((id) => all.filter((p) => p.id === id));
+    if (staffed.length > 0) return { kind: 'profiles', profiles: staffed, agents };
+    if ((task.staffing?.staffing.assignees.length ?? 0) > 0) {
+      return agents.length > 0 ? { kind: 'no_runtime', agents } : { kind: 'nobody_active' };
     }
 
     const routed = workspace.routing[task.roleId];
-    if (routed === undefined || routed.length === 0) return all;
+    if (routed === undefined || routed.length === 0) return { kind: 'profiles', profiles: all, agents: [] };
     // Routing is an ordered preference list, so it is walked in order and a
     // profile it does not mention is not a candidate at all.
-    return routed.flatMap((id) => all.filter((p) => p.id === id));
+    return { kind: 'profiles', profiles: routed.flatMap((id) => all.filter((p) => p.id === id)), agents: [] };
+  }
+
+  /**
+   * The snapshot's agent candidates that can still act.
+   *
+   * The snapshot fixes *who was staffed*; it cannot make an agent whose owner
+   * has since left the team keep acting on their authority. So activity is
+   * checked now, at dispatch, and an inactive agent is passed over.
+   */
+  #activeAgentCandidates(workspace: Workspace, task: MissionTask): readonly Member[] {
+    const ids = task.staffing?.agentCandidateIds ?? [];
+    if (ids.length === 0) return [];
+    const team = indexTeam(this.deps.members.listByWorkspace(workspace.id, { includeRemoved: true }));
+    return ids
+      .filter((id) => isActiveMember(team, id))
+      .map((id) => team.byId.get(id))
+      .filter((m): m is Member => m !== undefined && m.kind === 'agent');
+  }
+
+  /**
+   * Who the running task is assigned to and who answers for it, once the
+   * runtime has picked the agent.
+   *
+   * Resolution could only name the *first* candidate as responsible; the agent
+   * that actually runs may be a later one with a different owner.
+   */
+  #assignment(task: MissionTask, workspace: Workspace, agent: Member | null): Partial<MissionTask> {
+    if (agent === null || task.staffing == null) return {};
+    const team = indexTeam(this.deps.members.listByWorkspace(workspace.id, { includeRemoved: true }));
+    if (team.owners.length === 0) return { assigneeId: agent.id };
+    return { assigneeId: agent.id, responsibleId: responsibleFor(team, task.staffing.staffing, agent.id) };
   }
 
   /** Doubles with each consecutive signed-out run of this task, up to a ceiling. */
@@ -1301,6 +1964,19 @@ export class TaskExecutor {
     const streak = runs.findIndex((r) => r.errorCode !== RUNTIME_SIGNED_OUT);
     const consecutive = streak === -1 ? runs.length : streak;
     return Math.min(AWAITING_PERSON_RETRY_MS * 2 ** Math.max(0, consecutive - 1), MAX_SIGNED_OUT_BACKOFF_MS);
+  }
+
+  /**
+   * The session a round continues: the task's latest one, whatever its run's
+   * status, when this runtime can resume it (spec §5).
+   */
+  #settledSession(taskId: TaskId, profile: RuntimeProfile, adapter: { resume?: unknown }): string | null {
+    if (adapter.resume === undefined || !this.deps.runtimeManager.capabilities(profile).includes('session_resume')) return null;
+    const last = [...this.deps.runs.listByTask(taskId)]
+      .filter((r) => r.externalSessionId !== null)
+      .sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
+    // A session belongs to the runtime profile that holds it; another profile cannot continue it.
+    return last !== undefined && last.runtimeProfileId === profile.id ? last.externalSessionId : null;
   }
 
   #resumableRun(taskId: TaskId, adapterSupportsResume: boolean): Run | null {
@@ -1338,6 +2014,45 @@ interface PromptInput extends AttemptContext {
   readonly tools: readonly string[];
   /** The previous attempt's gate detail, verbatim, or null on a first attempt. */
   readonly feedback: string | null;
+  /** Set only for a tighten pass that runs fresh: the request and the drafts to edit. */
+  readonly tighten?: TightenPrompt;
+  /** The feedback this pass carries, or null when it carries none. */
+  readonly round?: RoundBrief | null;
+}
+
+interface TightenPrompt {
+  /** One `Tighten <Type>: …` line per artifact over budget. */
+  readonly feedback: string;
+  readonly drafts: readonly LoadedArtifact[];
+}
+
+interface TightenInput extends AttemptContext {
+  /** Holds the slot the first run kept; the pass takes it. */
+  readonly retained: SlotRetention;
+  readonly harvest: HarvestResult;
+  readonly profile: RuntimeProfile;
+  readonly adapter: { resume?: unknown };
+  readonly target: ExecutionTarget;
+  readonly assignment: { id: import('@tandemise/shared').WorkerAssignmentId };
+  readonly grants: readonly CapabilityGrant[];
+  readonly agent: Member | null;
+  readonly firstRunId: RunId;
+  readonly tools: readonly string[];
+  readonly mcpConfigPath: string | null;
+}
+
+interface DeliveryInput extends TightenInput {
+  readonly assessed: Assessment;
+  /** The first pass's check results, handed back unchanged when no delivery pass ran. */
+  readonly checks: readonly CheckResult[];
+  /** Collects what each delivery pass stores, so an overtaken attempt can set it aside. */
+  readonly produced: ArtifactManifest[];
+}
+
+interface Assessment {
+  readonly gate: GateOutcome | null;
+  readonly verdict: { readonly passed: boolean; readonly detail: string };
+  readonly measured: { readonly filesChanged?: number };
 }
 
 interface DriveInput {
@@ -1354,7 +2069,23 @@ interface DriveInput {
   readonly runId: import('@tandemise/shared').RunId;
   /** Null when the assignment was granted no tools. */
   readonly mcpConfigPath: string | null;
-  readonly reservation: SlotReservation;
+  /** The slot routing reserved; undefined when the run claims its own. */
+  readonly reservation: SlotReservation | undefined;
+  /**
+   * The session to continue, given explicitly by a tighten pass; null starts
+   * fresh. Undefined leaves the choice to the task's resumable runs.
+   */
+  readonly continueSession?: string | null;
+  /** The prompt for starting over when the session to continue is gone. */
+  readonly freshPrompt?: string;
+  /** Keeps the run's slot when it ends; see `RunRequest.retainSlot`. */
+  readonly retainSlot?: SlotRetention;
+  /** The agent member doing the run, or null when the runtime acts for no agent. */
+  readonly agent: Member | null;
+  readonly purpose: RunPurpose;
+  readonly round: number;
+  /** The artifacts the compiled prompt included, recorded as this run's inputs. */
+  readonly inputs: readonly ArtifactId[];
 }
 
 interface RunFailure {
@@ -1382,6 +2113,7 @@ interface JudgeInput {
   readonly checks: readonly CheckResult[];
   readonly runFailure: RunFailure | null;
   readonly runId: RunId;
+  readonly assessed: Assessment;
 }
 
 /**
@@ -1396,9 +2128,14 @@ function decide(
   harvest: HarvestResult,
   runFailure: RunFailure | null,
 ): { passed: boolean; detail: string } {
+  // A file refused for leaving a note unanswered was written: calling it
+  // missing sends the reader looking for a file that is there. Its own issue
+  // says what it lacks. It still counts as missing for the verdict below.
+  const explained = new Set(harvest.unanswered.map((u) => u.type));
+  const unexplained = harvest.missing.filter((type) => !explained.has(type));
   const context = [
     ...(runFailure === null ? [] : [`The run failed (${runFailure.code}): ${runFailure.message}`]),
-    ...(harvest.missing.length > 0 ? [`Missing expected artifacts: ${harvest.missing.join(', ')}.`] : []),
+    ...(unexplained.length > 0 ? [`Missing expected artifacts: ${unexplained.join(', ')}.`] : []),
     ...harvest.issues,
   ];
 
@@ -1413,6 +2150,101 @@ function decide(
     passed,
     detail: passed ? 'All expected outputs were produced.' : context.join(' '),
   };
+}
+
+/**
+ * Whether the only fault in this attempt is the round's contract - a note
+ * left uncited - and if so, the round and what it was left saying. Null when
+ * anything else went wrong too: a gate that reads more than the outputs could
+ * have failed on its own account, which the person-facing lines below must
+ * not hide.
+ */
+function unansweredNote(harvest: HarvestResult, gate: GateOutcome | null, runFailure: RunFailure | null): { round: number; what: string } | null {
+  const first = harvest.unanswered[0];
+  if (runFailure !== null || first === undefined) return null;
+  const tagged = new Set(harvest.unanswered.map((u) => u.issue));
+  if (harvest.issues.some((issue) => !tagged.has(issue))) return null;
+  const types = new Set(harvest.unanswered.map((u) => u.type));
+  if (harvest.missing.some((type) => !types.has(type))) return null;
+  if (gate !== null && gateDependencies(gate.expression).some((fact) => !fact.startsWith('artifact.'))) return null;
+  const notes = harvest.unanswered.reduce((sum, u) => sum + u.notes, 0);
+  const what = notes === 0 ? 'cited a note that is not on this task' : `left ${notes} ${notes === 1 ? 'note' : 'notes'} unanswered`;
+  return { round: first.round, what };
+}
+
+/**
+ * "Round 2 left 1 note unanswered; trying again.": the person's line for an
+ * attempt whose only fault is the round's contract, or null when anything else
+ * went wrong too.
+ */
+function unansweredLine(harvest: HarvestResult, gate: GateOutcome | null, runFailure: RunFailure | null, retrying: boolean): string | null {
+  const note = unansweredNote(harvest, gate, runFailure);
+  if (note === null) return null;
+  return `Round ${note.round} ${note.what}${retrying ? '; trying again.' : '.'}`;
+}
+
+/**
+ * "Round 2 still left 1 note unanswered after 3 attempts.": the exhausted-
+ * retries intervention card's summary. The gate's own detail can carry ids
+ * and file paths (§B2's ban is on refusal text, not on gate measurements), so
+ * the card never shows it verbatim - only this line, or a generic one when
+ * the failure was not only the round's contract.
+ */
+function interventionSummary(task: MissionTask, harvest: HarvestResult, gate: GateOutcome | null, runFailure: RunFailure | null): string {
+  const attempts = task.retryPolicy.maxAttempts;
+  const times = `${attempts} ${attempts === 1 ? 'attempt' : 'attempts'}`;
+  const note = unansweredNote(harvest, gate, runFailure);
+  if (note !== null) return `Round ${note.round} still ${note.what} after ${times}.`;
+  return `This task failed its completion gate on every one of its ${times}.`;
+}
+
+/**
+ * Gives the kept slot back and empties its holder, so a later pass can tell it
+ * holds no slot and must be admitted again rather than hand on a dead one.
+ */
+function releaseSlot(holder: SlotRetention): void {
+  takeReservation(holder)?.release();
+}
+
+/** Takes the kept slot out of its holder, so it is handed on exactly once. */
+function takeReservation(holder: SlotRetention): SlotReservation | undefined {
+  const reservation = holder.reservation;
+  holder.reservation = undefined;
+  return reservation;
+}
+
+/** The request a tighten pass makes, in the spec's words; one line per artifact. */
+function tightenLine(over: OverBudgetArtifact): string {
+  return `Tighten ${over.type}: the main body is ${over.words} words; the budget is ${over.budget}. `
+    + 'Keep the handoff, move detail under "## Appendix", and cut repetition.';
+}
+
+function tightenPreamble(): string {
+  return 'An editor asks for one tightening pass over the work you just finished. This is not a failure: '
+    + 'your round passed, and nothing else about the task has changed.';
+}
+
+/** What a resumed session is told: it already has the task and its draft in context. */
+function tightenRequest(feedback: string, destinations: readonly string[]): string {
+  return [
+    tightenPreamble(),
+    '',
+    feedback,
+    '',
+    `Edit the files in place (${destinations.map((d) => `\`${d}\``).join(', ')}) and keep their front matter valid. `
+    + 'Keep what they say; say it in fewer words.',
+  ].join('\n');
+}
+
+/** Where an attempt may run, or why a staffed task has nowhere to. */
+type CandidateRouting =
+  | { readonly kind: 'profiles'; readonly profiles: readonly RuntimeProfile[]; readonly agents: readonly Member[] }
+  | { readonly kind: 'no_runtime'; readonly agents: readonly Member[] }
+  | { readonly kind: 'nobody_active' };
+
+/** The first candidate agent that lists the chosen runtime, in staffing order. */
+function agentFor(agents: readonly Member[], profileId: string): Member | null {
+  return agents.find((a) => a.runtimeProfileIds.includes(profileId)) ?? null;
 }
 
 function targetKindFor(isolation: MissionTask['executionPolicy']['isolation']): TargetKind {

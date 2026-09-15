@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { MissionDetail, TaskView } from '@tandemise/api-contract';
+import type { Approval } from '@tandemise/domain';
+import { TaskPeople } from '../../components/ActorChip.js';
+import { useActors, type Actors } from '../../lib/team.js';
 import { Icon } from '../../components/Icon.js';
 import { Empty, IdChip } from '../../components/primitives.js';
 import { TaskDetail } from './TaskDetail.js';
@@ -21,10 +24,13 @@ interface Edge {
  */
 export function PlanPane({ detail }: { detail: MissionDetail }): JSX.Element {
   const [selected, setSelected] = useState<string | null>(null);
+  const [showPlanId, setShowPlanId] = useState(false);
   const canvas = useRef<HTMLDivElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const cards = useRef(new Map<string, HTMLElement>());
   const [edges, setEdges] = useState<readonly Edge[]>([]);
+  const actors = useActors();
+  const approvalsById = useMemo(() => new Map(detail.approvals.map((a) => [a.id as string, a])), [detail.approvals]);
   // A plan wider than the window is normal; without an edge fade the only hint
   // is a scrollbar pinned to the bottom of the pane, which nobody looks at.
   const [overflow, setOverflow] = useState({ start: false, end: false });
@@ -140,7 +146,16 @@ export function PlanPane({ detail }: { detail: MissionDetail }): JSX.Element {
           <div className="banner">
             <Icon name="sparkle" size={15} className="dim" />
             <span className="muted">{detail.plan.summary}</span>
-            {planArtifactId ? <span style={{ marginLeft: 'auto' }}><IdChip id={planArtifactId} prefix="plan" /></span> : null}
+            {/* The approved version's id is for bug reports: behind Details, as in the reader and the task drawer. */}
+            {planArtifactId ? (
+              <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 'var(--s2)', alignItems: 'center' }}>
+                <button type="button" className="reader__details-toggle" aria-expanded={showPlanId} onClick={() => setShowPlanId((open) => !open)}>
+                  Details
+                  <Icon name={showPlanId ? 'chevronUp' : 'chevronDown'} size={11} />
+                </button>
+                {showPlanId ? <IdChip id={planArtifactId} prefix="plan" /> : null}
+              </span>
+            ) : null}
           </div>
         </div>
       ) : null}
@@ -164,6 +179,8 @@ export function PlanPane({ detail }: { detail: MissionDetail }): JSX.Element {
                   <TaskCard
                     key={task.id}
                     task={task}
+                    actors={actors}
+                    pendingApproval={task.pendingApprovalId ? approvalsById.get(task.pendingApprovalId) : undefined}
                     selected={task.id === selected}
                     onSelect={() => setSelected(task.id)}
                     register={(element) => {
@@ -185,11 +202,15 @@ export function PlanPane({ detail }: { detail: MissionDetail }): JSX.Element {
 
 function TaskCard({
   task,
+  actors,
+  pendingApproval,
   selected,
   onSelect,
   register,
 }: {
   task: TaskView;
+  actors: Actors;
+  pendingApproval: Approval | undefined;
   selected: boolean;
   onSelect: () => void;
   register: (element: HTMLElement | null) => void;
@@ -205,15 +226,17 @@ function TaskCard({
         <span className="taskcard__role">{task.roleName}</span>
         <div className="spacer" />
         <span className={`badge badge--${tone}`} style={{ height: 18 }}>
-          {taskBadge(task.status)}
+          {task.status === 'AWAITING_HUMAN' ? humanBadge(task, actors) : taskBadge(task.status)}
         </span>
       </div>
 
       <div className="taskcard__title">{task.title}</div>
+      {/* The key is the plan's name for the task; its raw id is behind Details in the task drawer this card opens. */}
       <div className="taskcard__ids">
-        <IdChip id={task.id} />
         <span className="dim">{task.key}</span>
       </div>
+
+      <TaskPeople task={task} actors={actors} />
 
       <div className="taskcard__meta">
         {/* Only set when the task works somewhere other than the mission's own
@@ -262,10 +285,29 @@ function TaskCard({
         </div>
       ) : null}
 
-      {task.pendingApprovalId ? (
+      {/* A check is a look after the fact: the task is done and nothing waits on it. */}
+      {task.pendingApprovalId && pendingApproval?.kind === 'check' ? (
+        <div className="taskcard__note">
+          <Icon name="eye" size={11} />
+          <span>Check pending</span>
+        </div>
+      ) : task.pendingApprovalId ? (
         <div className="taskcard__gate taskcard__gate--failed">
           <Icon name="approvals" size={11} />
-          <span>Waiting for your approval</span>
+          <span>{waitingFor(pendingApproval, actors)}</span>
+        </div>
+      ) : null}
+
+      {task.attention?.kind === 'stale_input' ? (
+        // Kept on an older version: worth knowing, not a failure, so it reads like a pending check rather than in red.
+        <div className="taskcard__note" title={task.attention.note}>
+          <Icon name="info" size={11} />
+          <span>Built on an older version of {task.attention.upstream ?? 'its input'}</span>
+        </div>
+      ) : task.needsAttention ? (
+        <div className="taskcard__gate taskcard__gate--failed">
+          <Icon name="alert" size={11} />
+          <span>Changes requested after the fact</span>
         </div>
       ) : null}
 
@@ -277,6 +319,20 @@ function TaskCard({
       ) : null}
     </button>
   );
+}
+
+/** "Yours" only when it is: a task parked for Ana is Ana's, and an open pool task is anyone's. */
+function humanBadge(task: TaskView, actors: Actors): string {
+  const me = actors.meId;
+  if (task.assignee) return task.assignee.id === me ? 'Yours' : task.assignee.name;
+  if (me !== null && task.claimable.some((c) => c.id === me)) return 'Yours';
+  return task.claimable.length > 0 ? 'Open' : 'Yours';
+}
+
+function waitingFor(approval: Approval | undefined, actors: Actors): string {
+  const addressees = approval?.addressees ?? [];
+  if (addressees.length === 0 || (actors.meId !== null && addressees.includes(actors.meId))) return 'Waiting for your approval';
+  return `Waiting for ${actors.name(addressees[addressees.length - 1])}`;
 }
 
 function groupByLevel(tasks: readonly TaskView[]): readonly (readonly [number, readonly TaskView[]])[] {

@@ -1,0 +1,46 @@
+{
+  "id": "B11",
+  "title": "Real Claude Code: handoff and short card",
+  "ok": true,
+  "checks": [
+    {
+      "label": "design finished on Claude Code",
+      "ok": true,
+      "observed": {
+        "status": "SUCCEEDED",
+        "runtime": "Claude Code"
+      }
+    },
+    {
+      "label": "the DesignBrief has a valid handoff (headline ≤ 90, ≤ 3 points)",
+      "ok": true,
+      "observed": {
+        "headline": "Hello page is specified as a written brief, with all five states and the final copy",
+        "points": [
+          "The owner chose a written brief over Claude Design, so there is no design file or preview link",
+          "The repo has no UI yet, so the tokens here are new and minimal and don't extend an existing system",
+          "The page is one centred greeting card, with an optional name taken from the ?name= query parameter"
+        ],
+        "needs": "Confirm a written brief is enough for build, or connect a design tool if a preview link is still required",
+        "changed": [],
+        "links": []
+      }
+    },
+    {
+      "label": "within budget, or tightened once",
+      "ok": true,
+      "observed": {
+        "words": 385,
+        "tightens": 0
+      }
+    }
+  ],
+  "notes": [
+    "answered \"Where should I design the hello page?\" with \"Written brief only\"",
+    "words 385, overBudget false, tighten passes 0"
+  ],
+  "shots": [
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/B11-feed.png",
+    "/Users/you/projects/tandemise-collab/scratch/acceptance/p0/evidence/B11-reader.png"
+  ]
+}

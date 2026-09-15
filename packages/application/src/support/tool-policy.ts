@@ -1,6 +1,6 @@
 import type {
-  Approval, ApprovalRepositoryPort, AssignmentRepositoryPort, MissionRepositoryPort,
-  TaskRepositoryPort, WorkerAssignment, WorkspaceRepositoryPort,
+  Approval, ApprovalRepositoryPort, AssignmentRepositoryPort, MissionRepositoryPort, MissionTask,
+  RunRepositoryPort, TaskRepositoryPort, WorkerAssignment, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
 import { APPROVE_FOR_TASK_OPTION, APPROVE_OPTION, DEFAULT_AUTONOMY, REJECT_OPTION } from '@tandemise/domain';
 import type { ApprovalFactory, PolicyEngine } from '@tandemise/policy';
@@ -8,9 +8,11 @@ import type {
   ApprovalGate, ToolApprovalDecision, ToolApprovalRequest, ToolPolicyDecision, ToolPolicyGate,
   ToolPolicyRequest,
 } from '@tandemise/integrations-core';
-import type { ApprovalId, Logger } from '@tandemise/shared';
+import type { ApprovalId, Clock, Logger, WorkspaceId } from '@tandemise/shared';
 import { summarize } from '@tandemise/shared';
 import type { EventRecorder, EventScope } from './event-recorder.js';
+import { withdrawApproval } from './withdraw.js';
+import { runActorOf } from './run-actor.js';
 
 export interface PolicyGateDeps {
   readonly policy: PolicyEngine;
@@ -78,6 +80,18 @@ export interface ApprovalGateDeps {
   readonly missions: MissionRepositoryPort;
   readonly waiter: ApprovalWaiter;
   readonly recorder: EventRecorder;
+  readonly clock: Clock;
+  /** Finds the run asking, whose agent is the event's actor. */
+  readonly runs?: Pick<RunRepositoryPort, 'get' | 'listByTask'>;
+  /**
+   * Who a tool card is for and when it climbs the team tree - the same answer
+   * every other card about the task gets. Absent in a composition with no
+   * reviews wired: the card is then addressed to nobody and never escalates.
+   */
+  readonly address?: (task: MissionTask, workspaceId: WorkspaceId) => {
+    readonly addressees: readonly string[];
+    readonly escalateAfterMs: number | null;
+  };
 }
 
 /**
@@ -136,12 +150,29 @@ export function createApprovalGate(deps: ApprovalGateDeps): ApprovalGate {
             ],
           }
           : {}),
+        // A worker blocked mid-call is holding a slot and a target, so its
+        // question goes to the person who answers for the task, and up the
+        // tree if they do not answer - never to an inbox nobody owns.
+        ...(task === undefined || deps.address === undefined ? {} : deps.address(task, assignment.workspaceId)),
       });
       deps.approvals.create(approval);
-      deps.recorder.record(scopeOf(assignment), { type: 'approval.requested', approvalId: approval.id });
+      const actorId = deps.runs === undefined ? task?.assigneeId ?? null
+        : runActorOf(deps.runs, { taskId: assignment.taskId, assignmentId: assignment.id }, task);
+      deps.recorder.record({ ...scopeOf(assignment), actorId }, { type: 'approval.requested', approvalId: approval.id });
       deps.recorder.invalidate('approvals', assignment.missionId);
 
-      const decided = await deps.waiter.wait(approval.id, signal);
+      let decided: ToolApprovalDecision;
+      try {
+        decided = await deps.waiter.wait(approval.id, signal);
+      } finally {
+        // Still PENDING means nobody decided: the run was aborted or ended
+        // under the call, or the wait itself failed. The card is withdrawn
+        // either way, or it would sit in the inbox - and escalate - asking
+        // about a call no worker is making any more.
+        if (deps.approvals.get(approval.id)?.status === 'PENDING') {
+          withdrawApproval(deps, approval, 'The run ended before this was decided.');
+        }
+      }
       if (decided.approved && decided.selectedOptionId === APPROVE_FOR_TASK_OPTION) {
         const allowed = standing.get(assignment.id) ?? new Set<string>();
         allowed.add(request.capability);

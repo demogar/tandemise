@@ -8,15 +8,25 @@ import { migration004 } from './004_workflow_inputs.js';
 import { migration005 } from './005_task_wait.js';
 import { migration006 } from './006_task_park_statuses.js';
 import { migration007 } from './007_task_retry_feedback.js';
+import { migration008 } from './008_members_responsibility.js';
+import { migration009 } from './009_artifact_handoff.js';
+import { migration010 } from './010_feedback_rounds.js';
 
 export type { Migration } from './types.js';
 
 /**
  * Every migration, in order. Appending is the only legal edit: an already
  * released migration is immutable, because some installation has run it.
+ *
+ * A future migration that rebuilds a table by copying it must name its
+ * columns. `artifacts` has a generated column since 009 (`handoff_text`), and
+ * `INSERT INTO ... SELECT *` into a rebuilt table either fails on it or, if
+ * the new table declares it plainly, silently turns it into stored data that
+ * the FTS index no longer agrees with.
  */
 export const MIGRATIONS: readonly Migration[] = [
   migration001, migration002, migration003, migration004, migration005, migration006, migration007,
+  migration008, migration009, migration010,
 ];
 
 /** The newest schema version this binary understands. */
