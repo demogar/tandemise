@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/demogar/tandemise/compare/v0.3.1...v0.4.0) (2026-09-16)
+
+
+### Features
+
+* focus the team on you + your agents, and plan P3 outside contributions ([#18](https://github.com/demogar/tandemise/issues/18)) ([c8f0149](https://github.com/demogar/tandemise/commit/c8f014998a206c46f49354d332bd871cdcc4a497))
+
 ## [0.3.1](https://github.com/demogar/tandemise/compare/v0.3.0...v0.3.1) (2026-09-16)
 
 
