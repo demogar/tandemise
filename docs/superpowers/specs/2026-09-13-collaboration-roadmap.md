@@ -178,12 +178,11 @@ owner-reviewed drafts. Its chat and Nostr protocol parts are not used.
 Order: P0 first. P1 → P2 → P3 follow in sequence. P4 can run in parallel
 once P0 has landed.
 
-**Focus (2026-09-14): you plus agents.** P0 and P1 are done. The user chose
+**Focus (2026-09-16): you plus agents.** P0, P1 and P2 are done. The user chose
 to focus on one person working with agents until that loop feels right:
-- P2 continues, proven for a solo owner. Team-only acceptance (feedback on a
-  teammate's step) is dropped; the team pieces already built stay working.
-- P3 follows P2. Uploads and hand-backs from external tools matter most
-  to a solo owner.
+- P3 is in progress, proven for a solo owner. Uploads and external hand-backs
+  are the work that matters most now; see the
+  [P3 design](2026-09-16-p3-outside-contributions-design.md).
 - P4 is parked, with any other new team-only work. Revisit after P3.
 
 ## Acceptance

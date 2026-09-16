@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
 import type { AutonomyLevel, RoleTemplate, StaffingPatch } from '@tandemise/domain';
-import { STAFFING_PRESETS, type StaffingPreset } from '@tandemise/domain/staffing-presets';
+import type { StaffingPreset } from '@tandemise/domain/staffing-presets';
 import { Drawer } from '../components/Modal.js';
 import { RecordingFor, behalfOf } from '../components/ActorChip.js';
 import type { RoleStaffingPatchRequest } from '@tandemise/api-contract';
 import { useActors, type Actors } from '../lib/team.js';
-import { PRESET_LABELS, staffingSummary, toWire } from '../lib/staffing.js';
+import { PRESET_LABELS, STAFFING_PRESET_OPTIONS, staffingSummary, toWire } from '../lib/staffing.js';
 import { StaffingEditor, applyPreset, needsPick, presetOf } from './team/StaffingEditor.js';
 import { PageHeader } from '../components/PageHeader.js';
 import { Icon } from '../components/Icon.js';
@@ -357,7 +357,7 @@ function MissionStaffing({
               }}
             >
               <option value="inherit">Same as the project</option>
-              {STAFFING_PRESETS.map((p) => (
+              {STAFFING_PRESET_OPTIONS.map((p) => (
                 <option key={p} value={p}>
                   {PRESET_LABELS[p]}
                 </option>

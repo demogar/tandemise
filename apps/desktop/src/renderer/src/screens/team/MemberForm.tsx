@@ -1,17 +1,15 @@
 import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import type { MemberView } from '@tandemise/api-contract';
 import type { AccessLevel } from '@tandemise/domain';
 import { Icon } from '../../components/Icon.js';
 import { ConfirmDialog, Drawer } from '../../components/Modal.js';
 import { ErrorState, Field, Switch } from '../../components/primitives.js';
-import { useDaemon } from '../../lib/connection.js';
 import { useDaemonMutation, useIntegrations, useRoles, useRuntimes } from '../../lib/queries.js';
 import { useWorkspaceId } from '../../lib/workspace.js';
 import { pluralize } from '../../lib/format.js';
 import type { Actors } from '../../lib/team.js';
 
-export type MemberTarget = { readonly kind: 'new-person' } | { readonly kind: 'new-agent' } | { readonly kind: 'edit'; readonly member: MemberView };
+export type MemberTarget = { readonly kind: 'new-agent' } | { readonly kind: 'edit'; readonly member: MemberView };
 
 const ACCESS: readonly { value: AccessLevel; label: string }[] = [
   { value: 'owner', label: 'Owner' },
@@ -21,14 +19,13 @@ const ACCESS: readonly { value: AccessLevel; label: string }[] = [
 ];
 
 /**
- * Add or edit one member, in a drawer.
+ * Add an agent, or edit a member, in a drawer.
  *
- * A person and an agent share the drawer but not the fields: an agent needs an
- * owner, roles and the runtimes it runs on in order; a person has access and,
- * once someone reports to them, how closely they oversee delegated work.
+ * An agent needs an owner, roles and the runtimes it runs on in order; a person
+ * has access and, once someone reports to them, how closely they oversee
+ * delegated work. Only agents are added here: the app is you and your agents.
  */
 export function MemberDrawer({ target, actors, onClose }: { target: MemberTarget; actors: Actors; onClose: () => void }): JSX.Element {
-  const daemon = useDaemon();
   const workspaceId = useWorkspaceId() ?? '';
   const editing = target.kind === 'edit' ? target.member : null;
   const isAgent = target.kind === 'new-agent' || editing?.kind === 'agent';
@@ -36,9 +33,7 @@ export function MemberDrawer({ target, actors, onClose }: { target: MemberTarget
   const roles = useRoles();
   const runtimes = useRuntimes();
   const integrations = useIntegrations();
-  const people = useQuery({ queryKey: ['people'], queryFn: () => daemon.listPeople(), enabled: target.kind === 'new-person' });
 
-  const [personId, setPersonId] = useState<string>('new');
   const [name, setName] = useState(editing?.name ?? '');
   const [title, setTitle] = useState(editing?.title ?? '');
   // An existing member keeps where they are - '' is "Nobody (top of the team)", sent as null. Only a new
@@ -53,8 +48,6 @@ export function MemberDrawer({ target, actors, onClose }: { target: MemberTarget
 
   const reports = editing ? actors.members.filter((m) => m.reportsTo === editing.id && m.status === 'active') : [];
   const agentsOwned = reports.filter((m) => m.kind === 'agent');
-  const seated = new Set(actors.members.filter((m) => m.status === 'active' && m.personId).map((m) => m.personId));
-  const unseated = (people.data ?? []).filter((p) => p.removedAt === null && !seated.has(p.id));
   // A manager cannot report to themselves or to anyone below them.
   const managers = useMemo(() => {
     if (!editing) return actors.people;
@@ -80,12 +73,6 @@ export function MemberDrawer({ target, actors, onClose }: { target: MemberTarget
           integrationIds: [...integrationIds], title: title.trim() || null,
         });
       }
-      if (target.kind === 'new-person') {
-        const id = personId === 'new' ? (await d.createPerson({ displayName: name.trim() })).id : personId;
-        return d.addMember(workspaceId, {
-          kind: 'person', personId: id, reportsTo: reportsTo || null, access, title: title.trim() || null, roleIds: [...roleIds],
-        });
-      }
       const member = target.member;
       if (member.kind === 'person') {
         if (member.personId && name.trim() !== member.name) await d.updatePerson(member.personId, { displayName: name.trim() });
@@ -101,15 +88,14 @@ export function MemberDrawer({ target, actors, onClose }: { target: MemberTarget
   const remove = useDaemonMutation((d) => d.removeMember(editing?.id ?? ''), ['workspaces', 'tasks']);
   const restore = useDaemonMutation((d) => d.updateMember(editing?.id ?? '', { status: 'active' }), ['workspaces', 'tasks']);
 
-  const needsName = !(target.kind === 'new-person' && personId !== 'new');
-  const valid = (!needsName || name.trim().length > 0) && (!isAgent || (reportsTo !== '' && roleIds.length > 0));
+  const valid = name.trim().length > 0 && (!isAgent || (reportsTo !== '' && roleIds.length > 0));
   const removed = editing?.status === 'removed';
-  const heading = target.kind === 'new-person' ? 'Add a person' : target.kind === 'new-agent' ? 'Add an agent' : editing?.name ?? '';
+  const heading = target.kind === 'new-agent' ? 'Add an agent' : editing?.name ?? '';
 
   return (
     <Drawer
       title={heading}
-      subtitle={editing ? memberSubtitle(editing, actors) : isAgent ? 'Works for a person, on the runtimes you rank.' : 'Someone who does, reviews or answers for work.'}
+      subtitle={editing ? memberSubtitle(editing, actors) : 'Works for a person, on the runtimes you rank.'}
       onClose={onClose}
       footer={
         <>
@@ -134,24 +120,9 @@ export function MemberDrawer({ target, actors, onClose }: { target: MemberTarget
       }
     >
       <div className="stack" style={{ gap: 'var(--s4)' }}>
-        {target.kind === 'new-person' && unseated.length > 0 ? (
-          <Field label="Person">
-            <select className="select" value={personId} onChange={(event) => setPersonId(event.target.value)}>
-              <option value="new">Someone new</option>
-              {unseated.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.displayName}
-                </option>
-              ))}
-            </select>
-          </Field>
-        ) : null}
-
-        {needsName ? (
-          <Field label="Name">
-            <input data-autofocus className="input" value={name} placeholder={isAgent ? 'Figma design agent' : 'Ana Ruiz'} onChange={(event) => setName(event.target.value)} />
-          </Field>
-        ) : null}
+        <Field label="Name">
+          <input data-autofocus className="input" value={name} placeholder={isAgent ? 'Figma design agent' : 'Ana Ruiz'} onChange={(event) => setName(event.target.value)} />
+        </Field>
 
         <Field label="Title" hint="Optional, e.g. Director of Design.">
           <input className="input" value={title} onChange={(event) => setTitle(event.target.value)} />

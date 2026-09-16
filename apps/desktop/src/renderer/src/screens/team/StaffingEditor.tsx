@@ -1,12 +1,12 @@
 import type { MemberView } from '@tandemise/api-contract';
 import type { StaffingPatch, StaffingReview } from '@tandemise/domain';
 import {
-  STAFFING_PRESETS, presetToStaffing, staffingToPreset, type StaffingPreset,
+  presetToStaffing, staffingToPreset, type StaffingPreset,
 } from '@tandemise/domain/staffing-presets';
 import { useState } from 'react';
 import { Icon } from '../../components/Icon.js';
 import { Field, Segmented } from '../../components/primitives.js';
-import { ESCALATION_OPTIONS, PRESET_LABELS, builtInAssignees, staffingSummary } from '../../lib/staffing.js';
+import { ESCALATION_OPTIONS, PRESET_LABELS, STAFFING_PRESET_OPTIONS, builtInAssignees, displayedPreset, staffingSummary } from '../../lib/staffing.js';
 import type { Actors } from '../../lib/team.js';
 
 export type StaffingLevel = 'workspace' | 'mission' | 'task';
@@ -116,9 +116,9 @@ export function StaffingEditor({
       </div>
 
       <Field label="How this role is staffed">
-        <select className="select" value={preset} onChange={(event) => setPreset(event.target.value)}>
+        <select className="select" value={preset === 'inherit' ? 'inherit' : displayedPreset(preset)} onChange={(event) => setPreset(event.target.value)}>
           {level !== 'workspace' ? <option value="inherit">{level === 'task' ? 'Same as the mission' : 'Same as the project'}</option> : null}
-          {STAFFING_PRESETS.map((p) => (
+          {STAFFING_PRESET_OPTIONS.map((p) => (
             <option key={p} value={p}>
               {PRESET_LABELS[p]}
             </option>

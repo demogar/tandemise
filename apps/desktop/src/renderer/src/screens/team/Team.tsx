@@ -10,19 +10,18 @@ import { Empty, ErrorState, SkeletonList } from '../../components/primitives.js'
 import { useDaemonMutation, useRoles, useRuntimes, useStaffing, useTeam } from '../../lib/queries.js';
 import { useWorkspaceId } from '../../lib/workspace.js';
 import { useActors, type Actors } from '../../lib/team.js';
-import { PRESET_LABELS, builtInAssignees, staffingSummary, toWire } from '../../lib/staffing.js';
+import { PRESET_LABELS, STAFFING_PRESET_OPTIONS, builtInAssignees, displayedPreset, staffingSummary, toWire } from '../../lib/staffing.js';
 import { pluralize } from '../../lib/format.js';
 import { MemberDrawer, memberSubtitle, type MemberTarget } from './MemberForm.js';
 import { StaffingEditor, applyPreset, needsPick, presetOf } from './StaffingEditor.js';
 import { RolesPane } from './RolesPane.js';
-import { STAFFING_PRESETS } from '@tandemise/domain/staffing-presets';
 
 export type TeamTab = 'people' | 'staffing' | 'roles';
 
 /**
  * Who works on this project, and who answers for what.
  *
- * People and their agents as one tree (an agent sits under its owner), a
+ * You and your agents as one tree (an agent sits under its owner), a
  * staffing row per role, and the role definitions. Every row is one line;
  * anything you can change opens in a drawer.
  */
@@ -38,22 +37,16 @@ export function Team({ tab }: { tab: TeamTab }): JSX.Element {
         subtitle="Who does the work, and who answers for it."
         actions={
           tab === 'people' ? (
-            <>
-              <button type="button" className="btn" onClick={() => setTarget({ kind: 'new-person' })}>
-                <Icon name="plus" size={13} />
-                Add person
-              </button>
-              <button type="button" className="btn btn--primary" onClick={() => setTarget({ kind: 'new-agent' })}>
-                <Icon name="sparkle" size={13} />
-                Add agent
-              </button>
-            </>
+            <button type="button" className="btn btn--primary" onClick={() => setTarget({ kind: 'new-agent' })}>
+              <Icon name="sparkle" size={13} />
+              Add agent
+            </button>
           ) : null
         }
       />
 
       <div className="tabs" role="tablist">
-        <TabLink tab="people" current={tab} label="People & agents" count={actors.people.length + actors.agents.length} />
+        <TabLink tab="people" current={tab} label="You & agents" count={actors.agents.length} />
         <TabLink tab="staffing" current={tab} label="Staffing" />
         <TabLink tab="roles" current={tab} label="Roles" />
       </div>
@@ -254,7 +247,7 @@ function StaffingPane({ actors }: { actors: Actors }): JSX.Element {
               <select
                 className="select"
                 aria-label={`${role.name} staffing`}
-                value={recognised}
+                value={displayedPreset(recognised)}
                 onChange={(event) => {
                   const next = event.target.value as StaffingPreset;
                   if (next === 'custom') {
@@ -271,7 +264,7 @@ function StaffingPane({ actors }: { actors: Actors }): JSX.Element {
                   } else save.mutate({ roleId: role.id, patch: applied });
                 }}
               >
-                {STAFFING_PRESETS.map((p) => (
+                {STAFFING_PRESET_OPTIONS.map((p) => (
                   <option key={p} value={p}>
                     {PRESET_LABELS[p]}
                   </option>

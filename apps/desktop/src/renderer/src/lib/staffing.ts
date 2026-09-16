@@ -1,17 +1,39 @@
 import type { StaffingPatch, StaffingReview } from '@tandemise/domain';
-import type { StaffingPreset } from '@tandemise/domain/staffing-presets';
+import { STAFFING_PRESETS, type StaffingPreset } from '@tandemise/domain/staffing-presets';
 import type { TaskStaffingPatchRequest } from '@tandemise/api-contract';
 import type { Actors } from './team.js';
+import { flag } from './flags.js';
 
 export const PRESET_LABELS: Readonly<Record<StaffingPreset, string>> = {
   ai_only: 'AI only',
   ai_then_approve: 'AI drafts, responsible approves',
-  ai_then_check: 'AI drafts, person checks later',
+  ai_then_check: 'AI drafts, responsible checks later',
   person: 'A person does it',
   pool: 'Anyone from a group',
   ai_safety_net: 'AI with a safety net',
   custom: 'Custom',
 };
+
+/**
+ * The staffing presets a picker offers, gated by feature flags.
+ *
+ * The full list still exists in `STAFFING_PRESETS` so stored staffing keeps
+ * round-tripping; these are only what the user can choose.
+ */
+export const STAFFING_PRESET_OPTIONS: readonly StaffingPreset[] = flag('agentsOnly')
+  ? STAFFING_PRESETS.filter((preset) => preset !== 'person' && preset !== 'pool')
+  : [...STAFFING_PRESETS];
+
+/**
+ * The value a preset picker should display. Presets hidden by feature flags
+ * (`person`, `pool`) still exist as stored staffing, so they must never be the
+ * select's `value` — otherwise the select has no matching `<option>` and
+ * renders blank. They read as Custom, which is the truth: not one of the shapes
+ * the picker offers.
+ */
+export function displayedPreset(preset: StaffingPreset): StaffingPreset {
+  return STAFFING_PRESET_OPTIONS.includes(preset) ? preset : 'custom';
+}
 
 export const ESCALATION_OPTIONS: readonly { value: number | null; label: string }[] = [
   { value: 3_600_000, label: 'after 1 hour' },
