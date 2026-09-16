@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/demogar/tandemise/compare/v0.3.0...v0.3.1) (2026-09-16)
+
+
+### Bug Fixes
+
+* a completion gate reads the current state, not every measurement ever taken ([#16](https://github.com/demogar/tandemise/issues/16)) ([ea4626c](https://github.com/demogar/tandemise/commit/ea4626c72a429f815bbfab5e055328d6cb79e1fb))
+
 ## [0.3.0](https://github.com/demogar/tandemise/compare/v0.2.0...v0.3.0) (2026-09-15)
 
 
