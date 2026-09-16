@@ -112,6 +112,7 @@ export class SqliteEvaluationRepository implements EvaluationRepositoryPort {
   readonly #selectEvaluations;
   readonly #insertCheck;
   readonly #selectChecks;
+  readonly #selectLatestChecksForTask;
   readonly #selectLatestChecks;
 
   constructor(db: TandemiseDatabase) {
@@ -130,6 +131,19 @@ export class SqliteEvaluationRepository implements EvaluationRepositoryPort {
     );
     this.#selectChecks = db.handle.prepare<{ taskId: string }, CheckRow>(
       `SELECT ${CHECK_COLUMNS} FROM check_results WHERE task_id = :taskId ORDER BY created_at, id`,
+    );
+    // The newest row per check name for ONE task, which is what a task card and
+    // its drawer show. A task that retried 14 times has 4 checks, not 56
+    // results, and the one a person needs to see is the last one.
+    this.#selectLatestChecksForTask = db.handle.prepare<{ taskId: string }, CheckRow>(
+      `SELECT ${CHECK_COLUMNS} FROM (
+         SELECT ${CHECK_COLUMNS},
+                ROW_NUMBER() OVER (PARTITION BY name ORDER BY created_at DESC, id DESC) AS rn
+         FROM check_results
+         WHERE task_id = :taskId
+       )
+       WHERE rn = 1
+       ORDER BY name`,
     );
     // The newest row per (task, check name). Gates read facts like
     // `checks.typecheck`, and the fact is the *last* measurement, not the first
@@ -162,6 +176,10 @@ export class SqliteEvaluationRepository implements EvaluationRepositoryPort {
 
   listChecks(taskId: TaskId): readonly CheckResult[] {
     return this.#selectChecks.all({ taskId }).map(checkFromRow);
+  }
+
+  latestChecksForTask(taskId: TaskId): readonly CheckResult[] {
+    return this.#selectLatestChecksForTask.all({ taskId }).map(checkFromRow);
   }
 
   latestChecks(missionId: MissionId): readonly CheckResult[] {

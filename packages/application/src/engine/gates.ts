@@ -1,6 +1,7 @@
 import type {
   ApprovalRepositoryPort, ArtifactRepositoryPort, CheckResult, Evaluation,
-  EvaluationRepositoryPort, GateFacts, GateOutcome, MissionTask, RiskClass, TaskRepositoryPort,
+  EvaluationRepositoryPort, GateFacts, GateOutcome, MissionRepositoryPort, MissionTask, RiskClass,
+  TaskRepositoryPort,
 } from '@tandemise/domain';
 import { blockingFindings, evaluateGate, maxRisk } from '@tandemise/domain';
 import { riskForCapability } from '@tandemise/policy';
@@ -19,9 +20,13 @@ import type { MissionId } from '@tandemise/shared';
  *
  * Two assembly rules carry the weight:
  *
- *  - **Scope widens outward, latest wins.** Mission-wide checks form the base
- *    so a QA task's gate can read the implementation task's `checks.tests`;
- *    the task's own results are layered on top so a re-run replaces them.
+ *  - **Time collapses before scope folds.** A check name is measured many times
+ *    - once per attempt, and again by every later task working the same code.
+ *    Those measurements are not equal evidence: the newest one describes the
+ *    code as it stands, and the older ones describe code that no longer exists.
+ *    So the results are collapsed to the latest per repository FIRST, and only
+ *    then folded across repositories by `withChecks`, which takes the worst.
+ *    Getting this backwards makes the retry loop unwinnable - see `#currentChecks`.
  *  - **What was looked for is declared.** `expectingArtifactTypes` makes a
  *    missing output read `false` rather than `undefined`, which is the
  *    difference between "the worker did not write it" and "nobody checked".
@@ -32,6 +37,7 @@ export class GateService {
     private readonly artifacts: ArtifactRepositoryPort,
     private readonly evaluations: EvaluationRepositoryPort,
     private readonly approvals: ApprovalRepositoryPort,
+    private readonly missions: MissionRepositoryPort,
   ) {}
 
   /**
@@ -44,8 +50,7 @@ export class GateService {
     builder.withTask({ attempt: task.attempts, roleId: task.roleId, risk: riskOf(task) });
     if (measured.filesChanged !== undefined) builder.withDiff({ filesChanged: measured.filesChanged });
 
-    builder.withChecks(sortByTime(this.evaluations.latestChecks(task.missionId)));
-    builder.withChecks(sortByTime(this.evaluations.listChecks(task.id)));
+    builder.withChecks(this.#currentChecks(task.missionId));
 
     builder.withArtifacts(this.artifacts.listByMission(task.missionId));
     builder.expectingArtifactTypes(task.expectedOutputs);
@@ -77,6 +82,46 @@ export class GateService {
     return evaluateNamedGate(name, this.factsFor(task));
   }
 
+  /**
+   * The newest measurement of each check name, per repository.
+   *
+   * `latestChecks` already keeps only the newest row per (task, name), which
+   * collapses a task's own attempts. Tasks are then grouped by the repository
+   * they work in, because that - not the task - is what a check measures: two
+   * tasks touching the same repo are two measurements of one thing, and the
+   * later one supersedes the earlier. Across repositories nothing supersedes
+   * anything, so those rows are all returned and `withChecks` folds them
+   * worst-wins: a mission does not ship because its second repo went green
+   * after its first one went red.
+   *
+   * A task with no repository of its own inherits the mission's, so a
+   * single-repo mission is one scope and its retries clear their own failures.
+   * This is the fix for a real mission whose `implement` task burned all 14
+   * attempts on a `checks.tests` FAIL recorded by attempt 1, while attempts
+   * 3-14 each measured PASS.
+   */
+  #currentChecks(missionId: MissionId): readonly CheckResult[] {
+    // A task leaves `repositoryId` null to mean "the mission's repository", so
+    // the null has to be resolved before it is used as an identity - otherwise
+    // a task that names the repo explicitly and a sibling that leaves it null
+    // land in different scopes for the same code, and neither clears the
+    // other's failure.
+    const missionRepository = this.missions.get(missionId)?.repositoryId ?? '';
+    const scopeOfTask = new Map<string, string>();
+    for (const task of this.tasks.listByMission(missionId)) {
+      scopeOfTask.set(task.id, task.repositoryId ?? missionRepository);
+    }
+    const newest = new Map<string, Map<string, CheckResult>>();
+    for (const result of this.evaluations.latestChecks(missionId)) {
+      const scope = scopeOfTask.get(result.taskId) ?? missionRepository;
+      const byName = newest.get(scope) ?? new Map<string, CheckResult>();
+      const held = byName.get(result.name);
+      if (held === undefined || result.createdAt > held.createdAt) byName.set(result.name, result);
+      newest.set(scope, byName);
+    }
+    return [...newest.values()].flatMap((byName) => [...byName.values()]);
+  }
+
   #latestEvaluation(missionId: MissionId, evaluatorRoleId: string): Evaluation | undefined {
     let latest: Evaluation | undefined;
     for (const task of this.tasks.listByMission(missionId)) {
@@ -102,7 +147,3 @@ function riskOf(task: MissionTask): RiskClass {
   return capabilities.reduce<RiskClass>((risk, c) => maxRisk(risk, riskForCapability(c)), 'read');
 }
 
-/** `GateFactBuilder.withChecks` is last-wins, so order is the whole contract. */
-function sortByTime(results: readonly CheckResult[]): readonly CheckResult[] {
-  return [...results].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-}

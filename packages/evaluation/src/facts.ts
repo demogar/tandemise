@@ -206,12 +206,16 @@ export class GateFactBuilder {
   /**
    * Folds check results into facts, worst-outcome-wins per name.
    *
-   * The caller passes every task's latest checks for a mission, so the same
-   * name arrives more than once. Last-writer-wins let one task's PASS overwrite
-   * another task's FAIL purely because of row order - a mission-level
-   * `checks.tests` fact that reads PASS while a task's tests were failing. A
-   * gate asking "did the tests pass" means all of them, so any FAIL is decisive
-   * and SKIP only survives when nothing actually ran.
+   * This fold is over SCOPE, not over time. The caller passes one result per
+   * (repository, name) - already reduced to the newest measurement of each -
+   * so the same name arrives more than once only when a mission spans several
+   * repositories. A gate asking "did the tests pass" means all of them, so any
+   * FAIL is decisive and SKIP only survives when nothing actually ran.
+   *
+   * Passing raw history here instead is a bug, and was one: worst-wins over a
+   * task's every attempt pins a check to FAIL from its first failure onward,
+   * which no retry can ever clear. Reduce time first - see
+   * `GateService.#currentChecks`.
    */
   withChecks(results: readonly CheckResult[]): this {
     for (const result of results) {

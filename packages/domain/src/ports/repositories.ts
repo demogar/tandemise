@@ -189,6 +189,8 @@ export interface EvaluationRepositoryPort {
   listEvaluations(taskId: TaskId): readonly Evaluation[];
   recordCheck(check: CheckResult): CheckResult;
   listChecks(taskId: TaskId): readonly CheckResult[];
+  /** One row per check name - the newest measurement. What a person is shown. */
+  latestChecksForTask(taskId: TaskId): readonly CheckResult[];
   latestChecks(missionId: MissionId): readonly CheckResult[];
 }
 

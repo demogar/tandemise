@@ -266,6 +266,30 @@ function render(node: Node, facts: GateFacts): string {
       return `${node.path} is ${v === undefined ? 'not measured' : JSON.stringify(v)}`;
     }
     case 'not': return `not (${render(node.operand, facts)})`;
-    case 'binary': return `${render(node.left, facts)} ${node.op} ${render(node.right, facts)}`;
+    case 'binary': {
+      // A comparison of a measurement against a requirement is rendered as a
+      // sentence, not as the expression that produced it. Composing the two
+      // halves mechanically gave `checks.tests is "FAIL" != FAIL`, which reads
+      // as a contradiction - and this string is not decoration: it becomes the
+      // task's status reason AND the retry feedback the next agent is asked to
+      // act on. One real mission spent 13 attempts being told its tests failed.
+      if (COMPARISONS.has(node.op) && node.left.kind === 'path' && node.right.kind === 'literal') {
+        return `${node.left.path} is ${plain(facts[node.left.path])}, needs ${requirement(node.op, node.right.value)}`;
+      }
+      return `${render(node.left, facts)} ${node.op} ${render(node.right, facts)}`;
+    }
   }
+}
+
+const COMPARISONS = new Set<BinaryOp>(['==', '!=', '>', '>=', '<', '<=']);
+
+function plain(value: GateValue): string {
+  return value === undefined ? 'not measured' : String(value);
+}
+
+/** What the gate wanted, in the words a person would use to ask for it. */
+function requirement(op: BinaryOp, expected: GateValue): string {
+  if (op === '==') return String(expected);
+  if (op === '!=') return `anything but ${expected}`;
+  return `${op} ${expected}`;
 }

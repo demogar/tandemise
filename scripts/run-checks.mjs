@@ -18,6 +18,7 @@ export const OFFLINE_CHECKS = [
   'execution-check',
   'feedback-loop-check',
   'fs-security-check',
+  'gate-facts-check',
   'handoff-check',
   'mcp-integration-check',
   'multirepo-check',

@@ -429,7 +429,11 @@ export class ProjectionServiceImpl implements ProjectionService {
         latestRun,
         runCount: runs.length,
         outputArtifacts: this.deps.artifacts.listByTask(task.id).map((a) => toArtifactView(this.deps, a)),
-        checks: this.deps.evaluations.listChecks(task.id),
+        // The newest measurement per check, not one row per attempt: a task
+        // that retried 14 times produced 56 results describing 4 checks, and
+        // the card rendered all of them - including a FAIL from two days and
+        // thirteen passing runs ago. The full history stays on the Checks tab.
+        checks: this.deps.evaluations.latestChecksForTask(task.id),
         // Evaluated live rather than stored: a gate is a view of the evidence as
         // it stands now, and a re-run check has to move the badge.
         // Only once the task has been judged: on a task that has not run, every

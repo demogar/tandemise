@@ -1797,6 +1797,7 @@ export class TaskExecutor {
     workspace: Workspace,
     detail: string,
   ): Approval {
+    const gateNow = this.deps.gates.evaluate(task);
     const approval = this.deps.approvalFactory.createOrThrow({
       workspaceId: workspace.id,
       missionId: mission.id,
@@ -1808,6 +1809,19 @@ export class TaskExecutor {
       effect: 'Retrying returns the task to the queue for one more attempt. Accepting marks its result good enough and lets dependent work continue. Leaving it blocked stops here.',
       evidence: [
         { kind: 'text', label: 'Last measurement', value: summarize(detail, 1000) },
+        // What the gate reads NOW, not what it read when the attempt failed.
+        // A task can exhaust its retries and still be sound - the work passes
+        // and the gate is the thing that cannot be met - and without this the
+        // card is a dead end: three options and no way to tell which is right.
+        // When every condition is already met, the block is the last thing
+        // standing and one more attempt clears it.
+        ...(gateNow === null ? [] : [{
+          kind: 'text' as const,
+          label: 'What the gate reads now',
+          value: gateNow.passed
+            ? 'Every condition is met as the work stands. One more attempt should clear it.'
+            : summarize(gateNow.detail, 600),
+        }]),
         { kind: 'text', label: 'Objective', value: summarize(task.objective, 600) },
       ],
       options: [

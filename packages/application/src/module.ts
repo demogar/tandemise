@@ -167,6 +167,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       r.resolve(t.ARTIFACT_REPOSITORY),
       r.resolve(t.EVALUATION_REPOSITORY),
       r.resolve(t.APPROVAL_REPOSITORY),
+      r.resolve(t.MISSION_REPOSITORY),
     ), { source: SOURCE });
 
     bind(t.REVIEW_PIPELINE, (r) => new ReviewPipeline({
