@@ -14,3 +14,6 @@ coverage/
 
 # electron-vite writes a timestamped config next to the real one while building
 apps/desktop/electron.vite.config.*.mjs
+
+# SwiftPM build output (the macOS helper); holds absolute local paths
+.build/
