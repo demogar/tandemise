@@ -4,7 +4,8 @@ import type {
   Integration, Mission, MissionProgress, MissionTask, Repository, RoleTemplate, Run,
   RunEventRecord, RuntimeHealth, RuntimeProfile, RuntimeDiscovery, RuntimeSettingField, Workspace,
   MissionPlan, PlanValidationIssue, GateOutcome, AccessLevel, Member, Person, Staffing,
-  ArtifactHandoff, TaskStatus, FeedbackStatus, MissionPriority,
+  ArtifactHandoff, TaskStatus, FeedbackStatus, MissionPriority, Limit, LimitStatus,
+  MissionStatus, StalledAction, WatchLevel,
 } from '@tandemise/domain';
 
 /**
@@ -342,6 +343,55 @@ export interface InboxRefinementView {
   readonly updatedAt: string;
 }
 
+/**
+ * A mission nothing moves and nothing asks about (P9): one row per mission,
+ * derived on every read, gone as soon as the mission can move again.
+ */
+export interface InboxStalledView {
+  readonly missionId: string;
+  readonly missionTitle: string;
+  readonly missionStatus: MissionStatus;
+  /** The liveness row that decided it (P9 spec §1, L9-L18). */
+  readonly rule: string;
+  /** What is stuck, in a sentence: "'implement' is blocked: A human declined to retry this task." */
+  readonly reason: string;
+  /** The one thing to press. */
+  readonly action: StalledAction;
+  /** Who it is for: the mission's creator, or empty when nobody in particular. */
+  readonly forIds: readonly string[];
+  /** When the mission last changed. */
+  readonly since: string;
+}
+
+/** A run that has been silent past its threshold (P9 spec §2). */
+export interface InboxSilentRunView {
+  readonly runId: string;
+  readonly taskId: string;
+  readonly taskKey: string;
+  readonly taskTitle: string;
+  readonly missionId: string;
+  readonly missionTitle: string;
+  readonly attempt: number;
+  readonly lastEventAt: string;
+  /** Measured when the Inbox was read. */
+  readonly quietForMs: number;
+  readonly quietAfterMs: number;
+  readonly silentAfterMs: number;
+  /** The step's wall-time budget: the run is stopped automatically only at this. */
+  readonly budgetMs: number;
+  readonly forIds: readonly string[];
+}
+
+/** How long a running step has been quiet (P9). */
+export interface TaskWatchView {
+  readonly level: WatchLevel;
+  readonly lastEventAt: string;
+  readonly quietForMs: number;
+  readonly quietAfterMs: number;
+  readonly silentAfterMs: number;
+  readonly snoozedUntil: string | null;
+}
+
 export interface SystemInfo {
   readonly daemonVersion: string;
   readonly apiVersion: string;
@@ -402,6 +452,8 @@ export interface TaskView extends MissionTask {
     readonly upstream: string | null;
     readonly note: string;
   } | null;
+  /** How long its live run has been quiet; null unless the step is running (P9). */
+  readonly watch: TaskWatchView | null;
 }
 
 export interface MissionSummary {
@@ -425,6 +477,8 @@ export interface MissionDetail {
   readonly checks: readonly CheckResult[];
   readonly evaluations: readonly Evaluation[];
   readonly metrics: MissionMetrics;
+  /** Its limits and how much of each it used (P8). */
+  readonly limits: MissionLimitsView;
   readonly plan: MissionPlan | null;
   readonly planIssues: readonly PlanValidationIssue[];
 }
@@ -553,6 +607,10 @@ export interface InboxView {
   readonly tasks: readonly InboxTaskView[];
   /** DRAFT missions whose refinement waits on a person (P6). */
   readonly refinements: readonly InboxRefinementView[];
+  /** Missions nothing moves and nothing asks about (P9). */
+  readonly stalled: readonly InboxStalledView[];
+  /** Runs quiet past their silent threshold and not snoozed (P9). */
+  readonly silentRuns: readonly InboxSilentRunView[];
 }
 
 /** One DRAFT mission in the backlog, in pull order. */
@@ -567,6 +625,8 @@ export interface BacklogItemView {
   readonly readinessLabel: string;
   /** A refinement pass is running on it, so it is not pulled yet. */
   readonly refining: boolean;
+  /** Why the monthly spend rule holds it back (P8), or null. */
+  readonly held: string | null;
 }
 
 /** The project's backlog and work in progress (P7). */
@@ -598,6 +658,58 @@ export interface HomeView {
   readonly pendingApprovals: readonly ApprovalView[];
   readonly runtimes: readonly RuntimeView[];
   readonly recentEvents: readonly RunEventRecord[];
+  /** Missions and the project at or over a limit's warning level (P8). */
+  readonly limitAlerts: readonly LimitAlertView[];
+}
+
+/** One limit as measured now (P8). */
+export interface LimitStatusView extends LimitStatus {
+  /** "Agent minutes". */
+  readonly label: string;
+  /** "15 / 30 agent min"; "not reported / $5.00" when the metric is not reported. */
+  readonly bar: string;
+  /** What this means for the person, when it means something: a warning, a stop, or why it cannot be measured. */
+  readonly note: string | null;
+}
+
+export interface UsageView {
+  readonly agentMinutes: number;
+  /** Null when no runtime reported tokens. */
+  readonly tokens: number | null;
+  /** Null when no runtime reported a cost: never 0 for "not reported". */
+  readonly costUsd: number | null;
+  readonly runs: number;
+}
+
+export interface MissionLimitsView {
+  /** Where its limits come from: its own, the project's defaults, or none set. */
+  readonly source: 'mission' | 'project' | 'none';
+  readonly limits: readonly LimitStatusView[];
+  readonly usage: UsageView;
+  /** The open "raise or keep paused" card, when work is stopped at a limit. */
+  readonly pendingApprovalId: string | null;
+}
+
+export interface LimitAlertView {
+  readonly scope: 'mission' | 'project';
+  readonly missionId: string | null;
+  readonly missionTitle: string | null;
+  readonly level: 'soft' | 'hard';
+  /** One sentence, numbers included, that says what happens next. */
+  readonly text: string;
+}
+
+/** A project's usage for one local calendar month, against its monthly limits. */
+export interface WorkspaceUsageView {
+  readonly workspaceId: string;
+  /** "2026-09". */
+  readonly month: string;
+  readonly windowStart: string;
+  readonly windowEnd: string;
+  readonly usage: UsageView;
+  readonly limits: readonly LimitStatusView[];
+  readonly defaultMissionLimits: readonly Limit[];
+  readonly missions: readonly { readonly missionId: string; readonly title: string; readonly usage: UsageView }[];
 }
 
 export interface RepositoryProbe {

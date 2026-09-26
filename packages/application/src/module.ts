@@ -46,6 +46,9 @@ import { FeedbackServiceImpl } from './services/feedback-service.js';
 import { CriteriaServiceImpl } from './services/criteria-service.js';
 import { ReadinessService } from './services/readiness.js';
 import { BacklogService } from './services/backlog-service.js';
+import { LimitService } from './services/limit-service.js';
+import { LivenessService } from './services/liveness-service.js';
+import { DEFAULT_QUIET_AFTER_MS } from '@tandemise/domain';
 import { RefinementServiceImpl } from './services/refinement-service.js';
 import { PlanningServiceImpl } from './services/planning-service.js';
 import { ProjectionServiceImpl } from './services/projection-service.js';
@@ -68,6 +71,8 @@ export interface ApplicationModuleOptions {
    * `git config user.name`; this layer may not run processes to find it.
    */
   readonly localPersonName?: string;
+  /** A run is quiet after this long without an agent event (P9). The daemon passes TANDEMISE_QUIET_MS. */
+  readonly quietAfterMs?: number;
 }
 
 /**
@@ -263,6 +268,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       runInputs: r.resolve(t.RUN_INPUT_REPOSITORY),
       recorder: r.resolve(t.EVENT_RECORDER),
       deadlines: r.resolve(t.RUN_DEADLINES),
+      limits: r.resolve(t.LIMIT_SERVICE),
       paths: paths(r),
       clock: clock(r),
       log: log(r).child({ component: 'executor' }),
@@ -321,6 +327,9 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       // Resolved per pass, not at construction: the backlog plans through the
       // planning service, which is composed with the API services after this.
       pullBacklog: () => r.resolve(t.BACKLOG_SERVICE).pull(),
+      limits: r.resolve(t.LIMIT_SERVICE),
+      // Resolved per pass, like the backlog: it reads the planner, composed after this.
+      watchLiveness: () => r.resolve(t.LIVENESS_SERVICE).watch(),
       clock: clock(r),
       log: log(r).child({ component: 'scheduler' }),
       ...(options.tickIntervalMs === undefined ? {} : { tickIntervalMs: options.tickIntervalMs }),
@@ -468,6 +477,8 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       staffing: r.resolve(t.STAFFING_RESOLVER),
       feedback: r.resolve(t.FEEDBACK_REPOSITORY),
       readiness: r.resolve(t.READINESS_SERVICE),
+      limits: r.resolve(t.LIMIT_SERVICE),
+      liveness: r.resolve(t.LIVENESS_SERVICE),
     }), { source: SOURCE });
 
     // Default: this installation has no workflow files. A composition root that
@@ -534,6 +545,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       recorder: r.resolve(t.EVENT_RECORDER),
       members: r.resolve(t.MEMBER_REPOSITORY),
       artifacts: r.resolve(t.ARTIFACT_REPOSITORY),
+      limits: r.resolve(t.LIMIT_SERVICE),
       clock: clock(r),
       log: log(r).child({ component: 'approvals' }),
     }), { source: SOURCE });
@@ -569,6 +581,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       roles: r.resolve(t.ROLE_REPOSITORY),
       reviews: r.resolve(t.REVIEW_PIPELINE),
       planning: r.resolve(t.PLANNING_SERVICE),
+      limitRefusal: (missionId) => r.resolve(t.LIMIT_SERVICE).refusal(missionId),
       projections: r.resolve(t.PROJECTION_SERVICE),
       scheduler: r.resolve(t.SCHEDULER),
       feedback: r.resolve(t.FEEDBACK_SERVICE),
@@ -603,18 +616,53 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       log: log(r).child({ component: 'refinement' }),
     }), { source: SOURCE });
 
+    bind(t.LIMIT_SERVICE, (r) => new LimitService({
+      workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
+      missions: r.resolve(t.MISSION_REPOSITORY),
+      tasks: r.resolve(t.TASK_REPOSITORY),
+      runs: r.resolve(t.RUN_REPOSITORY),
+      approvals: r.resolve(t.APPROVAL_REPOSITORY),
+      limits: r.resolve(t.LIMIT_REPOSITORY),
+      events: r.resolve(t.EVENT_REPOSITORY),
+      approvalFactory: r.resolve(APPROVAL_FACTORY),
+      address: (workspaceId) => r.resolve(t.REVIEW_PIPELINE).addressFor(undefined, workspaceId),
+      // Resolved per call: the scheduler is built with the executor, which is built with this.
+      cancelTask: (taskId) => r.resolve(t.SCHEDULER).cancelTask(taskId),
+      wake: () => r.resolve(t.SCHEDULER).wake(),
+      unitOfWork: r.resolve(t.UNIT_OF_WORK),
+      recorder: r.resolve(t.EVENT_RECORDER),
+      clock: clock(r),
+      log: log(r).child({ component: 'limits' }),
+    }), { source: SOURCE });
+
     bind(t.BACKLOG_SERVICE, (r) => new BacklogService({
       workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
       missions: r.resolve(t.MISSION_REPOSITORY),
       readiness: r.resolve(t.READINESS_SERVICE),
       planning: r.resolve(t.PLANNING_SERVICE),
       refining: (missionId) => r.resolve(t.REFINEMENT_SERVICE).isRunning(missionId),
+      heldBySpend: (workspaceId, priority) => r.resolve(t.LIMIT_SERVICE).heldFor(workspaceId, priority),
       summaries: (workspaceId) => r.resolve(t.MISSION_SERVICE).list({ workspaceId }),
       wake: () => r.resolve(t.SCHEDULER).wake(),
       unitOfWork: r.resolve(t.UNIT_OF_WORK),
       recorder: r.resolve(t.EVENT_RECORDER),
       clock: clock(r),
       log: log(r).child({ component: 'backlog' }),
+    }), { source: SOURCE });
+
+    bind(t.LIVENESS_SERVICE, (r) => new LivenessService({
+      missions: r.resolve(t.MISSION_REPOSITORY),
+      tasks: r.resolve(t.TASK_REPOSITORY),
+      runs: r.resolve(t.RUN_REPOSITORY),
+      approvals: r.resolve(t.APPROVAL_REPOSITORY),
+      readiness: r.resolve(t.READINESS_SERVICE),
+      // Resolved per call: planning and refinement are composed after projections, which read this.
+      planning: (missionId) => r.resolve(t.PLANNING_SERVICE).isPlanning(missionId),
+      refining: (missionId) => r.resolve(t.REFINEMENT_SERVICE).isRunning(missionId),
+      recorder: r.resolve(t.EVENT_RECORDER),
+      clock: clock(r),
+      log: log(r).child({ component: 'liveness' }),
+      quietAfterMs: options.quietAfterMs ?? DEFAULT_QUIET_AFTER_MS,
     }), { source: SOURCE });
 
     bind(t.CRITERIA_SERVICE, (r) => new CriteriaServiceImpl({
@@ -642,6 +690,8 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       criteria: r.resolve(t.CRITERIA_SERVICE),
       refinement: r.resolve(t.REFINEMENT_SERVICE),
       backlog: r.resolve(t.BACKLOG_SERVICE),
+      limits: r.resolve(t.LIMIT_SERVICE),
+      liveness: r.resolve(t.LIVENESS_SERVICE),
     }), { source: SOURCE });
   });
 }

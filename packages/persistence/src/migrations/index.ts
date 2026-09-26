@@ -14,6 +14,8 @@ import { migration010 } from './010_feedback_rounds.js';
 import { migration011 } from './011_mission_criteria.js';
 import { migration012 } from './012_ready_before_planning.js';
 import { migration013 } from './013_backlog.js';
+import { migration014 } from './014_limits.js';
+import { migration015 } from './015_liveness.js';
 
 export type { Migration } from './types.js';
 
@@ -29,7 +31,8 @@ export type { Migration } from './types.js';
  */
 export const MIGRATIONS: readonly Migration[] = [
   migration001, migration002, migration003, migration004, migration005, migration006, migration007,
-  migration008, migration009, migration010, migration011, migration012, migration013,
+  migration008, migration009, migration010, migration011, migration012, migration013, migration014,
+  migration015,
 ];
 
 /** The newest schema version this binary understands. */

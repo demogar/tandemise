@@ -19,7 +19,7 @@ export type AgentEvent =
   | { readonly type: 'file.changed'; readonly path: string; readonly change: 'add' | 'edit' | 'delete' }
   | { readonly type: 'artifact.created'; readonly artifactId: ArtifactId }
   | { readonly type: 'approval.requested'; readonly approvalId: ApprovalId }
-  | { readonly type: 'usage'; readonly inputTokens?: number; readonly outputTokens?: number; readonly cacheReadTokens?: number; readonly cacheWriteTokens?: number; readonly costUsd?: number | null }
+  | { readonly type: 'usage'; readonly inputTokens?: number; readonly outputTokens?: number; readonly cacheReadTokens?: number; readonly cacheWriteTokens?: number; readonly costUsd?: number | null; readonly wallTimeMs?: number }
   | { readonly type: 'checkpoint'; readonly externalSessionId?: string; readonly label?: string }
   | { readonly type: 'completed'; readonly resultRef?: string; readonly summary?: string }
   | { readonly type: 'failed'; readonly code: string; readonly message: string; readonly retryable: boolean }

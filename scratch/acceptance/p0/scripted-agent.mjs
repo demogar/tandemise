@@ -20,7 +20,10 @@
 // agent answers every note in handoff.changed, citing its id. The P2 modes are
 // listed where they are read, below.
 // A task objective that mentions "preview" gets an "Open preview" link in its handoff.
-import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
+// P8 usage knobs (SCRIPTED_USAGE_MIN, SCRIPTED_COST_USD) are described where they are read, at the end.
+import { createHash } from 'node:crypto';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join } from 'node:path';
 
 const chunks = [];
@@ -81,6 +84,33 @@ if (process.env.SCRIPTED_PROMPT_DIR) {
 }
 if (SLOW) await new Promise((r) => setTimeout(r, 20_000));
 if (FAIL_UNTIL_NOTE) { console.log('SCRIPTED_FAIL_UNTIL_NOTE: nothing written'); process.exit(0); }
+
+// P9, liveness. Both count runs per step of one mission in SCRIPTED_STATE_DIR
+// (default: a folder in the system temp dir), keyed by the knob's line in the
+// prompt (the mission goal) and the step title, so two missions never share a count.
+//   SCRIPTED_FAIL_TIMES=<n>  the first n runs of a step write nothing (its gate fails; retries exhaust)
+//   SCRIPTED_HANG_ONCE       the first run of a step prints nothing and sleeps SCRIPTED_HANG_MS
+//                            (default 10 min) until it is stopped; later runs work normally
+const runOf = (knob) => {
+  const line = prompt.split('\n').find((l) => l.includes(knob)) ?? knob;
+  const key = createHash('sha1').update(`${line}\n${title}`).digest('hex').slice(0, 16);
+  const dir = process.env.SCRIPTED_STATE_DIR ?? join(tmpdir(), 'tandemise-scripted-state');
+  mkdirSync(dir, { recursive: true });
+  const file = join(dir, `${knob}-${key}`);
+  const n = (existsSync(file) ? Number(readFileSync(file, 'utf8')) : 0) + 1;
+  writeFileSync(file, String(n));
+  return n;
+};
+if (prompt.includes('SCRIPTED_HANG_ONCE') && runOf('SCRIPTED_HANG_ONCE') === 1) {
+  await new Promise((r) => setTimeout(r, Number(process.env.SCRIPTED_HANG_MS ?? 600_000)));
+}
+{
+  const failTimes = /SCRIPTED_FAIL_TIMES=(\d+)/.exec(prompt)?.[1] ?? process.env.SCRIPTED_FAIL_TIMES;
+  if (failTimes !== undefined && runOf('SCRIPTED_FAIL_TIMES') <= Number(failTimes)) {
+    console.log('SCRIPTED_FAIL_TIMES: nothing written');
+    process.exit(0);
+  }
+}
 
 const cite = OMIT_ONCE ? feedbackItems.slice(0, -1) : feedbackItems;
 const changed = !inRound ? [] : DECLINE
@@ -219,3 +249,26 @@ for (const { type, destination } of outputs) {
   console.log(`wrote ${type} to ${path}`);
 }
 if (outputs.length === 0) console.log('No artifacts requested.');
+
+// P8, limits. The agent reports usage as one NDJSON line, which a runtime
+// profile with outputFormat "ndjson" reads (a "text" profile shows it as a line).
+//   SCRIPTED_USAGE_MIN=<n>   report n agent minutes, 1200 input and 300 output tokens, no cost
+//   SCRIPTED_COST_USD=<x>    also report a cost of x US dollars
+// A number can come from the environment or from "SCRIPTED_USAGE_MIN=5" in the prompt (the mission goal).
+const knobNumber = (name) => {
+  const fromEnv = process.env[name];
+  if (fromEnv !== undefined && fromEnv !== '') return Number(fromEnv);
+  const match = new RegExp(`${name}=([0-9.]+)`).exec(prompt);
+  return match === null ? null : Number(match[1]);
+};
+const usageMinutes = knobNumber('SCRIPTED_USAGE_MIN');
+const costUsd = knobNumber('SCRIPTED_COST_USD');
+if (usageMinutes !== null || costUsd !== null) {
+  console.log(JSON.stringify({
+    type: 'usage',
+    ...(usageMinutes === null ? {} : { wallTimeMs: Math.round(usageMinutes * 60_000) }),
+    inputTokens: 1200,
+    outputTokens: 300,
+    ...(costUsd === null ? {} : { costUsd }),
+  }));
+}

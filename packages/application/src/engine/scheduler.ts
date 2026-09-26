@@ -51,6 +51,17 @@ export interface SchedulerDeps {
    * backlog still compose; the module always passes it.
    */
   readonly pullBacklog?: () => Promise<unknown>;
+  /**
+   * The hard-limit admission rule (P8): null when work may start in the
+   * mission, else why not (and the stop is applied). Optional so harnesses
+   * built before limits still compose; the module always passes it.
+   */
+  readonly limits?: { admit(missionId: MissionId): string | null };
+  /**
+   * The silent-run watchdog (P9): says once when a run turns quiet or silent,
+   * so an open window refreshes. Optional for harnesses built before it.
+   */
+  readonly watchLiveness?: () => void;
   readonly clock: Clock;
   readonly log: Logger;
   readonly tickIntervalMs?: number;
@@ -202,6 +213,17 @@ export class SchedulerService implements LifecycleComponent {
     for (const mission of missions) {
       await this.#reconcile(this.deps.missions.get(mission.id) ?? mission);
     }
+    // Last: silence produces no event of its own, so this pass is what notices it.
+    // It never stops a run; the wall-time budget stays the only automatic stop.
+    this.#watchLiveness();
+  }
+
+  #watchLiveness(): void {
+    try {
+      this.deps.watchLiveness?.();
+    } catch (e) {
+      this.deps.log.warn('scheduler.liveness_watch_failed', { error: errorMessage(e) });
+    }
   }
 
   // ------------------------------------------------------------------ readiness
@@ -298,6 +320,9 @@ export class SchedulerService implements LifecycleComponent {
       .filter((t) => (this.#retryAfter.get(t.id) ?? 0) <= now)
       .sort((a, b) => a.orderHint - b.orderHint || a.key.localeCompare(b.key));
 
+    // Asked once per mission per pass, and only when an agent run would start:
+    // a mission or project at its limit starts nothing (P8).
+    let admitted: boolean | undefined;
     for (const task of ready) {
       // A person's task never occupies a worker slot, and is parked before the
       // ceiling is consulted: waiting on a human is not a reason to stop
@@ -314,6 +339,8 @@ export class SchedulerService implements LifecycleComponent {
         continue;
       }
       if (this.#occupiedSlots() >= ceiling) return;
+      admitted ??= (this.deps.limits?.admit(mission.id) ?? null) === null;
+      if (!admitted) return;
       this.#dispatch(mission, task);
     }
   }

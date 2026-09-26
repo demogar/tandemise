@@ -16,6 +16,7 @@ import { useWorkspace } from '../lib/workspace.js';
 import { useHotkey } from '../lib/keyboard.js';
 import { shortenPath, titleCase } from '../lib/format.js';
 import { MISSION_PRIORITIES, priorityLabel } from '../lib/domain.js';
+import { LimitFields, limitDraft, limitsFromDraft } from '../components/LimitFields.js';
 import { showFlash } from '../lib/notices.js';
 
 const AUTONOMY: readonly { value: AutonomyLevel; label: string; hint: string }[] = [
@@ -51,6 +52,9 @@ export function NewMission(): JSX.Element {
   const [title, setTitle] = useState('');
   const [baseBranch, setBaseBranch] = useState('');
   const [priority, setPriority] = useState<MissionPriority>('normal');
+  // Blank: the project's default mission limits apply (P8).
+  const [limits, setLimits] = useState(() => limitDraft([]));
+  const [limitProblem, setLimitProblem] = useState<string | null>(null);
   const [showMore, setShowMore] = useState(false);
   const [showStaffing, setShowStaffing] = useState(false);
   const [staffing, setStaffing] = useState<Record<string, StaffingPatch>>({});
@@ -87,6 +91,9 @@ export function NewMission(): JSX.Element {
   // in priority order, once it is ready and the project has room (P7).
   const submit = (mode: 'now' | 'backlog' = 'now'): void => {
     if (!ready || !workspace || create.isPending) return;
+    const ownLimits = limitsFromDraft(limits);
+    setLimitProblem(ownLimits.error);
+    if (ownLimits.error !== null) return;
     const toBacklog = mode === 'backlog';
     create.mutate(
       {
@@ -103,6 +110,7 @@ export function NewMission(): JSX.Element {
         planNow: hasCriteria && !toBacklog,
         ...(toBacklog ? { queued: true } : {}),
         ...(priority === 'normal' ? {} : { priority }),
+        ...(ownLimits.limits.length === 0 ? {} : { limits: ownLimits.limits }),
         ...behalfOf(actors, createdFor),
         ...(Object.keys(staffing).length > 0
           ? { staffing: Object.fromEntries(Object.entries(staffing).map(([role, patch]) => [role, toWire(patch)])) as RoleStaffingPatchRequest }
@@ -290,6 +298,14 @@ export function NewMission(): JSX.Element {
                       options={MISSION_PRIORITIES.map((value) => ({ value, label: priorityLabel(value) }))}
                     />
                   </Field>
+                  <div className="field">
+                    <span className="field__label">Limit</span>
+                    <span className="field__hint">
+                      At the limit, work stops and you are asked whether to raise it. Leave blank to use the project&apos;s default limits.
+                    </span>
+                    <LimitFields draft={limits} onChange={setLimits} suffix="for this mission" />
+                    {limitProblem ? <span className="field__error">{limitProblem}</span> : null}
+                  </div>
                   <Field label="Constraints" hint="One per line. These become hard rules every role must respect.">
                     <textarea
                       className="textarea"

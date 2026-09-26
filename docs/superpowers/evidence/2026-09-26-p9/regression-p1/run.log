@@ -1,0 +1,237 @@
+
+### setup
+
+### ../../p1/suite/b01-solo-feed.mjs
+(node:38423) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok   the mission opens on the Feed tab
+  ok   mission completes  → COMPLETE
+  ok   Done cards show headlines, not YAML or ids
+  ok   cards carry "by … · responsible You"
+B1: PASS (4/4)
+  ok   docs card headline is the first sentence of the text
+B8: PASS (1/1)
+  ok   design card shows "Open preview ↗"
+B9: PASS (1/1)
+  · [{"lines":7,"chars":100,"text":"RELEASE MANAGER"},{"lines":7,"chars":90,"text":"QA ENGINEER"},{"lines":7,"chars":93,"text":"DEVELOPER"},{"lines":5,"chars":43,"text":"PRODUCT MANAGER"},{"lines":6,"chars":95,"text":"PRODUCT DESIGNER"},{"lines":6,"chars":97,"text":"FINANCE ANALYST"},{"lines":6,"chars":100,"text":"ARCHITECT"},{"lines":7,"chars":95,"text":"PRODUCT MANAGER"},{"lines":6,"chars":164,"text":"Plan for B solo muibg4os"}]
+  ok   every done card fits in ≤ 8 visible lines  → [7,7,7,5,6,6,6,7,6]
+  ok   headline + points ≤ the contract maximum (510 chars)  → [100,90,93,43,95,97,100,95,164]
+B12: PASS (2/2)
+  ok   reader shows the headline and points
+  ok   no YAML front matter in the reader
+  ok   ids live behind Details, not in the header text
+B3: PASS (3/3)
+
+### ../../p1/suite/b02-needs-you-inline.mjs
+(node:39587) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok   the plan waits under Needs you with an inline Approve
+  ok   clicked Approve on the plan card
+  ok   spec review card sits under Needs you with its needs line
+  ok   approved spec from the card
+  ok   spec moved to Done
+B2: PASS (5/5)
+  ok   design is not in Needs you
+  ok   design is In progress, "Waiting for Ana Ruiz"
+B10: PASS (2/2)
+
+### ../../p1/suite/b04-budgets.mjs
+(node:40346) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok   exactly one tighten pass  → 1
+  ok   design succeeded without spending an attempt  → {"status":"SUCCEEDED","attempts":1}
+  ok   the kept artifact is within budget  → {"words":9,"overBudget":false}
+  ok   an "Appendix (N words)" section exists and starts collapsed  → {"summary":"Appendix (400 words)","open":false}
+B3a: PASS (1/1)
+  ok   timeline shows the tighten request
+B4: PASS (4/4)
+  ok   one DesignBrief row by default  → 1
+  ok   "Show older versions" reveals v1 under the live version
+B7: PASS (2/2)
+  ok   one tighten pass, then an over_budget event
+  ok   design still succeeded  → SUCCEEDED
+  ok   the design card shows an "Over budget" marker
+  ok   the mission kept going  → RUNNING
+B5: PASS (4/4)
+  ok   the retry named handoff.headline
+  ok   the next attempt succeeded  → {"status":"SUCCEEDED","attempts":2}
+B6: PASS (2/2)
+
+### ../../p1/suite/b13-plan-and-checks.mjs
+(node:41914) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+  · plan options: Approve, Reject
+  ok   the mission is blocked after the rejection  → {"status":"BLOCKED","reason":"The plan was rejected: Too broad, split the design work first. Re-plan or change the mission goal."}
+  ok   the plan card is under Needs you  → msn_01m3er9qb1g9fxk2cej0
+Missions
+p0
+B reject muibjod9
+B reject muibjod9
+Blocked
+Re-plan
+Resume
+Cancel
+The plan was rejected: Too broad, split the design work first. Re-plan or change the mission goal.
+Feed
+1
+Plan
+8
+Timeline
+Artifacts
+1
+Checks & Gates
+Metrics
+Done when
+0 of 1 verified
+U1
+The accepta
+  ok   the plan card says Rejected, not Approved  → Plan for B reject muibjod9
+Rejected
+just now
+by
+Runtime
+·
+responsible
+You
+Full doc
+
+The plan was rejected: Too broad, split the design work first. Re-plan or change the mission goal.
+
+8 tasks: product ×2 → design → architecture → development → finance → qa → release
+Needs A new plan. Re-plan the mission, or change its goal.
+Re-plan
+  ok   the card offers Re-plan
+  ok   the reason has no double period  → The plan was rejected: Too broad, split the design work first. Re-plan or change the mission goal.
+  ok   clicked Re-plan on the card
+  ok   Re-plan produced a new plan to approve
+  ok   the card now asks for approval again with an inline Approve  → Plan for B reject muibjod9
+Awaiting approval
+just now
+by
+Runtime
+·
+responsible
+You
+Full doc
+
+Exercises staffing, responsibility, reviews and escalation across product, design…
+
+8 tasks: product ×2 → design → architecture → development → finance → qa → release
+Needs Approve the plan to start
+Recording for
+Demostenes Garcia G. (you)
+Ana Ruiz
+Maria Lopez
+Applies immediately.
+Reject
+Approve
+  ok   approved the new plan from the card
+  ok   the mission runs
+B13: PASS (10/10)
+  · check "Check architecture when you can" options: Looks good, Needs changes
+  ok   the architecture check is under Needs you  → msn_01m3era40b930c11hdb6
+Missions
+p0
+B check muibjydl
+B check muibjydl
+Executing
+Pause
+Cancel
+Feed
+2
+Plan
+8
+Timeline
+Artifacts
+6
+Checks & Gates
+Metrics
+Done when
+0 of 1 verified
+U1
+The acceptance scenario finishes its steps
+Covered by AC1
+Not verified
+AC1
+Scripted criterion 1: the hello page greets the visitor by name.
+Covers U1 · Waiting for QA
+Not verified
+Needs you
+2 items
+PRODUCT MANAGER
+docs
+
+  ok   it reads as non-blocking ("Check when you can")  → ARCHITECT
+architecture
+Done
+just now
+by
+Runtime
+·
+responsible
+You
+Full doc
+Request changes
+
+ArchitecturePlan ready for the hello page
+
+Written by the scripted acceptance agent
+No model was called
+Check when you can Check architecture when you can
+Recording for
+Demostenes Garcia G. (you)
+Ana Ruiz
+Maria Lopez
+Nothing is waiting on this; your note is kept with the work.
+Needs changes
+Looks good
+  ok   decided "Looks good" on the card
+  ok   the check left Needs you  → msn_01m3era40b930c11hdb6
+Missions
+p0
+B check muibjydl
+B check muibjydl
+Executing
+Pause
+Cancel
+Feed
+1
+Plan
+8
+Timeline
+Artifacts
+7
+Checks & Gates
+Metrics
+Done when
+0 of 1 verified
+U1
+The acceptance scenario finishes its steps
+Covered by AC1
+Not verified
+AC1
+Scripted criterion 1: the hello page greets 
+B14: PASS (4/4)
+
+# P1 acceptance report
+
+Run: 2026-09-26T11:42:03.521Z · build 730e098 · fresh install at /var/folders/dh/glpvvh110393gdzjc_v2x1sr0000gn/T/tdm-p0-run-muibg24w
+Result: **ALL PASS** (14/14 scenarios)
+
+| Scenario | Result | Checks |
+|---|---|---|
+| B13 — Rejected plan: Needs you, "Rejected", Re-plan asks again | PASS | 10/10 |
+| B14 — A check for me: Needs you, decided on the card, then gone | PASS | 4/4 |
+| B1 — Solo mission opens on a feed of short cards | PASS | 4/4 |
+| B2 — Needs you: decide on the card itself | PASS | 5/5 |
+| B3 — Full doc: no front matter, handoff first, appendix collapsed | PASS | 3/3 |
+| B3a — Full doc: the appendix is collapsed with its word count | PASS | 1/1 |
+| B4 — Too long first draft → one tighten pass → short | PASS | 4/4 |
+| B5 — Still too long after tightening → accepted, flagged, mission continues | PASS | 4/4 |
+| B6 — A missing handoff is named in the retry and then fixed | PASS | 2/2 |
+| B7 — Superseded versions are hidden until asked for | PASS | 2/2 |
+| B8 — A person's output gets a headline from their own first sentence | PASS | 1/1 |
+| B9 — A preview link renders on the card | PASS | 1/1 |
+| B10 — Team: a teammate's pending review is not under my Needs you | PASS | 2/2 |
+| B12 — Readability audit of done cards (DOM) | PASS | 2/2 |
+

@@ -1,0 +1,87 @@
+{
+  "id": "F4",
+  "title": "Refine again replaces pending proposals",
+  "ok": true,
+  "checks": [
+    {
+      "label": "the panel offered \"Refine again\"",
+      "ok": true,
+      "observed": "Refine again"
+    },
+    {
+      "label": "the two undecided proposals read \"Replaced by a newer proposal\"",
+      "ok": true,
+      "observed": [
+        "P2 A visitor who is not signed in sees \"Hello, friend\" instead of an empty name Replaced by a newer proposal",
+        "P3 The greeting is readable on a 375px wide phone screen without scrolling sideways Replaced by a newer proposal"
+      ]
+    },
+    {
+      "label": "the new pass is numbered on: P4, P5, P6",
+      "ok": true,
+      "observed": [
+        "P4 A visitor who is not signed in sees \"Hello, friend\" instead of an empty name Proposed by the product agent. Accept it to make it part of what done means. Accept Reject Edit",
+        "P5 The greeting is readable on a 375px wide phone screen without scrolling sideways Proposed by the product agent. Accept it to make it part of what done means. Accept Reject Edit",
+        "P6 The greeting appears within one second of opening the page Proposed by the product agent. Accept it to make it part of what done means. Accept Reject Edit"
+      ]
+    },
+    {
+      "label": "the accepted criterion stays U1",
+      "ok": true,
+      "observed": [
+        "U1 Visiting the home page shows \"Hello, <name>\" for a signed-in visitor Proposed by the product agent; accepted by you Accepted"
+      ]
+    },
+    {
+      "label": "the unanswered question was replaced by the new pass's Q2",
+      "ok": true,
+      "observed": "Questions\n1 to answer\nQ2\nWhich pages should greet the visitor by name?\nWhy it matters: It decides how many pages the plan touches and what QA checks\nOnly the home page\nEvery page\nAnswer"
+    },
+    {
+      "label": "proof (API): P2, P3 and Q1 are stale",
+      "ok": true,
+      "observed": {
+        "c": [
+          [
+            "U1",
+            "accepted"
+          ],
+          [
+            "P2",
+            "stale"
+          ],
+          [
+            "P3",
+            "stale"
+          ],
+          [
+            "P4",
+            "proposed"
+          ],
+          [
+            "P5",
+            "proposed"
+          ],
+          [
+            "P6",
+            "proposed"
+          ]
+        ],
+        "q": [
+          [
+            "Q1",
+            "stale"
+          ],
+          [
+            "Q2",
+            "open"
+          ]
+        ]
+      }
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p9-liveness/scratch/acceptance/p6/evidence/F4-replaced-by-newer.png"
+  ]
+}

@@ -1,0 +1,7 @@
+name: P9 implement
+description: One step named implement and nothing downstream, so a stuck or quiet step is the whole mission.
+steps:
+  - key: implement
+    role: product
+    objective: Record how the hello page is implemented.
+    outputs: [DecisionRecord]

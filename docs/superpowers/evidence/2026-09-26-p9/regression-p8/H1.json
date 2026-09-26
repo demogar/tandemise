@@ -1,0 +1,81 @@
+{
+  "id": "H1",
+  "title": "A 12-minute limit warns at 80% and stops the mission at 100%",
+  "ok": true,
+  "checks": [
+    {
+      "label": "proof (API): the mission carries its own 12-minute limit, warning at 80%",
+      "ok": true
+    },
+    {
+      "label": "timeline: \"Limit warning: 10 of 12 agent minutes used (83%). Work stops at 12 agent minutes.\"",
+      "ok": true,
+      "observed": "Tandemise\nAcceptance\n1 repository\nHome\nMissions\nInbox\nArtifacts\nACCEPTANCE\nRepositories\nTeam\nRuntimes\nIntegrations\nAPP\nSettings\nDaemon connected · 54907\nmsn_01m3esn9qzqgb3whzvr5\nMissions\np8-steps\nH1 hello page muice9ls SCRIPTED_USAGE_MIN=5\nH1 hello page muice9ls SCRIPTED_USAGE_MIN=5\nExecuting\nPause\nCancel\nFeed\nPlan\n5\nTimeline\nArtifacts\n3\nChecks & Gates\nMetrics\n24 events · latest just now\nFollowing"
+    },
+    {
+      "label": "proof (SQL): the warning came after run 2 (soft incident at 10 minutes)",
+      "ok": true,
+      "observed": {
+        "afterTwo": 3
+      }
+    },
+    {
+      "label": "the mission reads \"Paused\"",
+      "ok": true,
+      "observed": "Tandemise\nAcceptance\n1 repository\nHome\nMissions\nInbox\n1\nArtifacts\nACCEPTANCE\nRepositories\nTeam\nRuntimes\nIntegrations\nAPP\nSettings\nDaemon connected · 54907\nmsn_01m3esn9qzqgb3whzvr5\nMissions\np8-steps\nH1 hello page muice9ls SCRIPTED_USAGE_MIN=5\nH1 hello page muice9ls SCRIPTED_USAGE_MIN=5\nPaused\nResume\n"
+    },
+    {
+      "label": "and says \"Limit reached: 15 of 12 agent minutes\"",
+      "ok": true
+    },
+    {
+      "label": "the limit card is on the mission page: \"Raise limit and resume\" / \"Keep paused\"",
+      "ok": true,
+      "observed": "Tandemise\nAcceptance\n1 repository\nHome\nMissions\nInbox\n1\nArtifacts\nACCEPTANCE\nRepositories\nTeam\nRuntimes\nIntegrations\nAPP\nSettings\nDaemon connected · 54907\nmsn_01m3esn9qzqgb3whzvr5\nMissions\np8-steps\nH1 hello page muice9ls SCRIPTED_USAGE_MIN=5\nH1 hello page muice9ls SCRIPTED_USAGE_MIN=5\nPaused\nResume\nCancel\nLimit reached: 15 of 12 agent minutes\n“H1 hello page muice9ls SCRIPTED_USAGE_MIN=5” reached its limit: 15 of 12 agent minutes\nLimit reached\napr_01m3esnssz7d6sk3fzdg\nH1 hello page muice9ls SCRIPTED_USAGE_MIN=5\n·\njust now\nWHY IS THIS BEING ASKED?\n\n“H1 hello page muice9ls SCRIPTED_USAGE_MIN=5” used 15 of 12 agent minutes, the limit you set. Work stopped: running work was stopped and nothing more starts until you decide.\n\nWHAT HAPPENS WHEN YOU DECIDE?\n\nRaise the limit above 15 agent minutes and the mission resumes where it stopped. Keep paused and nothing more runs; you can raise the limit later.\n\nYOUR OPTIONS\nRaise limit to (agent minutes)\nRaise limit and resume\nKeep paused\nThe work resumes where it stopped. Keep paused and nothing more runs; you can raise the limit later.\nFeed\nPlan\n5\nTimeline\nArtifacts\n4\nChecks & Gates\nMetrics\nDone when\n0 of 1 verified\nU1\nThe acceptance scenario fin"
+    },
+    {
+      "label": "Metrics → Limit: \"15 / 12 agent min\"",
+      "ok": true,
+      "observed": "Limit\nSet on this mission\nChange limit\nAgent minutes\n15 / 12 agent min\n\nLimit reached: 15 of 12 agent minutes. Work is paused until the limit is raised.\n\nAgent minutes used\n15\nTokens used\n4,500\nCost\nnot reported"
+    },
+    {
+      "label": "Home: a banner with the numbers",
+      "ok": true,
+      "observed": "Tandemise\nAcceptance\n1 repository\nHome\nMissions\nInbox\n1\nArtifacts\nACCEPTANCE\nRepositories\nTeam\nRuntimes\nIntegrations\nAPP\nSettings\nDaemon connected · 54907\n1 request waiting on you\nAcceptance workspace\nNew mission\nH1 hello page muice9ls SCRIPTED_USAGE_MIN=5: Limit reached: 15 of 12 agent minutes. It is paused until you raise the limit or keep it paused.\nDecide\nNeeds you now\n1 request\n“H1 hello page muice9ls SCRIPTED_USAGE_MIN=5” reached its limit: 15 of 12 agent minutes\nLimit reached\nH1 hello page muice9ls SCRIPTED_USAGE_MIN=5\n·\njust now\nReview\nWHY\n\n“H1 hello page muice9ls SCRIPTED_USAGE_MIN=5”"
+    },
+    {
+      "label": "proof (SQL): one soft and one hard incident, the hard one open",
+      "ok": true,
+      "observed": [
+        [
+          "soft",
+          "open",
+          12,
+          10
+        ],
+        [
+          "hard",
+          "open",
+          12,
+          15
+        ]
+      ]
+    },
+    {
+      "label": "proof (SQL): exactly three runs",
+      "ok": true,
+      "observed": 3
+    },
+    {
+      "label": "proof (SQL): nothing more runs while it is paused",
+      "ok": true
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p9-liveness/scratch/acceptance/p8/evidence/H1-warning-note.png",
+    "/Users/demogar/projects/tandemise/tandemise-p9-liveness/scratch/acceptance/p8/evidence/H1-paused-with-card.png",
+    "/Users/demogar/projects/tandemise/tandemise-p9-liveness/scratch/acceptance/p8/evidence/H1-metrics-limit.png",
+    "/Users/demogar/projects/tandemise/tandemise-p9-liveness/scratch/acceptance/p8/evidence/H1-home-banner.png"
+  ]
+}

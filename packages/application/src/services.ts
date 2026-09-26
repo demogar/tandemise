@@ -52,6 +52,10 @@ export interface TandemiseServices {
   readonly refinement: RefinementService;
   /** The ranked backlog and the work-in-progress limit (P7). */
   readonly backlog: import('./services/backlog-service.js').BacklogService;
+  /** Hard limits on spend and time (P8). */
+  readonly limits: import('./services/limit-service.js').LimitService;
+  /** Stalled missions and quiet runs (P9). */
+  readonly liveness: import('./services/liveness-service.js').LivenessService;
 }
 
 /** Making a rough request ready to plan (P6). Every write is refused once the mission has left DRAFT. */
@@ -112,7 +116,7 @@ export interface MissionService {
   resume(id: MissionId): Promise<Mission>;
   cancel(id: MissionId, reason?: string): Promise<Mission>;
   remove(id: MissionId): Promise<void>;
-  retryTask(caller: Caller, taskId: TaskId, options: { runtimeProfileId?: string; note?: string; addCapabilities?: readonly string[] }): Promise<TaskView>;
+  retryTask(caller: Caller, taskId: TaskId, options: { runtimeProfileId?: string; note?: string; addCapabilities?: readonly string[]; stopRun?: boolean }): Promise<TaskView>;
   skipTask(caller: Caller, taskId: TaskId): Promise<TaskView>;
   /** A person reports a `human` task done, with whatever they produced. */
   completeTask(caller: Caller, taskId: TaskId, request: CompleteTaskRequest): Promise<TaskView>;
@@ -132,6 +136,8 @@ export interface PlanningService {
    * whatever plan still arrives is discarded rather than written.
    */
   abandon(id: MissionId): void;
+  /** Whether a planner is running for the mission in this daemon (P9: a PLANNING mission without one is stalled). */
+  isPlanning(id: MissionId): boolean;
 }
 
 export interface ApprovalService {

@@ -23,7 +23,7 @@ import type { ToolBroker } from '@tandemise/integrations-core';
 import { McpGatewayProvisioner, NO_TOOL_SURFACE, type RunToolSurface } from './mcp-gateway.js';
 import { RUNTIME_SIGNED_OUT, SESSION_NOT_FOUND, describeRejections, onlyBusy, onlyWaiting } from '@tandemise/runtimes-core';
 import type { RunRequest, RuntimeManager, RuntimeSelection, SlotReservation, SlotRetention } from '@tandemise/runtimes-core';
-import type { ArtifactId, Clock, Logger, RunId, TandemisePaths, TaskId } from '@tandemise/shared';
+import type { ArtifactId, Clock, Logger, MissionId, RunId, TandemisePaths, TaskId } from '@tandemise/shared';
 import { TandemiseError, errorMessage, ids, slugify, summarize } from '@tandemise/shared';
 import type { ArtifactMeasurePort, ArtifactTemplatePort } from '../ports.js';
 import type { EventRecorder, EventScope } from '../support/event-recorder.js';
@@ -77,6 +77,14 @@ export type TaskAttemptOutcome =
       readonly retryAfterMs?: number;
     };
 
+/** What the executor asks of the limit rule (P8). */
+export interface LimitGuard {
+  /** Null when work may start in the mission's scopes; otherwise why not (and the stop is applied). */
+  admit(missionId: MissionId): string | null;
+  /** Measures the mission and its project after a run's usage was recorded; warns or stops. */
+  afterUsage(missionId: MissionId, finishedRunId: RunId): void;
+}
+
 export interface TaskExecutorDeps {
   readonly workspaces: WorkspaceRepositoryPort;
   readonly repositories: RepoRepositoryPort;
@@ -128,6 +136,12 @@ export interface TaskExecutorDeps {
   readonly deadlines: RunDeadlines;
   readonly paths: TandemisePaths;
   readonly clock: Clock;
+  /**
+   * Hard limits (P8): refuses to start a run in a mission or project at its
+   * limit, and is told after every run's usage is recorded. Optional so
+   * harnesses built before limits still compose; the module always passes it.
+   */
+  readonly limits?: LimitGuard;
   readonly log: Logger;
 }
 
@@ -182,7 +196,11 @@ export class TaskExecutor {
     const gateOnStart = this.#approvalBeforeStart(task, mission, workspace, role, scope);
     if (gateOnStart !== null) return gateOnStart;
 
-    // 1. Admission.
+    // 1. Admission. A mission or project at its limit starts nothing, however
+    //    the attempt was reached (P8): the scheduler checks too, and this is
+    //    the backstop for any other caller.
+    const overLimit = this.deps.limits?.admit(mission.id) ?? null;
+    if (overLimit !== null) return { kind: 'deferred', reason: overLimit };
     const leases = this.#acquireLeases(task, mission, repository);
     if (!leases.ok) return { kind: 'deferred', reason: leases.reason };
 
@@ -705,6 +723,9 @@ export class TaskExecutor {
     }
 
     const finishedAt = deps.clock.now();
+    // Agent time is always measured (P8): what the runtime reported when it
+    // said, otherwise how long the run took by the daemon's clock.
+    if (usage.wallTimeMs === undefined) usage = { ...usage, wallTimeMs: Math.max(0, Date.parse(finishedAt) - Date.parse(startedAt)) };
     const interrupted = isDaemonStopping(signal);
     const session = deps.runs.get(runId)?.externalSessionId ?? null;
     // A signed-out runtime never reached the session it was asked to continue,
@@ -722,6 +743,15 @@ export class TaskExecutor {
       usage: hasUsage(usage) ? usage : null,
     });
     if (hasUsage(usage)) deps.runs.recordUsage(runId, usage);
+    // Right after the record, before the pass is judged: a mission that just
+    // crossed its limit stops here, and nothing else in it starts (P8).
+    if (hasUsage(usage)) {
+      try {
+        deps.limits?.afterUsage(mission.id, runId);
+      } catch (e) {
+        deps.log.error('limits.after_usage_failed', { missionId: mission.id, runId, error: errorMessage(e) });
+      }
+    }
 
     deps.recorder.record(runScope, {
       type: 'run.finished',
@@ -773,6 +803,9 @@ export class TaskExecutor {
         // Persisted and published one at a time: the UI timeline and recovery
         // both read the durable log, so a batched write is a lost run.
         if (!staleSession) deps.recorder.record(runScope, event);
+        // Every event, unthrottled: silence is measured from it (P9), and the
+        // watchdog must never call a run quiet that spoke a second ago.
+        deps.runs.markActivity(runId, deps.clock.now());
 
         switch (event.type) {
           case 'checkpoint': {
@@ -2336,7 +2369,7 @@ function commitMessage(
 
 function mergeUsage(
   usage: RunUsage,
-  event: { inputTokens?: number; outputTokens?: number; cacheReadTokens?: number; cacheWriteTokens?: number; costUsd?: number | null },
+  event: { inputTokens?: number; outputTokens?: number; cacheReadTokens?: number; cacheWriteTokens?: number; costUsd?: number | null; wallTimeMs?: number },
 ): RunUsage {
   const add = (a: number | undefined, b: number | undefined): number | undefined =>
     a === undefined && b === undefined ? undefined : (a ?? 0) + (b ?? 0);
@@ -2345,6 +2378,7 @@ function mergeUsage(
     outputTokens: add(usage.outputTokens, event.outputTokens),
     cacheReadTokens: add(usage.cacheReadTokens, event.cacheReadTokens),
     cacheWriteTokens: add(usage.cacheWriteTokens, event.cacheWriteTokens),
+    wallTimeMs: add(usage.wallTimeMs, event.wallTimeMs),
     // A subscription runtime exposes no trustworthy per-run cost, so a missing
     // cost stays null rather than being summed into a fabricated zero.
     costUsd: event.costUsd === undefined || event.costUsd === null
@@ -2356,6 +2390,7 @@ function mergeUsage(
 function hasUsage(usage: RunUsage): boolean {
   return usage.inputTokens !== undefined
     || usage.outputTokens !== undefined
+    || usage.wallTimeMs !== undefined
     || (usage.costUsd !== null && usage.costUsd !== undefined);
 }
 

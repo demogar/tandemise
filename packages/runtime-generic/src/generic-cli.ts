@@ -288,6 +288,7 @@ export function translate(
         cacheReadTokens: r['cacheReadTokens'] ?? r['cache_read_input_tokens'],
         cacheWriteTokens: r['cacheWriteTokens'] ?? r['cache_creation_input_tokens'],
         costUsd: r['costUsd'] ?? r['cost_usd'] ?? null,
+        wallTimeMs: r['wallTimeMs'] ?? r['duration_ms'],
       };
     // The canonical field name is tried first on these two: a CLI that already
     // speaks the vocabulary needs no mapping entry, and reading only the

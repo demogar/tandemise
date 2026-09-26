@@ -12,6 +12,7 @@ import { actorLabel, useActors, type Actors } from '../../lib/team.js';
 import { toWire } from '../../lib/staffing.js';
 import { StaffingEditor } from '../team/StaffingEditor.js';
 import { dateTime, duration, taskTone, titleCase } from '../../lib/format.js';
+import { quietFor } from '../../lib/domain.js';
 import { ApprovalCard } from '../approvals/ApprovalCard.js';
 import { RequestChangesButton } from '../../components/RequestChanges.js';
 import { StartRoundButton } from '../../components/ImpactDialog.js';
@@ -203,6 +204,19 @@ export function TaskDetail({ task, detail, onClose }: { task: TaskView; detail: 
           {task.targetName ? <span className="chip">{task.targetName}</span> : null}
           <span className="chip chip--muted">{task.executionPolicy.isolation} isolation</span>
         </div>
+
+        {/* How long the running agent has been quiet (P9). Tandemise never stops it for that; the Inbox asks at the silent threshold. */}
+        {task.watch ? (
+          <div className="row" aria-label="Activity">
+            <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Last activity {quietFor(task.watch.quietForMs)} ago</span>
+            {task.watch.level === 'active' ? null : (
+              <span className="badge badge--blocked" title={`No output for ${quietFor(task.watch.quietForMs)}; quiet after ${quietFor(task.watch.quietAfterMs)}, asked about after ${quietFor(task.watch.silentAfterMs)}.`}>
+                <span className="dot dot--blocked" />
+                Quiet
+              </span>
+            )}
+          </div>
+        ) : null}
 
         <StaffingBlock task={task} detail={detail} actors={actors} />
 

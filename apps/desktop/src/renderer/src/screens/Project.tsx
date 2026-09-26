@@ -7,6 +7,7 @@ import { Empty, ErrorState, Field, SectionHead, Segmented, SkeletonList } from '
 import { useDaemonMutation } from '../lib/queries.js';
 import { useWorkspace } from '../lib/workspace.js';
 import { shortenPath } from '../lib/format.js';
+import { Limits } from './project/Limits.js';
 
 const AUTONOMY_ROWS: readonly { key: keyof AutonomySettings; label: string; hint: string; options: readonly string[] }[] = [
   { key: 'planApproval', label: 'Plan approval', hint: 'Show the proposed task graph before anything runs.', options: ['ask', 'auto'] },
@@ -193,6 +194,8 @@ export function Project(): JSX.Element {
                                 </Field>
                               </div>
                             </section>
+
+              <Limits workspaceId={workspace.id} monthly={workspace.monthlyLimits ?? []} perMission={workspace.defaultMissionLimits ?? []} />
             </>
           )}
         </div>

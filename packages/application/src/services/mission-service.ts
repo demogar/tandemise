@@ -3,7 +3,7 @@ import type {
   MissionTask, RepoRepositoryPort, RoleRepositoryPort, RunRepositoryPort, TaskRepositoryPort, UnitOfWork, WorkspaceRepositoryPort,
   ArtifactStorePort,
 } from '@tandemise/domain';
-import { canTransition, evaluateReadiness, indexTeam, isTaskFinished, isTerminalMissionStatus, responsibleFor } from '@tandemise/domain';
+import { canTransition, evaluateReadiness, indexTeam, isTaskFinished, isTerminalMissionStatus, normalizeLimits, responsibleFor } from '@tandemise/domain';
 import type {
   ClaimTaskRequest, CompleteTaskRequest, CreateMissionRequest, MissionSummary, TaskView,
 } from '@tandemise/api-contract';
@@ -49,6 +49,8 @@ export interface MissionDeps {
   /** A person's finished step is reviewed exactly as an agent's round is. */
   readonly reviews: ReviewPipeline;
   readonly planning: PlanningService;
+  /** Why a mission may not resume: it is at a limit (P8). Null when it may. */
+  readonly limitRefusal?: (missionId: MissionId) => string | null;
   readonly projections: ProjectionService;
   readonly scheduler: SchedulerService;
   /** A retry with a note is the next round, started the way any note starts one. */
@@ -143,6 +145,8 @@ export class MissionServiceImpl implements MissionService {
         ...(request.priority === undefined ? {} : { priority: request.priority }),
         // Queued only while it is a draft: a mission planned now is not waiting for anything.
         queued: request.queued === true && request.planNow !== true,
+        // Its own limits (P8); absent, the project's default mission limits apply.
+        ...(request.limits === undefined ? {} : { limits: normalizeLimits(request.limits) }),
       });
       // Numbered in the same transaction as the mission: the ledger is the
       // contract every later role is measured against, so a mission never
@@ -215,6 +219,14 @@ export class MissionServiceImpl implements MissionService {
         details: { missionId: id, status: mission.status },
       });
     }
+    // Resuming at a limit would start work the limit exists to stop; the
+    // limit card, or a higher limit, is the way on (P8).
+    const refusal = this.deps.limitRefusal?.(id) ?? null;
+    if (refusal !== null) {
+      throw new TandemiseError('PRECONDITION_FAILED', `${refusal}. Raise the limit to resume this mission.`, {
+        details: { missionId: id, reason: refusal },
+      });
+    }
     const resumed = this.#transition(mission, 'EXECUTING', 'Resumed by the user.');
     this.deps.scheduler.wake();
     return resumed;
@@ -271,7 +283,7 @@ export class MissionServiceImpl implements MissionService {
   async retryTask(
     caller: Caller,
     taskId: TaskId,
-    options: { runtimeProfileId?: string; note?: string; addCapabilities?: readonly string[] },
+    options: { runtimeProfileId?: string; note?: string; addCapabilities?: readonly string[]; stopRun?: boolean },
   ): Promise<TaskView> {
     const task = this.#requireTask(taskId);
     const mission = this.#require(task.missionId);
@@ -279,7 +291,10 @@ export class MissionServiceImpl implements MissionService {
     const widening = (options.addCapabilities ?? []).length > 0;
     // A worker parked on a question can be restarted with more access: that is
     // often the question ("I can't do this with my grants").
-    const retryable = RETRYABLE_TASK_STATUSES.includes(task.status) || (widening && task.status === 'AWAITING_INPUT');
+    // "Stop and retry" on a quiet run (P9): its live run is stopped and the step
+    // queued again in this one decision, the path a widening retry already takes.
+    const stopping = options.stopRun === true && (task.status === 'RUNNING' || task.status === 'AWAITING_INPUT');
+    const retryable = RETRYABLE_TASK_STATUSES.includes(task.status) || (widening && task.status === 'AWAITING_INPUT') || stopping;
     if (!retryable) {
       throw new TandemiseError('PRECONDITION_FAILED', `A task in ${task.status} cannot be retried.`, {
         details: { taskId, status: task.status },
@@ -303,7 +318,7 @@ export class MissionServiceImpl implements MissionService {
     // those keep today's framing.
     // A wait step reads no feedback, so its note stays a retry reason.
     const effect = feedbackEffectFor(task, this.deps.approvals.pendingForTask(taskId), this.deps.runs);
-    if (note.length > 0 && task.executor !== 'wait' && (effect.kind === 'review' || effect.kind === 'reopen' || effect.kind === 'round_now')) {
+    if (note.length > 0 && !stopping && task.executor !== 'wait' && (effect.kind === 'review' || effect.kind === 'reopen' || effect.kind === 'round_now')) {
       let pending;
       try {
         // One unit with the round, so a round that cannot start leaves the task's access as it was.
@@ -324,9 +339,10 @@ export class MissionServiceImpl implements MissionService {
       return this.#taskView(mission.id, taskId);
     }
     const reason = note
-      || `Retried by the user${options.runtimeProfileId === undefined ? '' : ' on a different runtime'}`
+      || `${stopping ? 'Stopped and retried' : 'Retried'} by the user${options.runtimeProfileId === undefined ? '' : ' on a different runtime'}`
         + `${added.length > 0 ? ` with more access: ${added.join(', ')}` : ''}.`;
-    if (task.status === 'AWAITING_INPUT') {
+    // The run ends after this decision; the executor finds the step READY and leaves it so.
+    if (task.status === 'AWAITING_INPUT' || stopping) {
       this.deps.scheduler.cancelTask(taskId);
       for (const approval of this.deps.approvals.pendingForTask(taskId)) {
         this.deps.approvals.update(approval.id, {

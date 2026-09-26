@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import {
-  ACCESS_LEVELS, ARTIFACT_TYPES, AUTONOMY_LEVELS, MISSION_PRIORITIES, MISSION_STATUSES, OVERSIGHT_MODES, RUNTIME_CAPABILITIES,
+  ACCESS_LEVELS, ARTIFACT_TYPES, AUTONOMY_LEVELS, LIMIT_METRICS, MISSION_PRIORITIES, MISSION_STATUSES, OVERSIGHT_MODES, RUNTIME_CAPABILITIES,
   staffingPatchSchema,
 } from '@tandemise/domain';
 
@@ -19,6 +19,21 @@ const onBehalfOf = z.string().min(1).optional();
  * inputs, and it means a bad request produces one precise error rather than a
  * type error three frames deep.
  */
+
+/**
+ * A ceiling on agent minutes, tokens or reported US dollars (P8). The warning
+ * level defaults to 80%; at 100% work stops and the person is asked.
+ */
+export const limitSchema = z.object({
+  metric: z.enum(LIMIT_METRICS),
+  amount: z.number().positive('A limit must be above zero.').max(1e12),
+  /** Defaults to 80 (DEFAULT_WARN_PERCENT). */
+  warnPercent: z.number().int().min(1).max(99).optional(),
+});
+/** At most one limit per metric. */
+export const limitsSchema = z.array(limitSchema).max(LIMIT_METRICS.length)
+  .refine((list) => new Set(list.map((l) => l.metric)).size === list.length, 'Give at most one limit per metric.');
+export type LimitInput = z.infer<typeof limitSchema>;
 
 export const createWorkspaceRequest = z.object({
   name: z.string().min(1).max(120),
@@ -43,6 +58,10 @@ export const updateWorkspaceRequest = z.object({
   routing: z.record(z.string(), z.array(z.string())).optional(),
   /** Missions in progress at once before queued ones wait; null turns the limit (and the pull) off. */
   maxActiveMissions: z.number().int().min(1).max(50).nullable().optional(),
+  /** Limits each mission gets unless it sets its own; [] for none. */
+  defaultMissionLimits: limitsSchema.optional(),
+  /** Limits on the whole project per local calendar month; [] for none. */
+  monthlyLimits: limitsSchema.optional(),
   knowledge: z.object({
     productVision: z.string().nullable(),
     architecturePrinciples: z.string().nullable(),
@@ -98,6 +117,8 @@ export const createMissionRequest = z.object({
   priority: z.enum(MISSION_PRIORITIES).optional(),
   /** "Add to backlog": created as a queued draft, planned when there is room and it is ready. */
   queued: z.boolean().optional(),
+  /** The mission's own limits; absent uses the project's default mission limits. */
+  limits: limitsSchema.optional(),
 });
 export type CreateMissionRequest = z.infer<typeof createMissionRequest>;
 
@@ -111,7 +132,9 @@ export const updateMissionRequest = z.object({
   rank: z.number().finite().optional(),
   queued: z.boolean().optional(),
   move: z.enum(['up', 'down']).optional(),
-}).refine((r) => Object.keys(r).length > 0, 'Say what to change: priority, rank, queued or move.');
+  /** The mission's own limits (P8); null goes back to the project's defaults. */
+  limits: limitsSchema.nullable().optional(),
+}).refine((r) => Object.keys(r).length > 0, 'Say what to change: priority, rank, queued, move or limits.');
 export type UpdateMissionRequest = z.infer<typeof updateMissionRequest>;
 
 /** A verdict on a proposed criterion; `statement` accepts it in the person's own words. */
@@ -142,6 +165,8 @@ export const decideApprovalRequest = z.object({
   note: z.string().max(4000).optional(),
   /** For plan approvals: an edited plan to use instead of the proposed one. */
   editedPlan: z.unknown().optional(),
+  /** For a limit card's "Raise limit and resume": the new limit, in the limit's own unit. */
+  raiseTo: z.number().positive().max(1e12).optional(),
   onBehalfOf,
 });
 export type DecideApprovalRequest = z.infer<typeof decideApprovalRequest>;
@@ -335,6 +360,11 @@ export const retryTaskRequest = z.object({
    * may do - never beyond it.
    */
   addCapabilities: z.array(z.string().trim().min(1).max(100)).max(20).optional(),
+  /**
+   * Stop the step's live run first (P9 "Stop and retry"): a RUNNING or
+   * AWAITING_INPUT step is cancelled and queued again in one decision.
+   */
+  stopRun: z.boolean().optional(),
 });
 
 // ------------------------------------------------------------ feedback and rounds
@@ -363,4 +393,9 @@ export type DismissFeedbackRequest = z.infer<typeof dismissFeedbackRequest>;
 
 export const cancelMissionRequest = z.object({
   reason: z.string().max(500).optional(),
+});
+
+/** `GET /v1/workspaces/:id/usage?month=2026-09`; the current local month when absent. */
+export const workspaceUsageQuery = z.object({
+  month: z.string().regex(/^\d{4}-\d{2}$/, 'A month reads like 2026-09.').optional(),
 });

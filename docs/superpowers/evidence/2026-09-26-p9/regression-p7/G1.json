@@ -1,0 +1,133 @@
+{
+  "id": "G1",
+  "title": "The urgent mission is pulled first; the rest wait in order",
+  "ok": true,
+  "checks": [
+    {
+      "label": "\"Add to backlog\" leaves each one a queued draft",
+      "ok": true
+    },
+    {
+      "label": "the backlog lists Urgent, Normal, Low in that order",
+      "ok": true,
+      "observed": [
+        "Urgent G1 urgent: fix the sign-in crash muic9bic",
+        "Normal G1 normal: a hello page muic9bic",
+        "Low G1 low: tidy the footer muic9bic"
+      ]
+    },
+    {
+      "label": "each row: priority chip, \"Ready\", and its place in the queue",
+      "ok": true,
+      "observed": [
+        {
+          "title": "G1 urgent: fix the sign-in crash muic9bic",
+          "priority": "Urgent",
+          "chip": "Urgent",
+          "readiness": "Ready",
+          "queue": "Queued · 1/3",
+          "subtitle": "G1 urgent: fix the sign-in crash muic9bic",
+          "selected": true
+        },
+        {
+          "title": "G1 normal: a hello page muic9bic",
+          "priority": "Normal",
+          "chip": "Normal",
+          "readiness": "Ready",
+          "queue": "Queued · 2/3",
+          "subtitle": "G1 normal: a hello page muic9bic",
+          "selected": false
+        },
+        {
+          "title": "G1 low: tidy the footer muic9bic",
+          "priority": "Low",
+          "chip": "Low",
+          "readiness": "Ready",
+          "queue": "Queued · 3/3",
+          "subtitle": "G1 low: tidy the footer muic9bic",
+          "selected": false
+        }
+      ]
+    },
+    {
+      "label": "limit off: \"Working on 0 · no limit · 3 queued\"",
+      "ok": true,
+      "observed": "Working on 0 · no limit · 3 queued\n\nLimit off: queued missions wait until you plan them yourself or set a limit.\n\nWork on at most\nOff\n1\n2\n3\n5"
+    },
+    {
+      "label": "the urgent mission leaves the backlog",
+      "ok": true,
+      "observed": [
+        "G1 normal: a hello page muic9bic",
+        "G1 low: tidy the footer muic9bic"
+      ]
+    },
+    {
+      "label": "Normal reads \"Queued · 1/2\", Low \"Queued · 2/2\"",
+      "ok": true,
+      "observed": [
+        {
+          "title": "G1 normal: a hello page muic9bic",
+          "priority": "Normal",
+          "chip": "Normal",
+          "readiness": "Ready",
+          "queue": "Queued · 1/2",
+          "subtitle": "G1 normal: a hello page muic9bic",
+          "selected": true
+        },
+        {
+          "title": "G1 low: tidy the footer muic9bic",
+          "priority": "Low",
+          "chip": "Low",
+          "readiness": "Ready",
+          "queue": "Queued · 2/2",
+          "subtitle": "G1 low: tidy the footer muic9bic",
+          "selected": false
+        }
+      ]
+    },
+    {
+      "label": "header: \"Working on 1 of 1 · 2 queued\"",
+      "ok": true,
+      "observed": "Working on 1 of 1 · 2 queued\n\nFull: the next queued mission that is ready is planned as soon as one in progress finishes.\n\nWork on at most\nOff\n1\n2\n3\n5"
+    },
+    {
+      "label": "the hint says it is full and what happens next",
+      "ok": true,
+      "observed": "Working on 1 of 1 · 2 queued\n\nFull: the next queued mission that is ready is planned as soon as one in progress finishes.\n\nWork on at most\nOff\n1\n2\n3\n5"
+    },
+    {
+      "label": "the urgent mission is being planned (Planning, then its plan approval)",
+      "ok": true,
+      "observed": "msn_01m3esebdyqf4rv6ny4s\nMissions\np2-solo\nG1 urgent: fix the sign-in crash muic9bic\nG1 urgent: fix the sign-in crash muic9bic\nAwaiting plan approval\nStart\nRe-plan\nCancel"
+    },
+    {
+      "label": "proof (API): urgent left DRAFT; normal and low are still DRAFT",
+      "ok": true,
+      "observed": [
+        "AWAITING_PLAN_APPROVAL",
+        "DRAFT",
+        "DRAFT"
+      ]
+    },
+    {
+      "label": "proof (SQL): one mission.pulled {position 1, limit 1, active 1}",
+      "ok": true,
+      "observed": [
+        {
+          "type": "mission.pulled",
+          "position": 1,
+          "limit": 1,
+          "active": 1,
+          "skipped": 0
+        }
+      ]
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p9-liveness/scratch/acceptance/p7/evidence/G1-backlog-limit-off.png",
+    "/Users/demogar/projects/tandemise/tandemise-p9-liveness/scratch/acceptance/p7/evidence/G1-urgent-pulled.png",
+    "/Users/demogar/projects/tandemise/tandemise-p9-liveness/scratch/acceptance/p7/evidence/G1-urgent-planning.png"
+  ]
+}

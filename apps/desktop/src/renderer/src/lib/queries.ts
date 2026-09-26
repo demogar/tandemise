@@ -24,6 +24,8 @@ export const keys = {
   missions: (filter?: string, ws?: string) => ['missions', filter ?? 'all', ws ?? 'all'] as const,
   // Under 'missions': every mission change, a pull included, refreshes it.
   backlog: (ws?: string) => ['missions', 'backlog', ws ?? 'all'] as const,
+  // Under 'workspaces': a changed limit refreshes it; runs finishing are picked up by its interval.
+  usage: (ws?: string) => ['workspaces', 'usage', ws ?? 'all'] as const,
   mission: (id: string) => ['mission', id] as const,
   // Under 'mission' and scoped by id, so the mission's own invalidations refresh it.
   missionArtifacts: (id: string, all: boolean) => ['mission', id, 'artifacts', all ? 'all' : 'live'] as const,
@@ -50,7 +52,8 @@ export const keys = {
 };
 
 const TOPIC_KEYS: Readonly<Record<ProjectionTopic, readonly (readonly string[])[]>> = {
-  missions: [['home'], ['missions'], ['mission']],
+  // A mission's status alone can make it stalled, which is an Inbox row (P9).
+  missions: [['home'], ['missions'], ['mission'], ['inbox']],
   tasks: [['mission'], ['home'], ['inbox'], ['mission-task-feedback']],
   // A decided review card or check can record a note, so a task's thread follows approvals too.
   approvals: [['approvals'], ['home'], ['mission'], ['inbox'], ['mission-task-feedback']],
@@ -103,6 +106,19 @@ export function useMissions(status?: string) {
   return useQuery({
     queryKey: keys.missions(status, workspaceId),
     queryFn: () => daemon.missions({ workspaceId, ...(status ? { status: status as never } : {}) }),
+  });
+}
+
+/** This month's usage against the project's monthly limits (P8). */
+export function useWorkspaceUsage() {
+  const daemon = useDaemon();
+  const workspaceId = useWorkspaceId();
+  return useQuery({
+    queryKey: keys.usage(workspaceId),
+    queryFn: () => daemon.workspaceUsage(workspaceId ?? ''),
+    enabled: Boolean(workspaceId),
+    refetchInterval: 5_000,
+    placeholderData: (previous) => previous,
   });
 }
 

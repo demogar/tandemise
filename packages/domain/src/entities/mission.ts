@@ -2,6 +2,7 @@ import type { MissionId, RepositoryId, TaskId, WorkspaceId, Timestamp } from '@t
 import type { Capability } from '../capability.js';
 import type { RoleStaffing } from '../staffing.js';
 import type { MissionPriority } from './backlog.js';
+import type { Limit } from './limits.js';
 
 /** MVP.md §9.1. Terminal states are RELEASED-adjacent or explicit failures. */
 export const MISSION_STATUSES = [
@@ -91,6 +92,11 @@ export interface Mission {
   readonly rank: number;
   /** Set while a DRAFT is queued to be planned when there is room; null otherwise. */
   readonly queuedAt: Timestamp | null;
+  /**
+   * The mission's own ceilings on agent time, tokens or reported cost (P8).
+   * Null means the project's default mission limits apply.
+   */
+  readonly limits: readonly Limit[] | null;
   readonly createdAt: Timestamp;
   readonly updatedAt: Timestamp;
   readonly startedAt: Timestamp | null;
@@ -116,6 +122,8 @@ export interface MissionDraft {
   readonly rank?: number;
   /** Queued at creation ("Add to backlog"). */
   readonly queued?: boolean;
+  /** The mission's own limits; absent or null uses the project's defaults. */
+  readonly limits?: readonly Limit[] | null;
 }
 
 /** Aggregate counters projected for the mission list, computed not stored. */

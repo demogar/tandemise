@@ -177,6 +177,48 @@ export const GATE_FACT_VOCABULARY: readonly FactDefinition[] = [
     example: 'workspace.max_active_missions >= 2',
   },
   {
+    name: 'mission.agent_minutes',
+    type: 'number',
+    description: 'Agent time the mission\'s runs used, in minutes: what each runtime reported, or the run\'s own duration when it reported none.',
+    example: 'mission.agent_minutes < 60',
+  },
+  {
+    name: 'mission.tokens',
+    type: 'number',
+    description: 'Input plus output tokens the mission\'s runs reported. Not measured when no runtime reported tokens.',
+    example: 'mission.tokens < 200000',
+  },
+  {
+    name: 'mission.spend_usd',
+    type: 'number',
+    description: 'Cost in US dollars the mission\'s runs reported. Not measured when no runtime reported a cost: never read as 0.',
+    example: 'mission.spend_usd < 5',
+  },
+  {
+    name: 'mission.limit_percent',
+    type: 'number',
+    description: 'How much of its most-used limit the mission has used, in percent. Not measured when it has no limit. Work stops at 100.',
+    example: 'mission.limit_percent < 80',
+  },
+  {
+    name: 'workspace.month_limit_percent',
+    type: 'number',
+    description: 'How much of its most-used monthly limit the project has used this calendar month, in percent. Not measured without a monthly limit.',
+    example: 'workspace.month_limit_percent < 80',
+  },
+  {
+    name: 'mission.stalled',
+    type: 'number',
+    description: 'Whether the mission is stalled: 1 when nothing moves it and nothing asks the person (it has a Stalled row in the Inbox), else 0.',
+    example: 'mission.stalled == 0',
+  },
+  {
+    name: 'run.silent_minutes',
+    type: 'number',
+    description: 'Minutes since the step\'s live run last wrote an event. Not measured when the step has no live run.',
+    example: 'run.silent_minutes < 10',
+  },
+  {
     name: 'qa.blocking_defects',
     type: 'number',
     description: 'Count of QA defects that block release.',
