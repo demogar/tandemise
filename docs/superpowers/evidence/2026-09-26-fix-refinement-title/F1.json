@@ -86,7 +86,7 @@
             "open"
           ]
         ],
-        "artifactId": "art_01m3fsjyk0vzb9nvqna3"
+        "artifactId": "art_01m3ft6wvsf3xe11zwm2"
       }
     },
     {
@@ -94,11 +94,11 @@
       "ok": true
     },
     {
-      "label": "the Refinement note reads \"Refinement: F1 a friendlier hello page muiwbs6o\" in the Artifacts list and the reader",
+      "label": "the Refinement note reads \"Refinement: F1 a friendlier hello page muiwpsjy\" in the Artifacts list and the reader",
       "ok": true,
       "observed": {
-        "noteTitle": "Refinement: F1 a friendlier hello page muiwbs6o",
-        "reader": "Refinement: F1 a friendlier hello page muiwbs6o\nby\nRuntime\n·\nresponsible\nYou\n\nRefinement ready for the hello page\n\nWritten by the scripted acceptance agent\nNo model was called\nRefinement\nSep 26, 2026, 4:22 PM\nDetails\nRefinement: Scripted work\n\nWritten by the scripted acceptance agent."
+        "noteTitle": "Refinement: F1 a friendlier hello page muiwpsjy",
+        "reader": "Refinement: F1 a friendlier hello page muiwpsjy\nby\nRuntime\n·\nresponsible\nYou\n\nRefinement ready for the hello page\n\nWritten by the scripted acceptance agent\nNo model was called\nRefinement\nSep 26, 2026, 4:33 PM\nDetails\nRefinement: Scripted work\n\nWritten by the scripted acceptance agent."
       }
     },
     {
@@ -107,7 +107,7 @@
     }
   ],
   "notes": [
-    "mission msn_01m3fsjwcf66xhd1n74a"
+    "mission msn_01m3ft6tqb2m54gqrzy9"
   ],
   "shots": [
     "F1-draft-before-refine.png",

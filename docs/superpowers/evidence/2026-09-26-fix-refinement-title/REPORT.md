@@ -1,6 +1,6 @@
 # P6 acceptance report
 
-Run: 2026-09-26T21:26:40.808Z · build 940d0c6 · fresh install at /var/folders/dh/glpvvh110393gdzjc_v2x1sr0000gn/T/tdm-p6-run-muiwbolb
+Run: 2026-09-26T21:37:34.199Z · build 246c4cd · fresh install at /var/folders/dh/glpvvh110393gdzjc_v2x1sr0000gn/T/tdm-p6-run-muiwpp2s
 Result: **ALL PASS** (6/6 scenarios)
 
 | Scenario | Result | Checks |
@@ -14,7 +14,7 @@ Result: **ALL PASS** (6/6 scenarios)
 
 ## F1 — A rough request is refined into proposals and a question
 
-- note: mission msn_01m3fsjwcf66xhd1n74a
+- note: mission msn_01m3ft6tqb2m54gqrzy9
 - ✅ with no Done-when line New mission offers "Create and refine", not "Plan mission" — `"Create and refine\n⌘↵"`
 - ✅ the mission is created as a draft, not planned — `"DRAFT"`
 - ✅ the draft opens on "Get it ready", explaining what Refine does — `"Get it ready\nNeeds a Done-when criterion\n\nBefore anything is planned, say what done means. Refine asks the product agent to read your request, propose criteria you can check, and ask only what would change the plan. `
@@ -24,9 +24,9 @@ Result: **ALL PASS** (6/6 scenarios)
 - ✅ one question, Q1, with its reason and one-click options — `"Questions\n1 to answer\nQ1\nWhich pages should greet the visitor by name?\nWhy it matters: It decides how many pages the plan touches and what QA checks\nOnly the home page\nEvery page\nAnswer"`
 - ✅ the Plan button reads "Answer 1 question and decide 3 criteria to plan", disabled — `{"text":"Answer 1 question and decide 3 criteria to plan","disabled":true}`
 - ✅ the panel says 4 to decide and offers Refine again — `"Get it ready\n4 to decide\n\nRefinement ready for the hello page\n\nRefine again\nRead the refinement\nAnswer 1 question and decide 3 criteria to plan."`
-- ✅ proof (API): 3 proposed, 1 open question, a Refinement artifact — `{"criteria":[["P1","proposed"],["P2","proposed"],["P3","proposed"]],"q":[["Q1","open"]],"artifactId":"art_01m3fsjyk0vzb9nvqna3"}`
+- ✅ proof (API): 3 proposed, 1 open question, a Refinement artifact — `{"criteria":[["P1","proposed"],["P2","proposed"],["P3","proposed"]],"q":[["Q1","open"]],"artifactId":"art_01m3ft6wvsf3xe11zwm2"}`
 - ✅ proof (SQL): proposals are not on the ledger yet
-- ✅ the Refinement note reads "Refinement: F1 a friendlier hello page muiwbs6o" in the Artifacts list and the reader — `{"noteTitle":"Refinement: F1 a friendlier hello page muiwbs6o","reader":"Refinement: F1 a friendlier hello page muiwbs6o\nby\nRuntime\n·\nresponsible\nYou\n\nRefinement ready for the hello page\n\nWritten by the scripted`
+- ✅ the Refinement note reads "Refinement: F1 a friendlier hello page muiwpsjy" in the Artifacts list and the reader — `{"noteTitle":"Refinement: F1 a friendlier hello page muiwpsjy","reader":"Refinement: F1 a friendlier hello page muiwpsjy\nby\nRuntime\n·\nresponsible\nYou\n\nRefinement ready for the hello page\n\nWritten by the scripted`
 - ✅ proof (SQL): the stored title is the mission's, not the agent's
 - screenshot: `F1-draft-before-refine.png`
 - screenshot: `F1-proposals-and-question.png`
@@ -51,7 +51,7 @@ Result: **ALL PASS** (6/6 scenarios)
 - ✅ the question shows its answer — `"Questions\nAll answered\nQ1\nWHICH PAGES SHOULD GREET THE VISITOR BY NAME?\nAnswered: Only the home page"`
 - ✅ the button now reads "Plan" and is enabled — `{"text":"Plan","disabled":false}`
 - ✅ the panel says it is ready
-- ✅ clicking Plan starts planning — `"msn_01m3fsn4kxy035ekxp4p\nMissions\nfeature-delivery\nF3 hello page muiwdd9g\nF3 hello page muiwdd9g\nPlanning\nCancel"`
+- ✅ clicking Plan starts planning — `"msn_01m3ft92t6xasz7ckcve\nMissions\nfeature-delivery\nF3 hello page muiwrdil\nF3 hello page muiwrdil\nPlanning\nCancel"`
 - ✅ the planner prompt holds the answer to Q1 — `"You are the Planner for Tandemise, an orchestration system that runs software\nmissions across multiple AI workers. You do not implement anything. You produce\none thing: a mission plan, as JSON.\n\n# The mission\n\nGoa`
 - ✅ and both accepted criteria, as U1 and U2
 - ✅ and not the rejected one — `"The greeting is readable on a 375px wide phone screen without scrolling sideways"`
@@ -81,7 +81,7 @@ Result: **ALL PASS** (6/6 scenarios)
 
 ## F6 — The Inbox asks for refinement decisions until they are made
 
-- ✅ the Inbox shows "Refinement: 4 to decide" for the mission — `"Refinement: 4 to decide 3 criteria to decide and 1 question to answer before it can be planned·F6 hello page muiwftxu Refinement just now"`
+- ✅ the Inbox shows "Refinement: 4 to decide" for the mission — `"Refinement: 4 to decide 3 criteria to decide and 1 question to answer before it can be planned·F6 hello page muiwtu57 Refinement just now"`
 - ✅ clicking the row opens the mission on "Get it ready"
 - ✅ once everything is decided the row is gone — `"gone"`
 - ✅ proof (API): no refinement row for the mission — `[]`
