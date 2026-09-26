@@ -1,0 +1,92 @@
+{
+  "id": "G3",
+  "title": "Keyboard reorder: Low moved above Normal is pulled next",
+  "ok": true,
+  "checks": [
+    {
+      "label": "before: the new Normal is above Low",
+      "ok": true,
+      "observed": [
+        "Normal G3 normal: a settings page mui5sdm3",
+        "Low G1 low: tidy the footer mui5sdm3"
+      ]
+    },
+    {
+      "label": "j selects the second row (Low)",
+      "ok": true,
+      "observed": [
+        [
+          "G3 normal: a settings page mui5sdm3",
+          false
+        ],
+        [
+          "G1 low: tidy the footer mui5sdm3",
+          true
+        ]
+      ]
+    },
+    {
+      "label": "⌥↑ moves Low above the Normal",
+      "ok": true,
+      "observed": [
+        "G1 low: tidy the footer mui5sdm3",
+        "G3 normal: a settings page mui5sdm3"
+      ]
+    },
+    {
+      "label": "it now reads Normal (chip and select)",
+      "ok": true,
+      "observed": {
+        "title": "G1 low: tidy the footer mui5sdm3",
+        "priority": "Normal",
+        "chip": "Normal",
+        "readiness": "Ready",
+        "queue": "Queued · 1/2",
+        "subtitle": "G1 low: tidy the footer mui5sdm3",
+        "selected": true
+      }
+    },
+    {
+      "label": "the window says so",
+      "ok": true,
+      "observed": "Now Normal priority, above “G3 normal: a settings page mui5sdm3”."
+    },
+    {
+      "label": "the selection follows the moved row",
+      "ok": true,
+      "observed": [
+        [
+          "G1 low: tidy the footer mui5sdm3",
+          true
+        ],
+        [
+          "G3 normal: a settings page mui5sdm3",
+          false
+        ]
+      ]
+    },
+    {
+      "label": "proof (API): Low is now normal priority and ranked first",
+      "ok": true
+    },
+    {
+      "label": "proof (API): the moved mission is pulled; the other Normal waits",
+      "ok": true,
+      "observed": [
+        "AWAITING_PLAN_APPROVAL",
+        "DRAFT"
+      ]
+    },
+    {
+      "label": "its timeline: \"Pulled from the backlog (1 of 1)\"",
+      "ok": true,
+      "observed": "Tandemise\nAcceptance\n1 repository\nHome\nMissions\nInbox\n1\nArtifacts\nACCEPTANCE\nRepositories\nTeam\nRuntimes\nIntegrations\nAPP\nSettings\nDaemon connected · 50894\nmsn_01m3ef2srf9cpvkwq7c1\nMissions\np2-solo\nG1 low: tidy the footer mui5sdm3\nG1 low: tidy the footer mui5sdm3\nAwaiting plan approval\nStart\nRe-plan\nCancel\n1 decision waiting on you. Approve the plan for G1 low: tidy the footer mui5sdm3?\nReview\nFeed"
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p7-backlog/scratch/acceptance/p7/evidence/G3-low-selected.png",
+    "/Users/demogar/projects/tandemise/tandemise-p7-backlog/scratch/acceptance/p7/evidence/G3-low-moved-up.png",
+    "/Users/demogar/projects/tandemise/tandemise-p7-backlog/scratch/acceptance/p7/evidence/G3-low-pulled.png"
+  ]
+}
