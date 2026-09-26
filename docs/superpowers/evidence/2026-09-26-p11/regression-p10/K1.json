@@ -1,0 +1,129 @@
+{
+  "id": "K1",
+  "title": "The desk: five numbers, each opening the view behind it",
+  "ok": true,
+  "checks": [
+    {
+      "label": "proof (API): the work-in-progress limit is 2, set in the window",
+      "ok": true
+    },
+    {
+      "label": "proof (API): B's release exhausted its retries",
+      "ok": true,
+      "observed": "release exhausted its retries"
+    },
+    {
+      "label": "proof (API): A's release exhausted its retries (a card asks)",
+      "ok": true,
+      "observed": "release exhausted its retries"
+    },
+    {
+      "label": "card \"Needs you 1\"",
+      "ok": true,
+      "observed": "Needs you 1 Decisions and steps in your inbox"
+    },
+    {
+      "label": "card \"Working on 2 of 2\"",
+      "ok": true,
+      "observed": "Working on 2 of 2 0 queued"
+    },
+    {
+      "label": "card \"Criteria verified 4 of 6\", across 2 missions",
+      "ok": true,
+      "observed": "Criteria verified 4 of 6 Across 2 missions in progress"
+    },
+    {
+      "label": "card \"Stalled 1\"",
+      "ok": true,
+      "observed": "Stalled 1 Nothing moves them"
+    },
+    {
+      "label": "card \"This month\" says no monthly limit is set yet",
+      "ok": true,
+      "observed": "This month 0.2 agent min No monthly limit set"
+    },
+    {
+      "label": "proof (API): metrics needsYou 1, active 2 of 2, criteria 4 of 6, stalled 1",
+      "ok": true,
+      "observed": {
+        "needsYou": 1,
+        "active": 2,
+        "wipLimit": 2,
+        "queued": 0,
+        "criteriaVerified": 4,
+        "criteriaTotal": 6,
+        "criteriaMissions": 2,
+        "month": "2026-09",
+        "monthUsage": [],
+        "usage": {
+          "agentMinutes": 0.16,
+          "tokens": null,
+          "costUsd": null,
+          "runs": 8
+        },
+        "stalled": 1
+      }
+    },
+    {
+      "label": "proof (API): B is the one stalled mission, A has the one card",
+      "ok": true,
+      "observed": {
+        "stalled": [
+          "K1 offline mode muiiya4s SCRIPTED_SPEC_THREE_ACS SCRIPTED_FAIL_RELEASE"
+        ],
+        "cards": [
+          "release exhausted its retries"
+        ]
+      }
+    },
+    {
+      "label": "the Stalled card opens the Inbox filtered to stalled missions",
+      "ok": true,
+      "observed": "#/inbox/stalled"
+    },
+    {
+      "label": "it shows \"Stalled: K1 offline mode muiiya4s SCRIPTED_SPEC_THREE_ACS SCRIPTED_FAIL_RELEASE\" with \"Retry release\"",
+      "ok": true,
+      "observed": "Inbox\nWhat is waiting on a person.\nShowing stalled missions only: nothing moves them until you act.\nShow everything\nStalled: K1 offline mode muiiya4s SCRIPTED_SPEC_THREE_ACS SCRIPTED_FAIL_RELEASE\n'release' is blocked: A human declined to retry this task.\nStalled\njust now\nRetry release"
+    },
+    {
+      "label": "and not A's card",
+      "ok": true,
+      "observed": "Inbox\nWhat is waiting on a person.\nShowing stalled missions only: nothing moves them until you act.\nShow everything\nStalled: K1 offline mode muiiya4s SCRIPTED_SPEC_THREE_ACS SCRIPTED_FAIL_RELEASE\n'release' is blocked: A human declined to retry this task.\nStalled\njust now\nRetry release"
+    },
+    {
+      "label": "\"Show everything\" brings A's card back",
+      "ok": true,
+      "observed": "Inbox\nWhat is waiting on a person.\nStalled: K1 offline mode muiiya4s SCRIPTED_SPEC_THREE_ACS SCRIPTED_FAIL_RELEASE\n'release' is blocked: A human declined to retry this task.\nStalled\njust now\nRetry release\nrelease exhausted its retries\nReleaseCandidate ready for the hello page\nFor you·K1 greeting page muiiya4s SCRIPTED_QA_PARTIAL\nIntervention\njust now\nDecided\n3 decisions\nApprove the plan for K1 greeting page muiiya4s SCRIPTED_QA_PARTIAL?\nApproved·\nby\nYou\nK1 greeting page muiiya4s SCRIPTED_QA_PARTIAL\nrelease exhausted its retries\nRejected·\nby\nYou\nK1 offline mode muiiya4s SCRIPTED_SPEC_THREE_ACS "
+    },
+    {
+      "label": "the Criteria card opens Missions filtered to the missions in progress (blocked ones included)",
+      "ok": true,
+      "observed": "Missions\nEvery outcome the workforce is pursuing, past and present.\nNew mission\nBacklog\n0\nRoutines\n0\nActive\n0\nNeeds attention\n2\nFinished\n0\nAll\n2\nShowing the 2 missions in progress, blocked ones included: the work Home counts.\nShow all missions\nK1 greeting page muiiya4s SCRIPTED_QA_PARTIAL\nmsn_01m3f45zeamq27k686ph\nWaiting on release: Not met: qa.criteria_unverified is 2, needs 0\n1 of 3 verified\n1\nacceptance-project\n2/3\nBlocked\njust now\nK1 offline mode muiiya4s SCRIPTED_SPEC_THREE_ACS SCRIPTED_FAI"
+    },
+    {
+      "label": "A's row reads \"1 of 3 verified\", B's \"3 of 3 verified\"",
+      "ok": true,
+      "observed": [
+        "K1 greeting page muiiya4s SCRIPTED_QA_PARTIAL msn_01m3f45zeamq27k686ph Waiting on release: Not met: qa.criteria_unverified is 2, needs 0 1 of 3 verified 1 acceptance-project 2/3 Blocked just now",
+        "K1 offline mode muiiya4s SCRIPTED_SPEC_THREE_ACS SCRIPTED_FAIL_RELEASE msn_01m3f45agp654dngkn94 Waiting on release: Not met: artifact.ReleaseCandidate.exists is false Missing expected artifacts: ReleaseCandidate. 3 of 3 verified acceptance-project 2/3 Blocked just now"
+      ]
+    },
+    {
+      "label": "the Needs you card opens the Inbox",
+      "ok": true
+    },
+    {
+      "label": "the This month card opens Repositories (its Limits)",
+      "ok": true
+    }
+  ],
+  "notes": [
+    "A msn_01m3f45zeamq27k686ph \"K1 greeting page muiiya4s SCRIPTED_QA_PARTIAL\"; B msn_01m3f45agp654dngkn94 \"K1 offline mode muiiya4s SCRIPTED_SPEC_THREE_ACS SCRIPTED_FAIL_RELEASE\""
+  ],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p11-routines/scratch/acceptance/p10/evidence/K1-desk.png",
+    "/Users/demogar/projects/tandemise/tandemise-p11-routines/scratch/acceptance/p10/evidence/K1-inbox-stalled-only.png",
+    "/Users/demogar/projects/tandemise/tandemise-p11-routines/scratch/acceptance/p10/evidence/K1-missions-criteria.png"
+  ]
+}

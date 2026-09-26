@@ -1,0 +1,53 @@
+{
+  "id": "G2",
+  "title": "A freed slot pulls the next queued mission",
+  "ok": true,
+  "checks": [
+    {
+      "label": "the urgent mission completes",
+      "ok": true
+    },
+    {
+      "label": "proof (API): Normal is pulled once the slot is free; Low still waits",
+      "ok": true,
+      "observed": [
+        "AWAITING_PLAN_APPROVAL",
+        "DRAFT"
+      ]
+    },
+    {
+      "label": "its timeline: \"Pulled from the backlog (1 of 1)\"",
+      "ok": true,
+      "observed": "Tandemise\nAcceptance\n1 repository\nHome\nMissions\nInbox\n1\nArtifacts\nACCEPTANCE\nRepositories\nTeam\nRuntimes\nIntegrations\nAPP\nSettings\nDaemon connected · 53885\nmsn_01m3f3fc92ey60g45jfa\nMissions\np2-solo\nG1 normal: a hello page muiiiv9x\nG1 normal: a hello page muiiiv9x\nAwaiting plan approval\nStart\nRe-plan\nCancel\n1 decision waiting on you. Approve the plan for G1 normal: a hello page muiiiv9x?\nReview\nFeed\n1\nPlan\n1\nTimeline\nArtifacts\n1\nChecks & Gates\nMetrics\n6 events · latest just now\nFollowing\nRaw log\nMission created: G1 normal: a hello page muiiiv9x\n09:56:26 AM\n·\nYou\nMission moved to Planning\nPlannin"
+    },
+    {
+      "label": "and why: \"It was first in the queue. This project works on at most 1 mission at a time.\"",
+      "ok": true
+    },
+    {
+      "label": "the backlog now holds only Low, \"Queued · 1/1\"",
+      "ok": true,
+      "observed": [
+        {
+          "title": "G1 low: tidy the footer muiiiv9x",
+          "priority": "Low",
+          "chip": "Low",
+          "readiness": "Ready",
+          "queue": "Queued · 1/1",
+          "subtitle": "G1 low: tidy the footer muiiiv9x",
+          "selected": true
+        }
+      ]
+    },
+    {
+      "label": "header: \"Working on 1 of 1 · 1 queued\"",
+      "ok": true,
+      "observed": "Working on 1 of 1 · 1 queued\n\nFull: the next queued mission that is ready is planned as soon as one in progress finishes.\n\nWork on at most\nOff\n1\n2\n3\n5"
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p11-routines/scratch/acceptance/p7/evidence/G2-pulled-timeline.png",
+    "/Users/demogar/projects/tandemise/tandemise-p11-routines/scratch/acceptance/p7/evidence/G2-backlog-after.png"
+  ]
+}

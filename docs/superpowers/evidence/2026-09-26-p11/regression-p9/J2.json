@@ -1,0 +1,51 @@
+{
+  "id": "J2",
+  "title": "A rejected plan gets one Stalled row that re-plans it",
+  "ok": true,
+  "checks": [
+    {
+      "label": "proof (API): the plan card is pending and nothing is stalled",
+      "ok": true
+    },
+    {
+      "label": "\"Stalled: J2 hello muiiuku0\" appears",
+      "ok": true,
+      "observed": "Stalled: J2 hello muiiuku0\nThe plan was rejected. Re-plan or change the mission goal.\nStalled\njust now\nRe-plan"
+    },
+    {
+      "label": "it says \"The plan was rejected. Re-plan or change the mission goal.\"",
+      "ok": true,
+      "observed": "Stalled: J2 hello muiiuku0\nThe plan was rejected. Re-plan or change the mission goal.\nStalled\njust now\nRe-plan"
+    },
+    {
+      "label": "with one action: \"Re-plan\"",
+      "ok": true,
+      "observed": "Stalled: J2 hello muiiuku0\nThe plan was rejected. Re-plan or change the mission goal.\nStalled\njust now\nRe-plan"
+    },
+    {
+      "label": "the window says it is planning again",
+      "ok": true,
+      "observed": "Planning “J2 hello muiiuku0” again."
+    },
+    {
+      "label": "proof (API): a new plan card",
+      "ok": true
+    },
+    {
+      "label": "the Inbox shows the new plan card",
+      "ok": true,
+      "observed": "Inbox\nWhat is waiting on a person.\nApprove the plan for J2 hello muiiuku0?\nOne step named implement and nothing downstream, so a stuck or quiet step is the whole…\nFor you·J2 hello muiiuku0\nPlan\njust now"
+    },
+    {
+      "label": "and no Stalled row for it",
+      "ok": true
+    }
+  ],
+  "notes": [
+    "plan card options: Approve / Reject"
+  ],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p11-routines/scratch/acceptance/p9/evidence/J2-stalled-replan.png",
+    "/Users/demogar/projects/tandemise/tandemise-p11-routines/scratch/acceptance/p9/evidence/J2-new-plan-card.png"
+  ]
+}
