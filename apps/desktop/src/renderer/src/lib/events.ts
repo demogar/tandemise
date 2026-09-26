@@ -282,6 +282,15 @@ function describe(record: RunEventRecord, roleNames: ReadonlyMap<string, string>
         detail: body.note || null,
         link: null,
       };
+    case 'mission.pulled':
+      return {
+        ...base,
+        icon: 'flag',
+        tone: 'running',
+        title: `Pulled from the backlog (${body.active} of ${body.limit})`,
+        detail: pulledDetail(body),
+        link: null,
+      };
     case 'note':
       return {
         ...base,
@@ -326,6 +335,14 @@ function describe(record: RunEventRecord, roleNames: ReadonlyMap<string, string>
         link: null,
       };
   }
+}
+
+/** Mirrors `pulledDetail` in `@tandemise/domain`: how far down the queue it was, and why the ones ahead waited. */
+function pulledDetail(body: Extract<TandemiseEventBody, { type: 'mission.pulled' }>): string {
+  const place = body.position === 1 ? 'It was first in the queue' : `It was number ${body.position} in the queue`;
+  const skipped = body.skipped ?? 0;
+  const ahead = skipped === 0 ? '' : `; ${skipped === 1 ? '1 mission' : `${skipped} missions`} ahead of it ${skipped === 1 ? 'is' : 'are'} not ready to plan yet`;
+  return `${place}${ahead}. This project works on at most ${body.limit} ${body.limit === 1 ? 'mission' : 'missions'} at a time.`;
 }
 
 function usageDetail(body: Extract<TandemiseEventBody, { type: 'usage' }>): string {

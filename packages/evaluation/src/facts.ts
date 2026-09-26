@@ -159,6 +159,24 @@ export const GATE_FACT_VOCABULARY: readonly FactDefinition[] = [
     example: 'ready.proposed_pending == 0',
   },
   {
+    name: 'mission.priority',
+    type: 'number',
+    description: 'The mission\'s priority as a number: 0 urgent, 1 high, 2 normal, 3 low. Orders the backlog and the worker slots.',
+    example: 'mission.priority <= 1',
+  },
+  {
+    name: 'workspace.active_missions',
+    type: 'number',
+    description: 'Missions in progress in the project: not DRAFT, not PAUSED and not finished. Read by the backlog pull.',
+    example: 'workspace.active_missions < workspace.max_active_missions',
+  },
+  {
+    name: 'workspace.max_active_missions',
+    type: 'number',
+    description: 'The project\'s work-in-progress limit. Not measured when the limit is off, so a gate reading it never passes and nothing is pulled.',
+    example: 'workspace.max_active_missions >= 2',
+  },
+  {
     name: 'qa.blocking_defects',
     type: 'number',
     description: 'Count of QA defects that block release.',

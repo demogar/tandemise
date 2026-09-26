@@ -18,6 +18,7 @@ interface WorkspaceRow {
   default_autonomy_level: string;
   knowledge: string;
   staffing: string;
+  max_active_missions: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -33,6 +34,7 @@ function toRow(w: Workspace): WorkspaceRow {
     default_autonomy_level: w.defaultAutonomyLevel,
     knowledge: toJson(w.knowledge),
     staffing: toJson(w.staffing ?? {}),
+    max_active_missions: w.maxActiveMissions ?? null,
     created_at: w.createdAt,
     updated_at: w.updatedAt,
   };
@@ -49,13 +51,14 @@ function fromRow(r: WorkspaceRow): Workspace {
     defaultAutonomyLevel: r.default_autonomy_level as Workspace['defaultAutonomyLevel'],
     knowledge: parseJson<WorkspaceKnowledge>(r.knowledge, EMPTY_KNOWLEDGE),
     staffing: parseJson<RoleStaffing>(r.staffing, {}),
+    maxActiveMissions: r.max_active_missions,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
 }
 
 const COLUMNS =
-  'id, name, default_repository_id, autonomy, concurrency, routing, default_autonomy_level, knowledge, staffing, created_at, updated_at';
+  'id, name, default_repository_id, autonomy, concurrency, routing, default_autonomy_level, knowledge, staffing, max_active_missions, created_at, updated_at';
 
 export class SqliteWorkspaceRepository implements WorkspaceRepositoryPort {
   readonly #db: TandemiseDatabase;
@@ -71,14 +74,14 @@ export class SqliteWorkspaceRepository implements WorkspaceRepositoryPort {
     this.#insert = db.handle.prepare<WorkspaceRow>(
       `INSERT INTO workspaces (${COLUMNS}) VALUES (
         :id, :name, :default_repository_id, :autonomy, :concurrency, :routing,
-        :default_autonomy_level, :knowledge, :staffing, :created_at, :updated_at)`,
+        :default_autonomy_level, :knowledge, :staffing, :max_active_missions, :created_at, :updated_at)`,
     );
     this.#update = db.handle.prepare<WorkspaceRow>(
       `UPDATE workspaces SET
          name = :name, default_repository_id = :default_repository_id, autonomy = :autonomy,
          concurrency = :concurrency, routing = :routing,
          default_autonomy_level = :default_autonomy_level, knowledge = :knowledge,
-         staffing = :staffing, updated_at = :updated_at
+         staffing = :staffing, max_active_missions = :max_active_missions, updated_at = :updated_at
        WHERE id = :id`,
     );
     this.#selectOne = db.handle.prepare<{ id: string }, WorkspaceRow>(
@@ -89,9 +92,10 @@ export class SqliteWorkspaceRepository implements WorkspaceRepositoryPort {
     );
   }
 
-  create(workspace: Omit<Workspace, 'createdAt' | 'updatedAt'>): Workspace {
+  create(workspace: Omit<Workspace, 'createdAt' | 'updatedAt' | 'maxActiveMissions'> & { maxActiveMissions?: number | null }): Workspace {
     const now = this.#clock.now();
-    const entity: Workspace = { ...workspace, createdAt: now, updatedAt: now };
+    // Off by default (roadmap decision 4): nothing is pulled until a person sets a limit.
+    const entity: Workspace = { ...workspace, maxActiveMissions: workspace.maxActiveMissions ?? null, createdAt: now, updatedAt: now };
     this.#insert.run(toRow(entity));
     return entity;
   }

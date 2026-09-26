@@ -4,7 +4,7 @@ import type {
   Integration, Mission, MissionProgress, MissionTask, Repository, RoleTemplate, Run,
   RunEventRecord, RuntimeHealth, RuntimeProfile, RuntimeDiscovery, RuntimeSettingField, Workspace,
   MissionPlan, PlanValidationIssue, GateOutcome, AccessLevel, Member, Person, Staffing,
-  ArtifactHandoff, TaskStatus, FeedbackStatus,
+  ArtifactHandoff, TaskStatus, FeedbackStatus, MissionPriority,
 } from '@tandemise/domain';
 
 /**
@@ -553,6 +553,35 @@ export interface InboxView {
   readonly tasks: readonly InboxTaskView[];
   /** DRAFT missions whose refinement waits on a person (P6). */
   readonly refinements: readonly InboxRefinementView[];
+}
+
+/** One DRAFT mission in the backlog, in pull order. */
+export interface BacklogItemView {
+  readonly summary: MissionSummary;
+  readonly priority: MissionPriority;
+  /** 1-based among queued missions, in backlog order; null when not queued. */
+  readonly queuePosition: number | null;
+  /** The readiness gate (P6) passes. */
+  readonly ready: boolean;
+  /** "Plan" when ready, else what is left to do. */
+  readonly readinessLabel: string;
+  /** A refinement pass is running on it, so it is not pulled yet. */
+  readonly refining: boolean;
+}
+
+/** The project's backlog and work in progress (P7). */
+export interface BacklogView {
+  readonly workspaceId: string;
+  /** The work-in-progress limit; null when off. */
+  readonly limit: number | null;
+  /** Missions in progress: not DRAFT, not PAUSED, not finished. */
+  readonly active: number;
+  readonly queued: number;
+  /** "Working on 1 of 2 · 3 queued". */
+  readonly headline: string;
+  /** What happens next, in one sentence. */
+  readonly hint: string;
+  readonly items: readonly BacklogItemView[];
 }
 
 export interface WorkspaceView {

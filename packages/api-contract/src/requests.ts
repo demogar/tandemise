@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import {
-  ACCESS_LEVELS, ARTIFACT_TYPES, AUTONOMY_LEVELS, MISSION_STATUSES, OVERSIGHT_MODES, RUNTIME_CAPABILITIES,
+  ACCESS_LEVELS, ARTIFACT_TYPES, AUTONOMY_LEVELS, MISSION_PRIORITIES, MISSION_STATUSES, OVERSIGHT_MODES, RUNTIME_CAPABILITIES,
   staffingPatchSchema,
 } from '@tandemise/domain';
 
@@ -41,6 +41,8 @@ export const updateWorkspaceRequest = z.object({
     perRuntime: z.record(z.string(), z.number().int().min(0).max(16)),
   }).optional(),
   routing: z.record(z.string(), z.array(z.string())).optional(),
+  /** Missions in progress at once before queued ones wait; null turns the limit (and the pull) off. */
+  maxActiveMissions: z.number().int().min(1).max(50).nullable().optional(),
   knowledge: z.object({
     productVision: z.string().nullable(),
     architecturePrinciples: z.string().nullable(),
@@ -92,8 +94,25 @@ export const createMissionRequest = z.object({
    * READY - and snapshot its staffing - ahead of it.
    */
   staffing: roleStaffingPatchRequest.optional(),
+  /** Orders the backlog and the worker slots; defaults to normal. */
+  priority: z.enum(MISSION_PRIORITIES).optional(),
+  /** "Add to backlog": created as a queued draft, planned when there is room and it is ready. */
+  queued: z.boolean().optional(),
 });
 export type CreateMissionRequest = z.infer<typeof createMissionRequest>;
+
+/**
+ * A mission's place in the backlog. `move` swaps it with its neighbour and is
+ * the window's way in; `rank` is for scripts. Queue, rank and move are DRAFT
+ * only; priority orders dispatch too, so it stays editable until the mission finishes.
+ */
+export const updateMissionRequest = z.object({
+  priority: z.enum(MISSION_PRIORITIES).optional(),
+  rank: z.number().finite().optional(),
+  queued: z.boolean().optional(),
+  move: z.enum(['up', 'down']).optional(),
+}).refine((r) => Object.keys(r).length > 0, 'Say what to change: priority, rank, queued or move.');
+export type UpdateMissionRequest = z.infer<typeof updateMissionRequest>;
 
 /** A verdict on a proposed criterion; `statement` accepts it in the person's own words. */
 export const criterionVerdictRequest = z.object({

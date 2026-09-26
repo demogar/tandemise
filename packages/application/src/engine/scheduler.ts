@@ -8,7 +8,7 @@ import type {
   RepoRepositoryPort,
 } from '@tandemise/domain';
 import {
-  ACTIVE_TASK_STATUSES, canTransition, isTaskFinished, isTaskParked, isTerminalMissionStatus,
+  ACTIVE_TASK_STATUSES, canTransition, compareBacklog, isTaskFinished, isTaskParked, isTerminalMissionStatus,
 } from '@tandemise/domain';
 import type { Clock, Logger, MissionId, TaskId } from '@tandemise/shared';
 import { errorMessage } from '@tandemise/shared';
@@ -45,6 +45,12 @@ export interface SchedulerDeps {
   readonly reviews: ReviewPipeline;
   /** Releases feedback notes a settled pass never read, once per tick. */
   readonly rounds: FeedbackRounds;
+  /**
+   * Plans the next queued drafts while a project has room under its
+   * work-in-progress limit (P7). Optional so harnesses built before the
+   * backlog still compose; the module always passes it.
+   */
+  readonly pullBacklog?: () => Promise<unknown>;
   readonly clock: Clock;
   readonly log: Logger;
   readonly tickIntervalMs?: number;
@@ -175,10 +181,16 @@ export class SchedulerService implements LifecycleComponent {
     this.#sweepStrandedFeedback();
     // First, so a step re-resolved to an agent is dispatched in this same pass.
     this.#sweepEscalations();
+    // Before dispatch: a slot freed by the last pass is filled from the backlog
+    // now, and the mission it pulls is planning by the time this pass reconciles.
+    await this.#pullBacklog();
 
+    // In backlog order, not list order (newest first): when the workers are
+    // full, the next free slot goes to the most urgent mission (P7).
     const missions = this.deps.missions
       .list({ statuses: DISPATCHABLE })
-      .filter((m) => !isTerminalMissionStatus(m.status));
+      .filter((m) => !isTerminalMissionStatus(m.status))
+      .sort(compareBacklog);
 
     for (const mission of missions) {
       this.#promoteReady(mission);
@@ -571,6 +583,16 @@ export class SchedulerService implements LifecycleComponent {
       // Escalation is a courtesy to the people waiting; a failure here must
       // not stop the work that is not waiting on anyone.
       this.deps.log.warn('scheduler.escalation_failed', { error: errorMessage(e) });
+    }
+  }
+
+  async #pullBacklog(): Promise<void> {
+    if (this.deps.pullBacklog === undefined) return;
+    try {
+      await this.deps.pullBacklog();
+    } catch (e) {
+      // The backlog is a convenience on top of dispatch; failing it must not stop work already running.
+      this.deps.log.warn('scheduler.backlog_pull_failed', { error: errorMessage(e) });
     }
   }
 

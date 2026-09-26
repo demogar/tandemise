@@ -140,6 +140,9 @@ export class MissionServiceImpl implements MissionService {
         baseBranch: request.baseBranch ?? repository?.defaultBranch ?? null,
         createdBy: actorId,
         staffing,
+        ...(request.priority === undefined ? {} : { priority: request.priority }),
+        // Queued only while it is a draft: a mission planned now is not waiting for anything.
+        queued: request.queued === true && request.planNow !== true,
       });
       // Numbered in the same transaction as the mission: the ledger is the
       // contract every later role is measured against, so a mission never
@@ -158,6 +161,8 @@ export class MissionServiceImpl implements MissionService {
       `Mission created: ${summarize(created.goal, 300)}`,
     );
     this.deps.recorder.invalidate('missions', id);
+    // A queued draft may be pulled at once if the project has room.
+    if (created.queuedAt !== null) this.deps.scheduler.wake();
 
     if (request.planNow === true) {
       // In the background: the caller gets the mission back in PLANNING, not a
@@ -224,6 +229,9 @@ export class MissionServiceImpl implements MissionService {
     // still streaming while the mission reads CANCELLED is exactly the orphan
     // this ordering exists to prevent.
     this.deps.scheduler.cancelMission(id);
+    // The planner is not a task: stop it too, so a plan finishing after the
+    // cancel is discarded instead of raising an approval on a cancelled mission.
+    this.deps.planning.abandon(id);
     const cancelled = this.#transition(mission, 'CANCELLED', detail);
 
     for (const task of this.deps.tasks.listByMission(id)) {

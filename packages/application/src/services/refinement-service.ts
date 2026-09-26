@@ -103,6 +103,10 @@ export class RefinementServiceImpl implements RefinementService {
   }
 
   /** Resolves when the mission's current pass (if any) has settled. For harnesses and shutdown. */
+  isRunning(missionId: MissionId): boolean {
+    return this.#running.has(missionId);
+  }
+
   async settled(missionId: MissionId): Promise<void> {
     await this.#running.get(missionId);
   }

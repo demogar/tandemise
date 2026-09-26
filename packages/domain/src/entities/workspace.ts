@@ -54,6 +54,11 @@ export interface Workspace {
    * typechecks; read back as `{}`.
    */
   readonly staffing?: RoleStaffing;
+  /**
+   * How many missions may be in progress at once before queued ones wait (P7).
+   * Null is off: nothing is pulled from the backlog automatically.
+   */
+  readonly maxActiveMissions: number | null;
   readonly createdAt: Timestamp;
   readonly updatedAt: Timestamp;
 }

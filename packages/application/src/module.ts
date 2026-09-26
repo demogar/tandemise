@@ -45,6 +45,7 @@ import { MissionServiceImpl } from './services/mission-service.js';
 import { FeedbackServiceImpl } from './services/feedback-service.js';
 import { CriteriaServiceImpl } from './services/criteria-service.js';
 import { ReadinessService } from './services/readiness.js';
+import { BacklogService } from './services/backlog-service.js';
 import { RefinementServiceImpl } from './services/refinement-service.js';
 import { PlanningServiceImpl } from './services/planning-service.js';
 import { ProjectionServiceImpl } from './services/projection-service.js';
@@ -317,6 +318,9 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       members: r.resolve(t.MEMBER_REPOSITORY),
       reviews: r.resolve(t.REVIEW_PIPELINE),
       rounds: r.resolve(t.FEEDBACK_ROUNDS),
+      // Resolved per pass, not at construction: the backlog plans through the
+      // planning service, which is composed with the API services after this.
+      pullBacklog: () => r.resolve(t.BACKLOG_SERVICE).pull(),
       clock: clock(r),
       log: log(r).child({ component: 'scheduler' }),
       ...(options.tickIntervalMs === undefined ? {} : { tickIntervalMs: options.tickIntervalMs }),
@@ -599,6 +603,20 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       log: log(r).child({ component: 'refinement' }),
     }), { source: SOURCE });
 
+    bind(t.BACKLOG_SERVICE, (r) => new BacklogService({
+      workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
+      missions: r.resolve(t.MISSION_REPOSITORY),
+      readiness: r.resolve(t.READINESS_SERVICE),
+      planning: r.resolve(t.PLANNING_SERVICE),
+      refining: (missionId) => r.resolve(t.REFINEMENT_SERVICE).isRunning(missionId),
+      summaries: (workspaceId) => r.resolve(t.MISSION_SERVICE).list({ workspaceId }),
+      wake: () => r.resolve(t.SCHEDULER).wake(),
+      unitOfWork: r.resolve(t.UNIT_OF_WORK),
+      recorder: r.resolve(t.EVENT_RECORDER),
+      clock: clock(r),
+      log: log(r).child({ component: 'backlog' }),
+    }), { source: SOURCE });
+
     bind(t.CRITERIA_SERVICE, (r) => new CriteriaServiceImpl({
       missions: r.resolve(t.MISSION_REPOSITORY),
       artifacts: r.resolve(t.ARTIFACT_REPOSITORY),
@@ -623,6 +641,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       feedback: r.resolve(t.FEEDBACK_SERVICE),
       criteria: r.resolve(t.CRITERIA_SERVICE),
       refinement: r.resolve(t.REFINEMENT_SERVICE),
+      backlog: r.resolve(t.BACKLOG_SERVICE),
     }), { source: SOURCE });
   });
 }

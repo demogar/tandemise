@@ -1,7 +1,8 @@
 import { TandemiseError, asId, type Clock, type MissionId, type WorkspaceId } from '@tandemise/shared';
 import type {
-  AutonomyLevel, Mission, MissionDraft, MissionProgress, MissionRepositoryPort, MissionStatus, RoleStaffing,
+  AutonomyLevel, Mission, MissionDraft, MissionPriority, MissionProgress, MissionRepositoryPort, MissionStatus, RoleStaffing,
 } from '@tandemise/domain';
+import { DEFAULT_MISSION_PRIORITY } from '@tandemise/domain';
 import type { TandemiseDatabase } from '../database.js';
 import { parseJson, toJson } from '../json.js';
 import { applyPatch } from '../patch.js';
@@ -23,6 +24,9 @@ interface MissionRow {
   status_reason: string | null;
   created_by: string | null;
   staffing: string;
+  priority: string;
+  rank: number;
+  queued_at: string | null;
   created_at: string;
   updated_at: string;
   started_at: string | null;
@@ -64,6 +68,9 @@ function toRow(m: Mission): MissionRow {
     status_reason: m.statusReason,
     created_by: m.createdBy ?? null,
     staffing: toJson(m.staffing ?? {}),
+    priority: m.priority,
+    rank: m.rank,
+    queued_at: m.queuedAt,
     created_at: m.createdAt,
     updated_at: m.updatedAt,
     started_at: m.startedAt,
@@ -89,6 +96,9 @@ function fromRow(r: MissionRow): Mission {
     statusReason: r.status_reason,
     createdBy: r.created_by,
     staffing: parseJson<RoleStaffing>(r.staffing, {}),
+    priority: r.priority as MissionPriority,
+    rank: r.rank,
+    queuedAt: r.queued_at,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     startedAt: r.started_at,
@@ -98,7 +108,7 @@ function fromRow(r: MissionRow): Mission {
 
 const COLUMNS = `id, workspace_id, repository_id, title, goal, constraints, success_criteria,
   status, autonomy, workflow_preset, workflow_inputs, integration_branch, base_branch, status_reason,
-  created_by, staffing, created_at, updated_at, started_at, completed_at`;
+  created_by, staffing, priority, rank, queued_at, created_at, updated_at, started_at, completed_at`;
 
 export class SqliteMissionRepository implements MissionRepositoryPort {
   readonly #db: TandemiseDatabase;
@@ -109,6 +119,7 @@ export class SqliteMissionRepository implements MissionRepositoryPort {
   readonly #selectList;
   readonly #selectProgress;
   readonly #delete;
+  readonly #lastRank;
 
   constructor(db: TandemiseDatabase, clock: Clock) {
     this.#db = db;
@@ -117,7 +128,7 @@ export class SqliteMissionRepository implements MissionRepositoryPort {
       `INSERT INTO missions (${COLUMNS}) VALUES (
         :id, :workspace_id, :repository_id, :title, :goal, :constraints, :success_criteria,
         :status, :autonomy, :workflow_preset, :workflow_inputs, :integration_branch, :base_branch, :status_reason,
-        :created_by, :staffing, :created_at, :updated_at, :started_at, :completed_at)`,
+        :created_by, :staffing, :priority, :rank, :queued_at, :created_at, :updated_at, :started_at, :completed_at)`,
     );
     this.#update = db.handle.prepare<MissionRow>(
       `UPDATE missions SET
@@ -126,6 +137,7 @@ export class SqliteMissionRepository implements MissionRepositoryPort {
          workflow_preset = :workflow_preset, workflow_inputs = :workflow_inputs,
          integration_branch = :integration_branch,
          base_branch = :base_branch, status_reason = :status_reason, created_by = :created_by, staffing = :staffing,
+         priority = :priority, rank = :rank, queued_at = :queued_at,
          updated_at = :updated_at,
          started_at = :started_at, completed_at = :completed_at
        WHERE id = :id`,
@@ -159,6 +171,9 @@ export class SqliteMissionRepository implements MissionRepositoryPort {
        WHERE mission_id = :missionId`,
     );
     this.#delete = db.handle.prepare<{ id: string }>('DELETE FROM missions WHERE id = :id');
+    this.#lastRank = db.handle.prepare<{ workspaceId: string }, { rank: number | null }>(
+      'SELECT MAX(rank) AS rank FROM missions WHERE workspace_id = :workspaceId',
+    );
   }
 
   create(draft: MissionDraft & { id: MissionId }): Mission {
@@ -180,6 +195,11 @@ export class SqliteMissionRepository implements MissionRepositoryPort {
       statusReason: null,
       createdBy: draft.createdBy ?? null,
       staffing: draft.staffing ?? {},
+      priority: draft.priority ?? DEFAULT_MISSION_PRIORITY,
+      // Last in the project unless told otherwise: without any reordering the
+      // backlog is first come, first served within a priority.
+      rank: draft.rank ?? (this.#lastRank.get({ workspaceId: draft.workspaceId })?.rank ?? 0) + 1,
+      queuedAt: draft.queued === true ? now : null,
       createdAt: now,
       updatedAt: now,
       startedAt: null,

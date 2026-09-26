@@ -6,6 +6,11 @@ export function isTypingTarget(target: EventTarget | null): boolean {
   return target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName);
 }
 
+/** A focused button or link: Enter belongs to it, not to the list around it. */
+function isControlTarget(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement && target.closest('button, a, [role="button"]') !== null;
+}
+
 interface HotkeyOptions {
   /** Fire even when focus is inside a text field. Used for ⌘↵ and Escape. */
   readonly whileTyping?: boolean;
@@ -45,6 +50,15 @@ export function useHotkey(combo: string, handler: () => void, options: HotkeyOpt
  * the list changes underneath it.
  */
 export function useListNavigation(length: number, onActivate: (index: number) => void): number {
+  return useListCursor(length, onActivate)[0];
+}
+
+/**
+ * The same, with the setter, for a list that can reorder under the cursor (the
+ * backlog): after a move, the cursor follows the row it moved. Keys held with
+ * ⌥ are left alone, so ⌥↑ / ⌥↓ can mean "move" rather than "select".
+ */
+export function useListCursor(length: number, onActivate: (index: number) => void): [number, (index: number) => void] {
   const [index, setIndex] = useState(0);
 
   useEffect(() => {
@@ -53,14 +67,14 @@ export function useListNavigation(length: number, onActivate: (index: number) =>
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (isTypingTarget(event.target) || event.metaKey || event.ctrlKey || length === 0) return;
+      if (isTypingTarget(event.target) || event.metaKey || event.ctrlKey || event.altKey || length === 0) return;
       if (event.key === 'j' || event.key === 'ArrowDown') {
         event.preventDefault();
         setIndex((current) => Math.min(current + 1, length - 1));
       } else if (event.key === 'k' || event.key === 'ArrowUp') {
         event.preventDefault();
         setIndex((current) => Math.max(current - 1, 0));
-      } else if (event.key === 'Enter') {
+      } else if (event.key === 'Enter' && !isControlTarget(event.target)) {
         event.preventDefault();
         onActivate(index);
       }
@@ -69,5 +83,5 @@ export function useListNavigation(length: number, onActivate: (index: number) =>
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [length, index, onActivate]);
 
-  return index;
+  return [index, setIndex];
 }
