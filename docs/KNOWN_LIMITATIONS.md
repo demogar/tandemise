@@ -42,10 +42,11 @@ with `runId: null` and the UI cannot show a planning transcript.
 records, so the planner's and the refinement agent's time and tokens are not
 measured against a mission or monthly limit (see `docs/guides/limits.md`).
 
-**Two gate facts are listed but never measured.** `security.required_checks`
-and `git.clean` are in the gate fact vocabulary, but the daemon does not supply
-them when it checks a step's gate, so a gate that reads either one never passes.
-`docs/WORKFLOWS.md` marks them.
+**`git.clean` is only measured on a step with its own worktree.** A step that
+works in place shares your checkout, whose state says nothing about the step,
+so a gate reading `git.clean` there is refused when the workflow or plan is
+written. (`security.required_checks` and `checks.<name>`, which were never
+measured, were removed from the vocabulary in P15.)
 
 **Screen Recording is not granted on this machine**, so macOS screenshot capture
 reports `degraded`. Grant it in System Settings → Privacy & Security → Screen

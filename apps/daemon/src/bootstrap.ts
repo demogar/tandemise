@@ -34,6 +34,7 @@ import { createApplicationModule, createServices, SCHEDULER, type TandemiseServi
   WORKFLOW_SOURCE,
   SKILL_FILES,
   ISSUE_TRACKER,
+  SETUP_FOLDER,
 } from '@tandemise/application';
 import * as applicationTokens from '@tandemise/application';
 
@@ -44,6 +45,7 @@ import { createSecretStore } from './secrets.js';
 import { createSettingsStore, createSystemEnvironment, processLiveness } from './platform.js';
 import { createBackgroundProcessLauncher, createToolCommandExecutor } from './tool-exec.js';
 import { oauthCallbacks } from './oauth-callback.js';
+import { FileSetupFolder } from './setup-folder.js';
 import { FileWorkflowSource } from './workflow-source.js';
 import { DaemonSkillFiles } from './skill-files.js';
 
@@ -141,6 +143,9 @@ export function bootstrap(config: DaemonConfig, options: { readonly localPersonN
   // nothing, so a container without a filesystem still resolves.
   container.rebind(WORKFLOW_SOURCE, (r) =>
     new FileWorkflowSource(r.resolve(LOGGER).child({ component: 'workflows' })), { source: 'bootstrap' });
+  // The project's setup as files (P15): the same reasoning, for `.tandemise/`.
+  container.rebind(SETUP_FOLDER, (r) =>
+    new FileSetupFolder(r.resolve(LOGGER).child({ component: 'setup' })), { source: 'bootstrap' });
 
   // Skills (P13) are the person's folders and git repositories, read by the
   // daemon; the application only ever sees bytes and hashes.

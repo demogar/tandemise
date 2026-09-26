@@ -55,7 +55,7 @@ export const PACKAGES = {
   'desktop-control': { deps: ['shared', 'domain', 'kernel', 'integrations-core'], ext: {} },
   application: {
     deps: ['shared', 'kernel', 'domain', 'api-contract', 'policy', 'runtimes-core', 'execution-core', 'integrations-core', 'context', 'evaluation'],
-    ext: { zod: '^3.24.1' },
+    ext: { zod: '^3.24.1', yaml: '^2.9.1' },
   },
 };
 

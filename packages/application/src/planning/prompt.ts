@@ -1,5 +1,5 @@
 import type { Mission, Repository, RoleTemplate, MissionPlan } from '@tandemise/domain';
-import { ARTIFACT_TYPES } from '@tandemise/domain';
+import { ARTIFACT_TYPES, stepFacts } from '@tandemise/domain';
 import type { WorkflowPreset } from './presets.js';
 
 /**
@@ -157,17 +157,12 @@ ${fence(JSON.stringify(presetPlan, null, 2), 'json')}
    task with outputs must include \`artifact.<Type>.exists\` for an artifact in
    its own \`expectedOutputs\` (for a release: \`artifact.ReleaseCandidate.exists
    && qa.criteria_unverified == 0\`). With no gate, every expected output must exist.
-   The facts you may reference:
-   - \`artifact.<Type>.exists\` — boolean
-   - \`checks.typecheck\`, \`checks.lint\`, \`checks.tests\`, \`checks.build\` — PASS | FAIL | SKIP
-   - \`review.blocking_findings\` — number
-   - \`review.verdict\` — pass | fail | needs_changes
-   - \`qa.acceptance_criteria_coverage\` — number, 0-100
-   - \`qa.blocking_defects\` — number
-   - \`criteria.uncovered_user\`, \`criteria.unknown_covers\`, \`criteria.total\` — numbers from the
-     Done-when ledger: gate the task that writes the ProductSpec on the first two being 0
-   - \`qa.criteria_failed\`, \`qa.criteria_unverified\` — numbers: gate QA on
-     \`qa.criteria_failed == 0\` and the release on \`qa.criteria_unverified == 0\`
+   These are the ONLY facts a gate may reference; any other name (a typo, or a
+   number the daemon keeps for the whole mission) makes the plan invalid:
+${plannerFacts()}
+   Gate the task that writes the ProductSpec on \`criteria.uncovered_user == 0\`
+   and \`criteria.unknown_covers == 0\`, QA on \`qa.criteria_failed == 0\`, and
+   the release on \`qa.criteria_unverified == 0\`.
 ${hasTestCommand
     ? `   This repository declares a test command, so gate code-writing tasks on
    \`checks.tests == PASS\`. \`checks.tests != FAIL\` is also true when the tests
@@ -267,6 +262,25 @@ person approving it nothing to look at.
 ${apps.map((app) => `- ${app.name} — capability: ${app.capabilities.join(', ') || 'none'}\n  ${app.detail}`).join('\n')}
 
 `;
+}
+
+/**
+ * The step-scoped facts, from the vocabulary itself (P15), so the planner is
+ * never taught a fact the validator refuses. `review.independent` is left out:
+ * it needs `independentOf`, which only a workflow file can set.
+ */
+function plannerFacts(): string {
+  const kind: Record<string, string> = {
+    outcome: 'PASS | FAIL | SKIP', boolean: 'boolean', number: 'number', verdict: 'text', approval: 'PENDING | APPROVED | REJECTED',
+  };
+  return stepFacts()
+    .filter((fact) => fact.requires !== 'independentOf')
+    .map((fact) => {
+      const note = fact.requires === 'worktree' ? ' (only on a task with isolation "worktree")'
+        : fact.requires === 'changeset' ? ' (only on a task that outputs a ChangeSet)' : '';
+      return `   - \`${fact.name}\` — ${kind[fact.type] ?? fact.type}${note}`;
+    })
+    .join('\n');
 }
 
 function fence(content: string, lang = ''): string {

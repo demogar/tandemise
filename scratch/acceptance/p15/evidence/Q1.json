@@ -1,0 +1,94 @@
+{
+  "id": "Q1",
+  "title": "Export writes the setup to .tandemise/, byte-stable, with the hash in the window",
+  "ok": true,
+  "checks": [
+    {
+      "label": "the section says it has not been exported yet",
+      "ok": true,
+      "observed": "Setup as code\nNot exported yet\nExport\n\nWrites your roles, workflows, routines, limits and project settings into .tandemise/ in a repository, so you can commit them and bring them to another machine. N"
+    },
+    {
+      "label": "the window lists the files written and the content hash",
+      "ok": true,
+      "observed": "Setup as code\nLast exported 9b5107eef4e0\nExport\n\nWrites your roles, workflows, routines, limits and project settings into .tandemise/ in a repository, so you can commit them and bring them to another machine. No secrets and no timestamps: the same setup always writes the same bytes.\n\nacceptance-project\nExport\n\nWrote 10 files to acceptance-project/.tandemise · Content hash 9b5107eef4e0\n\n.tandemise/roles/architecture.md · 1629 B\n.tandemise/roles/design.md · 2647 B\n.tandemise/roles/development.md · 2066 B\n.tandemise/roles/finance.md · 850 B\n.tandemise/roles/product.md · 1772 B\n.tandemise/roles/qa.md · 1877 B\n.tandemise/roles/release.md · 1523 B\n.tandemise/roles/review.md · 2092 B\n.tandemise/routines.yaml · 280 B\n.tandemise/tandemise.yaml · 359 B\n.tandemise/workflows/p0.yaml · 1432 B · already"
+    },
+    {
+      "label": "workflows already in this repository are left as they are",
+      "ok": true
+    },
+    {
+      "label": "\"Last exported <hash>\" in the section header",
+      "ok": true
+    },
+    {
+      "label": "on disk: roles/development.md has the model and the retry model in its front matter",
+      "ok": true,
+      "observed": "---\ncapabilities:\n  - artifact.write\n  - database\n  - filesystem.read\n  - filesystem.write\n  - git\n  - git.commit\n  - git.push\n  - github.pr.comment\n  - github.pr.create\n  - github.read\n  - human.ask\n  - monitoring.read\n  - repository.read\n  - shell.exec\n  - tests.run\nconsumes:\n  - ArchitecturePlan\n  - DesignBrief\n  - ImplementationPlan\n  - ProductSpec\n  - QAReport\n  - ReviewReport\nescalate:\n  - strong-model\nid: development\nisolation: worktree\nmodel: base-model\nname: Developer\noutputContract: |-"
+    },
+    {
+      "label": "on disk: tandemise.yaml has version, the WIP limit and the monthly limit",
+      "ok": true,
+      "observed": "defaults:\n  missionLimits: []\nlimits:\n  monthly:\n    - amount: 600\n      metric: agent_minutes\n      warnPercent: 80\nproject:\n  autonomy:\n    externalWrites: policy\n    financialActions: deny\n    localCodeChanges: auto\n    planApproval: ask\n    productionRelease: ask\n  knowledge: {}\n  maxTotalWorkers: 3\n  name: Acceptance\nsecrets: []\nversion: 1\nwipLimit: 2\n"
+    },
+    {
+      "label": "on disk: routines.yaml has the routine and no on/off or history",
+      "ok": true
+    },
+    {
+      "label": "on disk: every built-in role has a file",
+      "ok": true,
+      "observed": [
+        "architecture.md",
+        "design.md",
+        "development.md",
+        "finance.md",
+        "product.md",
+        "qa.md",
+        "release.md",
+        "review.md"
+      ]
+    },
+    {
+      "label": "no timestamps, row ids or machine paths in the files",
+      "ok": true
+    },
+    {
+      "label": "a second export: the same hash",
+      "ok": true,
+      "observed": [
+        "9b5107eef4e0",
+        "9b5107eef4e0"
+      ]
+    },
+    {
+      "label": "proof (git): the exported files show up as new files git will commit",
+      "ok": true,
+      "observed": "?? .tandemise/roles/\n?? .tandemise/routines.yaml\n?? .tandemise/tandemise.yaml\n"
+    },
+    {
+      "label": "proof (git): none of them is ignored",
+      "ok": true,
+      "observed": ""
+    },
+    {
+      "label": "proof (API): the last export is remembered",
+      "ok": true,
+      "observed": {
+        "lastExport": {
+          "hash": "9b5107eef4e0",
+          "repositoryName": "acceptance-project",
+          "files": 21,
+          "at": "2026-09-26T23:51:04.259Z"
+        }
+      }
+    }
+  ],
+  "notes": [
+    "setup (API): monthly limit 600 agent minutes, WIP limit 2, one weekly routine"
+  ],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p15-setup/scratch/acceptance/p15/evidence/Q1-before-export.png",
+    "/Users/demogar/projects/tandemise/tandemise-p15-setup/scratch/acceptance/p15/evidence/Q1-exported.png"
+  ]
+}

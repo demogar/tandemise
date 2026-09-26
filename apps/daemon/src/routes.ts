@@ -12,6 +12,7 @@ import {
   advanceClockRequest, createRoutineRequest, updateRoutineRequest, importSkillRequest, previewSkillRequest,
   takeNotificationsRequest, updateNotificationPreferencesRequest,
   updateIssueSettingsRequest,
+  applySetupRequest, exportSetupRequest, previewSetupRequest,
 } from '@tandemise/api-contract';
 import { normalizeLimits } from '@tandemise/domain';
 import type { TandemiseServices } from '@tandemise/application';
@@ -146,6 +147,14 @@ export function buildRouter(services: TandemiseServices, options: { readonly tes
   });
   r.post('/v1/skills/:id/update', (ctx) => services.skills.update(asId(ctx.params.id!)));
   r.delete('/v1/skills/:id', (ctx) => services.skills.remove(asId(ctx.params.id!)));
+  // ------------------------------------------------------ setup as code (P15)
+  r.get('/v1/workspaces/:id/setup', (ctx) => services.setup.status(asId(ctx.params.id!)));
+  r.post('/v1/workspaces/:id/setup/export', async (ctx) =>
+    services.setup.export(asId(ctx.params.id!), (await ctx.body(exportSetupRequest)).repositoryId));
+  r.post('/v1/workspaces/:id/setup/preview', async (ctx) =>
+    services.setup.preview(asId(ctx.params.id!), (await ctx.body(previewSetupRequest)).path));
+  r.post('/v1/workspaces/:id/setup/apply', async (ctx) =>
+    services.setup.apply(ctx.caller, asId(ctx.params.id!), await ctx.body(applySetupRequest)));
 
   // The test clock (P11): registered only under TANDEMISE_CLOCK_OFFSET_MS, so a
   // normal daemon answers 404 and nothing can move its time.

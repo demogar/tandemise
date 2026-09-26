@@ -67,7 +67,7 @@ steps:
     capabilities: [repository.read, filesystem.write, shell.exec, git.write, artifact.write]
     inputs: [ProductSpec, ImplementationPlan, DesignBrief]
     outputs: [ChangeSet]
-    gate: checks.typecheck != FAIL && checks.lint != FAIL && checks.tests != FAIL
+    gate: artifact.ChangeSet.exists && checks.typecheck != FAIL && checks.lint != FAIL && checks.tests != FAIL
     maxAttempts: 3
 
   - key: review

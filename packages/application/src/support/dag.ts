@@ -36,7 +36,9 @@ export function validateTaskGraph(
   }
   const validated = validateMissionPlan(
     { summary: 'mutated mission graph', tasks: asPlannedTasks(tasks) },
-    { knownRoleIds: new Set(roles.map((r) => r.id)), satisfiableCapabilities: satisfiable },
+    // Syntax only: these tasks were accepted under the gate rules of their day,
+    // and the engine's own spliced tasks carry fixed gates the P15 check audits.
+    { knownRoleIds: new Set(roles.map((r) => r.id)), satisfiableCapabilities: satisfiable, gates: 'syntax' },
   );
   return validated.ok ? Ok(validated.value.tasks) : validated;
 }

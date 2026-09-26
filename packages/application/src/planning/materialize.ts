@@ -1,6 +1,7 @@
 import type { MissionId, Clock, RepositoryId } from '@tandemise/shared';
-import { ids } from '@tandemise/shared';
+import { TandemiseError, ids } from '@tandemise/shared';
 import type { ArtifactHandoff, MissionPlan, MissionTask, PlannedTask, Repository, SkillPin } from '@tandemise/domain';
+import { planGateProblems } from '@tandemise/domain';
 
 /**
  * Turns an accepted plan into the task rows the scheduler runs.
@@ -18,6 +19,16 @@ export function materializePlan(
   repositories: readonly Repository[] = [],
   options: MaterializeOptions = {},
 ): readonly MissionTask[] {
+  // The last door before the scheduler (P15): whatever path a plan took - a
+  // workflow, a planner, a preset, a person's edit - a gate that could never
+  // pass is refused here rather than discovered after the step has run.
+  const problems = planGateProblems(plan.tasks);
+  if (problems.length > 0) {
+    throw TandemiseError.validation(
+      `The plan has a gate that can never pass. ${problems.map((p) => p.message).join(' ')}`,
+      { issues: problems.map((p) => p.message) },
+    );
+  }
   const now = clock.now();
   // Matched case-insensitively: a plan author writing `Beveloce-Web` means the
   // same repository as `beveloce-web`, and failing over capitalisation would be

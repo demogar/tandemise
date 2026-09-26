@@ -6,6 +6,7 @@ import { Err, Ok, type Result } from '@tandemise/shared';
 import type { MissionPlan, PlannedTask } from './plan.js';
 import { MAX_LADDER, MAX_MODEL_NAME, normalizeModelPolicy } from './entities/models.js';
 import { parseSkillRef } from './entities/skill.js';
+import { lintGate } from './gate-lint.js';
 
 /**
  * A workflow someone wrote, as opposed to one a model proposed.
@@ -141,7 +142,26 @@ export function parseWorkflowDefinition(raw: unknown): Result<WorkflowDefinition
       message: issue.message,
     })));
   }
-  return Ok(parsed.data);
+  // A gate that could never pass is as broken as a misspelt key: the file is
+  // listed with the reason, and nothing plans from it (P15).
+  const gateIssues = parsed.data.steps.flatMap((step, index) => stepGateIssues(step, index));
+  return gateIssues.length > 0 ? Err(gateIssues) : Ok(parsed.data);
+}
+
+/**
+ * The validator's problems with one step's gate. Isolation is only judged when
+ * the step says it (or cannot have one); a step inheriting its role's is judged
+ * again at compile, once the role is known.
+ */
+function stepGateIssues(step: WorkflowStep, index: number, isolation?: IsolationMode): WorkflowIssue[] {
+  if (step.gate === undefined || step.gate === null) return [];
+  const known = isolation ?? (step.executor === 'agent' ? step.isolation : 'none');
+  return lintGate(step.gate, {
+    stepKey: step.key,
+    outputs: step.outputs,
+    independentOf: step.independentOf !== undefined,
+    ...(known === undefined ? {} : { isolation: known }),
+  }).map((problem) => ({ path: `steps.${index}.gate`, message: problem.message }));
 }
 
 /**
@@ -210,6 +230,11 @@ export function compileWorkflow(
   if (issues.length > 0) return Err(issues);
 
   const tasks = definition.steps.map((step) => toPlannedTask(step, resolved, issues, ctx));
+  // Again with each step's resolved isolation: `git.clean` on a step that
+  // inherits `none` from its role is only knowable now.
+  for (const [index, step] of definition.steps.entries()) {
+    issues.push(...stepGateIssues(step, index, tasks[index]?.executionPolicy.isolation));
+  }
   if (issues.length > 0) return Err(issues);
 
   return Ok({

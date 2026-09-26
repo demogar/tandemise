@@ -7,3 +7,4 @@ export * from './for-me.js';
 export * from './issues.js';
 export * from './notifications.js';
 export * from './about.js';
+export * from './setup.js';

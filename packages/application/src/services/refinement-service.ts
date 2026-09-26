@@ -19,6 +19,7 @@ import { requireSeat, type Caller } from '../support/identity.js';
 import { buildRefinementPrompt } from '../planning/refinement-prompt.js';
 import { refinementTitle } from '../planning/materialize.js';
 import type { ReadinessService } from './readiness.js';
+import { ensureTandemiseIgnore } from '../support/ignore.js';
 
 /** Refinement borrows the product role's runtime routing: it is the product owner's job. */
 const REFINER_ROLE_ID = 'product';
@@ -272,9 +273,7 @@ export class RefinementServiceImpl implements RefinementService {
     try {
       if (await fs.exists(dir)) await fs.remove(dir, { recursive: true });
       await fs.mkdir(dir);
-      if (!(await fs.exists('.tandemise/.gitignore'))) {
-        await fs.write('.tandemise/.gitignore', '# Written by Tandemise. Agent working files never belong in the diff.\n*\n');
-      }
+      await ensureTandemiseIgnore(fs);
     } catch (e) {
       this.deps.log.warn('refinement.out_dir_unavailable', { error: errorMessage(e) });
     }

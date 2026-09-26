@@ -98,6 +98,8 @@ export const ISSUE_REPOSITORY = token<IssueRepositoryPort>('port.IssueRepository
 export const ARTIFACT_STORE = token<ArtifactStorePort>('port.ArtifactStore');
 /** Workflow files, read from the project's repositories. */
 export const WORKFLOW_SOURCE = token<WorkflowSourcePort>('port.WorkflowSource');
+/** The `.tandemise` setup folder on disk (P15). The daemon binds the real one. */
+export const SETUP_FOLDER = token<import('./ports.js').SetupFolderPort>('port.SetupFolder');
 export const WORKFLOW_SERVICE = token<WorkflowService>('service.Workflow');
 export const EVENT_BUS = token<EventBusPort>('port.EventBus');
 export const PROJECTION_BUS = token<ProjectionBusPort>('port.ProjectionBus');
@@ -181,6 +183,7 @@ export const SKILL_FILES = token<SkillFilesPort>('port.SkillFiles');
 export const ISSUE_SERVICE = token<IssueService>('application.IssueService');
 /** GitHub issues over `gh` (P14); rebound by the daemon. */
 export const ISSUE_TRACKER = token<IssueTrackerPort>('port.IssueTracker');
+export const SETUP_SERVICE = token<import('./services/setup-service.js').SetupService>('application.SetupService');
 
 export const TANDEMISE_SERVICES = token<TandemiseServices>('application.TandemiseServices');
 

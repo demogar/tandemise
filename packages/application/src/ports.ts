@@ -121,6 +121,8 @@ export interface LoadedWorkflow {
   readonly path: string;
   readonly definition: WorkflowDefinition | null;
   readonly issues: readonly WorkflowIssue[];
+  /** The file's text as it is on disk, so an export can copy it byte for byte (P15). */
+  readonly text?: string;
 }
 
 /**
@@ -133,6 +135,37 @@ export interface LoadedWorkflow {
  */
 export interface WorkflowSourcePort {
   list(repositoryPaths: readonly string[]): Promise<readonly LoadedWorkflow[]>;
+}
+
+/**
+ * A `.tandemise` setup folder on disk (P15). The codec decides what the files
+ * say; this port only reads and writes them, and asks git about them.
+ */
+export interface SetupFolderPort {
+  /**
+   * The files of `<folder>/.tandemise/` - or of `folder` itself when it is a
+   * `.tandemise` folder - as path (relative to it) → text. Null when there is
+   * no such folder.
+   */
+  read(folder: string): Promise<{ readonly root: string; readonly files: Readonly<Record<string, string>>; readonly ignored: readonly string[] } | null>;
+  /**
+   * Stages writes (absolute path → text) next to their destinations. Nothing
+   * is visible until `commit` renames them into place and deletes `remove`;
+   * `discard` drops the staged files. Staging throws on the first failure,
+   * having discarded what it staged.
+   */
+  stage(changes: { readonly write: Readonly<Record<string, string>>; readonly remove: readonly string[] }): Promise<StagedSetupWrite>;
+  /**
+   * Repairs Tandemise's own old ignore lines in the repository (an exact old
+   * `.tandemise/.gitignore`, an exact `.tandemise/` exclude line), then says
+   * which of `paths` git still ignores, and why, in words.
+   */
+  gitWarnings(repositoryPath: string, paths: readonly string[]): Promise<readonly string[]>;
+}
+
+export interface StagedSetupWrite {
+  commit(): Promise<void>;
+  discard(): Promise<void>;
 }
 
 /** What the browser brought back to the loopback redirect. */

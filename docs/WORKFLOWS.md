@@ -118,7 +118,7 @@ wins over its role's pin of the same skill. A skill or version the library does
 not have stops the workflow when it is planned, naming the step.
 
 Two gate facts, `skills.loaded` and `skills.missing`, are measured in every
-step gate (see [Gate facts](#skills-facts)). See [the skills guide](guides/skills.md).
+step gate (see [Gate facts](#gate-facts)). See [the skills guide](guides/skills.md).
 
 ## When something is wrong
 
@@ -140,54 +140,95 @@ A `gate` is an expression over measured facts, for example
 measured compares false against everything, so a gate never passes because a
 measurement was missing: the step fails with "Not met: … is not measured".
 
-This is the complete vocabulary (`GATE_FACT_VOCABULARY` in
-`packages/evaluation/src/facts.ts`). The **Measured in** column says where the
-daemon supplies each fact. Only facts marked *step gate* can be used in a
-workflow file: the others are read by the daemon's own rules (the readiness
-check before planning, the backlog pull) or published for the desk and the
-status report, and are not measured when a step's gate is checked.
+Every fact has a **scope**. Only *step* facts are measured when a step's gate
+is read; the others belong to the whole mission or the whole project, and are
+read by the daemon's own rules. Tandemise checks every gate when it is written
+(a workflow file when it is loaded, a planner's plan, an import) and refuses
+one that can never pass, saying why:
 
-### Checks, artifacts, review and task
+| The gate… | Reason shown |
+|---|---|
+| reads a fact that does not exist | "The gate on 'build' reads checks.test, which Tandemise never measures. Did you mean checks.tests?" |
+| reads a mission or project fact | "The gate on 'release' reads mission.stalled, which is only known for the whole mission, not inside a step." |
+| is on a step with `outputs` but never reads its own `artifact.<Type>.exists` | "The gate on 'build' never checks that the step wrote its output: add artifact.ChangeSet.exists, so a run that writes nothing cannot pass." |
+| reads `review.independent` without `independentOf` | "… which is only measured on a step with independentOf." |
+| reads `git.clean` on a step without its own worktree | "… which is only measured on a step that works in its own worktree." |
+| reads `diff.files_changed` on a step that writes no ChangeSet | "… which is only measured from the step's own ChangeSet …" |
 
-| Fact | Type | Meaning | Measured in |
-|---|---|---|---|
-| `checks.install`, `checks.typecheck`, `checks.lint`, `checks.tests`, `checks.build` | PASS / FAIL / SKIP | the repository's configured commands; SKIP when none is configured | step gate |
-| `checks.<name>` | PASS / FAIL / SKIP | any additional repository check, under its configured name | step gate |
-| `artifact.<Type>.exists` | boolean | a non-superseded artifact of that type exists for the mission | step gate |
-| `artifact.<Type>.count` | number | how many artifacts of that type the mission has | step gate |
-| `review.verdict` | `"pass"` / `"needs_changes"` / `"fail"` | the independent reviewer's verdict | step gate |
-| `review.blocking_findings` | number | reviewer findings with severity `blocking` | step gate |
-| `review.major_findings` | number | reviewer findings with severity `major` | step gate |
-| `approval.plan`, `approval.release_candidate`, `approval.<kind>` | PENDING / APPROVED / REJECTED / EXPIRED / CANCELLED | status of that approval on the mission; a pending one wins | step gate |
-| `task.attempt` | number | which attempt this is; 0 before the first run | step gate |
-| `task.role` | text | the role the step is staffed under | step gate |
-| `task.risk` | text | the step's highest risk class: `read` … `release` | step gate |
-| `task.risk_level` | number | `task.risk` as 0 (read) to 5 (release) | step gate |
-| `diff.files_changed` | number | files the step's own ChangeSet says it changed | step gate, when it wrote a ChangeSet |
-| `security.required_checks` | PASS / FAIL / SKIP | aggregate of the security-required checks | in the vocabulary; not measured today |
-| `git.clean` | boolean | the working tree has no uncommitted changes | in the vocabulary; not measured today |
+A workflow file with such a gate is listed under New mission with the reason,
+and nothing plans from it until it is fixed.
 
-### QA and the Done-when ledger (new in 0.5)
+The table below is generated from `GATE_FACT_VOCABULARY`
+(`packages/domain/src/gate-facts.ts`) by `node scripts/gate-facts-doc.mjs
+--write`; the offline checks fail when it drifts.
 
-See [Done when](guides/done-when.md). The `criteria.*` counts are always
-measured. The `qa.criteria_*` facts are measured whenever the mission has
-criteria, even before QA ran ("nothing verified yet" is a measurement).
+"Counted" criteria (for the `qa.criteria_*` facts) are every live spec
+criterion plus every one of your Done-when lines that nothing in the spec
+covers. See [Done when](guides/done-when.md).
 
-| Fact | Type | Meaning | Measured in |
-|---|---|---|---|
-| `criteria.total` | number | live criteria: your Done-when lines plus the current spec's acceptance criteria | step gate |
-| `criteria.user_total` | number | your Done-when lines (`U1`, `U2`, …) | step gate |
-| `criteria.uncovered_user` | number | your lines that no acceptance criterion of the current spec lists in `covers` | step gate |
-| `criteria.unknown_covers` | number | entries in the spec's `covers` lists that name none of your lines | step gate |
-| `qa.criteria_verified` | number | counted criteria the newest QA report marked PASS | step gate, with criteria |
-| `qa.criteria_failed` | number | counted criteria the newest QA report marked FAIL | step gate, with criteria |
-| `qa.criteria_unverified` | number | counted criteria with neither: skipped, never reported, not covered, or written after QA ran | step gate, with criteria |
-| `qa.acceptance_criteria_coverage` | number, 0–100 | with criteria: verified ÷ counted × 100 (**changed in 0.5**: it used to divide by the results QA chose to report, so one pass out of five read 100). Without criteria: the share of QA's own results that passed | step gate, after QA |
-| `qa.blocking_defects` | number | QA defects that block release | step gate, after QA |
-| `qa.verdict` | text | QA's overall verdict | step gate, after QA |
+<!-- gate-facts:start (generated by scripts/gate-facts-doc.mjs from GATE_FACT_VOCABULARY; do not edit by hand) -->
 
-"Counted" criteria are every live spec criterion plus every one of your lines
-that nothing in the spec covers.
+#### Facts a step's gate can read
+
+| Fact | Type | Scope | Meaning | Measured in |
+|---|---|---|---|---|
+| `checks.install` | PASS / FAIL / SKIP | step | Dependency install command exit status. SKIP when the repository configures none. Run before any other check a gate reads. | step gate |
+| `checks.typecheck` | PASS / FAIL / SKIP | step | Type checker exit status. SKIP when the repository configures none. | step gate |
+| `checks.lint` | PASS / FAIL / SKIP | step | Linter exit status. SKIP when the repository configures none. | step gate |
+| `checks.tests` | PASS / FAIL / SKIP | step | Test command exit status. Plural, unlike the repository field it comes from. SKIP when the repository configures none. | step gate |
+| `checks.build` | PASS / FAIL / SKIP | step | Build command exit status. SKIP when the repository configures none. | step gate |
+| `artifact.<Type>.exists` | boolean | step | True when at least one non-superseded artifact of that type exists for the mission. A gate on a step with outputs must read this for one of them. | step gate |
+| `artifact.<Type>.count` | number | step | How many artifacts of that type the mission has. | step gate |
+| `review.verdict` | text | step | Independent reviewer's verdict: pass, needs_changes, or fail. | step gate, after a review |
+| `review.blocking_findings` | number | step | Count of reviewer findings with severity `blocking`. | step gate, after a review |
+| `review.major_findings` | number | step | Count of reviewer findings with severity `major`. | step gate, after a review |
+| `review.independent` | boolean | step | Set on a step with `independentOf: <step>`: true when this step's run used a different runtime, or a different known model, than that step's run. A model left to the runtime's default cannot be shown to differ on the same runtime, so it reads false. Absent until both runs exist. | step gate, only with `independentOf` |
+| `skills.loaded` | number | step | How many pinned skills this step's newest run received, as a folder or in its prompt (P13). 0 before the step has run or when it pins none. | step gate |
+| `skills.missing` | number | step | How many of this step's pinned skills its newest run did not receive at the pinned version and hash (P13). A run never starts with a pinned skill's content missing, so this reads 0 after a normal run. | step gate |
+| `qa.acceptance_criteria_coverage` | number | step | Percentage (0-100) of the mission's criteria QA verified as PASS. A criterion QA skipped or never reported counts as not verified. Without a Done-when ledger, the share of QA's own results that passed. | step gate, with criteria or after QA |
+| `qa.criteria_verified` | number | step | Criteria on the Done-when ledger that the newest QA report marked PASS (a user criterion counts only when nothing in the spec covers it). | step gate, with criteria |
+| `qa.criteria_failed` | number | step | Criteria on the Done-when ledger that the newest QA report marked FAIL. | step gate, with criteria |
+| `qa.criteria_unverified` | number | step | Criteria on the Done-when ledger with no PASS or FAIL from QA: skipped, never reported, not covered, or written after QA ran. | step gate, with criteria |
+| `criteria.total` | number | step | Live criteria on the Done-when ledger: the person's lines plus the current spec's acceptance criteria. | step gate |
+| `criteria.user_total` | number | step | Done-when lines the person wrote (U1, U2, …). | step gate |
+| `criteria.uncovered_user` | number | step | Done-when lines that no acceptance criterion of the current spec lists in `covers`. | step gate |
+| `criteria.unknown_covers` | number | step | Entries in the spec's `covers` lists that name no Done-when line. | step gate |
+| `qa.blocking_defects` | number | step | Count of QA defects that block release. | step gate, after QA |
+| `qa.verdict` | text | step | QA role's overall verdict. | step gate, after QA |
+| `approval.plan` | PENDING / APPROVED / REJECTED / EXPIRED / CANCELLED | step | Status of the mission plan approval. A pending one wins over an approved one. | step gate |
+| `approval.release_candidate` | PENDING / APPROVED / REJECTED / EXPIRED / CANCELLED | step | Status of the release approval. PENDING until a human decides. | step gate |
+| `approval.<kind>` | PENDING / APPROVED / REJECTED / EXPIRED / CANCELLED | step | Status of any other approval kind on the mission: choice, exception, action, intervention, check. | step gate |
+| `task.attempt` | number | step | Which attempt at the task this is; 0 before it first runs. | step gate |
+| `task.role` | text | step | The role the task is staffed under. | step gate |
+| `task.risk` | text | step | The highest risk class among the task's capabilities: read, write_reversible, external_side_effect, destructive, financial or release. | step gate |
+| `task.risk_level` | number | step | task.risk as its position in that list, 0 (read) to 5 (release), so a condition can use >=. | step gate |
+| `diff.files_changed` | number | step | How many files the step's own ChangeSet says it changed. Not measured when it wrote no ChangeSet. | step gate, when the step writes a ChangeSet |
+| `git.clean` | PASS / FAIL / SKIP | step | PASS when the step's worktree has nothing uncommitted after Tandemise committed the worker's changes and ran the checks (a build that rewrites a tracked file makes it FAIL, listing the files). Recorded with the checks. | step gate, only on a step with its own worktree |
+
+#### Facts for the whole mission or project
+
+These are measured by the daemon for its own rules (the readiness check, the backlog pull, the limit stop, the
+stalled row) and for the desk. A workflow or a plan whose gate reads one is refused when it is written, with a
+reason such as "The gate on 'release' reads mission.stalled, which is only known for the whole mission, not
+inside a step."
+
+| Fact | Type | Scope | Meaning | Measured in |
+|---|---|---|---|---|
+| `ready.criteria` | number | whole mission | Accepted Done-when criteria of a DRAFT mission: the person's lines, ones added by hand and accepted proposals. Read by the readiness gate before planning. | the readiness check before planning |
+| `ready.open_questions` | number | whole mission | Questions refinement asked that the person has not answered yet. | the readiness check before planning |
+| `ready.proposed_pending` | number | whole mission | Criteria refinement proposed that the person has not accepted or rejected yet. | the readiness check before planning |
+| `mission.priority` | number | whole mission | The mission's priority as a number: 0 urgent, 1 high, 2 normal, 3 low. Orders the backlog and the worker slots. | published; the backlog orders by priority directly |
+| `mission.agent_minutes` | number | whole mission | Agent time the mission's runs used, in minutes: what each runtime reported, or the run's own duration when it reported none. | the limit service |
+| `mission.tokens` | number | whole mission | Input plus output tokens the mission's runs reported. Not measured when no runtime reported tokens. | the limit service |
+| `mission.spend_usd` | number | whole mission | Cost in US dollars the mission's runs reported. Not measured when no runtime reported a cost: never read as 0. | the limit service |
+| `mission.limit_percent` | number | whole mission | How much of its most-used limit the mission has used, in percent. Not measured when it has no limit. Work stops at 100. | the limit service |
+| `mission.stalled` | number | whole mission | Whether the mission is stalled: 1 when nothing moves it and nothing asks the person (it has a Stalled row in the Inbox), else 0. | the liveness service |
+| `run.silent_minutes` | number | whole mission | Minutes since the step's live run last wrote an event. Not measured when the step has no live run - which is always the case when a step's gate is read, after its run ended. | the liveness service |
+| `workspace.active_missions` | number | whole project | Missions in progress in the project: not DRAFT, not PAUSED and not finished. Read by the backlog pull. | the backlog pull |
+| `workspace.max_active_missions` | number | whole project | The project's work-in-progress limit. Not measured when the limit is off, so a gate reading it never passes and nothing is pulled. | the backlog pull |
+| `workspace.month_limit_percent` | number | whole project | How much of its most-used monthly limit the project has used this calendar month, in percent. Not measured without a monthly limit. | the limit service |
+
+<!-- gate-facts:end -->
 
 The built-in presets use them like this:
 
@@ -197,44 +238,7 @@ qa:       artifact.QAReport.exists && review.blocking_findings == 0 && qa.criter
 release:  artifact.ReleaseCandidate.exists && qa.criteria_unverified == 0 && qa.blocking_defects == 0
 ```
 
-Every preset gate names its step's own output (`artifact.<Type>.exists`), so a
-step that wrote nothing cannot pass on facts other steps produced. Do the same in
-your own files.
-
-### Skills
-
-See [Giving your agents your skills](guides/skills.md). Measured for every
-step, so a gate can require its skills; both read 0 for a step that pins none.
-<a id="skills-facts"></a>
-
-| Fact | Type | Meaning | Measured in |
-|---|---|---|---|
-| `skills.loaded` | number | pinned skills the step's newest run got, as a folder or in its prompt; 0 before it ran | step gate |
-| `skills.missing` | number | the step's pinned skills that run did not get at the pinned version and hash | step gate |
-
-### Daemon rules and published facts (new in 0.5)
-
-These are measured by the daemon for its own decisions or for the desk. They
-are listed so you know what exists; writing them in a step's gate makes that
-gate fail as "not measured".
-
-| Fact | Type | Meaning | Measured in |
-|---|---|---|---|
-| `ready.criteria` | number | accepted Done-when criteria of a draft | the readiness check before planning ([Refine](guides/refine.md)) |
-| `ready.open_questions` | number | refinement questions not answered yet | the readiness check |
-| `ready.proposed_pending` | number | proposed criteria not accepted or rejected yet | the readiness check |
-| `workspace.active_missions` | number | missions in progress in the project (not draft, not paused, not finished) | the backlog pull ([Backlog](guides/backlog.md)) |
-| `workspace.max_active_missions` | number | the work-in-progress limit; not measured when the limit is off, so nothing is pulled | the backlog pull |
-| `mission.priority` | number | 0 urgent, 1 high, 2 normal, 3 low | published; the backlog orders by priority directly |
-| `mission.agent_minutes` | number | agent minutes the mission's runs used | published by the limit service ([Limits](guides/limits.md)) |
-| `mission.tokens` | number | input + output tokens reported; not measured when none was reported | published by the limit service |
-| `mission.spend_usd` | number | US dollars reported; not measured when none was reported, never 0 | published by the limit service |
-| `mission.limit_percent` | number | the highest share of a mission limit used; not measured without a limit | published by the limit service |
-| `workspace.month_limit_percent` | number | the highest share of a monthly limit used this month; not measured without one | published by the limit service |
-| `mission.stalled` | 0 / 1 | 1 when nothing moves the mission and nothing asks you ([Inbox](guides/inbox.md)) | published by the liveness service |
-| `run.silent_minutes` | number | minutes since the step's live run last wrote an event; not measured with no live run | published by the liveness service |
-
-The rules themselves, as the daemon evaluates them:
+The daemon's own rules over the mission and project facts:
 
 ```
 ready to plan:  ready.criteria >= 1 && ready.open_questions == 0 && ready.proposed_pending == 0
@@ -243,3 +247,8 @@ pull the next:  workspace.active_missions < workspace.max_active_missions
 
 The limit stop and the stalled and quiet rows are daemon rules over the same
 numbers; no gate you write can loosen them.
+
+**Removed in P15.** `security.required_checks` and `checks.<name>` were listed
+but never measured (a repository can configure only install, typecheck, lint,
+test and build), so a gate reading them could never pass. `git.clean` is now
+measured, after the checks, on a step with its own worktree.

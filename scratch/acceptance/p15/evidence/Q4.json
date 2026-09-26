@@ -1,0 +1,63 @@
+{
+  "id": "Q4",
+  "title": "A workflow gate reading mission.stalled, or missing its output check, is refused with the reason",
+  "ok": true,
+  "checks": [
+    {
+      "label": "mission.stalled: \"only known for the whole mission, not inside a step\"",
+      "ok": true,
+      "observed": "This workflow cannot run yet — steps.0.gate: The gate on 'release' reads mission.stalled, which is only known for the whole mission, not inside a step. (/tmp/tdm-p15/project/.tandemise/workflows/q4-stalled.yaml)"
+    },
+    {
+      "label": "no output check: \"never checks that the step wrote its output: add artifact.ChangeSet.exists\"",
+      "ok": true,
+      "observed": "This workflow cannot run yet — steps.0.gate: The gate on 'build' never checks that the step wrote its output: add artifact.ChangeSet.exists, so a run that writes nothing cannot pass. (/tmp/tdm-p15/project/.tandemise/workflows/q4-no-output.yaml)"
+    },
+    {
+      "label": "a correct workflow shows no warning",
+      "ok": true,
+      "observed": ""
+    },
+    {
+      "label": "proof (API): both files are listed with their issue and no steps",
+      "ok": true,
+      "observed": [
+        {
+          "id": "q4-no-output",
+          "name": "q4-no-output",
+          "description": null,
+          "path": "/tmp/tdm-p15/project/.tandemise/workflows/q4-no-output.yaml",
+          "inputs": [],
+          "steps": [],
+          "issues": [
+            {
+              "path": "steps.0.gate",
+              "message": "The gate on 'build' never checks that the step wrote its output: add artifact.ChangeSet.exists, so a run that writes nothing cannot pass."
+            }
+          ]
+        },
+        {
+          "id": "q4-stalled",
+          "name": "q4-stalled",
+          "description": null,
+          "path": "/tmp/tdm-p15/project/.tandemise/workflows/q4-stalled.yaml",
+          "inputs": [],
+          "steps": [],
+          "issues": [
+            {
+              "path": "steps.0.gate",
+              "message": "The gate on 'release' reads mission.stalled, which is only known for the whole mission, not inside a step."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "notes": [
+    "wrote .tandemise/workflows/q4-stalled.yaml and q4-no-output.yaml in the project"
+  ],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p15-setup/scratch/acceptance/p15/evidence/Q4-stalled-gate-refused.png",
+    "/Users/demogar/projects/tandemise/tandemise-p15-setup/scratch/acceptance/p15/evidence/Q4-output-check-refused.png"
+  ]
+}
