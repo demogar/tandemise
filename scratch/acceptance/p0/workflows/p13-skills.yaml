@@ -1,0 +1,19 @@
+name: P13 skills
+description: Implement with the Developer role's skills plus the house style, then a review that pins none.
+steps:
+  - key: implement
+    title: Implement
+    role: development
+    objective: Build the hello page. SCRIPTED_ECHO_SKILLS
+    outputs: [ChangeSet]
+    skills: [house-style@latest]
+    gate: artifact.ChangeSet.exists && skills.missing == 0 && skills.loaded >= 1
+  - key: review
+    title: Review
+    role: review
+    dependsOn: [implement]
+    objective: Review the hello page change. SCRIPTED_ECHO_SKILLS
+    inputs: [ChangeSet]
+    outputs: [ReviewReport]
+    gate: artifact.ReviewReport.exists && skills.loaded == 0
+    maxAttempts: 1

@@ -19,6 +19,7 @@ import { SqliteMissionCriteriaRepository } from './repositories/mission-criteria
 import { SqliteMissionQuestionRepository } from './repositories/mission-question-repository.js';
 import { SqliteLimitRepository } from './repositories/limit-repository.js';
 import { SqliteRoutineRepository } from './repositories/routine-repository.js';
+import { SqliteSkillRepository } from './repositories/skill-repository.js';
 import { SqlitePersonRepository } from './repositories/person-repository.js';
 import { SqliteRepoRepository } from './repositories/repo-repository.js';
 import { SqliteRoleRepository } from './repositories/role-repository.js';
@@ -31,7 +32,7 @@ import { createUnitOfWork } from './repositories/unit-of-work.js';
 import {
   APPROVAL_REPOSITORY, ARTIFACT_REPOSITORY, ASSIGNMENT_REPOSITORY, CHECKPOINT_REPOSITORY,
   DATABASE, DECISION_REPOSITORY, EVALUATION_REPOSITORY, EVENT_REPOSITORY,
-  EXECUTION_TARGET_REPOSITORY, FEEDBACK_REPOSITORY, INTEGRATION_REPOSITORY, LEASE_REPOSITORY, MEMBER_REPOSITORY, MISSION_CRITERIA_REPOSITORY, MISSION_QUESTION_REPOSITORY, MISSION_REPOSITORY, LIMIT_REPOSITORY, ROUTINE_REPOSITORY,
+  EXECUTION_TARGET_REPOSITORY, FEEDBACK_REPOSITORY, INTEGRATION_REPOSITORY, LEASE_REPOSITORY, MEMBER_REPOSITORY, MISSION_CRITERIA_REPOSITORY, MISSION_QUESTION_REPOSITORY, MISSION_REPOSITORY, LIMIT_REPOSITORY, ROUTINE_REPOSITORY, SKILL_REPOSITORY,
   PERSON_REPOSITORY, REPO_REPOSITORY, ROLE_REPOSITORY, RUN_INPUT_REPOSITORY, RUN_REPOSITORY, RUNTIME_PROFILE_REPOSITORY,
   TASK_REPOSITORY, UNIT_OF_WORK, WORKSPACE_REPOSITORY,
 } from './tokens.js';
@@ -102,5 +103,6 @@ export function persistenceModule(options: PersistenceOptions): TandemiseModule 
     container.bind(MISSION_QUESTION_REPOSITORY, (r) => new SqliteMissionQuestionRepository(db(r), clock), { source: SOURCE });
     container.bind(LIMIT_REPOSITORY, (r) => new SqliteLimitRepository(db(r), clock), { source: SOURCE });
     container.bind(ROUTINE_REPOSITORY, (r) => new SqliteRoutineRepository(db(r), clock), { source: SOURCE });
+    container.bind(SKILL_REPOSITORY, (r) => new SqliteSkillRepository(db(r)), { source: SOURCE });
   });
 }

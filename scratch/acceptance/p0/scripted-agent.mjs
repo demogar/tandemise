@@ -22,7 +22,7 @@
 // A task objective that mentions "preview" gets an "Open preview" link in its handoff.
 // P8 usage knobs (SCRIPTED_USAGE_MIN, SCRIPTED_COST_USD) are described where they are read, at the end.
 import { createHash } from 'node:crypto';
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join } from 'node:path';
 
@@ -84,13 +84,26 @@ const baseAcs = (QA_PARTIAL || mode('SCRIPTED_SPEC_THREE_ACS')) ? 3 : (QA_FAIL_A
 // P12, model routing. The runtime passes the run's model as `--model <name>` when its profile names
 // that flag (settings.modelFlag). SCRIPTED_ARGS_DIR (env): every run's argv is saved there with its
 // step title and mission goal, so a scenario can assert which model each run was started with.
+// P13, skills. SCRIPTED_ECHO_SKILLS (env, or its name in the goal): the agent says which skills it
+// got - the folders under <working folder>/.claude/skills that hold a SKILL.md, and the
+// "### Skill: <name> (vN)" sections of its prompt - as handoff points ("Skills folder: a, b",
+// "Skills in prompt: a, b"), so the window shows them. The argv record below always carries both lists.
+const skillsDir = join(workIn, '.claude', 'skills');
+const skillsInFolder = existsSync(skillsDir)
+  ? readdirSync(skillsDir).filter((n) => existsSync(join(skillsDir, n, 'SKILL.md'))).sort()
+  : [];
+const skillsInPrompt = [...prompt.matchAll(/^### Skill: (\S+) \(v(\d+)\)$/gm)].map((m) => m[1]).sort();
+const ECHO_SKILLS = mode('SCRIPTED_ECHO_SKILLS');
 if (process.env.SCRIPTED_ARGS_DIR) {
   mkdirSync(process.env.SCRIPTED_ARGS_DIR, { recursive: true });
   const argv = process.argv.slice(2);
   const at = argv.indexOf('--model');
   writeFileSync(
     join(process.env.SCRIPTED_ARGS_DIR, `${Date.now()}-${process.pid}.json`),
-    JSON.stringify({ argv, model: at < 0 ? null : argv[at + 1] ?? null, title, goal: /^Goal: (.*)$/m.exec(prompt)?.[1] ?? '' }),
+    JSON.stringify({
+      argv, model: at < 0 ? null : argv[at + 1] ?? null, title, goal: /^Goal: (.*)$/m.exec(prompt)?.[1] ?? '',
+      skills: { folder: skillsInFolder, prompt: skillsInPrompt, cwd: workIn },
+    }),
   );
 }
 if (process.env.SCRIPTED_PROMPT_DIR) {
@@ -232,7 +245,14 @@ for (const { type, destination } of outputs) {
   // so the stand-in writes a basic handoff and trims its title to fit.
   const handoff = {
     headline: `${type} ready for the hello page`,
-    points: ['Written by the scripted acceptance agent', 'No model was called'],
+    // A handoff carries at most three points: with SCRIPTED_ECHO_SKILLS the skills take two of them.
+    points: ECHO_SKILLS
+      ? [
+        'Written by the scripted acceptance agent',
+        `Skills folder: ${skillsInFolder.length === 0 ? 'none' : skillsInFolder.join(', ')}`,
+        `Skills in prompt: ${skillsInPrompt.length === 0 ? 'none' : skillsInPrompt.join(', ')}`,
+      ]
+      : ['Written by the scripted acceptance agent', 'No model was called'],
     ...(/preview/i.test(objective) ? { links: [{ label: 'Open preview', url: 'https://example.com/preview', kind: 'workspace' }] } : {}),
     ...(changed.length > 0 ? { changed } : {}),
   };

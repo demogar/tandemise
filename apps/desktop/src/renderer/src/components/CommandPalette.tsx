@@ -36,6 +36,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }): JSX.Elemen
       { id: 'inbox', group: 'Go to', label: 'Inbox', icon: 'approvals', run: go('/inbox') },
       { id: 'artifacts', group: 'Go to', label: 'Artifacts', icon: 'artifacts', run: go('/artifacts') },
       { id: 'team', group: 'Go to', label: 'Team', icon: 'workforce', run: go('/team') },
+      { id: 'skills', group: 'Go to', label: 'Skills', icon: 'book', run: go('/skills') },
       { id: 'runtimes', group: 'Go to', label: 'Runtimes', icon: 'runtimes', run: go('/runtimes') },
       { id: 'integrations', group: 'Go to', label: 'Integrations', icon: 'integrations', run: go('/integrations') },
       { id: 'project', group: 'Go to', label: 'Repositories', icon: 'folder', run: go('/project') },

@@ -136,6 +136,12 @@ export interface AgentRuntimeAdapter {
    * not passed.
    */
   acceptsModel?(profile: RuntimeProfile): boolean;
+  /**
+   * Where this profile's runtime reads skills from, relative to its working
+   * folder (P13), or null when it reads none. Absent means none: pinned skills
+   * then reach the run through its prompt instead.
+   */
+  skillsFolder?(profile: RuntimeProfile): string | null;
 
   start(request: RunRequest): AsyncIterable<AgentEvent>;
   /**

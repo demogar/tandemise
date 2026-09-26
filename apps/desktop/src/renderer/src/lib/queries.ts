@@ -28,6 +28,10 @@ export const keys = {
   routines: (ws?: string) => ['missions', 'routines', ws ?? 'all'] as const,
   // Under 'workspaces': a changed limit refreshes it; runs finishing are picked up by its interval.
   usage: (ws?: string) => ['workspaces', 'usage', ws ?? 'all'] as const,
+  // Under 'workspaces': a saved role changes "Used by", and it refreshes with the roles.
+  skills: (ws?: string) => ['workspaces', 'skills', ws ?? 'all'] as const,
+  skillsFound: (ws?: string) => ['workspaces', 'skills-found', ws ?? 'all'] as const,
+  skillVersion: (id: string, version: number) => ['workspaces', 'skill-version', id, String(version)] as const,
   mission: (id: string) => ['mission', id] as const,
   // Under 'mission' and scoped by id, so the mission's own invalidations refresh it.
   missionArtifacts: (id: string, all: boolean) => ['mission', id, 'artifacts', all ? 'all' : 'live'] as const,
@@ -134,6 +138,42 @@ export function useBacklog() {
     queryFn: () => daemon.backlog(workspaceId ?? ''),
     enabled: Boolean(workspaceId),
     placeholderData: (previous) => previous,
+  });
+}
+
+/**
+ * The project's skills library (P13). Polled while the screen is open: "Update
+ * available" is the daemon re-reading each local source folder.
+ */
+export function useSkills(poll = false) {
+  const daemon = useDaemon();
+  const workspaceId = useWorkspaceId();
+  return useQuery({
+    queryKey: keys.skills(workspaceId),
+    queryFn: () => daemon.skills(workspaceId ?? ''),
+    enabled: Boolean(workspaceId),
+    ...(poll ? { refetchInterval: 5_000 } : {}),
+    placeholderData: (previous) => previous,
+  });
+}
+
+/** What the discovery root holds (~/.claude/skills unless configured otherwise). */
+export function useDiscoveredSkills(enabled: boolean) {
+  const daemon = useDaemon();
+  const workspaceId = useWorkspaceId();
+  return useQuery({
+    queryKey: keys.skillsFound(workspaceId),
+    queryFn: () => daemon.discoverSkills(workspaceId ?? ''),
+    enabled: enabled && Boolean(workspaceId),
+  });
+}
+
+export function useSkillVersion(skillId: string | null, version: number | null) {
+  const daemon = useDaemon();
+  return useQuery({
+    queryKey: keys.skillVersion(skillId ?? '', version ?? 0),
+    queryFn: () => daemon.skillVersion(skillId ?? '', version ?? 1),
+    enabled: skillId !== null && version !== null,
   });
 }
 

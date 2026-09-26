@@ -51,6 +51,8 @@ import { LivenessService } from './services/liveness-service.js';
 import { DeskService } from './services/desk-service.js';
 import { NotificationService } from './services/notification-service.js';
 import { RoutineService } from './services/routine-service.js';
+import { SkillService } from './services/skill-service.js';
+import { SkillInstaller } from './engine/skill-installer.js';
 import { DEFAULT_QUIET_AFTER_MS, reachedReason } from '@tandemise/domain';
 import { RefinementServiceImpl } from './services/refinement-service.js';
 import { PlanningServiceImpl } from './services/planning-service.js';
@@ -274,6 +276,8 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       recorder: r.resolve(t.EVENT_RECORDER),
       deadlines: r.resolve(t.RUN_DEADLINES),
       limits: r.resolve(t.LIMIT_SERVICE),
+      skills: r.resolve(t.SKILL_SERVICE),
+      skillInstaller: new SkillInstaller(r.resolve(t.EVENT_RECORDER)),
       paths: paths(r),
       clock: clock(r),
       log: log(r).child({ component: 'executor' }),
@@ -405,7 +409,29 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       clock: clock(r),
     }), { source: SOURCE });
 
-    bind(t.ROLE_SERVICE, (r) => new RoleServiceImpl(r.resolve(t.ROLE_REPOSITORY), clock(r)), { source: SOURCE });
+    bind(t.ROLE_SERVICE, (r) => new RoleServiceImpl(
+      r.resolve(t.ROLE_REPOSITORY), clock(r),
+      (workspaceId, skills) => r.resolve(t.SKILL_SERVICE).validateRoleSkills(workspaceId, skills),
+    ), { source: SOURCE });
+
+    // P13: the daemon rebinds the files port (it reads folders and runs git); this one finds nothing.
+    bind(t.SKILL_FILES, () => ({
+      discoverRoot: () => '',
+      discover: async () => ({ exists: false, folders: [] }),
+      scan: async (folder: string) => ({ folder, files: [], sizeBytes: 0, problem: 'Skills cannot be read in this build.' }),
+      fetchGit: async () => { throw new Error('Skills cannot be read in this build.'); },
+      store: async () => undefined,
+      read: async () => null,
+      drop: async () => undefined,
+    }), { source: SOURCE });
+
+    bind(t.SKILL_SERVICE, (r) => new SkillService({
+      skills: r.resolve(t.SKILL_REPOSITORY),
+      roles: r.resolve(t.ROLE_REPOSITORY),
+      files: r.resolve(t.SKILL_FILES),
+      clock: clock(r),
+      log: log(r).child({ component: 'skills' }),
+    }), { source: SOURCE });
 
     bind(t.ARTIFACT_SERVICE, (r) => new ArtifactServiceImpl(
       r.resolve(t.ARTIFACT_REPOSITORY),
@@ -532,6 +558,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       paths: paths(r),
       clock: clock(r),
       log: log(r).child({ component: 'planning' }),
+      skills: r.resolve(t.SKILL_SERVICE),
       // Resolved per plan, not at construction: the integration service is
       // composed after planning, and a plan should see what is connected now.
       connectedApps: async (workspaceId) => (await r.resolve(t.INTEGRATION_SERVICE).list(asId(workspaceId)))
@@ -558,6 +585,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       members: r.resolve(t.MEMBER_REPOSITORY),
       artifacts: r.resolve(t.ARTIFACT_REPOSITORY),
       limits: r.resolve(t.LIMIT_SERVICE),
+      skills: r.resolve(t.SKILL_SERVICE),
       clock: clock(r),
       log: log(r).child({ component: 'approvals' }),
     }), { source: SOURCE });
@@ -753,6 +781,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       desk: r.resolve(t.DESK_SERVICE),
       routines: r.resolve(t.ROUTINE_SERVICE),
       notifications: r.resolve(t.NOTIFICATION_SERVICE),
+      skills: r.resolve(t.SKILL_SERVICE),
     }), { source: SOURCE });
   });
 }

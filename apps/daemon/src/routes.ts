@@ -9,7 +9,7 @@ import {
   updateMemberRequest, roleStaffingPatchRequest, taskStaffingPatchRequest, missionFeedQuery, missionArtifactsQuery, artifactSearchQuery,
   dismissFeedbackRequest, giveFeedbackRequest, startRoundRequest,
   addCriterionRequest, answerQuestionRequest, criterionVerdictRequest, updateMissionRequest, workspaceUsageQuery,
-  advanceClockRequest, createRoutineRequest, updateRoutineRequest,
+  advanceClockRequest, createRoutineRequest, updateRoutineRequest, importSkillRequest, previewSkillRequest,
   takeNotificationsRequest, updateNotificationPreferencesRequest,
 } from '@tandemise/api-contract';
 import { normalizeLimits } from '@tandemise/domain';
@@ -125,6 +125,20 @@ export function buildRouter(services: TandemiseServices, options: { readonly tes
   r.patch('/v1/routines/:id', async (ctx) => services.routines.update(asId(ctx.params.id!), await ctx.body(updateRoutineRequest)));
   r.delete('/v1/routines/:id', (ctx) => services.routines.remove(asId(ctx.params.id!)));
   r.post('/v1/routines/:id/run-now', (ctx) => services.routines.runNow(ctx.caller, asId(ctx.params.id!)));
+
+  // Skills (P13): the project's library, imported by content hash and pinned per run.
+  r.get('/v1/workspaces/:id/skills', (ctx) => services.skills.list(asId(ctx.params.id!)));
+  r.get('/v1/workspaces/:id/skills/discover', (ctx) => services.skills.discover(asId(ctx.params.id!)));
+  r.post('/v1/workspaces/:id/skills/preview', async (ctx) =>
+    services.skills.preview(asId(ctx.params.id!), (await ctx.body(previewSkillRequest)).source));
+  r.post('/v1/workspaces/:id/skills', async (ctx) => services.skills.import(asId(ctx.params.id!), await ctx.body(importSkillRequest)));
+  r.get('/v1/skills/:id/versions/:version', (ctx) => {
+    const version = Number(ctx.params.version);
+    if (!Number.isInteger(version) || version < 1) throw TandemiseError.validation('A version is a whole number from 1.');
+    return services.skills.version(asId(ctx.params.id!), version);
+  });
+  r.post('/v1/skills/:id/update', (ctx) => services.skills.update(asId(ctx.params.id!)));
+  r.delete('/v1/skills/:id', (ctx) => services.skills.remove(asId(ctx.params.id!)));
 
   // The test clock (P11): registered only under TANDEMISE_CLOCK_OFFSET_MS, so a
   // normal daemon answers 404 and nothing can move its time.

@@ -1,5 +1,6 @@
 import type { MissionId, RunId, TaskId, Timestamp, WorkerAssignmentId } from '@tandemise/shared';
 import type { RunPurpose } from './feedback.js';
+import type { RunSkill } from './skill.js';
 
 export const RUN_STATUSES = [
   'STARTING', 'RUNNING', 'SUCCEEDED', 'FAILED', 'CANCELLED',
@@ -53,6 +54,8 @@ export interface Run {
   readonly model?: string | null;
   /** Why that model: "step override", "retry escalation (attempt 2)"… Null for a run from before P12. */
   readonly modelReason?: string | null;
+  /** The skills the run received, and how (P13). Null for a run from before P13. */
+  readonly skills?: readonly RunSkill[] | null;
 }
 
 /**

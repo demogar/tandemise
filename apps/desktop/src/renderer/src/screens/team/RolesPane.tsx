@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react';
-import type { RoleTemplate } from '@tandemise/domain';
+import type { RoleSkill, RoleTemplate } from '@tandemise/domain';
+import type { SkillView } from '@tandemise/api-contract';
+import { Link } from 'wouter';
 import { ARTIFACT_TYPES, modelList } from '../../lib/domain.js';
 import { Icon } from '../../components/Icon.js';
 import { Empty, ErrorState, Field, SkeletonList } from '../../components/primitives.js';
-import { useDaemonMutation, useRoles } from '../../lib/queries.js';
+import { useDaemonMutation, useRoles, useSkills } from '../../lib/queries.js';
 import { useWorkspace } from '../../lib/workspace.js';
 import { titleCase } from '../../lib/format.js';
 
@@ -83,6 +85,7 @@ function RoleEditor({ role, workspaceId }: { role: RoleTemplate; workspaceId: st
   const [model, setModel] = useState(role.models?.model ?? '');
   const [escalate, setEscalate] = useState((role.models?.escalate ?? []).join(', '));
   const [economyModel, setEconomyModel] = useState(role.models?.economyModel ?? '');
+  const [skills, setSkills] = useState<readonly RoleSkill[]>(role.skills ?? []);
 
   const save = useDaemonMutation(
     (daemon) =>
@@ -98,12 +101,14 @@ function RoleEditor({ role, workspaceId }: { role: RoleTemplate; workspaceId: st
         defaultIsolation: role.defaultIsolation,
         outputContract,
         models: { model: model.trim() || null, escalate: modelList(escalate), economyModel: economyModel.trim() || null },
+        skills: [...skills],
       }),
     ['workspaces'],
   );
 
   const modelsDirty = model !== (role.models?.model ?? '') || escalate !== (role.models?.escalate ?? []).join(', ') || economyModel !== (role.models?.economyModel ?? '');
-  const dirty = instructions !== role.instructions || outputContract !== role.outputContract || capabilities !== role.defaultCapabilities.join('\n') || modelsDirty;
+  const skillsDirty = JSON.stringify(skills) !== JSON.stringify(role.skills ?? []);
+  const dirty = instructions !== role.instructions || outputContract !== role.outputContract || capabilities !== role.defaultCapabilities.join('\n') || modelsDirty || skillsDirty;
 
   return (
     <div className="stack" style={{ gap: 'var(--s5)' }}>
@@ -152,6 +157,8 @@ function RoleEditor({ role, workspaceId }: { role: RoleTemplate; workspaceId: st
         </div>
       </section>
 
+      <RoleSkills pinned={skills} onChange={setSkills} />
+
       <div className="grid grid--2">
         <ArtifactPicker label="Produces" selected={produces} onChange={setProduces} />
         <ArtifactPicker label="Consumes" selected={consumes} onChange={setConsumes} />
@@ -196,5 +203,71 @@ function ArtifactPicker({ label, selected, onChange }: { label: string; selected
         })}
       </div>
     </div>
+  );
+}
+
+/**
+ * Skills pinned to this role (P13). Each is pinned at a version: a newer
+ * import never reaches the role's runs until the person picks "Use vN" here.
+ */
+function RoleSkills({ pinned, onChange }: { pinned: readonly RoleSkill[]; onChange: (next: readonly RoleSkill[]) => void }): JSX.Element {
+  const library = useSkills();
+  const [choice, setChoice] = useState('');
+  const all: readonly SkillView[] = library.data?.skills ?? [];
+  const byName = new Map(all.map((s) => [s.name, s]));
+  const attachable = all.filter((s) => !pinned.some((p) => p.name === s.name));
+  const attach = (): void => {
+    const skill = byName.get(choice);
+    if (skill === undefined) return;
+    onChange([...pinned, { name: skill.name, version: skill.latest.version }]);
+    setChoice('');
+  };
+  return (
+    <section className="stack" aria-label="Skills" style={{ gap: 'var(--s3)' }}>
+      <div>
+        <h2 className="section__title">Skills</h2>
+        <p className="muted" style={{ margin: 0, fontSize: 'var(--fs-sm)' }}>
+          Every run of this role gets these skills at the version shown. A step in a workflow file can add its own.
+        </p>
+      </div>
+      {pinned.length === 0 ? (
+        <p className="dim" style={{ margin: 0, fontSize: 'var(--fs-sm)' }}>
+          No skills attached. Import skills on the <Link href="/skills">Skills</Link> screen, then attach them here.
+        </p>
+      ) : (
+        <div className="list">
+          {pinned.map((pin) => {
+            const skill = byName.get(pin.name);
+            const newest = skill?.latest.version ?? pin.version;
+            return (
+              <div key={pin.name} className="list__row" aria-label={`Pinned: ${pin.name}`}>
+                <Icon name="book" size={14} className="dim" />
+                <div className="list__main">
+                  <div className="list__title">{pin.name} v{pin.version}</div>
+                  <div className="list__subtitle dim">{skill === undefined ? 'Not in the library any more: runs of this role will stop and ask you.' : skill.description || 'No description'}</div>
+                </div>
+                <div className="list__aside">
+                  {newest > pin.version ? (
+                    <button type="button" className="btn btn--ghost" onClick={() => onChange(pinned.map((p) => (p.name === pin.name ? { name: p.name, version: newest } : p)))}>
+                      Use v{newest}
+                    </button>
+                  ) : null}
+                  <button type="button" className="btn btn--ghost" onClick={() => onChange(pinned.filter((p) => p.name !== pin.name))}>Remove</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {attachable.length > 0 ? (
+        <div className="row" style={{ gap: 'var(--s2)' }}>
+          <select className="select" aria-label="Attach a skill" value={choice} onChange={(event) => setChoice(event.target.value)} style={{ maxWidth: 320 }}>
+            <option value="">Choose a skill…</option>
+            {attachable.map((s) => <option key={s.id} value={s.name}>{s.name} (v{s.latest.version})</option>)}
+          </select>
+          <button type="button" className="btn" disabled={choice === ''} onClick={attach}>Attach</button>
+        </div>
+      ) : null}
+    </section>
   );
 }

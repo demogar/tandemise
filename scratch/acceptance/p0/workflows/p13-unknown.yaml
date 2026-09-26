@@ -1,0 +1,10 @@
+name: P13 unknown skill
+description: A step that pins a skill the library does not have; planning refuses it.
+steps:
+  - key: implement
+    title: Implement
+    role: development
+    objective: Build the hello page.
+    outputs: [ChangeSet]
+    skills: [no-such-skill@1]
+    gate: artifact.ChangeSet.exists

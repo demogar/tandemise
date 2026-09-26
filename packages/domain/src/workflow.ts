@@ -5,6 +5,7 @@ import type { IsolationMode } from './entities/task.js';
 import { Err, Ok, type Result } from '@tandemise/shared';
 import type { MissionPlan, PlannedTask } from './plan.js';
 import { MAX_LADDER, MAX_MODEL_NAME, normalizeModelPolicy } from './entities/models.js';
+import { parseSkillRef } from './entities/skill.js';
 
 /**
  * A workflow someone wrote, as opposed to one a model proposed.
@@ -85,6 +86,13 @@ const workflowStep = z.object({
    * different runtime or model. Adds `review.independent` to the gate.
    */
   independentOf: z.string().trim().min(1).optional(),
+  /**
+   * Skills this step's runs get (P13): `name`, `name@2` or `name@latest`.
+   * Resolved to a concrete version when the task is created.
+   */
+  skills: z.array(z.string().trim().min(1).refine((ref) => parseSkillRef(ref) !== null, {
+    message: 'a skill is written as name, name@<version> or name@latest',
+  })).max(20).optional(),
 });
 
 const workflowInput = z.object({
@@ -335,5 +343,8 @@ function toPlannedTask(
       ...(step.escalate === undefined ? {} : { escalate: step.escalate }),
       ...(step.independentOf === undefined ? {} : { independentOf: step.independentOf }),
     }),
+    ...(step.skills === undefined || step.skills.length === 0
+      ? {}
+      : { skillRefs: step.skills.map((ref) => parseSkillRef(ref)!) }),
   };
 }

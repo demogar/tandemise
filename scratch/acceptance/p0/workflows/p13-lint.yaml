@@ -1,0 +1,18 @@
+name: P13 lint
+description: Implement, then a check that pins the lint rules at version 1.
+steps:
+  - key: implement
+    title: Implement
+    role: development
+    objective: Build the hello page.
+    outputs: [ChangeSet]
+    gate: artifact.ChangeSet.exists
+  - key: check_lint
+    title: Check lint
+    role: review
+    dependsOn: [implement]
+    objective: Check the change against the lint rules. SCRIPTED_ECHO_SKILLS
+    inputs: [ChangeSet]
+    outputs: [ReviewReport]
+    skills: [lint-rules@1]
+    gate: artifact.ReviewReport.exists && skills.missing == 0

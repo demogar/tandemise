@@ -61,6 +61,7 @@ export interface TandemiseServices {
   readonly routines: import('./services/routine-service.js').RoutineService;
   /** Desktop notifications from the Inbox (P16). */
   readonly notifications: import('./services/notification-service.js').NotificationService;
+  readonly skills: import('./services/skill-service.js').SkillService;
 }
 
 /** Making a rough request ready to plan (P6). Every write is refused once the mission has left DRAFT. */

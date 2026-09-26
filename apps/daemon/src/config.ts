@@ -1,5 +1,7 @@
 import { readFileSync } from 'node:fs';
-import { createPaths, defaultRoot, type LogLevel, type TandemisePaths } from '@tandemise/shared';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+import { createPaths, defaultRoot, expandPath, type LogLevel, type TandemisePaths } from '@tandemise/shared';
 
 /**
  * Daemon configuration, resolved once at startup.
@@ -32,6 +34,12 @@ export interface DaemonConfig {
    * reaches a routine's next run without waiting. Null (unset) in normal use.
    */
   readonly clockOffsetMs: number | null;
+  /**
+   * Where "Your Claude skills" looks (P13): ~/.claude/skills, unless
+   * TANDEMISE_SKILLS_DISCOVER_DIR says otherwise - tests point it at a
+   * fixture folder so they never read the real home.
+   */
+  readonly skillsDiscoverRoot: string;
 }
 
 export function loadConfig(overrides: Partial<DaemonConfig> = {}): DaemonConfig {
@@ -47,6 +55,8 @@ export function loadConfig(overrides: Partial<DaemonConfig> = {}): DaemonConfig 
     tickIntervalMs: overrides.tickIntervalMs ?? Number(process.env.TANDEMISE_TICK_MS ?? 1500),
     quietMs: overrides.quietMs ?? Number(process.env.TANDEMISE_QUIET_MS ?? 600_000),
     clockOffsetMs: overrides.clockOffsetMs !== undefined ? overrides.clockOffsetMs : clockOffsetFromEnv(),
+    skillsDiscoverRoot: overrides.skillsDiscoverRoot
+      ?? (process.env.TANDEMISE_SKILLS_DISCOVER_DIR?.trim() ? expandPath(process.env.TANDEMISE_SKILLS_DISCOVER_DIR.trim()) : join(homedir(), '.claude', 'skills')),
   };
 }
 

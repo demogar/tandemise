@@ -99,6 +99,18 @@ export const GATE_FACT_VOCABULARY: readonly FactDefinition[] = [
     example: 'artifact.ReviewReport.exists && review.independent',
   },
   {
+    name: 'skills.loaded',
+    type: 'number',
+    description: "How many pinned skills this step's newest run received, as a folder or in its prompt (P13). 0 before the step has run or when it pins none.",
+    example: 'skills.loaded >= 1',
+  },
+  {
+    name: 'skills.missing',
+    type: 'number',
+    description: "How many of this step's pinned skills its newest run did not receive at the pinned version and hash (P13). A run never starts with a pinned skill's content missing, so this reads 0 after a normal run.",
+    example: 'artifact.ChangeSet.exists && skills.missing == 0',
+  },
+  {
     name: 'qa.acceptance_criteria_coverage',
     type: 'number',
     description: 'Percentage (0-100) of the mission\'s criteria QA verified as PASS. A criterion QA skipped or never reported counts as not verified. Without a Done-when ledger, the share of QA\'s own results that passed.',
@@ -455,6 +467,13 @@ export class GateFactBuilder {
   /** P12: whether the step's run differs in runtime or model from the run it must be independent of. */
   withIndependence(independent: boolean): this {
     this.#facts['review.independent'] = independent;
+    return this;
+  }
+
+  /** P13: how many pinned skills the step's newest run received, and how many it did not. */
+  withSkills(input: { readonly loaded: number; readonly missing: number }): this {
+    this.#facts['skills.loaded'] = input.loaded;
+    this.#facts['skills.missing'] = input.missing;
     return this;
   }
 

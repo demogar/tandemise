@@ -32,6 +32,7 @@ import { mcpIntegrationModule } from '@tandemise/integration-mcp';
 import { browserIntegrationModule } from '@tandemise/browser';
 import { createApplicationModule, createServices, SCHEDULER, type TandemiseServices,
   WORKFLOW_SOURCE,
+  SKILL_FILES,
 } from '@tandemise/application';
 import * as applicationTokens from '@tandemise/application';
 
@@ -43,6 +44,7 @@ import { createSettingsStore, createSystemEnvironment, processLiveness } from '.
 import { createBackgroundProcessLauncher, createToolCommandExecutor } from './tool-exec.js';
 import { oauthCallbacks } from './oauth-callback.js';
 import { FileWorkflowSource } from './workflow-source.js';
+import { DaemonSkillFiles } from './skill-files.js';
 
 export const CLOCK = token<Clock>('Clock');
 export const LOGGER = token<Logger>('Logger');
@@ -138,6 +140,11 @@ export function bootstrap(config: DaemonConfig, options: { readonly localPersonN
   // nothing, so a container without a filesystem still resolves.
   container.rebind(WORKFLOW_SOURCE, (r) =>
     new FileWorkflowSource(r.resolve(LOGGER).child({ component: 'workflows' })), { source: 'bootstrap' });
+
+  // Skills (P13) are the person's folders and git repositories, read by the
+  // daemon; the application only ever sees bytes and hashes.
+  container.rebind(SKILL_FILES, (r) =>
+    new DaemonSkillFiles(config.paths.skills, config.skillsDiscoverRoot, r.resolve(LOGGER).child({ component: 'skills' })), { source: 'bootstrap' });
 
   const services = createServices(container);
 

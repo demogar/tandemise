@@ -1,5 +1,5 @@
-import type { RoleModels, RoleRepositoryPort, RoleTemplate } from '@tandemise/domain';
-import { hasRoleModels, normalizeRoleModels } from '@tandemise/domain';
+import type { RoleModels, RoleRepositoryPort, RoleSkill, RoleTemplate } from '@tandemise/domain';
+import { hasRoleModels, normalizeRoleModels, normalizeRoleSkills } from '@tandemise/domain';
 import type { UpsertRoleRequest } from '@tandemise/api-contract';
 import type { Clock, WorkspaceId } from '@tandemise/shared';
 import { TandemiseError, asId } from '@tandemise/shared';
@@ -25,6 +25,8 @@ export class RoleServiceImpl implements RoleService {
   constructor(
     private readonly roles: RoleRepositoryPort,
     private readonly clock: Clock,
+    /** Refuses a pin to a skill or version the project's library lacks (P13). Optional for older harnesses. */
+    private readonly validateSkills?: (workspaceId: WorkspaceId, skills: readonly RoleSkill[]) => void,
   ) {}
 
   list(workspaceId?: string): readonly RoleTemplate[] {
@@ -51,6 +53,9 @@ export class RoleServiceImpl implements RoleService {
       models: request.models === undefined
         ? existing?.models ?? null
         : request.models === null ? null : nullIfEmpty(normalizeRoleModels(request.models)),
+      // P13: omitted keeps them (a client from before P13 must not wipe them);
+      // an empty list clears them. Every pin must be in the library.
+      skills: this.#skills(workspaceId, request.skills, existing),
       // An edited built-in keeps the flag: the UI shows it as a customized
       // built-in, and `remove` restores the shipped definition.
       builtIn: BUILT_IN_ROLE_MAP.has(request.id),
@@ -60,6 +65,14 @@ export class RoleServiceImpl implements RoleService {
       updatedAt: now,
     };
     return this.roles.upsert(role);
+  }
+
+  #skills(workspaceId: WorkspaceId, requested: UpsertRoleRequest['skills'], existing: RoleTemplate | undefined): readonly RoleSkill[] | null {
+    if (requested === undefined) return existing?.skills ?? null;
+    if (requested === null) return null;
+    const skills = normalizeRoleSkills(requested);
+    this.validateSkills?.(workspaceId, skills);
+    return skills.length === 0 ? null : skills;
   }
 
   /**

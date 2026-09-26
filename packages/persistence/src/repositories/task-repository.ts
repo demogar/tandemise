@@ -1,7 +1,7 @@
 import { TandemiseError, asId, type Clock, type MissionId, type TaskId } from '@tandemise/shared';
 import type {
   ApprovalPolicy, ArtifactRequirement, ArtifactType, Capability, ExecutionPolicy, MissionTask,
-  ModelPolicy, RetryPolicy, TaskRepositoryPort, TaskStatus,
+  ModelPolicy, RetryPolicy, SkillPin, TaskRepositoryPort, TaskStatus,
 } from '@tandemise/domain';
 import { DEFAULT_RETRY_POLICY, NO_APPROVAL } from '@tandemise/domain';
 import type { ResolvedStaffingSnapshot, StaffingPatch, TaskExecutor, WaitPolicy } from '@tandemise/domain';
@@ -32,6 +32,7 @@ interface TaskRow {
   wait_policy: string | null;
   retry_feedback: string | null;
   model_policy: string | null;
+  skills: string | null;
   staffing: string | null;
   staffing_override: string | null;
   assignee_id: string | null;
@@ -81,6 +82,7 @@ function toRow(t: MissionTask): TaskRow {
     wait_policy: t.waitPolicy === null || t.waitPolicy === undefined ? null : toJson(t.waitPolicy),
     retry_feedback: t.retryFeedback ?? null,
     model_policy: toJsonOrNull(t.modelPolicy ?? null),
+    skills: toJsonOrNull(t.skills ?? null),
     staffing: toJsonOrNull(t.staffing),
     staffing_override: toJsonOrNull(t.staffingOverride),
     assignee_id: t.assigneeId ?? null,
@@ -122,6 +124,7 @@ function fromRow(r: TaskRow, dependsOn: readonly string[]): MissionTask {
     waitPolicy: r.wait_policy === null ? null : parseJson<WaitPolicy | null>(r.wait_policy, null),
     retryFeedback: r.retry_feedback,
     modelPolicy: parseJsonOrNull<ModelPolicy>(r.model_policy),
+    skills: parseJsonOrNull<SkillPin[]>(r.skills),
     staffing: parseJsonOrNull<ResolvedStaffingSnapshot>(r.staffing),
     staffingOverride: parseJsonOrNull<StaffingPatch>(r.staffing_override),
     assigneeId: r.assignee_id,
@@ -138,7 +141,7 @@ function fromRow(r: TaskRow, dependsOn: readonly string[]): MissionTask {
 
 const COLUMNS = `id, mission_id, "key", title, objective, role_id, required_capabilities,
   input_artifacts, expected_outputs, execution_policy, approval_policy, retry_policy,
-  completion_gate, status, status_reason, attempts, remediates_task_id, repository_id, executor, wait_policy, retry_feedback, model_policy,
+  completion_gate, status, status_reason, attempts, remediates_task_id, repository_id, executor, wait_policy, retry_feedback, model_policy, skills,
   staffing, staffing_override, assignee_id, responsible_id, needs_attention, round, order_hint,
   created_at, updated_at, started_at, finished_at`;
 
@@ -163,7 +166,7 @@ export class SqliteTaskRepository implements TaskRepositoryPort {
       `INSERT INTO mission_tasks (${COLUMNS}) VALUES (
         :id, :mission_id, :key, :title, :objective, :role_id, :required_capabilities,
         :input_artifacts, :expected_outputs, :execution_policy, :approval_policy, :retry_policy,
-        :completion_gate, :status, :status_reason, :attempts, :remediates_task_id, :repository_id, :executor, :wait_policy, :retry_feedback, :model_policy,
+        :completion_gate, :status, :status_reason, :attempts, :remediates_task_id, :repository_id, :executor, :wait_policy, :retry_feedback, :model_policy, :skills,
         :staffing, :staffing_override, :assignee_id, :responsible_id, :needs_attention, :round, :order_hint,
         :created_at, :updated_at, :started_at, :finished_at)`,
     );
@@ -175,7 +178,7 @@ export class SqliteTaskRepository implements TaskRepositoryPort {
          approval_policy = :approval_policy, retry_policy = :retry_policy,
          completion_gate = :completion_gate, status = :status, status_reason = :status_reason,
          attempts = :attempts, remediates_task_id = :remediates_task_id,
-         repository_id = :repository_id, executor = :executor, wait_policy = :wait_policy, retry_feedback = :retry_feedback, model_policy = :model_policy,
+         repository_id = :repository_id, executor = :executor, wait_policy = :wait_policy, retry_feedback = :retry_feedback, model_policy = :model_policy, skills = :skills,
          staffing = :staffing, staffing_override = :staffing_override, assignee_id = :assignee_id,
          responsible_id = :responsible_id, needs_attention = :needs_attention,
          round = :round, order_hint = :order_hint,
