@@ -97,7 +97,10 @@ export function bootstrap(config: DaemonConfig, options: { readonly localPersonN
     mcpIntegrationModule,
     browserIntegrationModule,
     // The name reaches a fresh database's first person; this layer may run git, the application may not.
-    createApplicationModule(options.localPersonName === undefined ? {} : { localPersonName: options.localPersonName }),
+    createApplicationModule({
+      ...(options.localPersonName === undefined ? {} : { localPersonName: options.localPersonName }),
+      quietAfterMs: config.quietMs,
+    }),
   );
 
   aliasPorts(container, log);

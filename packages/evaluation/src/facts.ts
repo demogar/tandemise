@@ -207,6 +207,18 @@ export const GATE_FACT_VOCABULARY: readonly FactDefinition[] = [
     example: 'workspace.month_limit_percent < 80',
   },
   {
+    name: 'mission.stalled',
+    type: 'number',
+    description: 'Whether the mission is stalled: 1 when nothing moves it and nothing asks the person (it has a Stalled row in the Inbox), else 0.',
+    example: 'mission.stalled == 0',
+  },
+  {
+    name: 'run.silent_minutes',
+    type: 'number',
+    description: 'Minutes since the step\'s live run last wrote an event. Not measured when the step has no live run.',
+    example: 'run.silent_minutes < 10',
+  },
+  {
     name: 'qa.blocking_defects',
     type: 'number',
     description: 'Count of QA defects that block release.',

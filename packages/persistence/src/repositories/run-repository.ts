@@ -25,6 +25,8 @@ interface RunRow {
   started_at: string;
   finished_at: string | null;
   heartbeat_at: string | null;
+  last_event_at: string | null;
+  watch_snoozed_until: string | null;
   agent_member_id: string | null;
   round: number | null;
   purpose: string | null;
@@ -50,6 +52,8 @@ function toRow(r: Run): RunRow {
     started_at: r.startedAt,
     finished_at: r.finishedAt,
     heartbeat_at: r.heartbeatAt,
+    last_event_at: r.lastEventAt ?? r.startedAt,
+    watch_snoozed_until: r.watchSnoozedUntil ?? null,
     agent_member_id: r.agentMemberId ?? null,
     round: r.round ?? null,
     purpose: r.purpose ?? null,
@@ -76,6 +80,8 @@ function fromRow(r: RunRow): Run {
     startedAt: r.started_at,
     finishedAt: r.finished_at,
     heartbeatAt: r.heartbeat_at,
+    lastEventAt: r.last_event_at ?? r.started_at,
+    watchSnoozedUntil: r.watch_snoozed_until,
     agentMemberId: r.agent_member_id,
     round: r.round,
     purpose: r.purpose as RunPurpose | null,
@@ -84,7 +90,7 @@ function fromRow(r: RunRow): Run {
 
 const COLUMNS = `id, mission_id, task_id, assignment_id, attempt, status, role_id,
   runtime_profile_id, execution_target_id, external_session_id, pid, exit_code,
-  error_code, error_message, usage, started_at, finished_at, heartbeat_at, agent_member_id,
+  error_code, error_message, usage, started_at, finished_at, heartbeat_at, last_event_at, watch_snoozed_until, agent_member_id,
   round, purpose`;
 
 interface UsageParams {
@@ -111,6 +117,8 @@ export class SqliteRunRepository implements RunRepositoryPort {
   readonly #setUsage;
   readonly #appendUsage;
   readonly #heartbeat;
+  readonly #activity;
+  readonly #snooze;
 
   constructor(db: TandemiseDatabase, clock: Clock) {
     this.#db = db;
@@ -119,7 +127,7 @@ export class SqliteRunRepository implements RunRepositoryPort {
       `INSERT INTO runs (${COLUMNS}) VALUES (
         :id, :mission_id, :task_id, :assignment_id, :attempt, :status, :role_id,
         :runtime_profile_id, :execution_target_id, :external_session_id, :pid, :exit_code,
-        :error_code, :error_message, :usage, :started_at, :finished_at, :heartbeat_at, :agent_member_id,
+        :error_code, :error_message, :usage, :started_at, :finished_at, :heartbeat_at, :last_event_at, :watch_snoozed_until, :agent_member_id,
         :round, :purpose)`,
     );
     this.#update = db.handle.prepare<RunRow>(
@@ -129,7 +137,8 @@ export class SqliteRunRepository implements RunRepositoryPort {
          execution_target_id = :execution_target_id, external_session_id = :external_session_id,
          pid = :pid, exit_code = :exit_code, error_code = :error_code,
          error_message = :error_message, usage = :usage, finished_at = :finished_at,
-         heartbeat_at = :heartbeat_at, agent_member_id = :agent_member_id,
+         heartbeat_at = :heartbeat_at, last_event_at = :last_event_at,
+         watch_snoozed_until = :watch_snoozed_until, agent_member_id = :agent_member_id,
          round = :round, purpose = :purpose
        WHERE id = :id`,
     );
@@ -160,6 +169,13 @@ export class SqliteRunRepository implements RunRepositoryPort {
     );
     this.#heartbeat = db.handle.prepare<{ id: string; at: string }>(
       'UPDATE runs SET heartbeat_at = :at WHERE id = :id',
+    );
+    // Any output ends a "keep waiting": the run spoke, so the next silence is measured afresh.
+    this.#activity = db.handle.prepare<{ id: string; at: string }>(
+      'UPDATE runs SET last_event_at = :at, watch_snoozed_until = NULL WHERE id = :id',
+    );
+    this.#snooze = db.handle.prepare<{ id: string; until: string }>(
+      'UPDATE runs SET watch_snoozed_until = :until WHERE id = :id',
     );
   }
 
@@ -222,5 +238,13 @@ export class SqliteRunRepository implements RunRepositoryPort {
 
   heartbeat(id: RunId, at: Timestamp): void {
     this.#heartbeat.run({ id, at });
+  }
+
+  markActivity(id: RunId, at: Timestamp): void {
+    this.#activity.run({ id, at });
+  }
+
+  snooze(id: RunId, until: Timestamp): void {
+    if (this.#snooze.run({ id, until }).changes === 0) throw TandemiseError.notFound('Run', id);
   }
 }

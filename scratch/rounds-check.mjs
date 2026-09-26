@@ -63,6 +63,8 @@ section('persistence: migration 010');
   // Up to 10 only: later migrations belong to later phases and are proven by their own checks.
   const result = P.migrate(db, undefined, P.MIGRATIONS.filter((m) => m.version <= 10));
   check('a version 9 database migrates to 10', eq(result.applied, [10]) && P.schemaVersion(db) === 10, result);
+  // The repositories below read today's columns (runs.last_event_at since 015), so the rest is applied before they are built.
+  P.migrate(db, undefined, P.MIGRATIONS);
   const tasks = new P.SqliteTaskRepository(db, systemClock);
   const runs = new P.SqliteRunRepository(db, systemClock);
   const artifacts = new P.SqliteArtifactRepository(db);

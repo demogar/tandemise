@@ -5,7 +5,8 @@ import { Icon } from '../components/Icon.js';
 import { Empty, ErrorState, SectionHead, SkeletonCards, SkeletonList, StatusBadge, StatusDot } from '../components/primitives.js';
 import { ApprovalPreviewCard } from './approvals/ApprovalCard.js';
 import { useHome, useRoles } from '../lib/queries.js';
-import { useInbox, type InboxItem } from '../lib/inbox.js';
+import { missionOfItem, useInbox, type InboxItem } from '../lib/inbox.js';
+import { QuietRow, StalledRow } from './inbox/LivenessRows.js';
 import { buildTimeline } from '../lib/events.js';
 import { useActors } from '../lib/team.js';
 import { healthTone, missionTone, pluralize, relativeTime } from '../lib/format.js';
@@ -20,7 +21,10 @@ export function Home(): JSX.Element {
 
   const roleNames = new Map((roles.data ?? []).map((role) => [role.id, role.name]));
   const actors = useActors();
-  const data = home.data;
+  const raw = home.data;
+  // A blocked mission already in "Needs you now" (its card, its step, its Stalled row) is not shown twice (P9).
+  const listed = new Set(needsMe.map(missionOfItem));
+  const data = raw === undefined ? undefined : { ...raw, blockedMissions: raw.blockedMissions.filter((s) => !listed.has(s.mission.id)) };
 
   return (
     <>
@@ -83,6 +87,10 @@ export function Home(): JSX.Element {
                     <ApprovalPreviewCard key={item.id} view={item.view} />
                   ) : item.kind === 'task' ? (
                     <HumanTaskRow key={item.id} item={item} />
+                  ) : item.kind === 'stalled' ? (
+                    <StalledRow key={item.id} stalled={item.stalled} bordered />
+                  ) : item.kind === 'quiet' ? (
+                    <QuietRow key={item.id} run={item.run} bordered />
                   ) : (
                     <RefinementRow key={item.id} item={item} />
                   ),

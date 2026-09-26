@@ -16,6 +16,7 @@ import type { ProjectionService, RuntimeService } from '../services.js';
 import type { GateService } from '../engine/gates.js';
 import type { ReadinessService } from './readiness.js';
 import type { LimitService } from './limit-service.js';
+import type { LivenessService } from './liveness-service.js';
 import type { MetricsService } from '../engine/metrics.js';
 import { asPlannedTasks, validateTaskGraph } from '../support/dag.js';
 import { toApprovalView, toApprovalViews } from '../support/approval-view.js';
@@ -70,6 +71,8 @@ export interface ProjectionDeps {
   readonly readiness?: ReadinessService;
   /** Limits and usage (P8); optional for harnesses built before it. */
   readonly limits?: Pick<LimitService, 'missionView' | 'alerts'>;
+  /** Stalled missions and quiet runs (P9); optional for harnesses built before it. */
+  readonly liveness?: Pick<LivenessService, 'stalled' | 'silentRuns' | 'watchOf'>;
 }
 
 /**
@@ -158,6 +161,10 @@ export class ProjectionServiceImpl implements ProjectionService {
       approvals: toApprovalViews(named, this.deps.approvals.list({ workspaceId, statuses: ['PENDING'] })),
       tasks,
       refinements,
+      // Derived here, on the read the nav badge makes: a mission that can move
+      // again drops out with no state to clear (P9).
+      stalled: this.deps.liveness?.stalled(workspaceId) ?? [],
+      silentRuns: this.deps.liveness?.silentRuns(workspaceId) ?? [],
     };
   }
 
@@ -481,6 +488,7 @@ export class ProjectionServiceImpl implements ProjectionService {
         round: task.round ?? 1,
         feedback: (notesByTask.get(task.id) ?? []).map((i) => toFeedbackView(this.deps, i)),
         attention: task.needsAttention === true ? flags.get(task.id) ?? { kind: 'changes_requested', upstream: null, note: '' } : null,
+        watch: this.deps.liveness?.watchOf(task, latestRun) ?? null,
       };
     });
   }

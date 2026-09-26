@@ -17,6 +17,8 @@ export interface DaemonConfig {
   readonly offline: boolean;
   /** Scheduler tick interval. Short enough to feel live, long enough to idle. */
   readonly tickIntervalMs: number;
+  /** A run is quiet after this long without an agent event (P9); silent later. Never stops it. */
+  readonly quietMs: number;
 }
 
 export function loadConfig(overrides: Partial<DaemonConfig> = {}): DaemonConfig {
@@ -29,5 +31,6 @@ export function loadConfig(overrides: Partial<DaemonConfig> = {}): DaemonConfig 
     version: overrides.version ?? '0.4.0', // x-release-please-version
     offline: overrides.offline ?? process.env.TANDEMISE_OFFLINE === '1',
     tickIntervalMs: overrides.tickIntervalMs ?? Number(process.env.TANDEMISE_TICK_MS ?? 1500),
+    quietMs: overrides.quietMs ?? Number(process.env.TANDEMISE_QUIET_MS ?? 600_000),
   };
 }

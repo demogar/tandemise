@@ -81,6 +81,8 @@ export { BacklogService, describePull } from './services/backlog-service.js';
 export type { BacklogDeps } from './services/backlog-service.js';
 export { LimitService } from './services/limit-service.js';
 export type { LimitDeps } from './services/limit-service.js';
+export { LivenessService } from './services/liveness-service.js';
+export type { LivenessDeps } from './services/liveness-service.js';
 export { RefinementServiceImpl } from './services/refinement-service.js';
 export type { RefinementDeps } from './services/refinement-service.js';
 export type { CriteriaServiceDeps } from './services/criteria-service.js';

@@ -9,11 +9,12 @@ import { Empty, ErrorState, Segmented, SkeletonList } from '../components/primit
 import { Modal } from '../components/Modal.js';
 import { ApprovalCard, pipelinePosition } from './approvals/ApprovalCard.js';
 import { TaskDetail } from './mission/TaskDetail.js';
-import { useInbox, type InboxItem } from '../lib/inbox.js';
+import { missionOfItem, useInbox, type InboxItem } from '../lib/inbox.js';
 import { useApprovals, useMission } from '../lib/queries.js';
 import { actorsLine, useActors, type Actors } from '../lib/team.js';
 import { pluralize, relativeTime, titleCase } from '../lib/format.js';
 import { REQUEST_CHANGES_OPTION, isLimitCard } from '../lib/domain.js';
+import { QuietRow, StalledRow } from './inbox/LivenessRows.js';
 
 type Filter = 'me' | 'everyone';
 
@@ -71,7 +72,7 @@ export function Inbox(): JSX.Element {
                 body={
                   filter === 'me' && others > 0
                     ? `${pluralize(others, 'request')} ${others === 1 ? 'is' : 'are'} waiting on someone else. Switch to Everyone to see ${others === 1 ? 'it' : 'them'}.`
-                    : 'Approvals, questions and tasks for a person land here, one line each.'
+                    : 'Approvals, questions, tasks for a person, stalled missions and quiet agents land here, one line each.'
                 }
               />
             </div>
@@ -86,9 +87,9 @@ export function Inbox(): JSX.Element {
                     onClick={() =>
                       item.kind === 'task'
                         ? setTask(item)
-                        : item.kind === 'refinement'
+                        : item.kind === 'refinement' || item.kind === 'stalled' || item.kind === 'quiet'
                           ? // Decided on the mission itself, where the proposals and questions are.
-                            navigate(`/missions/${item.refinement.missionId}`)
+                            navigate(`/missions/${missionOfItem(item)}`)
                           : setOpen(open === item.id ? null : item.id)
                     }
                   />
@@ -144,6 +145,9 @@ function OpenTask({ item, onClose }: { item: Extract<InboxItem, { kind: 'task' }
 
 function InboxRow({ item, actors, open, onClick }: { item: InboxItem; actors: Actors; open: boolean; onClick: () => void }): JSX.Element {
   if (item.kind === 'refinement') return <RefinementRow item={item} onClick={onClick} />;
+  // Each carries its own action and its own link to the mission (P9).
+  if (item.kind === 'stalled') return <StalledRow stalled={item.stalled} />;
+  if (item.kind === 'quiet') return <QuietRow run={item.run} />;
   const title = item.kind === 'approval' ? item.view.approval.title : item.task.title;
   const mission = item.kind === 'approval' ? item.view.missionTitle : item.task.missionTitle;
   const forRefs =

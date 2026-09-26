@@ -25,6 +25,7 @@ export * from './entities/criteria.js';
 export * from './entities/refinement.js';
 export * from './entities/backlog.js';
 export * from './entities/limits.js';
+export * from './entities/liveness.js';
 
 export * from './ports/repositories.js';
 export * from './ports/artifact-store.js';

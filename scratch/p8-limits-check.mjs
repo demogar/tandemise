@@ -171,7 +171,7 @@ try {
   section('migration 014');
   {
     const system = await api('GET', '/v1/system');
-    check('schema version is 14', system.body?.schemaVersion === 14, system.body?.schemaVersion);
+    check('schema version is at least 14', system.body?.schemaVersion >= 14, system.body?.schemaVersion);
     const cols = (t) => sql(`SELECT name, dflt_value, "notnull" AS nn FROM pragma_table_info('${t}')`);
     check('missions.limits exists and is nullable', cols('missions').some((c) => c.name === 'limits' && c.nn === 0));
     const ws = cols('workspaces');

@@ -360,6 +360,11 @@ export const retryTaskRequest = z.object({
    * may do - never beyond it.
    */
   addCapabilities: z.array(z.string().trim().min(1).max(100)).max(20).optional(),
+  /**
+   * Stop the step's live run first (P9 "Stop and retry"): a RUNNING or
+   * AWAITING_INPUT step is cancelled and queued again in one decision.
+   */
+  stopRun: z.boolean().optional(),
 });
 
 // ------------------------------------------------------------ feedback and rounds
