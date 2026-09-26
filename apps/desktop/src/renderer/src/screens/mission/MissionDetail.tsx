@@ -15,7 +15,7 @@ import { ArtifactsPane } from './ArtifactsPane.js';
 import { ChecksPane } from './ChecksPane.js';
 import { MetricsPane } from './MetricsPane.js';
 import { isApprovalForMember, isApprovalWaitingOnMember, isHumanTaskForMember, isPlanUnstarted, planStanding } from '@tandemise/api-contract/for-me';
-import { useApprovals, useDaemonMutation, useMission, useMissionRefinement, useMyMemberId } from '../../lib/queries.js';
+import { useApprovals, useDaemonMutation, useMission, useMissionRefinement, useMyMemberId, useRoutines } from '../../lib/queries.js';
 import { missionTone, pluralize } from '../../lib/format.js';
 import { describeError } from '../../lib/daemon.js';
 import { clearMissionNotice, useMissionNotice } from '../../lib/notices.js';
@@ -74,7 +74,12 @@ export function MissionDetail({ id, tab }: { id: string; tab: MissionTab }): JSX
       <PageHeader
         title={detail.mission.title}
         crumbs={[{ label: 'Missions', href: '/missions' }, { label: detail.mission.workflowPreset }]}
-        meta={<IdChip id={detail.mission.id} />}
+        meta={
+          <>
+            <IdChip id={detail.mission.id} />
+            <FromRoutine routineId={detail.mission.routineId ?? null} />
+          </>
+        }
         subtitle={detail.mission.goal}
         actions={
           <>
@@ -403,5 +408,18 @@ function LimitCardPanel({ approvalId }: { approvalId: string | null }): JSX.Elem
     <div style={{ margin: 'var(--s3) var(--s7) 0' }} aria-label="Limit reached">
       <ApprovalCard view={view} compact />
     </div>
+  );
+}
+
+/** "From routine: <name>" on a mission a routine added (P11); nothing for one a person created. */
+function FromRoutine({ routineId }: { routineId: string | null }): JSX.Element | null {
+  const routines = useRoutines();
+  if (routineId === null) return null;
+  const name = routines.data?.find((view) => view.routine.id === routineId)?.routine.name;
+  return (
+    <Link href="/missions/routines" className="chip chip--muted" title="Open the routine that added this mission">
+      <Icon name="clock" size={11} />
+      From routine: {name ?? 'a routine'}
+    </Link>
   );
 }

@@ -1,0 +1,55 @@
+{
+  "id": "H4",
+  "title": "Over 80% of the monthly limit, only urgent and high work is pulled",
+  "ok": true,
+  "checks": [
+    {
+      "label": "Repositories → Limits: \"40 / 48 agent min\" this month, over 80%",
+      "ok": true,
+      "observed": "Limits\nThis month (September 2026) so far\nAgent minutes this month\n40\nTokens this month\n12,000\nCost this month\nnot reported\nAgent minutes this month\n40 / 48 agent min\n\nOver 80%: work stops at 48 agent minutes.\n\nPer month, for the whole project\n\nCounts every mission's runs in the local calendar month. Over the warning level only urgent and high missions are pulled from the backlog; at 100% all work stops until you raise it.\n\nAgent minutes per month\nTime agents spend working, as each runtime reports it or as timed by Tandemise.\nTokens per month\nInput plus output tokens, where the runtime reports them.\nCost (USD) per month\nOnly where the runtime reports cost. Subscription runtimes do not, and then this limit cannot stop anything.\nWarn at (%) per month\nYou are told at this share of a limit; work stops at 100%.\nSave monthly limit\nPer mission, unless a mission sets its own\n\nEach mission stops at this limit and asks you whether to raise it.\n\nAgent minutes per mission\nTime agents spend working, as each runtime reports it or as timed by Tandemise.\nTokens per mission\nInput plus output tokens, where the runtime reports them.\nCost (USD) per mission\nOnly where the runtime reports cost. Subscription runtimes do not, and then this limit cannot stop anything.\nWarn at (%) per mission\nYou are told at this share of a limit; work stops at 100%.\nSave mission limit"
+    },
+    {
+      "label": "Home: \"Monthly limit at 8x% — only urgent and high work will be pulled. This project used … this month …\"",
+      "ok": true,
+      "observed": "Tandemise\nAcceptance\n1 repository\nHome\nMissions\nInbox\nArtifacts\nACCEPTANCE\nRepositories\nTeam\nRuntimes\nIntegrations\nAPP\nSettings\nDaemon connected · 54215\nNothing needs you\nAcceptance workspace\nStatus report\nNew mission\nNeeds you\n0\nNothing waits on you\nWorking on\n0\n2 queued · no limit\nCriteria verified\nNone yet\nNo mission in progress has criteria\nThis month\n83%\n40 / 48 agent min this month\nStalled\n0\nEverything can move\nMonthly limit at 83% — only urgent and high work will be pulled. This project used 40 of 48 agent minutes this month; work stops at 48 agent minutes.\nSee limit\nNeeds you now\nall clear\nNothing is waiting on you\n\nEvery mission is either running on its own or finished. New approval"
+    },
+    {
+      "label": "the High mission is pulled",
+      "ok": true,
+      "observed": "AWAITING_PLAN_APPROVAL"
+    },
+    {
+      "label": "the Normal mission waits, and its row says \"Held: this project is over 80% of its monthly limit\"",
+      "ok": true,
+      "observed": {
+        "title": "H4 normal: tidy the footer muiir1kg",
+        "priority": "Normal",
+        "chip": "Normal",
+        "readiness": "Ready",
+        "queue": "Queued · 1/1",
+        "subtitle": "Held: this project is over 80% of its monthly limit (40 of 48 agent minutes). Only urgent and high missions are pulled.",
+        "selected": true
+      }
+    },
+    {
+      "label": "with the slot free, Normal is still held (setup shortcut: High cancelled via API)",
+      "ok": true
+    },
+    {
+      "label": "proof (API): the backlog item carries the held reason",
+      "ok": true,
+      "observed": [
+        "Held: this project is over 80% of its monthly limit (40 of 48 agent minutes). Only urgent and high missions are pulled."
+      ]
+    }
+  ],
+  "notes": [
+    "this month so far: 40 agent minutes; monthly limit set to 48",
+    "teardown: limit off, monthly limit removed"
+  ],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p11-routines/scratch/acceptance/p8/evidence/H4-project-limits.png",
+    "/Users/demogar/projects/tandemise/tandemise-p11-routines/scratch/acceptance/p8/evidence/H4-home-month-warning.png",
+    "/Users/demogar/projects/tandemise/tandemise-p11-routines/scratch/acceptance/p8/evidence/H4-normal-held.png"
+  ]
+}

@@ -5,7 +5,7 @@ import type {
   RunEventRecord, RuntimeHealth, RuntimeProfile, RuntimeDiscovery, RuntimeSettingField, Workspace,
   MissionPlan, PlanValidationIssue, GateOutcome, AccessLevel, Member, Person, Staffing,
   ArtifactHandoff, TaskStatus, FeedbackStatus, MissionPriority, Limit, LimitStatus,
-  MissionStatus, StalledAction, WatchLevel,
+  MissionStatus, StalledAction, WatchLevel, Routine, RoutineOutcome, RoutineTrigger,
 } from '@tandemise/domain';
 
 /**
@@ -648,6 +648,39 @@ export interface BacklogView {
   /** What happens next, in one sentence. */
   readonly hint: string;
   readonly items: readonly BacklogItemView[];
+}
+
+/** One run of a routine, as its row lists it (P11). */
+export interface RoutineRunView {
+  readonly id: string;
+  readonly trigger: RoutineTrigger;
+  readonly ranAt: string;
+  readonly outcome: RoutineOutcome;
+  /** "Created “…”", "Skipped: previous run still active", "Missed 2 runs …". */
+  readonly label: string;
+  readonly missionId: string | null;
+  readonly artifactId: string | null;
+}
+
+/** A routine with the words the window shows (P11); labels are the daemon's, from its clock. */
+export interface RoutineView {
+  readonly routine: Routine;
+  /** "Every Monday at 09:00". */
+  readonly scheduleLabel: string;
+  /** "Next: Mon 09:00", or "Paused". */
+  readonly nextRunLabel: string;
+  /** The last outcome in words; null before the first run. */
+  readonly lastLabel: string | null;
+  /** The routine's unfinished mission, if any: why a run would be skipped. */
+  readonly activeMissionId: string | null;
+  /** The five newest runs, newest first. */
+  readonly recent: readonly RoutineRunView[];
+}
+
+/** The test clock (only with TANDEMISE_CLOCK_OFFSET_MS). */
+export interface TestClockView {
+  readonly now: string;
+  readonly offsetMs: number;
 }
 
 export interface WorkspaceView {

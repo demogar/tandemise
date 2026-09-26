@@ -1,5 +1,5 @@
 import { Container, LifecycleHost, compose, token, type Token } from '@tandemise/kernel';
-import { createLogger, systemClock, type Clock, type Logger } from '@tandemise/shared';
+import { adjustableClock, createLogger, systemClock, type AdjustableClock, type Clock, type Logger } from '@tandemise/shared';
 import type { EventBusPort, ProjectionBusPort } from '@tandemise/domain';
 
 // The composition root is the single place in Tandemise that is allowed to name
@@ -56,6 +56,8 @@ export interface Bootstrapped {
   readonly lifecycle: LifecycleHost;
   readonly events: EventBusPort;
   readonly projections: ProjectionBusPort;
+  /** The test clock, only when TANDEMISE_CLOCK_OFFSET_MS is set; null otherwise. */
+  readonly testClock: AdjustableClock | null;
   readonly log: Logger;
 }
 
@@ -75,13 +77,16 @@ export function bootstrap(config: DaemonConfig, options: { readonly localPersonN
 
   container.bindValue(CONFIG, config, { source: 'bootstrap' });
   container.bindValue(LOGGER, log, { source: 'bootstrap' });
-  container.bindValue(CLOCK, systemClock, { source: 'bootstrap' });
+  // One clock for everything that reads time; shifted only under the test knob.
+  const testClock = config.clockOffsetMs === null ? null : adjustableClock(config.clockOffsetMs);
+  const clock: Clock = testClock ?? systemClock;
+  container.bindValue(CLOCK, clock, { source: 'bootstrap' });
   container.bindValue(EVENT_BUS, events, { source: 'bootstrap' });
   container.bindValue(PROJECTION_BUS, projections, { source: 'bootstrap' });
 
   compose(
     container,
-    persistenceModule({ path: config.paths.db, logger: log.child({ component: 'persistence' }) }),
+    persistenceModule({ path: config.paths.db, logger: log.child({ component: 'persistence' }), clock }),
     createArtifactsModule({ paths: config.paths }),
     policyModule,
     contextModule,
@@ -144,7 +149,7 @@ export function bootstrap(config: DaemonConfig, options: { readonly localPersonN
   // database and process supervisor are disposed.
   lifecycle.add(container.resolve(SCHEDULER));
 
-  return { container, services, lifecycle, events, projections, log };
+  return { container, services, lifecycle, events, projections, log, testClock };
 }
 
 /**

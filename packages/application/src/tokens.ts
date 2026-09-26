@@ -3,7 +3,7 @@ import type {
   ApprovalRepositoryPort, ArtifactRepositoryPort, ArtifactStorePort, AssignmentRepositoryPort,
   CheckpointRepositoryPort, DecisionRepositoryPort, EvaluationRepositoryPort, EventBusPort,
   EventRepositoryPort, ExecutionTargetRepositoryPort, FeedbackRepositoryPort, IntegrationRepositoryPort,
-  LeaseRepositoryPort, MemberRepositoryPort, MissionCriteriaRepositoryPort, MissionQuestionRepositoryPort, MissionRepositoryPort, LimitRepositoryPort, PersonRepositoryPort, ProjectionBusPort, RepoRepositoryPort,
+  LeaseRepositoryPort, MemberRepositoryPort, MissionCriteriaRepositoryPort, MissionQuestionRepositoryPort, MissionRepositoryPort, LimitRepositoryPort, RoutineRepositoryPort, PersonRepositoryPort, ProjectionBusPort, RepoRepositoryPort,
   RoleRepositoryPort, RunInputRepositoryPort, RunRepositoryPort, RuntimeProfileRepositoryPort, SecretStorePort,
   TaskRepositoryPort, UnitOfWork, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
@@ -20,6 +20,7 @@ import type { BacklogService } from './services/backlog-service.js';
 import type { LimitService } from './services/limit-service.js';
 import type { LivenessService } from './services/liveness-service.js';
 import type { DeskService } from './services/desk-service.js';
+import type { RoutineService } from './services/routine-service.js';
 import type { StaffingResolver } from './engine/staffing-resolver.js';
 import type { ReviewPipeline } from './engine/reviews.js';
 import type { ArtifactHarvester } from './engine/harvester.js';
@@ -87,6 +88,7 @@ export const RUN_INPUT_REPOSITORY = token<RunInputRepositoryPort>('port.RunInput
 export const MISSION_CRITERIA_REPOSITORY = token<MissionCriteriaRepositoryPort>('port.MissionCriteriaRepository');
 export const MISSION_QUESTION_REPOSITORY = token<MissionQuestionRepositoryPort>('port.MissionQuestionRepository');
 export const LIMIT_REPOSITORY = token<LimitRepositoryPort>('port.LimitRepository');
+export const ROUTINE_REPOSITORY = token<RoutineRepositoryPort>('port.RoutineRepository');
 
 export const ARTIFACT_STORE = token<ArtifactStorePort>('port.ArtifactStore');
 /** Workflow files, read from the project's repositories. */
@@ -166,6 +168,7 @@ export const BACKLOG_SERVICE = token<BacklogService>('application.BacklogService
 export const LIMIT_SERVICE = token<LimitService>('application.LimitService');
 export const LIVENESS_SERVICE = token<LivenessService>('application.LivenessService');
 export const DESK_SERVICE = token<DeskService>('application.DeskService');
+export const ROUTINE_SERVICE = token<RoutineService>('application.RoutineService');
 
 export const TANDEMISE_SERVICES = token<TandemiseServices>('application.TandemiseServices');
 

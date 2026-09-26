@@ -8,7 +8,7 @@ import { canTransition, evaluateReadiness, indexTeam, isTaskFinished, isTerminal
 import type {
   ClaimTaskRequest, CompleteTaskRequest, CreateMissionRequest, MissionSummary, TaskView,
 } from '@tandemise/api-contract';
-import type { Clock, Logger, MissionId, RepositoryId, TaskId } from '@tandemise/shared';
+import type { Clock, Logger, MissionId, RepositoryId, RoutineId, TaskId } from '@tandemise/shared';
 import { TandemiseError, asId, ids, slugify, summarize } from '@tandemise/shared';
 import type { FeedbackService, MissionService, PlanningService, ProjectionService } from '../services.js';
 import type { SchedulerService } from '../engine/scheduler.js';
@@ -97,7 +97,7 @@ export class MissionServiceImpl implements MissionService {
     return missions.map((mission) => this.#summary(mission));
   }
 
-  async create(caller: Caller, request: CreateMissionRequest): Promise<Mission> {
+  async create(caller: Caller, request: CreateMissionRequest, origin: { routineId?: RoutineId } = {}): Promise<Mission> {
     const workspaceId = asId<'WorkspaceId'>(request.workspaceId);
     const workspace = this.deps.workspaces.get(workspaceId);
     if (workspace === undefined) throw TandemiseError.notFound('Workspace', workspaceId);
@@ -151,6 +151,8 @@ export class MissionServiceImpl implements MissionService {
         queued: request.queued === true && request.planNow !== true,
         // Its own limits (P8); absent, the project's default mission limits apply.
         ...(request.limits === undefined ? {} : { limits: normalizeLimits(request.limits) }),
+        // Which routine made it (P11); a person's own mission has none.
+        ...(origin.routineId === undefined ? {} : { routineId: origin.routineId }),
       });
       // Numbered in the same transaction as the mission: the ledger is the
       // contract every later role is measured against, so a mission never

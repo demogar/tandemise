@@ -24,6 +24,8 @@ export const keys = {
   missions: (filter?: string, ws?: string) => ['missions', filter ?? 'all', ws ?? 'all'] as const,
   // Under 'missions': every mission change, a pull included, refreshes it.
   backlog: (ws?: string) => ['missions', 'backlog', ws ?? 'all'] as const,
+  // Under 'missions' too: a routine adding a mission, or skipping one, is a missions change.
+  routines: (ws?: string) => ['missions', 'routines', ws ?? 'all'] as const,
   // Under 'workspaces': a changed limit refreshes it; runs finishing are picked up by its interval.
   usage: (ws?: string) => ['workspaces', 'usage', ws ?? 'all'] as const,
   mission: (id: string) => ['mission', id] as const,
@@ -130,6 +132,19 @@ export function useBacklog() {
     queryKey: keys.backlog(workspaceId),
     queryFn: () => daemon.backlog(workspaceId ?? ''),
     enabled: Boolean(workspaceId),
+    placeholderData: (previous) => previous,
+  });
+}
+
+/** The project's routines (P11). Polled: "Next: Mon 09:00" is the daemon's word for its own clock. */
+export function useRoutines() {
+  const daemon = useDaemon();
+  const workspaceId = useWorkspaceId();
+  return useQuery({
+    queryKey: keys.routines(workspaceId),
+    queryFn: () => daemon.routines(workspaceId ?? ''),
+    enabled: Boolean(workspaceId),
+    refetchInterval: 5_000,
     placeholderData: (previous) => previous,
   });
 }

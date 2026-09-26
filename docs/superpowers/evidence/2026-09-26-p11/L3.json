@@ -1,0 +1,90 @@
+{
+  "id": "L3",
+  "title": "Run now adds a mission through the same checks; a status report routine writes the report",
+  "ok": true,
+  "checks": [
+    {
+      "label": "L1's queued draft is deleted in the window",
+      "ok": true
+    },
+    {
+      "label": "after \"Run now\" the row reads \"Last: Created “…”\"",
+      "ok": true,
+      "observed": "Weekly dependency updates Every day at 11:11 · Next: Mon 11:11 Last: Created “Weekly dependency updates · Sun 27 Sep” Earlier: Skipped: previous run still active Earlier: Created “Weekly dependency updates · Sat 26 Sep” Normal mission On Run now Edit"
+    },
+    {
+      "label": "proof (SQL): a new mission, a queued DRAFT",
+      "ok": true,
+      "observed": [
+        {
+          "id": "msn_01m3f4dxbpc8qh9qamjd",
+          "title": "Weekly dependency updates · Sun 27 Sep",
+          "status": "DRAFT",
+          "queued_at": "2026-09-27T17:13:07.446Z",
+          "priority": "normal"
+        }
+      ]
+    },
+    {
+      "label": "proof (API): Run now did not move the schedule",
+      "ok": true,
+      "observed": [
+        "2026-09-28T16:11:00.000Z",
+        "2026-09-28T16:11:00.000Z"
+      ]
+    },
+    {
+      "label": "proof (SQL): recorded as a manual run",
+      "ok": true
+    },
+    {
+      "label": "the Backlog lists it as Ready and queued",
+      "ok": true,
+      "observed": [
+        {
+          "title": "Weekly dependency updates · Sun 27 Sep",
+          "priority": "Normal",
+          "chip": "Normal",
+          "readiness": "Ready",
+          "queue": "Queued · 1/1",
+          "subtitle": "Update the project's dependencies to their latest compatible versions, run the tests, and fix anything the updates break.",
+          "selected": true
+        }
+      ]
+    },
+    {
+      "label": "the report template says no agent runs and asks for no Done-when lines",
+      "ok": true,
+      "observed": "New routine\nStart from\nWeekly dependency updates\nNightly: fix failing checks\nWeekly status report\nName\nEach mission it adds is called this, with the day of the run.\nWhat it does\nAdds a mission\nWrites a status report\n\nWrites the project’s status report from facts, the same one as Home’s “Status report” button: every mission in progress with its criteria verified, open decisions, and this month’s usage against the limit. No agent runs, so it is written even when the monthly limit is reached.\n\nRepeats\nEvery day\nEvery week\nEvery few hours\nMonday\nTuesday\nWednesday\nThursday\nFriday\nSaturday\nSunday\nTh"
+    },
+    {
+      "label": "the report routine reads \"Every Friday at 16:00 · Next: …\"",
+      "ok": true,
+      "observed": "Weekly status report Every Friday at 16:00 · Next: Fri 16:00 Has not run yet. Status report On Run now Edit"
+    },
+    {
+      "label": "after \"Run now\" the row reads \"Last: Wrote status report v1\"",
+      "ok": true,
+      "observed": "Weekly status report Every Friday at 16:00 · Next: Fri 16:00 Last: Wrote status report v1 Status report On Run now Edit"
+    },
+    {
+      "label": "the link opens the status report in the reader",
+      "ok": true,
+      "observed": "Status report: Acceptance\nby\nTandemise\n·\nresponsible\nYou\n\n0 need you · working on 0\n\nStatus Report\nSep 26, 2026, 10:13 AM\nDetails\nAt a glance\nNeeds you: 0\nWorking on: 0 · no limit · 1 queued\nCriteria verified: none yet; no mission in progress has criteria to verify.\nThis month (2026-09): no monthly "
+    },
+    {
+      "label": "proof (SQL): a StatusReport artifact",
+      "ok": true,
+      "observed": {
+        "type": "StatusReport"
+      }
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p11-routines/scratch/acceptance/p11/evidence/L3-run-now-created.png",
+    "/Users/demogar/projects/tandemise/tandemise-p11-routines/scratch/acceptance/p11/evidence/L3-report-template.png",
+    "/Users/demogar/projects/tandemise/tandemise-p11-routines/scratch/acceptance/p11/evidence/L3-report-written.png",
+    "/Users/demogar/projects/tandemise/tandemise-p11-routines/scratch/acceptance/p11/evidence/L3-report-in-reader.png"
+  ]
+}

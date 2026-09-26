@@ -52,6 +52,12 @@ export interface SchedulerDeps {
    */
   readonly pullBacklog?: () => Promise<unknown>;
   /**
+   * Adds the missions of due routines to the backlog (P11), before the pull so
+   * one it adds can be pulled in the same pass. Optional so harnesses built
+   * before routines still compose; the module always passes it.
+   */
+  readonly fireRoutines?: () => Promise<unknown>;
+  /**
    * The hard-limit admission rule (P8): null when work may start in the
    * mission, else why not (and the stop is applied). Optional so harnesses
    * built before limits still compose; the module always passes it.
@@ -192,6 +198,8 @@ export class SchedulerService implements LifecycleComponent {
     this.#sweepStrandedFeedback();
     // First, so a step re-resolved to an agent is dispatched in this same pass.
     this.#sweepEscalations();
+    // Due routines add their queued drafts first, so the pull below sees them.
+    await this.#fireRoutines();
     // Before dispatch: a slot freed by the last pass is filled from the backlog
     // now, and the mission it pulls is planning by the time this pass reconciles.
     await this.#pullBacklog();
@@ -610,6 +618,16 @@ export class SchedulerService implements LifecycleComponent {
       // Escalation is a courtesy to the people waiting; a failure here must
       // not stop the work that is not waiting on anyone.
       this.deps.log.warn('scheduler.escalation_failed', { error: errorMessage(e) });
+    }
+  }
+
+  async #fireRoutines(): Promise<void> {
+    if (this.deps.fireRoutines === undefined) return;
+    try {
+      await this.deps.fireRoutines();
+    } catch (e) {
+      // A routine that cannot run must not stop the pass that moves everything else.
+      this.deps.log.warn('scheduler.routines_failed', { error: errorMessage(e) });
     }
   }
 

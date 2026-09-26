@@ -28,6 +28,7 @@ export const OFFLINE_CHECKS = [
   'p8-limits-check',
   'p9-liveness-check',
   'p10-desk-check',
+  'p11-routines-check',
   'oauth-connect-check',
   'persistence-check',
   'planner-steps-check',

@@ -1,4 +1,4 @@
-import type { MissionId, RepositoryId, TaskId, WorkspaceId, Timestamp } from '@tandemise/shared';
+import type { MissionId, RepositoryId, RoutineId, TaskId, WorkspaceId, Timestamp } from '@tandemise/shared';
 import type { Capability } from '../capability.js';
 import type { RoleStaffing } from '../staffing.js';
 import type { MissionPriority } from './backlog.js';
@@ -97,6 +97,8 @@ export interface Mission {
    * Null means the project's default mission limits apply.
    */
   readonly limits: readonly Limit[] | null;
+  /** The routine that created it (P11); null for a mission a person created. */
+  readonly routineId: RoutineId | null;
   readonly createdAt: Timestamp;
   readonly updatedAt: Timestamp;
   readonly startedAt: Timestamp | null;
@@ -124,6 +126,8 @@ export interface MissionDraft {
   readonly queued?: boolean;
   /** The mission's own limits; absent or null uses the project's defaults. */
   readonly limits?: readonly Limit[] | null;
+  /** Set when a routine creates it (P11). */
+  readonly routineId?: RoutineId | null;
 }
 
 /** Aggregate counters projected for the mission list, computed not stored. */

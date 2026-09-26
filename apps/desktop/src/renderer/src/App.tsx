@@ -108,6 +108,7 @@ function ProjectShell(): JSX.Element {
             <Route path="/missions/new" component={NewMission} />
             {/* Home's desk opens the list behind each number (P10). */}
             <Route path="/missions/backlog">{() => <Missions initial="backlog" />}</Route>
+            <Route path="/missions/routines">{() => <Missions initial="routines" />}</Route>
             <Route path="/missions/in-progress">{() => <Missions initial="progress" />}</Route>
             <Route path="/missions/:id/:tab?">
               {(params) => <MissionDetail id={params.id ?? ''} tab={normalizeTab(params.tab)} />}

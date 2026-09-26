@@ -29,6 +29,8 @@ export type FeedbackId = Brand<string, 'FeedbackId'>;
 export type CriterionId = Brand<string, 'CriterionId'>;
 export type QuestionId = Brand<string, 'QuestionId'>;
 export type LimitIncidentId = Brand<string, 'LimitIncidentId'>;
+export type RoutineId = Brand<string, 'RoutineId'>;
+export type RoutineRunId = Brand<string, 'RoutineRunId'>;
 
 const ALPHABET = '0123456789abcdefghjkmnpqrstvwxyz';
 
@@ -74,6 +76,8 @@ export const ids = {
   criterion: () => newId<'CriterionId'>('crt'),
   question: () => newId<'QuestionId'>('qst'),
   limitIncident: () => newId<'LimitIncidentId'>('lim'),
+  routine: () => newId<'RoutineId'>('rtn'),
+  routineRun: () => newId<'RoutineRunId'>('rtr'),
 } as const;
 
 /** Cast a persisted string back to its branded type at a trust boundary. */

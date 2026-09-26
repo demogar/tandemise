@@ -1,0 +1,112 @@
+{
+  "id": "L1",
+  "title": "A daily routine adds a queued, ready mission when its time comes",
+  "ok": true,
+  "checks": [
+    {
+      "label": "the dialog offers the three starters",
+      "ok": true,
+      "observed": "New routine\nStart from\nWeekly dependency updates\nNightly: fix failing checks\nWeekly status report\nName\nEach mission it adds is called this, with the day of the run.\nWhat it does\nAdds a mission\nWrites "
+    },
+    {
+      "label": "the template filled the goal and three Done-when lines",
+      "ok": true,
+      "observed": [
+        "Update the project's dependencies to their latest compatible versions, run the tests, and fix anything the updates break.",
+        "Every direct dependency is on its latest compatible version, or the reason it is held back is written down\nThe test suite passes after the updates\nThe change lists each updated package with its old and new version"
+      ]
+    },
+    {
+      "label": "the row reads \"Every day at 11:11 · Next: …\" and \"Has not run yet.\"",
+      "ok": true,
+      "observed": "Weekly dependency updates Every day at 11:11 · Next: Sat 11:11 Has not run yet. Normal mission On Run now Edit"
+    },
+    {
+      "label": "proof (API): the next run is about an hour ahead on the daemon's clock",
+      "ok": true,
+      "observed": {
+        "now": "2026-09-26T15:11:43.723Z",
+        "next": "2026-09-26T16:11:00.000Z"
+      }
+    },
+    {
+      "label": "proof (SQL): no mission yet",
+      "ok": true
+    },
+    {
+      "label": "after the clock moves on, the row reads \"Last: Created “Weekly dependency updates · …”\"",
+      "ok": true,
+      "observed": "Weekly dependency updates Every day at 11:11 · Next: Sun 11:11 Last: Created “Weekly dependency updates · Sat 26 Sep” Normal mission On Run now Edit"
+    },
+    {
+      "label": "and the next run is tomorrow",
+      "ok": true,
+      "observed": "Weekly dependency updates Every day at 11:11 · Next: Sun 11:11 Last: Created “Weekly dependency updates · Sat 26 Sep” Normal mission On Run now Edit"
+    },
+    {
+      "label": "proof (SQL): one mission, a queued DRAFT, normal priority",
+      "ok": true,
+      "observed": [
+        {
+          "id": "msn_01m3f4bk08fragpkgqqb",
+          "title": "Weekly dependency updates · Sat 26 Sep",
+          "status": "DRAFT",
+          "queued_at": "2026-09-26T17:11:51.304Z",
+          "priority": "normal"
+        }
+      ]
+    },
+    {
+      "label": "the Backlog lists \"Weekly dependency updates · Sat 26 Sep\" as Ready and \"Queued · 1/1\"",
+      "ok": true,
+      "observed": [
+        {
+          "title": "Weekly dependency updates · Sat 26 Sep",
+          "priority": "Normal",
+          "chip": "Normal",
+          "readiness": "Ready",
+          "queue": "Queued · 1/1",
+          "subtitle": "Update the project's dependencies to their latest compatible versions, run the tests, and fix anything the updates break.",
+          "selected": true
+        }
+      ]
+    },
+    {
+      "label": "the mission header says \"From routine: Weekly dependency updates\"",
+      "ok": true,
+      "observed": "Tandemise\nAcceptance\n1 repository\nHome\nMissions\nInbox\nArtifacts\nACCEPTANCE\nRepositories\nTeam\nRuntimes\nIntegrations\nAPP\nSettings\nDaemon connected · 55086\nmsn_01m3f4bk08fragpkgqqb\nFrom routine: Weekly dependency updates\nMissions\nfeature-delivery\nWeekly dependency updates · Sat 26 Sep\nUpdate the project's dependencies to their latest compatible versions, run the tests, and fix anything the updates br"
+    },
+    {
+      "label": "its Done when lists U1–U3 with the template's lines",
+      "ok": true,
+      "observed": "Done when\n3 criteria\nU1\nEvery direct dependency is on its latest compatible version, or the reason it is held back is written down\nFrom your request\nAccepted\nU2\nThe test suite passes after the updates\nFrom your request\nAccepted\nU3\nThe change lists each updated package with its old and new version\nFrom your request\nAccepted\nAdd"
+    },
+    {
+      "label": "proof (API): the ledger is U1, U2, U3 from the routine",
+      "ok": true,
+      "observed": [
+        "U1 Every direct dependency is on its latest compatible version, or the reason it is held back is written down",
+        "U2 The test suite passes after the updates",
+        "U3 The change lists each updated package with its old and new version"
+      ]
+    },
+    {
+      "label": "proof (API): the timeline says which routine made it",
+      "ok": true,
+      "observed": [
+        "Mission created: Update the project's dependencies to their latest compatible versions, run the tests, and fix anything the updates break.",
+        "Created by the routine “Weekly dependency updates” (Sat 11:11 run)."
+      ]
+    }
+  ],
+  "notes": [
+    "daemon clock Sat Sep 26 2026 10:11:43 GMT-0500 (Eastern Standard Time); routine set to every day at 11:11"
+  ],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p11-routines/scratch/acceptance/p11/evidence/L1-template-filled.png",
+    "/Users/demogar/projects/tandemise/tandemise-p11-routines/scratch/acceptance/p11/evidence/L1-routine-next-run.png",
+    "/Users/demogar/projects/tandemise/tandemise-p11-routines/scratch/acceptance/p11/evidence/L1-routine-created-mission.png",
+    "/Users/demogar/projects/tandemise/tandemise-p11-routines/scratch/acceptance/p11/evidence/L1-backlog-queued.png",
+    "/Users/demogar/projects/tandemise/tandemise-p11-routines/scratch/acceptance/p11/evidence/L1-mission-from-routine.png"
+  ]
+}

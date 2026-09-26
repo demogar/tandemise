@@ -1,4 +1,4 @@
-import type { Approval, ArtifactType, CriterionResult, LimitMetric, MissionPriority, MissionStatus, TandemiseEventBody } from '@tandemise/domain';
+import type { Approval, ArtifactType, CriterionResult, LimitMetric, MissionPriority, MissionStatus, RoutineTemplate, TandemiseEventBody } from '@tandemise/domain';
 
 /**
  * The handful of *runtime* values the renderer needs from the domain.
@@ -167,6 +167,64 @@ export function quietFor(ms: number): string {
 }
 
 /** MVP.md §7.2. Mirrors `@tandemise/api-contract`, for the same reason as above. */
+/** Mirrors `ROUTINE_HOURS` (P11): the "every N hours" presets. */
+export const ROUTINE_HOURS = [1, 2, 3, 4, 6, 8, 12] as const;
+
+/** 0 = Sunday, as the daemon counts them; listed Monday first, as a week is read. */
+export const WEEKDAY_OPTIONS: readonly { value: number; label: string }[] = [
+  { value: 1, label: 'Monday' }, { value: 2, label: 'Tuesday' }, { value: 3, label: 'Wednesday' },
+  { value: 4, label: 'Thursday' }, { value: 5, label: 'Friday' }, { value: 6, label: 'Saturday' }, { value: 0, label: 'Sunday' },
+];
+
+/**
+ * Mirrors `ROUTINE_TEMPLATES` in `@tandemise/domain` (the renderer may not
+ * import runtime values): the three starters on the New routine dialog.
+ */
+export const ROUTINE_TEMPLATES: readonly RoutineTemplate[] = [
+  {
+    key: 'dependencies',
+    name: 'Weekly dependency updates',
+    kind: 'mission',
+    goal: 'Update the project\'s dependencies to their latest compatible versions, run the tests, and fix anything the updates break.',
+    successCriteria: [
+      'Every direct dependency is on its latest compatible version, or the reason it is held back is written down',
+      'The test suite passes after the updates',
+      'The change lists each updated package with its old and new version',
+    ],
+    priority: 'normal',
+    schedule: { type: 'weekly', day: 1, at: '09:00' },
+    description: 'Every Monday at 09:00, a mission to bring dependencies up to date.',
+  },
+  {
+    key: 'failing-checks',
+    name: 'Nightly: fix failing checks',
+    kind: 'mission',
+    goal: 'Find the checks that fail on the default branch (tests, typecheck, lint) and fix the cause of each one.',
+    successCriteria: [
+      'Every check that failed at the start passes',
+      'No test was skipped or deleted to make a check pass',
+      'Each fix names the check it repaired and why it failed',
+    ],
+    priority: 'high',
+    schedule: { type: 'daily', at: '02:00' },
+    description: 'Every night at 02:00, a high-priority mission to get the checks green.',
+  },
+  {
+    key: 'status-report',
+    name: 'Weekly status report',
+    kind: 'status_report',
+    goal: '',
+    successCriteria: [
+      'Every mission in progress is listed with its criteria verified',
+      'Every open decision is named',
+      'This month\'s usage is shown against the monthly limit',
+    ],
+    priority: 'normal',
+    schedule: { type: 'weekly', day: 5, at: '16:00' },
+    description: 'Every Friday at 16:00, the status report written from facts. No agent runs.',
+  },
+];
+
 export const API_VERSION = 'v1';
 export const API_VERSION_HEADER = 'x-tandemise-api-version';
 export const STREAM_PATH = '/v1/stream';

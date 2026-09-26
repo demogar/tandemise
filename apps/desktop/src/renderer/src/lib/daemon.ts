@@ -1,5 +1,8 @@
 import type {
   ApiErrorBody,
+  CreateRoutineRequest,
+  RoutineView,
+  UpdateRoutineRequest,
   ApprovalView,
   HomeView,
   WorkspaceUsageView,
@@ -226,6 +229,28 @@ export class DaemonClient {
   /** Renders a status report from stored facts and stores it as the project's next version (P10). */
   writeStatusReport(workspaceId: string): Promise<StatusReportWritten> {
     return this.#request('POST', `/workspaces/${workspaceId}/status-report`);
+  }
+
+  /** The project's routines (P11), with the daemon's words for when each runs next. */
+  routines(workspaceId: string): Promise<readonly RoutineView[]> {
+    return this.#get(`/workspaces/${workspaceId}/routines`);
+  }
+
+  createRoutine(workspaceId: string, body: CreateRoutineRequest): Promise<RoutineView> {
+    return this.#request('POST', `/workspaces/${workspaceId}/routines`, body);
+  }
+
+  updateRoutine(id: string, body: UpdateRoutineRequest): Promise<RoutineView> {
+    return this.#request('PATCH', `/routines/${id}`, body);
+  }
+
+  deleteRoutine(id: string): Promise<void> {
+    return this.#request('DELETE', `/routines/${id}`);
+  }
+
+  /** Runs a routine once now, through the same checks as a scheduled run. */
+  runRoutineNow(id: string): Promise<RoutineView> {
+    return this.#request('POST', `/routines/${id}/run-now`);
   }
 
   /** Priority, queue or a move up/down; answered with the backlog. */

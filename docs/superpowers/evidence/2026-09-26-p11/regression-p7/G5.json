@@ -1,0 +1,97 @@
+{
+  "id": "G5",
+  "title": "Limit off: nothing is pulled automatically",
+  "ok": true,
+  "checks": [
+    {
+      "label": "proof (API): both stay drafts with nothing in progress",
+      "ok": true
+    },
+    {
+      "label": "header: \"Working on 0 · no limit · 2 queued\"",
+      "ok": true,
+      "observed": "Working on 0 · no limit · 2 queued\n\nLimit off: queued missions wait until you plan them yourself or set a limit.\n\nWork on at most\nOff\n1\n2\n3\n5"
+    },
+    {
+      "label": "the hint: \"Limit off: queued missions wait until you plan them yourself or set a limit.\"",
+      "ok": true,
+      "observed": "Working on 0 · no limit · 2 queued\n\nLimit off: queued missions wait until you plan them yourself or set a limit.\n\nWork on at most\nOff\n1\n2\n3\n5"
+    },
+    {
+      "label": "\"Work on at most\" reads Off",
+      "ok": true,
+      "observed": "Off"
+    },
+    {
+      "label": "both rows are \"Ready\" and queued in the order they were added",
+      "ok": true,
+      "observed": [
+        {
+          "title": "G5 first: a hello page muiimn5c",
+          "priority": "Normal",
+          "chip": "Normal",
+          "readiness": "Ready",
+          "queue": "Queued · 1/2",
+          "subtitle": "G5 first: a hello page muiimn5c",
+          "selected": true
+        },
+        {
+          "title": "G5 second: a help page muiimn5c",
+          "priority": "Normal",
+          "chip": "Normal",
+          "readiness": "Ready",
+          "queue": "Queued · 2/2",
+          "subtitle": "G5 second: a help page muiimn5c",
+          "selected": false
+        }
+      ]
+    },
+    {
+      "label": "the Move up button puts the second above the first",
+      "ok": true,
+      "observed": [
+        "G5 second: a help page muiimn5c",
+        "G5 first: a hello page muiimn5c"
+      ]
+    },
+    {
+      "label": "Remove from queue: \"Not queued\", and the button offers \"Add to queue\"",
+      "ok": true,
+      "observed": [
+        {
+          "title": "G5 second: a help page muiimn5c",
+          "priority": "Normal",
+          "chip": "Normal",
+          "readiness": "Ready",
+          "queue": "Queued · 1/1",
+          "subtitle": "G5 second: a help page muiimn5c",
+          "selected": false
+        },
+        {
+          "title": "G5 first: a hello page muiimn5c",
+          "priority": "Normal",
+          "chip": "Normal",
+          "readiness": "Ready",
+          "queue": "Not queued",
+          "subtitle": "G5 first: a hello page muiimn5c",
+          "selected": true
+        }
+      ]
+    },
+    {
+      "label": "proof (API): its queuedAt is cleared",
+      "ok": true
+    },
+    {
+      "label": "proof (API): still nothing pulled",
+      "ok": true
+    }
+  ],
+  "notes": [
+    "setup: cancelled 2 mission(s) left by earlier scenarios, limit off"
+  ],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p11-routines/scratch/acceptance/p7/evidence/G5-limit-off.png",
+    "/Users/demogar/projects/tandemise/tandemise-p11-routines/scratch/acceptance/p7/evidence/G5-reordered-dequeued.png"
+  ]
+}

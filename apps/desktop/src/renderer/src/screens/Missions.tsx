@@ -1,15 +1,16 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation } from 'wouter';
 import type { MissionStatus } from '@tandemise/domain';
 import { PageHeader } from '../components/PageHeader.js';
 import { Icon } from '../components/Icon.js';
 import { Empty, ErrorState, IdChip, SkeletonList, StatusBadge, StatusDot } from '../components/primitives.js';
-import { useMissions } from '../lib/queries.js';
+import { useMissions, useRoutines } from '../lib/queries.js';
 import { useListNavigation } from '../lib/keyboard.js';
 import { missionTone, pluralize, relativeTime } from '../lib/format.js';
 import { Backlog } from './missions/Backlog.js';
+import { Routines } from './missions/Routines.js';
 
-type Filter = 'backlog' | 'active' | 'blocked' | 'finished' | 'all' | 'progress';
+type Filter = 'backlog' | 'routines' | 'active' | 'blocked' | 'finished' | 'all' | 'progress';
 
 /**
  * In progress as the desk counts it (P7's rule): not a draft, not paused, not
@@ -25,6 +26,7 @@ const FINISHED: readonly MissionStatus[] = ['COMPLETE', 'RELEASED', 'FAILED', 'C
 
 const FILTERS: readonly { value: Filter; label: string }[] = [
   { value: 'backlog', label: 'Backlog' },
+  { value: 'routines', label: 'Routines' },
   { value: 'active', label: 'Active' },
   { value: 'blocked', label: 'Needs attention' },
   { value: 'finished', label: 'Finished' },
@@ -33,9 +35,13 @@ const FILTERS: readonly { value: Filter; label: string }[] = [
 
 export function Missions({ initial = 'active' }: { initial?: Filter } = {}): JSX.Element {
   const [filter, setFilter] = useState<Filter>(initial);
+  // The filtered routes (/missions/backlog, /missions/routines, …) render this same
+  // screen, so React keeps it mounted between them: follow the route, not the first one.
+  useEffect(() => setFilter(initial), [initial]);
   const [query, setQuery] = useState('');
   const [, navigate] = useLocation();
   const missions = useMissions();
+  const routines = useRoutines();
 
   const counts = useMemo(() => {
     const all = missions.data ?? [];
@@ -46,14 +52,15 @@ export function Missions({ initial = 'active' }: { initial?: Filter } = {}): JSX
       finished: all.filter((m) => FINISHED.includes(m.mission.status)).length,
       all: all.length,
       progress: all.filter((m) => IN_PROGRESS(m.mission.status)).length,
+      routines: routines.data?.length ?? 0,
     };
-  }, [missions.data]);
+  }, [missions.data, routines.data]);
 
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return (missions.data ?? [])
       .filter((summary) => {
-        if (filter === 'backlog') return false;
+        if (filter === 'backlog' || filter === 'routines') return false;
         if (filter === 'active') return ACTIVE.includes(summary.mission.status);
         if (filter === 'blocked') return BLOCKED.includes(summary.mission.status);
         if (filter === 'finished') return FINISHED.includes(summary.mission.status);
@@ -69,7 +76,7 @@ export function Missions({ initial = 'active' }: { initial?: Filter } = {}): JSX
   }, [missions.data, filter, query]);
 
   // The Backlog tab has its own keys (it moves rows as well as selecting them).
-  const focused = useListNavigation(filter === 'backlog' ? 0 : visible.length, (index) => {
+  const focused = useListNavigation(filter === 'backlog' || filter === 'routines' ? 0 : visible.length, (index) => {
     const target = visible[index];
     if (target) navigate(`/missions/${target.mission.id}`);
   });
@@ -128,6 +135,8 @@ export function Missions({ initial = 'active' }: { initial?: Filter } = {}): JSX
 
           {filter === 'backlog' ? (
             <Backlog />
+          ) : filter === 'routines' ? (
+            <Routines />
           ) : missions.isPending ? (
             <SkeletonList rows={5} />
           ) : visible.length === 0 ? (
