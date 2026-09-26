@@ -1,0 +1,31 @@
+name: P8 five steps
+description: Five short document steps, one after another, so a limit is crossed part way through.
+steps:
+  - key: brief
+    role: product
+    objective: Write the problem brief for the hello page.
+    outputs: [ProblemBrief]
+  - key: spec
+    role: product
+    dependsOn: [brief]
+    objective: Write the spec for the hello page.
+    inputs: [ProblemBrief]
+    outputs: [ProductSpec]
+  - key: design
+    role: design
+    dependsOn: [spec]
+    objective: Design the hello page.
+    inputs: [ProductSpec]
+    outputs: [DesignBrief]
+  - key: decide
+    role: product
+    dependsOn: [design]
+    objective: Record the decision to ship the hello page as designed.
+    inputs: [DesignBrief]
+    outputs: [DecisionRecord]
+  - key: wrap
+    role: product
+    dependsOn: [decide]
+    objective: Write the closing brief for the hello page.
+    inputs: [DecisionRecord]
+    outputs: [ProblemBrief]
