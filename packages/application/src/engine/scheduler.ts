@@ -524,6 +524,12 @@ export class SchedulerService implements LifecycleComponent {
     if (tasks.length === 0) return;
 
     if (tasks.every((t) => isTaskFinished(t.status))) {
+      // A task's row reads SUCCEEDED before its attempt has settled: the
+      // executor still releases the run's tool surface and target, and only
+      // then does `#settled` turn a review's findings into a round or an
+      // escalation. Finishing in that gap marked the mission COMPLETE and left
+      // the escalation unable to block it. The next pass finishes it instead.
+      if (tasks.some((t) => this.#active.has(t.id))) return;
       await this.#finish(mission, tasks);
       return;
     }

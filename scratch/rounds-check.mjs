@@ -18,6 +18,10 @@ section('pure: feedback entity');
   const { ids } = await import('@tandemise/shared');
   const a = ids.feedback(); const b = ids.feedback();
   check('feedback ids are fb_ plus 20 characters', /^fb_[0-9a-z]{20}$/.test(a), a);
+  // Notes are listed to the agent `ORDER BY created_at, id`; two given in the same millisecond must still keep their order.
+  const burst = Array.from({ length: 2000 }, () => ids.feedback());
+  const outOfOrder = burst.findIndex((id, i) => i > 0 && id <= burst[i - 1]);
+  check('ids made in the same millisecond sort in the order they were made', outOfOrder === -1, burst.slice(Math.max(0, outOfOrder - 1), outOfOrder + 1));
   check('statuses are exactly the spec list', eq(D.FEEDBACK_STATUSES, ['open', 'queued', 'in_round', 'addressed', 'dismissed']));
   check('run purposes are exactly the spec list', eq(D.RUN_PURPOSES, ['round', 'tighten', 'feedback', 'retry']));
   const handoff = { changed: [{ what: 'Shorter intro', feedback: `${a}, ${b}` }, { what: 'Declined: out of scope', feedback: a }, { what: 'Tidied', feedback: null }] };

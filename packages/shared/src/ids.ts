@@ -38,19 +38,63 @@ const ALPHABET = '0123456789abcdefghjkmnpqrstvwxyz';
  * Sortable, collision-resistant, human-pasteable id: `<prefix>_<time><random>`.
  * Lexicographic order matches creation order, which keeps SQLite indexes and
  * UI lists naturally chronological without an extra sort column.
+ *
+ * Within one process that order holds even for ids made in the same
+ * millisecond: the second one reuses the time and increments the random part
+ * of the one before it, as monotonic ULIDs do. Without that, two notes given
+ * in the same millisecond sort by their random tails and come back from
+ * `ORDER BY created_at, id` in either order.
  */
+let lastTime = '';
+let lastRand = '';
+let lastMs = -1;
+
 export function newId<T extends string>(prefix: string): Brand<string, T> {
-  const bytes = new Uint8Array(10);
-  globalThis.crypto.getRandomValues(bytes);
-  let ts = Date.now();
+  const now = Date.now();
+  if (now > lastMs || lastRand === '') {
+    const bytes = new Uint8Array(10);
+    globalThis.crypto.getRandomValues(bytes);
+    let rand = '';
+    for (const b of bytes) rand += ALPHABET[b % 32]!;
+    lastMs = now;
+    lastTime = encodeTime(now);
+    lastRand = rand;
+  } else {
+    // Same millisecond, or the wall clock stepped back: keep the last time and count up from its random part.
+    const next = increment(lastRand);
+    if (next === null) {
+      lastMs += 1;
+      lastTime = encodeTime(lastMs);
+      lastRand = '0'.repeat(lastRand.length);
+    } else {
+      lastRand = next;
+    }
+  }
+  return `${prefix}_${lastTime}${lastRand}` as Brand<string, T>;
+}
+
+function encodeTime(ms: number): string {
+  let ts = ms;
   let time = '';
   for (let i = 0; i < 10; i++) {
     time = ALPHABET[ts % 32]! + time;
     ts = Math.floor(ts / 32);
   }
-  let rand = '';
-  for (const b of bytes) rand += ALPHABET[b % 32]!;
-  return `${prefix}_${time}${rand}` as Brand<string, T>;
+  return time;
+}
+
+/** `value` plus one in base 32, or null when every digit was already the last one. */
+function increment(value: string): string | null {
+  const digits = value.split('');
+  for (let i = digits.length - 1; i >= 0; i--) {
+    const d = ALPHABET.indexOf(digits[i]!);
+    if (d < 31) {
+      digits[i] = ALPHABET[d + 1]!;
+      return digits.join('');
+    }
+    digits[i] = ALPHABET[0]!;
+  }
+  return null;
 }
 
 export const ids = {
