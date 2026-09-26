@@ -5,6 +5,7 @@ import type {
   RunEventRecord, RuntimeHealth, RuntimeProfile, RuntimeDiscovery, RuntimeSettingField, Workspace,
   MissionPlan, PlanValidationIssue, GateOutcome, AccessLevel, Member, Person, Staffing,
   ArtifactHandoff, TaskStatus, FeedbackStatus, MissionPriority, Limit, LimitStatus,
+  MissionStatus, StalledAction, WatchLevel,
 } from '@tandemise/domain';
 
 /**
@@ -342,6 +343,55 @@ export interface InboxRefinementView {
   readonly updatedAt: string;
 }
 
+/**
+ * A mission nothing moves and nothing asks about (P9): one row per mission,
+ * derived on every read, gone as soon as the mission can move again.
+ */
+export interface InboxStalledView {
+  readonly missionId: string;
+  readonly missionTitle: string;
+  readonly missionStatus: MissionStatus;
+  /** The liveness row that decided it (P9 spec §1, L9-L18). */
+  readonly rule: string;
+  /** What is stuck, in a sentence: "'implement' is blocked: A human declined to retry this task." */
+  readonly reason: string;
+  /** The one thing to press. */
+  readonly action: StalledAction;
+  /** Who it is for: the mission's creator, or empty when nobody in particular. */
+  readonly forIds: readonly string[];
+  /** When the mission last changed. */
+  readonly since: string;
+}
+
+/** A run that has been silent past its threshold (P9 spec §2). */
+export interface InboxSilentRunView {
+  readonly runId: string;
+  readonly taskId: string;
+  readonly taskKey: string;
+  readonly taskTitle: string;
+  readonly missionId: string;
+  readonly missionTitle: string;
+  readonly attempt: number;
+  readonly lastEventAt: string;
+  /** Measured when the Inbox was read. */
+  readonly quietForMs: number;
+  readonly quietAfterMs: number;
+  readonly silentAfterMs: number;
+  /** The step's wall-time budget: the run is stopped automatically only at this. */
+  readonly budgetMs: number;
+  readonly forIds: readonly string[];
+}
+
+/** How long a running step has been quiet (P9). */
+export interface TaskWatchView {
+  readonly level: WatchLevel;
+  readonly lastEventAt: string;
+  readonly quietForMs: number;
+  readonly quietAfterMs: number;
+  readonly silentAfterMs: number;
+  readonly snoozedUntil: string | null;
+}
+
 export interface SystemInfo {
   readonly daemonVersion: string;
   readonly apiVersion: string;
@@ -402,6 +452,8 @@ export interface TaskView extends MissionTask {
     readonly upstream: string | null;
     readonly note: string;
   } | null;
+  /** How long its live run has been quiet; null unless the step is running (P9). */
+  readonly watch: TaskWatchView | null;
 }
 
 export interface MissionSummary {
@@ -555,6 +607,10 @@ export interface InboxView {
   readonly tasks: readonly InboxTaskView[];
   /** DRAFT missions whose refinement waits on a person (P6). */
   readonly refinements: readonly InboxRefinementView[];
+  /** Missions nothing moves and nothing asks about (P9). */
+  readonly stalled: readonly InboxStalledView[];
+  /** Runs quiet past their silent threshold and not snoozed (P9). */
+  readonly silentRuns: readonly InboxSilentRunView[];
 }
 
 /** One DRAFT mission in the backlog, in pull order. */

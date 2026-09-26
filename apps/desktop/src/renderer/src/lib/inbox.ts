@@ -1,12 +1,25 @@
 import { useMemo } from 'react';
-import type { ApprovalView, InboxRefinementView, InboxTaskView } from '@tandemise/api-contract';
+import type { ApprovalView, InboxRefinementView, InboxSilentRunView, InboxStalledView, InboxTaskView } from '@tandemise/api-contract';
 import { isApprovalForMember, isHumanTaskForMember } from '@tandemise/api-contract/for-me';
 import { useInboxView, useMyMemberId } from './queries.js';
 
 export type InboxItem =
   | { readonly kind: 'approval'; readonly id: string; readonly view: ApprovalView; readonly forMe: boolean; readonly escalated: boolean; readonly at: string }
   | { readonly kind: 'task'; readonly id: string; readonly task: InboxTaskView; readonly forMe: boolean; readonly escalated: boolean; readonly at: string }
-  | { readonly kind: 'refinement'; readonly id: string; readonly refinement: InboxRefinementView; readonly forMe: boolean; readonly escalated: boolean; readonly at: string };
+  | { readonly kind: 'refinement'; readonly id: string; readonly refinement: InboxRefinementView; readonly forMe: boolean; readonly escalated: boolean; readonly at: string }
+  | { readonly kind: 'stalled'; readonly id: string; readonly stalled: InboxStalledView; readonly forMe: boolean; readonly escalated: boolean; readonly at: string }
+  | { readonly kind: 'quiet'; readonly id: string; readonly run: InboxSilentRunView; readonly forMe: boolean; readonly escalated: boolean; readonly at: string };
+
+/** The mission an item is about, so one mission is never shown twice for one cause. */
+export function missionOfItem(item: InboxItem): string | null {
+  switch (item.kind) {
+    case 'approval': return item.view.approval.missionId;
+    case 'task': return item.task.missionId;
+    case 'refinement': return item.refinement.missionId;
+    case 'stalled': return item.stalled.missionId;
+    case 'quiet': return item.run.missionId;
+  }
+}
 
 /**
  * Everything waiting on a person: open approvals and tasks parked for a human.
@@ -70,6 +83,28 @@ export function useInbox(): {
         forMe: refinement.forIds.length === 0 || (meId !== null && refinement.forIds.includes(meId)),
         escalated: false,
         at: refinement.updatedAt,
+      });
+    }
+    // A mission nothing moves and nothing asks about (P9): one row, derived by the daemon, gone when it can move.
+    for (const stalled of inbox.data?.stalled ?? []) {
+      items.push({
+        kind: 'stalled',
+        id: `stalled:${stalled.missionId}`,
+        stalled,
+        forMe: stalled.forIds.length === 0 || (meId !== null && stalled.forIds.includes(meId)),
+        escalated: false,
+        at: stalled.since,
+      });
+    }
+    // An agent quiet past its threshold: asked before its wall-time budget runs out.
+    for (const run of inbox.data?.silentRuns ?? []) {
+      items.push({
+        kind: 'quiet',
+        id: `quiet:${run.runId}`,
+        run,
+        forMe: run.forIds.length === 0 || (meId !== null && run.forIds.includes(meId)),
+        escalated: false,
+        at: run.lastEventAt,
       });
     }
     // Escalated first: someone already missed it. Then oldest, because it has waited longest.

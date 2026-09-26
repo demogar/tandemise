@@ -161,6 +161,11 @@ export function isLimitCard(approval: Approval): boolean {
   return approval.kind === 'intervention' && approval.taskId === null && approval.options.some((o) => o.id === RAISE_LIMIT_OPTION);
 }
 
+/** Mirrors `quietForLabel` in `@tandemise/domain` (P9): "34 min", or "12 s" under a minute. */
+export function quietFor(ms: number): string {
+  return ms < 60_000 ? `${Math.floor(ms / 1000)} s` : `${Math.floor(ms / 60_000)} min`;
+}
+
 /** MVP.md §7.2. Mirrors `@tandemise/api-contract`, for the same reason as above. */
 export const API_VERSION = 'v1';
 export const API_VERSION_HEADER = 'x-tandemise-api-version';

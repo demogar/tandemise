@@ -52,7 +52,8 @@ export const keys = {
 };
 
 const TOPIC_KEYS: Readonly<Record<ProjectionTopic, readonly (readonly string[])[]>> = {
-  missions: [['home'], ['missions'], ['mission']],
+  // A mission's status alone can make it stalled, which is an Inbox row (P9).
+  missions: [['home'], ['missions'], ['mission'], ['inbox']],
   tasks: [['mission'], ['home'], ['inbox'], ['mission-task-feedback']],
   // A decided review card or check can record a note, so a task's thread follows approvals too.
   approvals: [['approvals'], ['home'], ['mission'], ['inbox'], ['mission-task-feedback']],

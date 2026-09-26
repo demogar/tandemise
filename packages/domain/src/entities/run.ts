@@ -36,6 +36,13 @@ export interface Run {
   readonly startedAt: Timestamp;
   readonly finishedAt: Timestamp | null;
   readonly heartbeatAt: Timestamp | null;
+  /**
+   * When the agent last wrote an event (P9); the run's start until it does.
+   * Optional so builders written before P9 still compile; read back as the start.
+   */
+  readonly lastEventAt?: Timestamp | null;
+  /** "Keep waiting" on a quiet run: its Inbox row stays hidden until then. Any agent event clears it. */
+  readonly watchSnoozedUntil?: Timestamp | null;
   /** The agent member the run acted as, or null for a legacy runtime-only dispatch. */
   readonly agentMemberId?: string | null;
   /** The task round this run belongs to; null for a run from before migration 010. */

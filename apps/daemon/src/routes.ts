@@ -135,6 +135,8 @@ export function buildRouter(services: TandemiseServices): Router {
 
   r.post('/v1/tasks/:id/retry', async (ctx) =>
     services.missions.retryTask(ctx.caller, asId(ctx.params.id!), await ctx.body(retryTaskRequest)));
+  // Keep waiting on a quiet run (P9); Stop and retry is the retry above with `stopRun`.
+  r.post('/v1/runs/:id/snooze', (ctx) => services.liveness.snooze(asId(ctx.params.id!)));
   r.post('/v1/tasks/:id/skip', (ctx) => services.missions.skipTask(ctx.caller, asId(ctx.params.id!)));
   r.post('/v1/tasks/:id/complete', async (ctx) =>
     services.missions.completeTask(ctx.caller, asId(ctx.params.id!), await ctx.body(completeTaskRequest)));

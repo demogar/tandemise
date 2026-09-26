@@ -57,6 +57,11 @@ export interface SchedulerDeps {
    * built before limits still compose; the module always passes it.
    */
   readonly limits?: { admit(missionId: MissionId): string | null };
+  /**
+   * The silent-run watchdog (P9): says once when a run turns quiet or silent,
+   * so an open window refreshes. Optional for harnesses built before it.
+   */
+  readonly watchLiveness?: () => void;
   readonly clock: Clock;
   readonly log: Logger;
   readonly tickIntervalMs?: number;
@@ -207,6 +212,17 @@ export class SchedulerService implements LifecycleComponent {
     // pass is completed in this pass rather than one tick later.
     for (const mission of missions) {
       await this.#reconcile(this.deps.missions.get(mission.id) ?? mission);
+    }
+    // Last: silence produces no event of its own, so this pass is what notices it.
+    // It never stops a run; the wall-time budget stays the only automatic stop.
+    this.#watchLiveness();
+  }
+
+  #watchLiveness(): void {
+    try {
+      this.deps.watchLiveness?.();
+    } catch (e) {
+      this.deps.log.warn('scheduler.liveness_watch_failed', { error: errorMessage(e) });
     }
   }
 

@@ -103,6 +103,10 @@ export class PlanningServiceImpl implements PlanningService {
     this.#planning.get(id)?.abort();
   }
 
+  isPlanning(id: MissionId): boolean {
+    return this.#planning.has(id);
+  }
+
   async plan(id: MissionId): Promise<MissionDetail> {
     const planning = this.#enterPlanning(id);
     return this.#planFrom(planning);

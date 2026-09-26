@@ -1,0 +1,85 @@
+{
+  "id": "J3",
+  "title": "A quiet agent is reported; keep waiting, then stop and retry",
+  "ok": true,
+  "checks": [
+    {
+      "label": "the drawer reads \"Last activity … ago\"",
+      "ok": true,
+      "observed": "implement\nRunning\nProduct Manager\nScripted agent\nj3-hello-muibbdcl-scripted-hang-once-implement\nnone isolation\nLast activity 3 s ago\nQuiet\nDone by\nScripted agent\n·\nResponsible\nYou\nOBJECTIVE\nRecord how the hello page is implemented.\nSTARTED\nSep 26, 2026, 6:34 AM\nFINISHED\n—\nDetails\nRequest changes\nClose"
+    },
+    {
+      "label": "and \"Quiet\"",
+      "ok": true
+    },
+    {
+      "label": "the Inbox row reads \"Quiet for … s: implement\" with the mission",
+      "ok": true,
+      "observed": "Quiet for 9 s: implement\nIts agent has written nothing; it is still running, and stops on its own only at its 30 min budget·J3 hello muibbdcl SCRIPTED_HANG_ONCE\nQuiet\nKeep waiting\nStop and retry"
+    },
+    {
+      "label": "it offers \"Stop and retry\" and \"Keep waiting\"",
+      "ok": true,
+      "observed": "Quiet for 9 s: implement\nIts agent has written nothing; it is still running, and stops on its own only at its 30 min budget·J3 hello muibbdcl SCRIPTED_HANG_ONCE\nQuiet\nKeep waiting\nStop and retry"
+    },
+    {
+      "label": "proof (API): the mission is moving, not stalled",
+      "ok": true
+    },
+    {
+      "label": "Keep waiting hides the row",
+      "ok": true,
+      "observed": "Inbox\nWhat is waiting on a person.\nNothing is waiting on you\n\nApprovals, questions, tasks for a person, stalled missions and quiet agents land here, one line each.\n"
+    },
+    {
+      "label": "proof (SQL): still one run, still live (never stopped by Tandemise)",
+      "ok": true,
+      "observed": [
+        {
+          "id": "run_01m3eqxzzchqhtgcvjtm",
+          "status": "STARTING",
+          "attempt": 1
+        }
+      ]
+    },
+    {
+      "label": "it comes back after another quiet spell",
+      "ok": true,
+      "observed": "Quiet for 20 s: implement\nIts agent has written nothing; it is still running, and stops on its own only at its 30 min budget·J3 hello muibbdcl SCRIPTED_HANG_ONCE\nQuiet\nKeep waiting\nStop and retry"
+    },
+    {
+      "label": "proof (SQL): run 1 cancelled, attempt 2 succeeded",
+      "ok": true,
+      "observed": [
+        {
+          "id": "run_01m3eqxzzchqhtgcvjtm",
+          "status": "CANCELLED",
+          "attempt": 1
+        },
+        {
+          "id": "run_01m3eqyna645qaj3h53j",
+          "status": "SUCCEEDED",
+          "attempt": 2
+        }
+      ]
+    },
+    {
+      "label": "the row is gone",
+      "ok": true,
+      "observed": "Inbox\nWhat is waiting on a person.\nNothing is waiting on you\n\nApprovals, questions, tasks for a person, stalled missions and quiet agents land here, one line each.\n"
+    },
+    {
+      "label": "the timeline said it was quiet, and that it was kept waiting",
+      "ok": true,
+      "observed": "Tandemise\nAcceptance\n1 repository\nHome\nMissions\nInbox\nArtifacts\nACCEPTANCE\nRepositories\nTeam\nRuntimes\nIntegrations\nAPP\nSettings\nDaemon connected · 54075\nmsn_01m3eqxwwrprnf7qg249\nMissions\np9-implement\nJ3 hello muibbdcl SCRIPTED_HANG_ONCE\nJ3 hello muibbdcl SCRIPTED_HANG_ONCE\nComplete\nFeed\nPlan\n1\nTimeline\nArtifacts\n2\nChecks & Gates\nMetrics\n22 events · latest just now\nFollowing\nRaw log\nMission created: J3 hello muibbdcl SCRIPTED_HANG_ONCE\n06:34:39 AM\n·\nYou\nMission moved to Planning\nPlanning the mission.\n06:34:39 AM\n·\nTandemise\nRunning the project's own \"p9-implement\" workflow, from /tmp/tdm-p9/project/.tandemise/workflows/p9-implement.yaml.\n06:34:39 AM\n·\nTandemise\nWaiting for your approval\nThe mission is paused until you decide.\n06:34:39 AM\n·\nTandemise\n·\nReview decision\nMission moved to Awaiting plan approval\nWaiting for plan approval: 1 task: product.\n06:34:39 AM\n·\nTandemise\nApproval approved\nChose \"Approve\".\n06:34:42 AM\n·\nYou\n·\nReview decision\nMission moved to Executing\nPlan approved; executing.\n06:34:42 AM\n·\nTandemise\nProduct Manager task is now Running\n06:34:42 AM\n·\nProduct Manager\nProduct Manager started\nScripted agent on local:/private/var/folders/dh/glpvvh110393gdzjc_v2x1sr0000g"
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p9-liveness/scratch/acceptance/p9/evidence/J3-drawer-quiet.png",
+    "/Users/demogar/projects/tandemise/tandemise-p9-liveness/scratch/acceptance/p9/evidence/J3-quiet-row.png",
+    "/Users/demogar/projects/tandemise/tandemise-p9-liveness/scratch/acceptance/p9/evidence/J3-kept-waiting.png",
+    "/Users/demogar/projects/tandemise/tandemise-p9-liveness/scratch/acceptance/p9/evidence/J3-row-gone.png",
+    "/Users/demogar/projects/tandemise/tandemise-p9-liveness/scratch/acceptance/p9/evidence/J3-timeline.png"
+  ]
+}

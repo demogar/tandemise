@@ -283,7 +283,7 @@ export class MissionServiceImpl implements MissionService {
   async retryTask(
     caller: Caller,
     taskId: TaskId,
-    options: { runtimeProfileId?: string; note?: string; addCapabilities?: readonly string[] },
+    options: { runtimeProfileId?: string; note?: string; addCapabilities?: readonly string[]; stopRun?: boolean },
   ): Promise<TaskView> {
     const task = this.#requireTask(taskId);
     const mission = this.#require(task.missionId);
@@ -291,7 +291,10 @@ export class MissionServiceImpl implements MissionService {
     const widening = (options.addCapabilities ?? []).length > 0;
     // A worker parked on a question can be restarted with more access: that is
     // often the question ("I can't do this with my grants").
-    const retryable = RETRYABLE_TASK_STATUSES.includes(task.status) || (widening && task.status === 'AWAITING_INPUT');
+    // "Stop and retry" on a quiet run (P9): its live run is stopped and the step
+    // queued again in this one decision, the path a widening retry already takes.
+    const stopping = options.stopRun === true && (task.status === 'RUNNING' || task.status === 'AWAITING_INPUT');
+    const retryable = RETRYABLE_TASK_STATUSES.includes(task.status) || (widening && task.status === 'AWAITING_INPUT') || stopping;
     if (!retryable) {
       throw new TandemiseError('PRECONDITION_FAILED', `A task in ${task.status} cannot be retried.`, {
         details: { taskId, status: task.status },
@@ -315,7 +318,7 @@ export class MissionServiceImpl implements MissionService {
     // those keep today's framing.
     // A wait step reads no feedback, so its note stays a retry reason.
     const effect = feedbackEffectFor(task, this.deps.approvals.pendingForTask(taskId), this.deps.runs);
-    if (note.length > 0 && task.executor !== 'wait' && (effect.kind === 'review' || effect.kind === 'reopen' || effect.kind === 'round_now')) {
+    if (note.length > 0 && !stopping && task.executor !== 'wait' && (effect.kind === 'review' || effect.kind === 'reopen' || effect.kind === 'round_now')) {
       let pending;
       try {
         // One unit with the round, so a round that cannot start leaves the task's access as it was.
@@ -336,9 +339,10 @@ export class MissionServiceImpl implements MissionService {
       return this.#taskView(mission.id, taskId);
     }
     const reason = note
-      || `Retried by the user${options.runtimeProfileId === undefined ? '' : ' on a different runtime'}`
+      || `${stopping ? 'Stopped and retried' : 'Retried'} by the user${options.runtimeProfileId === undefined ? '' : ' on a different runtime'}`
         + `${added.length > 0 ? ` with more access: ${added.join(', ')}` : ''}.`;
-    if (task.status === 'AWAITING_INPUT') {
+    // The run ends after this decision; the executor finds the step READY and leaves it so.
+    if (task.status === 'AWAITING_INPUT' || stopping) {
       this.deps.scheduler.cancelTask(taskId);
       for (const approval of this.deps.approvals.pendingForTask(taskId)) {
         this.deps.approvals.update(approval.id, {

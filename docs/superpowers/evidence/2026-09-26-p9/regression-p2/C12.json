@@ -1,0 +1,100 @@
+{
+  "id": "C12",
+  "title": "Retry from blocked: the note reaches the agent as a request",
+  "ok": true,
+  "checks": [
+    {
+      "label": "solo workspace: you are the only person",
+      "ok": true,
+      "observed": [
+        "Demostenes Garcia G."
+      ]
+    },
+    {
+      "label": "doc is BLOCKED after its attempts",
+      "ok": true,
+      "observed": {
+        "status": "BLOCKED",
+        "reason": "Missing expected artifacts: ProductSpec.",
+        "attempts": 2
+      }
+    },
+    {
+      "label": "the drawer shows the reason and \"Retry task\" under it",
+      "ok": true,
+      "observed": "doc\nRetry with more access\nBlocked\nProduct Manager\nScripted agent\nc12-blocked-scripted-fail-until-note-muibx461-doc\nnone isolation\nDone by\nScripted agent\n·\nResponsible\nYou\nMissing expected artifacts: ProductSpec.\nRetry task\nOBJECTIVE\nWrite a short spec for a hello page.\nSTARTED\nSep 26, 2026, 6:51 AM\nFINISHED\n—\nDetails\nRequest changes\nClose"
+    },
+    {
+      "label": "with a note the button reads \"Retry with this note\"",
+      "ok": true,
+      "observed": "doc\nRetry with more access\nBlocked\nProduct Manager\nScripted agent\nc12-blocked-scripted-fail-until-note-muibx461-doc\nnone isolation\nDone by\nScripted agent\n·\nResponsible\nYou\nMissing expected artifacts: ProductSpec.\nRetry with this note\nOBJECTIVE\nWrite a short spec for a hello page.\nSTARTED\nSep 26, 2026, 6:51 AM\nFINISHED\n—\nDetails\nRequest changes\nClose"
+    },
+    {
+      "label": "no \"Recording for\" on screen (drawer)",
+      "ok": true
+    },
+    {
+      "label": "clicked \"Retry with this note\"",
+      "ok": true
+    },
+    {
+      "label": "the task succeeded in round 2",
+      "ok": true,
+      "observed": {
+        "status": "SUCCEEDED",
+        "round": 2,
+        "reason": null
+      }
+    },
+    {
+      "label": "the note became an item, addressed in round 2, by you",
+      "ok": true,
+      "observed": [
+        {
+          "id": "fb_01m3erx8p1p77c6m98b5",
+          "taskId": "tsk_01m3erwvn2hdtkdz24a0",
+          "artifactId": null,
+          "author": {
+            "id": "mem_01m3erbkgmn3k3yqbe7g",
+            "name": "Demostenes Garcia G.",
+            "kind": "person"
+          },
+          "recordedBy": null,
+          "text": "Write it even if short",
+          "status": "addressed",
+          "round": 2,
+          "createdAt": "2026-09-26T11:51:47.649Z"
+        }
+      ]
+    },
+    {
+      "label": "the last prompt carries \"Feedback to address\" with the note",
+      "ok": true,
+      "observed": {
+        "prompts": 3
+      }
+    },
+    {
+      "label": "and is not framed as a gate failure",
+      "ok": true,
+      "observed": null
+    },
+    {
+      "label": "the open drawer now shows the note under Round 2",
+      "ok": true,
+      "observed": "doc\nRetry with more access\nSucceeded\nProduct Manager\nScripted agent\nc12-blocked-scripted-fail-until-note-muibx461-doc\nnone isolation\nDone by\nScripted agent\n·\nResponsible\nYou\nOBJECTIVE\nWrite a short spec for a hello page.\nSTARTED\nSep 26, 2026, 6:51 AM\nFINISHED\nSep 26, 2026, 6:51 AM · 12s\nFEEDBACK\nRound 2\nYou\nAddressed\n\nWrite it even if short\n\nARTIFACTS PRODUCED\nProductSpec: Scripted work\nDetails\nRequest changes\nClose"
+    },
+    {
+      "label": "the mission completes",
+      "ok": true,
+      "observed": "COMPLETE"
+    }
+  ],
+  "notes": [
+    "mission msn_01m3erwvmvy70qd8nssj"
+  ],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p9-liveness/scratch/acceptance/p0/evidence/C12-drawer-retry-note.png",
+    "/Users/demogar/projects/tandemise/tandemise-p9-liveness/scratch/acceptance/p0/evidence/C12-drawer-after-round-2.png"
+  ]
+}

@@ -93,6 +93,10 @@ export interface RunRepositoryPort {
   update(id: RunId, patch: Partial<Omit<Run, 'id' | 'taskId' | 'startedAt'>>): Run;
   recordUsage(id: RunId, usage: RunUsage): void;
   heartbeat(id: RunId, at: Timestamp): void;
+  /** Stamps `last_event_at` for an agent event and ends any "keep waiting" (P9). */
+  markActivity(id: RunId, at: Timestamp): void;
+  /** Hides a quiet run's Inbox row until `until` (P9). */
+  snooze(id: RunId, until: Timestamp): void;
 }
 
 export interface EventRepositoryPort {

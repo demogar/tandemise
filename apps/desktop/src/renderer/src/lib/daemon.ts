@@ -298,8 +298,14 @@ export class DaemonClient {
     return this.#request('POST', `/tasks/${id}/claim`, body);
   }
 
-  retryTask(taskId: string, body?: { runtimeProfileId?: string; note?: string; addCapabilities?: readonly string[] }): Promise<void> {
+  /** `stopRun` stops a quiet step's live run and queues it again in one decision (P9 "Stop and retry"). */
+  retryTask(taskId: string, body?: { runtimeProfileId?: string; note?: string; addCapabilities?: readonly string[]; stopRun?: boolean }): Promise<void> {
     return this.#request('POST', `/tasks/${taskId}/retry`, body ?? {});
+  }
+
+  /** "Keep waiting" on a quiet run: its Inbox row returns only if it stays quiet another silent interval (P9). */
+  snoozeRun(runId: string): Promise<{ runId: string; snoozedUntil: string }> {
+    return this.#request('POST', `/runs/${runId}/snooze`, {});
   }
 
   // ---------------------------------------------------------- feedback and rounds

@@ -803,6 +803,9 @@ export class TaskExecutor {
         // Persisted and published one at a time: the UI timeline and recovery
         // both read the durable log, so a batched write is a lost run.
         if (!staleSession) deps.recorder.record(runScope, event);
+        // Every event, unthrottled: silence is measured from it (P9), and the
+        // watchdog must never call a run quiet that spoke a second ago.
+        deps.runs.markActivity(runId, deps.clock.now());
 
         switch (event.type) {
           case 'checkpoint': {

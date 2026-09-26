@@ -47,6 +47,8 @@ import { CriteriaServiceImpl } from './services/criteria-service.js';
 import { ReadinessService } from './services/readiness.js';
 import { BacklogService } from './services/backlog-service.js';
 import { LimitService } from './services/limit-service.js';
+import { LivenessService } from './services/liveness-service.js';
+import { DEFAULT_QUIET_AFTER_MS } from '@tandemise/domain';
 import { RefinementServiceImpl } from './services/refinement-service.js';
 import { PlanningServiceImpl } from './services/planning-service.js';
 import { ProjectionServiceImpl } from './services/projection-service.js';
@@ -69,6 +71,8 @@ export interface ApplicationModuleOptions {
    * `git config user.name`; this layer may not run processes to find it.
    */
   readonly localPersonName?: string;
+  /** A run is quiet after this long without an agent event (P9). The daemon passes TANDEMISE_QUIET_MS. */
+  readonly quietAfterMs?: number;
 }
 
 /**
@@ -324,6 +328,8 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       // planning service, which is composed with the API services after this.
       pullBacklog: () => r.resolve(t.BACKLOG_SERVICE).pull(),
       limits: r.resolve(t.LIMIT_SERVICE),
+      // Resolved per pass, like the backlog: it reads the planner, composed after this.
+      watchLiveness: () => r.resolve(t.LIVENESS_SERVICE).watch(),
       clock: clock(r),
       log: log(r).child({ component: 'scheduler' }),
       ...(options.tickIntervalMs === undefined ? {} : { tickIntervalMs: options.tickIntervalMs }),
@@ -472,6 +478,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       feedback: r.resolve(t.FEEDBACK_REPOSITORY),
       readiness: r.resolve(t.READINESS_SERVICE),
       limits: r.resolve(t.LIMIT_SERVICE),
+      liveness: r.resolve(t.LIVENESS_SERVICE),
     }), { source: SOURCE });
 
     // Default: this installation has no workflow files. A composition root that
@@ -643,6 +650,21 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       log: log(r).child({ component: 'backlog' }),
     }), { source: SOURCE });
 
+    bind(t.LIVENESS_SERVICE, (r) => new LivenessService({
+      missions: r.resolve(t.MISSION_REPOSITORY),
+      tasks: r.resolve(t.TASK_REPOSITORY),
+      runs: r.resolve(t.RUN_REPOSITORY),
+      approvals: r.resolve(t.APPROVAL_REPOSITORY),
+      readiness: r.resolve(t.READINESS_SERVICE),
+      // Resolved per call: planning and refinement are composed after projections, which read this.
+      planning: (missionId) => r.resolve(t.PLANNING_SERVICE).isPlanning(missionId),
+      refining: (missionId) => r.resolve(t.REFINEMENT_SERVICE).isRunning(missionId),
+      recorder: r.resolve(t.EVENT_RECORDER),
+      clock: clock(r),
+      log: log(r).child({ component: 'liveness' }),
+      quietAfterMs: options.quietAfterMs ?? DEFAULT_QUIET_AFTER_MS,
+    }), { source: SOURCE });
+
     bind(t.CRITERIA_SERVICE, (r) => new CriteriaServiceImpl({
       missions: r.resolve(t.MISSION_REPOSITORY),
       artifacts: r.resolve(t.ARTIFACT_REPOSITORY),
@@ -669,6 +691,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       refinement: r.resolve(t.REFINEMENT_SERVICE),
       backlog: r.resolve(t.BACKLOG_SERVICE),
       limits: r.resolve(t.LIMIT_SERVICE),
+      liveness: r.resolve(t.LIVENESS_SERVICE),
     }), { source: SOURCE });
   });
 }

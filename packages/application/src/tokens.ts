@@ -18,6 +18,7 @@ import type { IdentityPort } from './support/identity.js';
 import type { ReadinessService } from './services/readiness.js';
 import type { BacklogService } from './services/backlog-service.js';
 import type { LimitService } from './services/limit-service.js';
+import type { LivenessService } from './services/liveness-service.js';
 import type { StaffingResolver } from './engine/staffing-resolver.js';
 import type { ReviewPipeline } from './engine/reviews.js';
 import type { ArtifactHarvester } from './engine/harvester.js';
@@ -162,6 +163,7 @@ export const REFINEMENT_SERVICE = token<RefinementService>('application.Refineme
 export const READINESS_SERVICE = token<ReadinessService>('application.ReadinessService');
 export const BACKLOG_SERVICE = token<BacklogService>('application.BacklogService');
 export const LIMIT_SERVICE = token<LimitService>('application.LimitService');
+export const LIVENESS_SERVICE = token<LivenessService>('application.LivenessService');
 
 export const TANDEMISE_SERVICES = token<TandemiseServices>('application.TandemiseServices');
 

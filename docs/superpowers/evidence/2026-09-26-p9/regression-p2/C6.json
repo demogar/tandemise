@@ -1,0 +1,55 @@
+{
+  "id": "C6",
+  "title": "Missing citation: the retry names the missing id, then succeeds",
+  "ok": true,
+  "checks": [
+    {
+      "label": "round 2 took two passes: the round, then a retry",
+      "ok": true,
+      "observed": [
+        {
+          "purpose": "round",
+          "status": "SUCCEEDED",
+          "attempt": 2,
+          "error": null
+        },
+        {
+          "purpose": "retry",
+          "status": "SUCCEEDED",
+          "attempt": 3,
+          "error": null
+        }
+      ]
+    },
+    {
+      "label": "the retry prompt names the second note's id: \"must cite <id>\"",
+      "ok": true,
+      "observed": [
+        "- Your previous attempt did not satisfy this task's completion gate. Tandemise measured: `.tandemise/out/tsk_01m3erjz0n4nw4syd470/ProductSpec.md` does not answer the feedback for round 2: handoff.changed must cite fb_01m3erm29rjj94335646: address each one, or decline it with what: \"Declined: <reason>\" Fix exactly that before you finish; nothing else about the task has changed."
+      ]
+    },
+    {
+      "label": "the task succeeded in round 2",
+      "ok": true
+    },
+    {
+      "label": "the retry reads \"Round 2 left 1 note unanswered; trying again.\" on the timeline",
+      "ok": true,
+      "observed": {
+        "type": "task.status",
+        "from": "RUNNING",
+        "to": "READY",
+        "reason": "Round 2 left 1 note unanswered; trying again."
+      }
+    },
+    {
+      "label": "the timeline shows no raw feedback id and no \"Missing expected artifacts\"",
+      "ok": true,
+      "observed": null
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p9-liveness/scratch/acceptance/p0/evidence/C6-timeline-retry.png"
+  ]
+}
