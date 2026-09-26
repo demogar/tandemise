@@ -139,6 +139,10 @@ ${fence(JSON.stringify(presetPlan, null, 2), 'json')}
    - \`review.verdict\` — pass | fail | needs_changes
    - \`qa.acceptance_criteria_coverage\` — number, 0-100
    - \`qa.blocking_defects\` — number
+   - \`criteria.uncovered_user\`, \`criteria.unknown_covers\`, \`criteria.total\` — numbers from the
+     Done-when ledger: gate the task that writes the ProductSpec on the first two being 0
+   - \`qa.criteria_failed\`, \`qa.criteria_unverified\` — numbers: gate QA on
+     \`qa.criteria_failed == 0\` and the release on \`qa.criteria_unverified == 0\`
 ${hasTestCommand
     ? `   This repository declares a test command, so gate code-writing tasks on
    \`checks.tests == PASS\`. \`checks.tests != FAIL\` is also true when the tests

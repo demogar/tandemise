@@ -63,8 +63,10 @@ function reviewEvaluation(source: EvaluationSource, clock: Clock): Evaluation {
 function qaEvaluation(source: EvaluationSource, clock: Clock): Evaluation {
   const criteriaCoverage = readArray(source.frontMatter['results']).map((raw): CriterionResult => {
     const entry = readRecord(raw);
+    const criterionId = readString(entry['criterionId']);
     return {
-      criterion: readString(entry['criterion']) ?? 'unnamed criterion',
+      criterionId: criterionId === null ? null : criterionId.trim(),
+      criterion: readString(entry['criterion']) ?? criterionId ?? 'unnamed criterion',
       outcome: readOutcome(entry['outcome']),
       evidence: readString(entry['evidence']) ?? '',
     };

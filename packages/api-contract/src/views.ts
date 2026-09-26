@@ -243,6 +243,35 @@ export interface MissionFeedView {
   readonly doneTotal: number;
 }
 
+/**
+ * One criterion on a mission's Done-when ledger, traced (P5). `result` is
+ * derived from the newest QA report every time it is read; nothing here is
+ * stored as a verdict.
+ */
+export interface MissionCriterionView {
+  readonly id: string;
+  /** `U1…` for the person's lines; the spec's own id (`AC1`) for spec criteria. */
+  readonly key: string;
+  readonly statement: string;
+  readonly source: 'user' | 'spec';
+  /** User keys this spec criterion covers. */
+  readonly covers: readonly string[];
+  /** Spec keys that cover this user criterion. */
+  readonly coveredBy: readonly string[];
+  readonly result: 'PASS' | 'FAIL' | 'SKIP' | 'UNVERIFIED';
+  /** QA's evidence, or "Through AC1" for a user criterion verified by what covers it. */
+  readonly evidence: string;
+  /** The QA report the result came from; null until QA has reported on it. */
+  readonly qaArtifactId: string | null;
+  /** The ProductSpec a spec criterion came from. */
+  readonly specArtifactId: string | null;
+  /** Counts towards "N of M verified": spec criteria, and user criteria nothing covers. */
+  readonly counted: boolean;
+  /** A user criterion the current spec leaves uncovered. */
+  readonly uncovered: boolean;
+  readonly createdAt: string;
+}
+
 export interface SystemInfo {
   readonly daemonVersion: string;
   readonly apiVersion: string;

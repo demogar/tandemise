@@ -14,7 +14,9 @@ import { tmpdir } from 'node:os';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '../../..');
-const LINK = '/tmp/tdm-p0';
+// Overridable so a later phase can re-run these suites beside its own without sharing a window or a home.
+const LINK = process.env.ACCEPTANCE_LINK ?? '/tmp/tdm-p0';
+const PORT = Number(process.env.CDP_PORT ?? 9333);
 const skipClaude = process.argv.includes('--skip-claude');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const log = (m) => console.log(`\n### ${m}`);
@@ -40,7 +42,7 @@ const stopDaemon = async () => {
 log('setup');
 setup(1500);
 // A window behind others stops painting, and a screenshot then never returns: keep it rendering while occluded.
-const desktop = spawn('npx', ['electron-vite', 'dev', '--', '--remote-debugging-port=9333', `--user-data-dir=${LINK}/electron`, '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', '--disable-background-timer-throttling'], {
+const desktop = spawn('npx', ['electron-vite', 'dev', '--', `--remote-debugging-port=${PORT}`, `--user-data-dir=${LINK}/electron`, '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', '--disable-background-timer-throttling'], {
   cwd: join(repoRoot, 'apps/desktop'),
   env: { ...process.env, TANDEMISE_HOME: `${LINK}/home` },
   stdio: ['ignore', 'ignore', 'ignore'],
@@ -93,7 +95,7 @@ for (const [file, opts = {}] of scenarios) {
   }
   log(file);
   const code = await new Promise((done) => {
-    const child = spawn(process.execPath, [join(here, 'suite', file)], { stdio: 'inherit', env: { ...process.env, ACCEPTANCE_SCRATCH: LINK } });
+    const child = spawn(process.execPath, [join(here, 'suite', file)], { stdio: 'inherit', env: { ...process.env, ACCEPTANCE_SCRATCH: LINK, CDP_PORT: String(PORT) } });
     child.on('close', done);
   });
   const evidence = readdirSync(join(here, 'evidence')).filter((f) => f.endsWith('.json')).map((f) => JSON.parse(readFileSync(join(here, 'evidence', f), 'utf8')));

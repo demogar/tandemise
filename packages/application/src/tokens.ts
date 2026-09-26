@@ -3,7 +3,7 @@ import type {
   ApprovalRepositoryPort, ArtifactRepositoryPort, ArtifactStorePort, AssignmentRepositoryPort,
   CheckpointRepositoryPort, DecisionRepositoryPort, EvaluationRepositoryPort, EventBusPort,
   EventRepositoryPort, ExecutionTargetRepositoryPort, FeedbackRepositoryPort, IntegrationRepositoryPort,
-  LeaseRepositoryPort, MemberRepositoryPort, MissionRepositoryPort, PersonRepositoryPort, ProjectionBusPort, RepoRepositoryPort,
+  LeaseRepositoryPort, MemberRepositoryPort, MissionCriteriaRepositoryPort, MissionRepositoryPort, PersonRepositoryPort, ProjectionBusPort, RepoRepositoryPort,
   RoleRepositoryPort, RunInputRepositoryPort, RunRepositoryPort, RuntimeProfileRepositoryPort, SecretStorePort,
   TaskRepositoryPort, UnitOfWork, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
@@ -12,7 +12,7 @@ import type {
   ApprovalService, ArtifactService, IntegrationService, MissionService, PlanningService,
   ProjectionService, RoleService, RuntimeService, SystemService, TandemiseServices,
   StaffingService, TeamService, WorkspaceService,
-  WorkflowService, FeedbackService,
+  WorkflowService, FeedbackService, CriteriaService,
 } from './services.js';
 import type { IdentityPort } from './support/identity.js';
 import type { StaffingResolver } from './engine/staffing-resolver.js';
@@ -79,6 +79,7 @@ export const PERSON_REPOSITORY = token<PersonRepositoryPort>('port.PersonReposit
 export const MEMBER_REPOSITORY = token<MemberRepositoryPort>('port.MemberRepository');
 export const FEEDBACK_REPOSITORY = token<FeedbackRepositoryPort>('port.FeedbackRepository');
 export const RUN_INPUT_REPOSITORY = token<RunInputRepositoryPort>('port.RunInputRepository');
+export const MISSION_CRITERIA_REPOSITORY = token<MissionCriteriaRepositoryPort>('port.MissionCriteriaRepository');
 
 export const ARTIFACT_STORE = token<ArtifactStorePort>('port.ArtifactStore');
 /** Workflow files, read from the project's repositories. */
@@ -151,6 +152,7 @@ export const PROJECTION_SERVICE = token<ProjectionService>('application.Projecti
 export const TEAM_SERVICE = token<TeamService>('application.TeamService');
 export const STAFFING_SERVICE = token<StaffingService>('application.StaffingService');
 export const FEEDBACK_SERVICE = token<FeedbackService>('application.FeedbackService');
+export const CRITERIA_SERVICE = token<CriteriaService>('application.CriteriaService');
 
 export const TANDEMISE_SERVICES = token<TandemiseServices>('application.TandemiseServices');
 
@@ -182,4 +184,5 @@ export const PERSISTENCE_PORT_TOKENS = {
   MEMBER_REPOSITORY,
   FEEDBACK_REPOSITORY,
   RUN_INPUT_REPOSITORY,
+  MISSION_CRITERIA_REPOSITORY,
 } as const satisfies Readonly<Record<string, Token<unknown>>>;

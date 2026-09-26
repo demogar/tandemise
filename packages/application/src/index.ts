@@ -73,6 +73,8 @@ export { ArtifactServiceImpl } from './services/artifact-service.js';
 export { IntegrationServiceImpl } from './services/integration-service.js';
 export { MissionServiceImpl } from './services/mission-service.js';
 export { FeedbackServiceImpl } from './services/feedback-service.js';
+export { CriteriaServiceImpl } from './services/criteria-service.js';
+export type { CriteriaServiceDeps } from './services/criteria-service.js';
 export type { FeedbackServiceDeps } from './services/feedback-service.js';
 export { MAX_DRAFT_CHARS, capDraft, checkRoundHandoff, feedbackEffectFor, renderRoundBrief, roundRequest } from './support/feedback-rules.js';
 export type { BriefItem, FeedbackEffect, RoundBrief, RoundContract } from './support/feedback-rules.js';

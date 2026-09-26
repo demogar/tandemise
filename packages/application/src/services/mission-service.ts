@@ -1,5 +1,5 @@
 import type {
-  ApprovalRepositoryPort, ArtifactRepositoryPort, MemberRepositoryPort, Mission, MissionRepositoryPort, MissionStatus,
+  ApprovalRepositoryPort, ArtifactRepositoryPort, MemberRepositoryPort, Mission, MissionCriteriaRepositoryPort, MissionRepositoryPort, MissionStatus,
   MissionTask, RepoRepositoryPort, RoleRepositoryPort, RunRepositoryPort, TaskRepositoryPort, UnitOfWork, WorkspaceRepositoryPort,
   ArtifactStorePort,
 } from '@tandemise/domain';
@@ -59,6 +59,8 @@ export interface MissionDeps {
   readonly recorder: EventRecorder;
   readonly clock: Clock;
   readonly log: Logger;
+  /** The Done-when ledger; the person's lines become U1…Un at creation. Optional for older harnesses. */
+  readonly criteria?: MissionCriteriaRepositoryPort;
 }
 
 /**
@@ -129,6 +131,10 @@ export class MissionServiceImpl implements MissionService {
         createdBy: actorId,
         staffing,
       });
+      // Numbered in the same transaction as the mission: the ledger is the
+      // contract every later role is measured against, so a mission never
+      // exists without it.
+      this.deps.criteria?.addUserCriteria(id, request.successCriteria ?? []);
       // The integration branch is named at creation rather than at merge time so
       // that every task branch can be cut from a name that already exists in the
       // record, and so the user can see where the work will land before it does.

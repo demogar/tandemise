@@ -9,6 +9,7 @@ import { useActors, type Actors } from '../../lib/team.js';
 import { pluralize } from '../../lib/format.js';
 import { ArtifactReader } from '../artifacts/ArtifactReader.js';
 import { TaskDetail } from './TaskDetail.js';
+import { DoneWhen } from './DoneWhen.js';
 
 /** Finished cards shown before "Show N more"; the daemon's default, named here so the button can count past it. */
 const DONE_SHOWN = 5;
@@ -137,7 +138,11 @@ export function FeedPane({ detail, focusNeeds, onFocused }: { detail: MissionDet
     <div className="page">
       {/* Left-aligned with the tabs above it, at a reading measure rather than the page's full width. */}
       <div className="page__inner">
-        <div className="feed">{body}</div>
+        <div className="feed">
+          {/* Above "Needs you": what the mission has to prove comes before what it is doing. */}
+          <DoneWhen missionId={missionId} />
+          {body}
+        </div>
       </div>
 
       {reading && reading.artifactId ? (

@@ -1,5 +1,5 @@
 import type {
-  Approval, ApprovalKind, ArtifactManifest, ArtifactType, CheckOutcome, CheckResult, CriterionResult,
+  Approval, ApprovalKind, ArtifactManifest, ArtifactType, CheckOutcome, CheckResult, CriteriaTrace, CriterionResult,
   Evaluation, GateFacts, GateValue, RiskClass,
 } from '@tandemise/domain';
 import { RISK_CLASSES, blockingFindings, criteriaCoveragePercent } from '@tandemise/domain';
@@ -95,8 +95,50 @@ export const GATE_FACT_VOCABULARY: readonly FactDefinition[] = [
   {
     name: 'qa.acceptance_criteria_coverage',
     type: 'number',
-    description: 'Percentage (0-100) of scored acceptance criteria that QA marked PASS. SKIP criteria are excluded.',
+    description: 'Percentage (0-100) of the mission\'s criteria QA verified as PASS. A criterion QA skipped or never reported counts as not verified. Without a Done-when ledger, the share of QA\'s own results that passed.',
     example: 'qa.acceptance_criteria_coverage == 100',
+  },
+  {
+    name: 'qa.criteria_verified',
+    type: 'number',
+    description: 'Criteria on the Done-when ledger that the newest QA report marked PASS (a user criterion counts only when nothing in the spec covers it).',
+    example: 'qa.criteria_verified >= 1',
+  },
+  {
+    name: 'qa.criteria_failed',
+    type: 'number',
+    description: 'Criteria on the Done-when ledger that the newest QA report marked FAIL.',
+    example: 'qa.criteria_failed == 0',
+  },
+  {
+    name: 'qa.criteria_unverified',
+    type: 'number',
+    description: 'Criteria on the Done-when ledger with no PASS or FAIL from QA: skipped, never reported, not covered, or written after QA ran.',
+    example: 'qa.criteria_unverified == 0',
+  },
+  {
+    name: 'criteria.total',
+    type: 'number',
+    description: 'Live criteria on the Done-when ledger: the person\'s lines plus the current spec\'s acceptance criteria.',
+    example: 'criteria.total >= 1',
+  },
+  {
+    name: 'criteria.user_total',
+    type: 'number',
+    description: 'Done-when lines the person wrote (U1, U2, …).',
+    example: 'criteria.user_total >= 1',
+  },
+  {
+    name: 'criteria.uncovered_user',
+    type: 'number',
+    description: 'Done-when lines that no acceptance criterion of the current spec lists in `covers`.',
+    example: 'criteria.uncovered_user == 0',
+  },
+  {
+    name: 'criteria.unknown_covers',
+    type: 'number',
+    description: 'Entries in the spec\'s `covers` lists that name no Done-when line.',
+    example: 'criteria.unknown_covers == 0',
   },
   {
     name: 'qa.blocking_defects',
@@ -264,9 +306,35 @@ export class GateFactBuilder {
   }
 
   withQa(input: { readonly criteria: readonly CriterionResult[]; readonly blockingDefects: number; readonly verdict?: string }): this {
-    this.#facts['qa.acceptance_criteria_coverage'] = criteriaCoveragePercent(input.criteria);
+    // A ledger already measured coverage against every criterion (withCriteria);
+    // QA's own list only speaks for the criteria it chose to mention.
+    this.#facts['qa.acceptance_criteria_coverage'] ??= criteriaCoveragePercent(input.criteria);
     this.#facts['qa.blocking_defects'] = input.blockingDefects;
     if (input.verdict !== undefined) this.#facts['qa.verdict'] = input.verdict;
+    return this;
+  }
+
+  /**
+   * Facts from the Done-when ledger, traced against the newest QA report.
+   *
+   * The criteria.* counts are always written - "no criteria" is a count. The
+   * qa facts are not, with an empty ledger: a mission from before the ledger,
+   * or one nobody gave criteria, keeps its old facts rather than reading
+   * "0 unverified" and shipping. With a ledger, the qa.criteria_* facts are
+   * written even before QA ran, because "nothing verified yet" is a
+   * measurement, and coverage is recomputed against every counted criterion -
+   * the denominator QA's own result list cannot provide.
+   */
+  withCriteria(trace: CriteriaTrace): this {
+    this.#facts['criteria.total'] = trace.total;
+    this.#facts['criteria.user_total'] = trace.userTotal;
+    this.#facts['criteria.uncovered_user'] = trace.uncoveredUser;
+    this.#facts['criteria.unknown_covers'] = trace.unknownCovers;
+    if (trace.total === 0) return this;
+    this.#facts['qa.criteria_verified'] = trace.verified;
+    this.#facts['qa.criteria_failed'] = trace.failed;
+    this.#facts['qa.criteria_unverified'] = trace.unverified;
+    this.#facts['qa.acceptance_criteria_coverage'] = trace.counted === 0 ? 0 : Math.round((trace.verified / trace.counted) * 100);
     return this;
   }
 

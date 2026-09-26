@@ -18,6 +18,7 @@ import type { RunEventRecord, TandemiseEventBody } from '../event.js';
 import type { Decision } from '../entities/decision.js';
 import type { CheckResult, Evaluation } from '../entities/evaluation.js';
 import type { FeedbackItem, FeedbackStatus } from '../entities/feedback.js';
+import type { MissionCriterion, SpecCriterionInput } from '../entities/criteria.js';
 
 /**
  * Persistence ports.
@@ -241,4 +242,23 @@ export interface RunInputRepositoryPort {
 /** A single transactional boundary across the repositories above. */
 export interface UnitOfWork {
   transaction<T>(fn: () => T): T;
+}
+
+/**
+ * The Done-when ledger (P5). Criteria only: results are derived from QA on
+ * every read. Kept small and general because P6 layers proposal and verdict
+ * status on the same rows.
+ */
+export interface MissionCriteriaRepositoryPort {
+  /** Live criteria (not superseded): user first, then spec, each in written order. */
+  listActive(missionId: MissionId): readonly MissionCriterion[];
+  /** Every row, superseded included, oldest first. */
+  listAll(missionId: MissionId): readonly MissionCriterion[];
+  /** Appends `U<n>` rows after any the mission already has. */
+  addUserCriteria(missionId: MissionId, statements: readonly string[]): readonly MissionCriterion[];
+  /**
+   * Supersedes every live spec criterion of the mission and records these in
+   * one transaction, so no reader ever sees two specs' criteria at once.
+   */
+  replaceSpecCriteria(missionId: MissionId, specArtifactId: ArtifactId, criteria: readonly SpecCriterionInput[]): readonly MissionCriterion[];
 }

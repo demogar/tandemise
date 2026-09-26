@@ -2,7 +2,8 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const ROOT = new URL('../evidence/', import.meta.url).pathname;
+// A later phase's suite writes its own evidence folder rather than the P0 one.
+const ROOT = process.env.ACCEPTANCE_EVIDENCE_DIR ?? new URL('../evidence/', import.meta.url).pathname;
 
 export class Evidence {
   constructor(id, title) {

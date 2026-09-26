@@ -59,6 +59,17 @@ export function testsClause(context: PresetContext = {}): string {
   return context.hasTestCommand === true ? 'checks.tests == PASS' : 'checks.tests != FAIL';
 }
 
+/**
+ * The Done-when ledger's gates (P5). The spec step must cover every line the
+ * person wrote and name no line that does not exist; QA must fail no
+ * criterion; the release must leave none unverified. Each reads a count the
+ * daemon traced from the ledger and the newest QA report, never a verdict an
+ * agent wrote about itself.
+ */
+export const SPEC_CRITERIA_GATE = 'artifact.ProductSpec.exists && criteria.uncovered_user == 0 && criteria.unknown_covers == 0 && criteria.total >= 1';
+export const QA_CRITERIA_GATE = 'artifact.QAReport.exists && review.blocking_findings == 0 && qa.criteria_failed == 0';
+export const RELEASE_CRITERIA_GATE = 'qa.criteria_unverified == 0 && qa.blocking_defects == 0';
+
 function task(t: Partial<PlannedTask> & Pick<PlannedTask, 'key' | 'title' | 'objective' | 'roleId'>): PlannedTask {
   return {
     dependsOn: [],
@@ -87,6 +98,7 @@ const featureDelivery: WorkflowPreset = {
         objective: 'Ground the mission in the current codebase, scope it down, and write acceptance criteria precise enough to test.',
         expectedOutputs: ['ProblemBrief', 'ProductSpec'],
         requiredCapabilities: READ_ONLY,
+        completionGate: SPEC_CRITERIA_GATE,
       }),
       task({
         key: 'design', title: 'Define flows, states and interaction behaviour', roleId: 'design',
@@ -143,7 +155,7 @@ const featureDelivery: WorkflowPreset = {
         expectedOutputs: ['QAPlan', 'QAReport'],
         executionPolicy: policy('worktree', QA_CAPS, 40),
         requiredCapabilities: QA_CAPS,
-        completionGate: 'artifact.QAReport.exists && review.blocking_findings == 0',
+        completionGate: QA_CRITERIA_GATE,
       }),
       task({
         key: 'release_candidate', title: 'Assemble the release candidate', roleId: 'release',
@@ -158,7 +170,7 @@ const featureDelivery: WorkflowPreset = {
         requiredCapabilities: READ_ONLY,
         // Shipping is always a human decision (MVP.md §18.2).
         approvalPolicy: { beforeStart: false, onCompletion: true, reason: 'Release candidates require explicit human authorization before shipping.' },
-        completionGate: 'qa.acceptance_criteria_coverage >= 100 && qa.blocking_defects == 0',
+        completionGate: RELEASE_CRITERIA_GATE,
       }),
     ],
   }),
@@ -178,6 +190,7 @@ const bugInvestigation: WorkflowPreset = {
         expectedOutputs: ['ProblemBrief', 'ProductSpec'],
         executionPolicy: policy('worktree', [...READ_ONLY, CORE_CAPABILITIES.shell, CORE_CAPABILITIES.testsRun], 30),
         requiredCapabilities: READ_ONLY,
+        completionGate: SPEC_CRITERIA_GATE,
       }),
       task({
         key: 'fix', title: 'Fix the defect', roleId: 'development',
@@ -207,7 +220,7 @@ const bugInvestigation: WorkflowPreset = {
         expectedOutputs: ['QAReport'],
         executionPolicy: policy('worktree', QA_CAPS, 30),
         requiredCapabilities: QA_CAPS,
-        completionGate: 'artifact.QAReport.exists && review.blocking_findings == 0',
+        completionGate: QA_CRITERIA_GATE,
       }),
     ],
   }),

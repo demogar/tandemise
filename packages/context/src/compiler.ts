@@ -2,7 +2,7 @@ import type { CapabilityGrant, Decision, LoadedArtifact } from '@tandemise/domai
 import { renderWithTrustBoundaries, trusted, untrusted, type LabelledContent } from '@tandemise/policy';
 import type { ArtifactId } from '@tandemise/shared';
 import type {
-  CompiledContext, ContextRequest, EvidenceItem, OutputContract, TruncationNote,
+  CompiledContext, ContextRequest, EvidenceItem, LedgerLine, OutputContract, TruncationNote,
 } from './types.js';
 
 /**
@@ -94,7 +94,9 @@ function buildSections(request: ContextRequest): Section[] {
     `Title: ${mission.title}`,
     `Goal: ${mission.goal}`,
     ...(mission.constraints.length ? [`Constraints:\n${bullets(mission.constraints)}`] : []),
-    ...(mission.successCriteria.length ? [`Success criteria:\n${bullets(mission.successCriteria)}`] : []),
+    ...((request.criteria ?? []).length > 0
+      ? [`Done when (criteria ledger; cite these ids):\n${ledgerLines(request.criteria ?? [])}`]
+      : mission.successCriteria.length ? [`Success criteria:\n${bullets(mission.successCriteria)}`] : []),
     `Autonomy: ${mission.autonomy}`,
   ].join('\n')));
 
@@ -310,4 +312,9 @@ function sortByRecency(evidence: readonly EvidenceItem[]): readonly EvidenceItem
 
 function bullets(items: readonly string[]): string {
   return items.map((c) => `- ${c}`).join('\n');
+}
+
+/** `- U1: …` per criterion; a spec criterion says what it covers, so the chain is readable in the prompt. */
+function ledgerLines(lines: readonly LedgerLine[]): string {
+  return lines.map((l) => `- ${l.key}: ${l.statement}${l.covers.length > 0 ? ` (covers ${l.covers.join(', ')})` : ''}`).join('\n');
 }

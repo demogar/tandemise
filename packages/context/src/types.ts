@@ -30,6 +30,19 @@ export interface ContextRequest {
   readonly outputContract: OutputContract;
   /** Hard character budget for the whole prompt. */
   readonly maxChars?: number;
+  /**
+   * The mission's live Done-when ledger. When given (and not empty) it
+   * replaces the plain success-criteria bullets, so every role sees the ids
+   * the spec must cover and QA must verify.
+   */
+  readonly criteria?: readonly LedgerLine[];
+}
+
+/** One criterion as a prompt states it. */
+export interface LedgerLine {
+  readonly key: string;
+  readonly statement: string;
+  readonly covers: readonly string[];
 }
 
 export interface EvidenceItem {

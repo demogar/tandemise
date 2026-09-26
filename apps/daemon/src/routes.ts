@@ -98,6 +98,7 @@ export function buildRouter(services: TandemiseServices): Router {
   r.get('/v1/missions/:id/feed', (ctx) =>
     services.projections.missionFeed(asId(ctx.params.id!), ctx.caller, query(ctx, missionFeedQuery)));
   r.get('/v1/missions/:id/tasks', (ctx) => services.projections.missionTasks(asId(ctx.params.id!)));
+  r.get('/v1/missions/:id/criteria', (ctx) => services.criteria.list(asId(ctx.params.id!)));
 
   r.post('/v1/tasks/:id/retry', async (ctx) =>
     services.missions.retryTask(ctx.caller, asId(ctx.params.id!), await ctx.body(retryTaskRequest)));

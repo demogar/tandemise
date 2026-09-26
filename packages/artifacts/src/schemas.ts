@@ -37,9 +37,15 @@ const base = <T extends ArtifactType>(type: T) => ({
 const FINDING_SEVERITY = z.enum(['blocking', 'major', 'minor', 'nit']);
 const CHECK_OUTCOME = z.enum(['PASS', 'FAIL', 'SKIP']);
 
+/**
+ * `covers` names the person's Done-when lines (`U1`, `U2`) this criterion
+ * proves. The harvester checks it against the mission's ledger: the schema can
+ * only say it is a list of ids, not which ids exist.
+ */
 const acceptanceCriterion = z.object({
   id: nonEmpty('criterion id'),
   statement: nonEmpty('criterion statement'),
+  covers: z.array(nonEmpty('covered criterion id')).default([]),
 });
 
 export const ProblemBriefFrontMatter = z.object({
@@ -111,13 +117,25 @@ export const QAPlanFrontMatter = z.object({
   })).min(1, 'a QAPlan needs at least one test case'),
 });
 
+/**
+ * A result names the criterion it verified by its ledger id. `criterion` is
+ * the pre-ledger field, still accepted so a report written from an older
+ * template is read rather than refused; the harvester then requires its text
+ * to be a ledger id.
+ */
+const qaResult = z.object({
+  criterionId: z.string().trim().min(1, 'criterionId must not be empty').optional(),
+  criterion: z.string().trim().min(1, 'criterion must not be empty').optional(),
+  outcome: CHECK_OUTCOME,
+  evidence: z.string().trim().default(''),
+}).refine((r) => r.criterionId !== undefined || r.criterion !== undefined, {
+  message: 'each result needs criterionId: the ledger id it verifies (AC1, U2)',
+  path: ['criterionId'],
+});
+
 export const QAReportFrontMatter = z.object({
   ...base('QAReport'),
-  results: z.array(z.object({
-    criterion: nonEmpty('criterion'),
-    outcome: CHECK_OUTCOME,
-    evidence: z.string().trim().default(''),
-  })).min(1, 'a QAReport needs a result for at least one criterion'),
+  results: z.array(qaResult).min(1, 'a QAReport needs a result for at least one criterion'),
   blockingDefects: z.number().int().nonnegative().default(0),
 });
 

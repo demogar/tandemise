@@ -43,6 +43,7 @@ import { Waiter } from './engine/waiter.js';
 import { IntegrationServiceImpl } from './services/integration-service.js';
 import { MissionServiceImpl } from './services/mission-service.js';
 import { FeedbackServiceImpl } from './services/feedback-service.js';
+import { CriteriaServiceImpl } from './services/criteria-service.js';
 import { PlanningServiceImpl } from './services/planning-service.js';
 import { ProjectionServiceImpl } from './services/projection-service.js';
 import { RoleServiceImpl } from './services/role-service.js';
@@ -168,6 +169,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       r.resolve(t.EVALUATION_REPOSITORY),
       r.resolve(t.APPROVAL_REPOSITORY),
       r.resolve(t.MISSION_REPOSITORY),
+      r.resolve(t.MISSION_CRITERIA_REPOSITORY),
     ), { source: SOURCE });
 
     bind(t.REVIEW_PIPELINE, (r) => new ReviewPipeline({
@@ -201,6 +203,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       r.resolve(t.EVENT_RECORDER),
       clock(r),
       r.resolve(t.TASK_REPOSITORY),
+      r.resolve(t.MISSION_CRITERIA_REPOSITORY),
     ), { source: SOURCE });
 
     bind(t.METRICS_SERVICE, (r) => new MetricsService(
@@ -536,6 +539,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
     }), { source: SOURCE });
 
     bind(t.MISSION_SERVICE, (r) => new MissionServiceImpl({
+      criteria: r.resolve(t.MISSION_CRITERIA_REPOSITORY),
       workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
       repositories: r.resolve(t.REPO_REPOSITORY),
       missions: r.resolve(t.MISSION_REPOSITORY),
@@ -560,6 +564,12 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       log: log(r).child({ component: 'missions' }),
     }), { source: SOURCE });
 
+    bind(t.CRITERIA_SERVICE, (r) => new CriteriaServiceImpl({
+      missions: r.resolve(t.MISSION_REPOSITORY),
+      artifacts: r.resolve(t.ARTIFACT_REPOSITORY),
+      gates: r.resolve(t.GATE_SERVICE),
+    }), { source: SOURCE });
+
     bind(t.TANDEMISE_SERVICES, (r): TandemiseServices => ({
       system: r.resolve(t.SYSTEM_SERVICE),
       workspaces: r.resolve(t.WORKSPACE_SERVICE),
@@ -576,6 +586,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       team: r.resolve(t.TEAM_SERVICE),
       staffing: r.resolve(t.STAFFING_SERVICE),
       feedback: r.resolve(t.FEEDBACK_SERVICE),
+      criteria: r.resolve(t.CRITERIA_SERVICE),
     }), { source: SOURCE });
   });
 }

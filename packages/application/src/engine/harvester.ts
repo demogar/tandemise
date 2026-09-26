@@ -1,8 +1,8 @@
 import type {
-  ArtifactHandoff, ArtifactManifest, ArtifactRepositoryPort, ArtifactStorePort, ArtifactType,
-  EvaluationRepositoryPort, ExternalRef, Mission, MissionTask, TaskRepositoryPort,
+  ArtifactHandoff, ArtifactManifest, ArtifactRepositoryPort, ArtifactStorePort, ArtifactType, CriterionResult,
+  EvaluationRepositoryPort, ExternalRef, Mission, MissionCriteriaRepositoryPort, MissionTask, SpecCriterionInput, TaskRepositoryPort,
 } from '@tandemise/domain';
-import { ARTIFACT_OUT_DIR, RUNTIME_ACTOR, SYSTEM_ACTOR, isArtifactType } from '@tandemise/domain';
+import { ARTIFACT_OUT_DIR, RUNTIME_ACTOR, SYSTEM_ACTOR, checkSpecCriteria, isArtifactType, unknownQaKeys } from '@tandemise/domain';
 import type { ExecutionTarget } from '@tandemise/execution-core';
 import type { ArtifactId, Clock, RunId } from '@tandemise/shared';
 import { errorMessage, summarize } from '@tandemise/shared';
@@ -130,6 +130,8 @@ export class ArtifactHarvester {
     private readonly clock: Clock,
     /** Optional so older compositions keep mission-wide superseding. */
     private readonly tasks?: TaskRepositoryPort,
+    /** The Done-when ledger; without it specs and QA reports are not checked against one. */
+    private readonly criteria?: MissionCriteriaRepositoryPort,
   ) {}
 
   /**
@@ -234,6 +236,8 @@ export class ArtifactHarvester {
           });
         }
         if (stored.filesChanged !== undefined) filesChanged = stored.filesChanged;
+        // Stored, and still owing something the gate will measure: the retry is told exactly what.
+        issues.push(...(stored.advisories ?? []));
       } else {
         issues.push(stored.issue);
         if (stored.unanswered !== undefined) unanswered.push({ type: typeName, issue: stored.issue, ...stored.unanswered });
@@ -255,7 +259,7 @@ export class ArtifactHarvester {
     type: ArtifactType,
     path: string,
   ): Promise<
-    | { ok: true; manifest: ArtifactManifest; budget: number; filesChanged?: number }
+    | { ok: true; manifest: ArtifactManifest; budget: number; filesChanged?: number; advisories?: readonly string[] }
     | { ok: false; issue: string; unanswered?: { readonly round: number; readonly notes: number } }
   > {
     let source: string;
@@ -283,6 +287,9 @@ export class ArtifactHarvester {
         };
       }
     }
+
+    const ledger = this.#checkLedger(request.mission, type, parsed.value.frontMatter);
+    if (ledger.refusal !== null) return { ok: false, issue: `\`${path}\` ${ledger.refusal}` };
 
     const measure = this.measure.measure(type, parsed.value.body);
     const changed = type === 'ChangeSet' ? parsed.value.frontMatter['filesChanged'] : undefined;
@@ -339,9 +346,68 @@ export class ArtifactHarvester {
     }, this.clock);
     if (evaluation !== null) this.evaluations.createEvaluation(evaluation);
 
+    if (ledger.spec !== null && this.criteria !== undefined) {
+      this.criteria.replaceSpecCriteria(request.mission.id, recorded.id, ledger.spec);
+      this.recorder.invalidate('criteria', request.mission.id);
+    }
+
     this.recorder.record(request.scope, { type: 'artifact.created', artifactId: recorded.id });
     this.recorder.invalidate('artifacts', request.mission.id);
-    return { ok: true, manifest: recorded, budget: measure.budget, ...counted };
+    return { ok: true, manifest: recorded, budget: measure.budget, ...counted, advisories: ledger.advisories };
+  }
+
+  /**
+   * Holds a ProductSpec or a QAReport against the mission's Done-when ledger.
+   *
+   * Refused (not stored) when the ledger could not hold the spec's ids, or when
+   * a QA result names a criterion the ledger does not have: storing such a
+   * report would let `artifact.QAReport.exists` pass on one that verifies
+   * nothing anyone asked for. A spec that leaves a Done-when line uncovered is
+   * stored - it is still the best statement of the work - and the advisories
+   * name what it owes, for the retry the gate will then ask for.
+   */
+  #checkLedger(mission: Mission, type: ArtifactType, frontMatter: Readonly<Record<string, unknown>>): {
+    readonly refusal: string | null;
+    readonly spec: readonly SpecCriterionInput[] | null;
+    readonly advisories: readonly string[];
+  } {
+    const none = { refusal: null, spec: null, advisories: [] };
+    if (this.criteria === undefined) return none;
+
+    if (type === 'QAReport') {
+      const live = this.criteria.listActive(mission.id);
+      const unknown = unknownQaKeys(live.map((c) => c.key), readQaResults(frontMatter));
+      if (unknown.length === 0) return none;
+      return {
+        refusal: `names criteria that are not on this mission's Done-when ledger: ${unknown.join(', ')}. `
+          + `Give each result the criterionId of a ledger criterion: ${live.map((c) => c.key).join(', ')}.`,
+        spec: null,
+        advisories: [],
+      };
+    }
+
+    if (type !== 'ProductSpec') return none;
+    const spec = readSpecCriteria(frontMatter);
+    const users = this.criteria.listActive(mission.id).filter((c) => c.source === 'user');
+    const check = checkSpecCriteria(users.map((u) => u.key), spec);
+    if (check.refused.length > 0) {
+      return { refusal: `has acceptance criteria the Done-when ledger cannot hold: ${check.refused.join('; ')}.`, spec: null, advisories: [] };
+    }
+    const advisories: string[] = [];
+    for (const key of check.uncovered) {
+      const statement = users.find((u) => u.key === key)?.statement ?? '';
+      advisories.push(
+        `The ProductSpec leaves ${key} uncovered ("${summarize(statement, 160)}"). `
+        + `Add ${key} to \`covers\` on the acceptance criterion that proves it, or add a criterion for it.`,
+      );
+    }
+    if (check.unknownCovers.length > 0) {
+      advisories.push(
+        `The ProductSpec covers ids that are not Done-when lines: ${check.unknownCovers.join(', ')}. `
+        + (users.length > 0 ? `The Done-when lines are ${users.map((u) => u.key).join(', ')}.` : 'This mission has no Done-when lines; leave `covers` empty.'),
+      );
+    }
+    return { refusal: null, spec, advisories };
   }
 
   /** The artifact being revised, when the file on disk is still exactly its body. */
@@ -372,4 +438,31 @@ function readHandoff(frontMatter: Readonly<Record<string, unknown>>): ArtifactHa
 function firstParagraph(body: string): string {
   const withoutHeadings = body.split('\n').filter((line) => !line.startsWith('#')).join('\n');
   return withoutHeadings.trim().split(/\n\s*\n/)[0] ?? '';
+}
+
+/** A spec's acceptance criteria, narrowed: the parser port is schema-agnostic. */
+function readSpecCriteria(frontMatter: Readonly<Record<string, unknown>>): readonly SpecCriterionInput[] {
+  const raw = frontMatter['acceptanceCriteria'];
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((entry): SpecCriterionInput[] => {
+    if (typeof entry !== 'object' || entry === null) return [];
+    const e = entry as Record<string, unknown>;
+    const key = typeof e['id'] === 'string' ? e['id'].trim() : '';
+    const statement = typeof e['statement'] === 'string' ? e['statement'].trim() : '';
+    if (key === '' || statement === '') return [];
+    const covers = Array.isArray(e['covers']) ? e['covers'].filter((c): c is string => typeof c === 'string').map((c) => c.trim()) : [];
+    return [{ key, statement, covers }];
+  });
+}
+
+function readQaResults(frontMatter: Readonly<Record<string, unknown>>): readonly CriterionResult[] {
+  const raw = frontMatter['results'];
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((entry): CriterionResult[] => {
+    if (typeof entry !== 'object' || entry === null) return [];
+    const e = entry as Record<string, unknown>;
+    const criterionId = typeof e['criterionId'] === 'string' ? e['criterionId'] : null;
+    const criterion = typeof e['criterion'] === 'string' ? e['criterion'] : '';
+    return [{ criterionId, criterion, outcome: 'SKIP', evidence: '' }];
+  });
 }
