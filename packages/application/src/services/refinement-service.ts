@@ -17,6 +17,7 @@ import type { RefinementService } from '../services.js';
 import type { EventRecorder, EventScope } from '../support/event-recorder.js';
 import { requireSeat, type Caller } from '../support/identity.js';
 import { buildRefinementPrompt } from '../planning/refinement-prompt.js';
+import { refinementTitle } from '../planning/materialize.js';
 import type { ReadinessService } from './readiness.js';
 
 /** Refinement borrows the product role's runtime routing: it is the product owner's job. */
@@ -361,7 +362,6 @@ export class RefinementServiceImpl implements RefinementService {
     return {
       ok: true,
       value: {
-        title: front.title,
         handoff: front.handoff,
         statements,
         questions: front.questions.map((q) => ({ text: q.text, why: q.why ?? '', options: q.options ?? [] })),
@@ -385,7 +385,8 @@ export class RefinementServiceImpl implements RefinementService {
       taskId: null,
       createdByRunId: null,
       type: 'Refinement',
-      title: content.title,
+      // Named after the mission, not the agent's title line (see refinementTitle).
+      title: refinementTitle(mission.title),
       body: source,
       sourceRefs: [],
       supersedes: previous?.id ?? null,
@@ -444,7 +445,6 @@ interface RefinementFront {
 }
 
 interface RefinementContent {
-  readonly title: string;
   readonly handoff: ArtifactHandoff;
   readonly statements: readonly string[];
   readonly questions: readonly { readonly text: string; readonly why: string; readonly options: readonly string[] }[];
