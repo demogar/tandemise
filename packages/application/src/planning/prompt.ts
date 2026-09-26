@@ -51,7 +51,8 @@ export function buildPlannerPrompt(input: PlannerPromptInput): string {
     ].join('\n'))
     .join('\n');
 
-  const presetPlan = preset.build();
+  const hasTestCommand = (repository?.checks?.test ?? null) !== null;
+  const presetPlan = preset.build({ hasTestCommand });
 
   return `You are the Planner for Tandemise, an orchestration system that runs software
 missions across multiple AI workers. You do not implement anything. You produce
@@ -138,8 +139,12 @@ ${fence(JSON.stringify(presetPlan, null, 2), 'json')}
    - \`review.verdict\` — pass | fail | needs_changes
    - \`qa.acceptance_criteria_coverage\` — number, 0-100
    - \`qa.blocking_defects\` — number
-   Prefer \`checks.tests != FAIL\` over \`checks.tests == PASS\` when a repository
-   may legitimately have no test command — \`!= FAIL\` tolerates SKIP.
+${hasTestCommand
+    ? `   This repository declares a test command, so gate code-writing tasks on
+   \`checks.tests == PASS\`. \`checks.tests != FAIL\` is also true when the tests
+   were never run, so it would let unmeasured work through.`
+    : `   This repository declares no test command, so \`checks.tests\` can only ever
+   be SKIP. Use \`checks.tests != FAIL\` if you reference it at all.`}
 8. \`retryPolicy.maxAttempts\` is at least 1. \`executionPolicy.maxWallTimeMs\` is
    positive; budget generously for implementation (30-45 minutes) and modestly
    for analysis (15-25 minutes).

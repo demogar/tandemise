@@ -24,6 +24,10 @@
  *
  *   node scratch/gate-facts-check.mjs
  *
+ * Also: a preset gate never passes on a test result nobody measured. When the
+ * repository declares a test command, `checks.tests != FAIL` was true with no
+ * result at all, so a build that never ran its tests cleared its gate.
+ *
  * Build first: npx tsc -b packages/application
  */
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -35,7 +39,7 @@ import {
   APPROVAL_REPOSITORY, ARTIFACT_REPOSITORY, EVALUATION_REPOSITORY, MISSION_REPOSITORY,
   REPO_REPOSITORY, TASK_REPOSITORY, WORKSPACE_REPOSITORY, persistenceModule,
 } from '../packages/persistence/dist/index.js';
-import { GateService } from '../packages/application/dist/index.js';
+import { GateService, buildPlannerPrompt, findPreset } from '../packages/application/dist/index.js';
 
 let passed = 0;
 const failures = [];
@@ -289,6 +293,65 @@ section('naming the mission repository explicitly is the same scope as leaving i
   check('both tasks clear their gate',
     gates.evaluate(R.tasks.get(explicit.id)).passed === true
     && gates.evaluate(R.tasks.get(implicit.id)).passed === true);
+}
+
+// ---------------------------------------------------------------------------
+section('an unmeasured test result never passes a preset gate');
+{
+  // The preset gates used to read `checks.tests != FAIL`, which is also true
+  // when there is no test result at all. A repository that declares a test
+  // command must show a PASS; only one with no test command at all may pass on
+  // SKIP, because nothing there can ever be measured.
+  const gateOf = (presetId, key, context) =>
+    findPreset(presetId).build(context).tasks.find((t) => t.key === key).completionGate;
+  const withTests = { hasTestCommand: true };
+  const withoutTests = { hasTestCommand: false };
+
+  for (const [presetId, key] of [['feature-delivery', 'implement'], ['bug-investigation', 'fix']]) {
+    const gate = gateOf(presetId, key, withTests);
+    check(`${presetId}/${key}: a repository with a test command demands a PASS`,
+      gate.includes('checks.tests == PASS') && !gate.includes('checks.tests != FAIL'), gate);
+    const tolerant = gateOf(presetId, key, withoutTests);
+    check(`${presetId}/${key}: a repository without one tolerates SKIP`,
+      tolerant.includes('checks.tests != FAIL'), tolerant);
+    check(`${presetId}/${key}: no repository information is the tolerant form`,
+      gateOf(presetId, key, undefined) === tolerant);
+
+    const missionId = newMission();
+    const [task] = R.tasks.replaceAll(missionId, [{ ...mkTask(missionId, key), completionGate: gate }]);
+    changeSet(missionId, task.id);
+    recordCheck(missionId, task.id, 'checks.typecheck', 'PASS', at());
+    const unmeasured = gates.evaluate(R.tasks.get(task.id));
+    check(`${presetId}/${key}: with a ChangeSet and no test result the gate is not met`,
+      unmeasured.passed === false, unmeasured.detail);
+    check(`${presetId}/${key}: and the reason names the missing test result`,
+      unmeasured.detail.includes('checks.tests'), unmeasured.detail);
+    recordCheck(missionId, task.id, 'checks.tests', 'SKIP', at());
+    check(`${presetId}/${key}: a SKIP is not a PASS where a test command exists`,
+      gates.evaluate(R.tasks.get(task.id)).passed === false);
+    recordCheck(missionId, task.id, 'checks.tests', 'PASS', at());
+    const measured = gates.evaluate(R.tasks.get(task.id));
+    check(`${presetId}/${key}: once the tests pass the gate is met`, measured.passed === true, measured.detail);
+
+    const bare = newMission();
+    const [loose] = R.tasks.replaceAll(bare, [{ ...mkTask(bare, key), completionGate: tolerant }]);
+    changeSet(bare, loose.id);
+    recordCheck(bare, loose.id, 'checks.tests', 'SKIP', at());
+    check(`${presetId}/${key}: without a test command a SKIP still clears it`,
+      gates.evaluate(R.tasks.get(loose.id)).passed === true, gates.evaluate(R.tasks.get(loose.id)).detail);
+  }
+
+  // The planner starts from the same preset, so it must be handed the same rule.
+  const prompt = (test) => buildPlannerPrompt({
+    mission: { title: 'x', goal: 'g', constraints: [], successCriteria: [], autonomy: 'balanced' },
+    repository: { id: 'r', name: 'acme-web', path: '/x', defaultBranch: 'main', checks: { install: null, typecheck: null, lint: null, test, build: null } },
+    roles: [], preset: findPreset('feature-delivery'), availableCapabilities: [], repositoryContext: null,
+  });
+  const strict = prompt('npm test');
+  check('the planner is told to gate on `checks.tests == PASS` when the repository has tests',
+    strict.includes('"completionGate": "artifact.ChangeSet.exists && checks.typecheck != FAIL && checks.tests == PASS"')
+    && strict.includes('declares a test command') && !strict.includes('Prefer `checks.tests != FAIL`'));
+  check('and that SKIP is the only answer when it has none', prompt(null).includes('declares no test command'));
 }
 
 rmSync(dir, { recursive: true, force: true });

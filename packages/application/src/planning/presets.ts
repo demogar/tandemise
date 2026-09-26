@@ -37,7 +37,26 @@ export interface WorkflowPreset {
   readonly description: string;
   /** Shown in the mission form so the user knows what they are choosing. */
   readonly stages: readonly string[];
-  build(): MissionPlan;
+  build(context?: PresetContext): MissionPlan;
+}
+
+/** What a preset needs to know about the repository it will run against. */
+export interface PresetContext {
+  /** The repository declares a test command (`RepositoryChecks.test`). */
+  readonly hasTestCommand?: boolean;
+}
+
+/**
+ * The tests clause of a preset gate.
+ *
+ * `checks.tests != FAIL` is also true when the tests were never measured: a
+ * build that never ran its test command passed its gate. So when the
+ * repository declares a test command the gate demands a PASS. Only a
+ * repository with no test command at all gets the tolerant form, because there
+ * nothing can ever be measured and SKIP is the honest answer.
+ */
+export function testsClause(context: PresetContext = {}): string {
+  return context.hasTestCommand === true ? 'checks.tests == PASS' : 'checks.tests != FAIL';
 }
 
 function task(t: Partial<PlannedTask> & Pick<PlannedTask, 'key' | 'title' | 'objective' | 'roleId'>): PlannedTask {
@@ -60,7 +79,7 @@ const featureDelivery: WorkflowPreset = {
   name: 'Feature delivery',
   description: 'Full pipeline: product spec, design, architecture, implementation, review, QA, release candidate.',
   stages: ['Product', 'Design', 'Architecture', 'Implementation', 'Review', 'QA', 'Release'],
-  build: () => ({
+  build: (context) => ({
     summary: 'Standard feature delivery pipeline.',
     tasks: [
       task({
@@ -98,7 +117,7 @@ const featureDelivery: WorkflowPreset = {
         requiredCapabilities: WRITE_CODE,
         // Deterministic evidence, measured by Tandemise - not the developer's
         // own assessment of its work (MVP.md §17.3).
-        completionGate: 'artifact.ChangeSet.exists && checks.typecheck != FAIL && checks.tests != FAIL',
+        completionGate: `artifact.ChangeSet.exists && checks.typecheck != FAIL && ${testsClause(context)}`,
       }),
       task({
         key: 'review', title: 'Review the diff independently', roleId: 'review',
@@ -150,7 +169,7 @@ const bugInvestigation: WorkflowPreset = {
   name: 'Bug investigation and fix',
   description: 'Reproduce, diagnose, fix, review, and verify a defect.',
   stages: ['Reproduce', 'Fix', 'Review', 'QA'],
-  build: () => ({
+  build: (context) => ({
     summary: 'Reproduce and fix a defect, then verify the fix.',
     tasks: [
       task({
@@ -168,7 +187,7 @@ const bugInvestigation: WorkflowPreset = {
         expectedOutputs: ['ChangeSet'],
         executionPolicy: policy('worktree', WRITE_CODE, 40),
         requiredCapabilities: WRITE_CODE,
-        completionGate: 'artifact.ChangeSet.exists && checks.tests != FAIL',
+        completionGate: `artifact.ChangeSet.exists && ${testsClause(context)}`,
       }),
       task({
         key: 'review', title: 'Review the fix', roleId: 'review',

@@ -51,7 +51,7 @@ ok('a human step is not retried', design.retryPolicy.maxAttempts === 1);
 ok('a human step still produces an artifact', design.expectedOutputs.includes('DesignBrief'));
 const build = tasks.find((t) => t.key === 'build');
 ok('the build waits on the human step', build.dependsOn.includes('design'));
-ok('the gate came through verbatim', build.completionGate === 'checks.typecheck != FAIL && checks.lint != FAIL && checks.test != FAIL');
+ok('the gate came through verbatim', build.completionGate === 'checks.typecheck != FAIL && checks.lint != FAIL && checks.tests != FAIL');
 ok('an approval-before step is marked', tasks.find((t) => t.key === 'open_pr').approvalPolicy.beforeStart === true);
 
 console.log('\n── it is a plan like any other');

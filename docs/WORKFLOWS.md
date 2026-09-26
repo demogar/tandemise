@@ -24,7 +24,7 @@ steps:
     role: development
     objective: Implement the plan for issue #{{ issue }}.
     isolation: worktree
-    gate: checks.typecheck != FAIL && checks.test != FAIL
+    gate: checks.typecheck != FAIL && checks.tests != FAIL
 
   # 2. A person. Parked until you come back with something.
   - key: design
