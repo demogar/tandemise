@@ -1,5 +1,7 @@
 import type {
   ApiErrorBody,
+  NotificationPreferencesView,
+  UpdateNotificationPreferencesRequest,
   CreateRoutineRequest,
   RoutineView,
   UpdateRoutineRequest,
@@ -530,6 +532,16 @@ export class DaemonClient {
 
   updateSettings(body: Partial<DaemonSettings>): Promise<DaemonSettings> {
     return this.#request('PATCH', '/settings', body);
+  }
+
+  // ---------------------------------------------------------- notifications (P16)
+
+  notificationPreferences(): Promise<NotificationPreferencesView> {
+    return this.#get('/notifications/preferences');
+  }
+
+  updateNotificationPreferences(body: UpdateNotificationPreferencesRequest): Promise<NotificationPreferencesView> {
+    return this.#request('PUT', '/notifications/preferences', body);
   }
 }
 

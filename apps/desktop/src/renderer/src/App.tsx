@@ -21,6 +21,7 @@ import { useConnection } from './lib/connection.js';
 import { useDaemonStream } from './lib/stream.js';
 import { useWorkspaces } from './lib/queries.js';
 import { useInbox } from './lib/inbox.js';
+import { useNotificationOpen } from './lib/notifications.js';
 import { WorkspaceProvider } from './lib/workspace.js';
 import { useHotkey } from './lib/keyboard.js';
 import { useThemePreference } from './lib/theme.js';
@@ -90,6 +91,7 @@ function ProjectShell(): JSX.Element {
 
   useHotkey('mod+k', () => setPaletteOpen((open) => !open));
   useHotkey('mod+n', () => navigate('/missions/new'));
+  useNotificationOpen();
 
   // Approvals addressed to me plus human tasks I can pick up: what is actually mine to do.
   const pending = inbox.forMeCount;

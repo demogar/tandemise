@@ -1,0 +1,112 @@
+{
+  "id": "R1",
+  "title": "One new decision: one notification, and its click opens the decision",
+  "ok": true,
+  "checks": [
+    {
+      "label": "the window is hidden (as the main process sees it)",
+      "ok": true,
+      "observed": {
+        "visible": false,
+        "focused": false
+      }
+    },
+    {
+      "label": "one notification \"Decision needed\"",
+      "ok": true,
+      "observed": {
+        "title": "Decision needed",
+        "body": "Approve the plan for Publish the changelog? · Publish the changelog",
+        "route": "/missions/msn_01m3fzec451w8qrrdg9m",
+        "workspaceId": "ws_01m3fze67m7h0a6cqej4",
+        "ids": [
+          "apr_01m3fzec55zmjr4jy36v"
+        ],
+        "shape": "item",
+        "at": "2026-09-26T23:05:15.964Z",
+        "test": false,
+        "windowVisible": false
+      }
+    },
+    {
+      "label": "its body names the card and the mission: \"Approve the plan for Publish the changelog? · Publish the changelog\"",
+      "ok": true,
+      "observed": "Approve the plan for Publish the changelog? · Publish the changelog"
+    },
+    {
+      "label": "it was shown while the window was hidden",
+      "ok": true,
+      "observed": {
+        "title": "Decision needed",
+        "body": "Approve the plan for Publish the changelog? · Publish the changelog",
+        "route": "/missions/msn_01m3fzec451w8qrrdg9m",
+        "workspaceId": "ws_01m3fze67m7h0a6cqej4",
+        "ids": [
+          "apr_01m3fzec55zmjr4jy36v"
+        ],
+        "shape": "item",
+        "at": "2026-09-26T23:05:15.964Z",
+        "test": false,
+        "windowVisible": false
+      }
+    },
+    {
+      "label": "it opens /missions/msn_01m3fzec451w8qrrdg9m",
+      "ok": true,
+      "observed": "/missions/msn_01m3fzec451w8qrrdg9m"
+    },
+    {
+      "label": "nothing more on later polls (same Inbox, same ids)",
+      "ok": true,
+      "observed": 1
+    },
+    {
+      "label": "proof (settings.json): the card id is recorded as announced",
+      "ok": true,
+      "observed": {
+        "notified": [
+          "apr_01m3fzec55zmjr4jy36v"
+        ],
+        "held": []
+      }
+    },
+    {
+      "label": "clicking it shows the window on the mission",
+      "ok": true,
+      "observed": {
+        "visible": true,
+        "focused": true
+      }
+    },
+    {
+      "label": "the mission page shows its plan card to decide",
+      "ok": true,
+      "observed": "msn_01m3fzec451w8qrrdg9m\nMissions\np2-solo\nPublish the changelog\nPublish the changelog\nAwaiting plan approval\nStart\nRe-plan\nCancel\nFeed\n1\nPlan\n1\nTimeline\nArtifacts\n1\nChecks & Gates\nMetrics\nDone when\n0 of 1 verified\nU1\nThe acceptance scenario finishes its steps\nThe spec will cover this\nNot verified\nNeeds you\n1 item\nPlan for Publish the changelog\nAwaiting approval\njust now\nby\nRuntime\n·\nresponsible\nYou\nFull doc\n\nOne document task and nothing downstream, for rounds without dependents.\n\n1 task: product\nNeeds Approve the plan to start\nApplies immediately.\nReject\nApprove"
+    },
+    {
+      "label": "on the Inbox and focused: no notification for the new card",
+      "ok": true,
+      "observed": 0
+    },
+    {
+      "label": "proof (settings.json): it is recorded as seen",
+      "ok": true,
+      "observed": [
+        "apr_01m3fzec55zmjr4jy36v",
+        "apr_01m3fzem4xjvvhk586dh"
+      ]
+    },
+    {
+      "label": "leaving the Inbox does not announce it late",
+      "ok": true,
+      "observed": 0
+    }
+  ],
+  "notes": [
+    "mission msn_01m3fzec451w8qrrdg9m \"Publish the changelog\", plan card apr_01m3fzec55zmjr4jy36v",
+    "mission msn_01m3fzem49nvqatsabpq \"R1 tidy the release notes muizzgag\", plan card apr_01m3fzem4xjvvhk586dh"
+  ],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p16-notify/scratch/acceptance/p16/evidence/R1-opened-from-notification.png"
+  ]
+}

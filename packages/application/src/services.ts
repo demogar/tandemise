@@ -59,6 +59,8 @@ export interface TandemiseServices {
   /** The owner's desk: Home's numbers and the status report (P10). */
   readonly desk: import('./services/desk-service.js').DeskService;
   readonly routines: import('./services/routine-service.js').RoutineService;
+  /** Desktop notifications from the Inbox (P16). */
+  readonly notifications: import('./services/notification-service.js').NotificationService;
 }
 
 /** Making a rough request ready to plan (P6). Every write is refused once the mission has left DRAFT. */

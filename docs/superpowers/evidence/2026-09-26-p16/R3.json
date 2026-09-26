@@ -1,0 +1,155 @@
+{
+  "id": "R3",
+  "title": "Quiet hours hold and summarise once; the test button reaches you",
+  "ok": true,
+  "checks": [
+    {
+      "label": "the section reads \"Quiet hours now\" and \"17:36 to 19:06\"",
+      "ok": true,
+      "observed": "Notifications\nQuiet hours now\nDecisions and approvals\nA plan, a card or a step waits on your answer.\nRefinements\nA draft has proposals or questions to decide before it can be planned.\nStalled missions\nNothing moves a mission and nothing asks you about it.\nQuiet agents\nAn agent has printed nothing for longer than it should.\nLimits\nA mission or the project stopped at a spend or time limit.\nQuiet hou"
+    },
+    {
+      "label": "proof (API): quiet hours saved and in force",
+      "ok": true,
+      "observed": {
+        "kinds": {
+          "decisions": true,
+          "refinements": true,
+          "stalled": true,
+          "quiet": true,
+          "limits": true
+        },
+        "quietHours": {
+          "from": "17:36",
+          "to": "19:06"
+        },
+        "quietNow": true
+      }
+    },
+    {
+      "label": "during quiet hours: no notification for the new card",
+      "ok": true,
+      "observed": []
+    },
+    {
+      "label": "proof (settings.json): the card is held, not announced",
+      "ok": true,
+      "observed": {
+        "notified": [
+          "apr_01m3fzec55zmjr4jy36v",
+          "apr_01m3fzem4xjvvhk586dh",
+          "apr_01m3fzfq04g5109sgd7x",
+          "apr_01m3fzfmherj9fac7gnr",
+          "apr_01m3fzfj2mvbh62v83kd",
+          "refinement:msn_01m3fzfxkht6nsx4rwyx"
+        ],
+        "held": [
+          "apr_01m3fzh0a8wc7kzd8tz4"
+        ]
+      }
+    },
+    {
+      "label": "once quiet hours end: one notification \"After quiet hours: 1 thing needs you\"",
+      "ok": true,
+      "observed": {
+        "title": "After quiet hours: 1 thing needs you",
+        "body": "Decision needed: Approve the plan for R3 rotate the API keys muj017hk? · R3 rotate the API keys muj017hk",
+        "route": "/missions/msn_01m3fzh09pem4tt2sg4x",
+        "workspaceId": "ws_01m3fze67m7h0a6cqej4",
+        "ids": [
+          "apr_01m3fzh0a8wc7kzd8tz4"
+        ],
+        "shape": "summary",
+        "at": "2026-09-26T23:06:44.075Z",
+        "test": false,
+        "windowVisible": true
+      }
+    },
+    {
+      "label": "it names the card and the mission, and opens the mission",
+      "ok": true,
+      "observed": {
+        "title": "After quiet hours: 1 thing needs you",
+        "body": "Decision needed: Approve the plan for R3 rotate the API keys muj017hk? · R3 rotate the API keys muj017hk",
+        "route": "/missions/msn_01m3fzh09pem4tt2sg4x",
+        "workspaceId": "ws_01m3fze67m7h0a6cqej4",
+        "ids": [
+          "apr_01m3fzh0a8wc7kzd8tz4"
+        ],
+        "shape": "summary",
+        "at": "2026-09-26T23:06:44.075Z",
+        "test": false,
+        "windowVisible": true
+      }
+    },
+    {
+      "label": "nothing more after it",
+      "ok": true
+    },
+    {
+      "label": "proof (settings.json): held is empty, the card announced",
+      "ok": true,
+      "observed": {
+        "notified": [
+          "apr_01m3fzec55zmjr4jy36v",
+          "apr_01m3fzem4xjvvhk586dh",
+          "apr_01m3fzfq04g5109sgd7x",
+          "apr_01m3fzfmherj9fac7gnr",
+          "apr_01m3fzfj2mvbh62v83kd",
+          "refinement:msn_01m3fzfxkht6nsx4rwyx",
+          "apr_01m3fzh0a8wc7kzd8tz4"
+        ],
+        "held": []
+      }
+    },
+    {
+      "label": "its click opens the mission",
+      "ok": true
+    },
+    {
+      "label": "\"Send a test notification\" shows \"Notifications are on\"",
+      "ok": true,
+      "observed": {
+        "title": "Notifications are on",
+        "body": "This is how Tandemise will tell you something needs you.",
+        "route": "/settings",
+        "workspaceId": null,
+        "ids": [],
+        "shape": "test",
+        "at": "2026-09-26T23:06:46.304Z",
+        "test": true,
+        "windowVisible": true
+      }
+    },
+    {
+      "label": "the window confirms \"Test notification sent.\"",
+      "ok": true
+    },
+    {
+      "label": "the test touches nothing in the daemon (no notices on the next poll)",
+      "ok": true
+    },
+    {
+      "label": "quiet hours switched off in the window",
+      "ok": true,
+      "observed": {
+        "kinds": {
+          "decisions": true,
+          "refinements": true,
+          "stalled": true,
+          "quiet": true,
+          "limits": true
+        },
+        "quietHours": null,
+        "quietNow": false
+      }
+    }
+  ],
+  "notes": [
+    "setup: cancelled 4 mission(s) left by earlier scenarios, limit off",
+    "mission msn_01m3fzh09pem4tt2sg4x \"R3 rotate the API keys muj017hk\", plan card apr_01m3fzh0a8wc7kzd8tz4"
+  ],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p16-notify/scratch/acceptance/p16/evidence/R3-settings-quiet-hours.png"
+  ]
+}
