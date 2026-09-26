@@ -19,6 +19,12 @@ export interface DaemonConfig {
   readonly tickIntervalMs: number;
   /** A run is quiet after this long without an agent event (P9); silent later. Never stops it. */
   readonly quietMs: number;
+  /**
+   * Test knob (P11): when set, the daemon's one Clock reads real time plus this
+   * offset and `POST /v1/test/clock` may move it forward, so a real-app suite
+   * reaches a routine's next run without waiting. Null (unset) in normal use.
+   */
+  readonly clockOffsetMs: number | null;
 }
 
 export function loadConfig(overrides: Partial<DaemonConfig> = {}): DaemonConfig {
@@ -32,5 +38,13 @@ export function loadConfig(overrides: Partial<DaemonConfig> = {}): DaemonConfig 
     offline: overrides.offline ?? process.env.TANDEMISE_OFFLINE === '1',
     tickIntervalMs: overrides.tickIntervalMs ?? Number(process.env.TANDEMISE_TICK_MS ?? 1500),
     quietMs: overrides.quietMs ?? Number(process.env.TANDEMISE_QUIET_MS ?? 600_000),
+    clockOffsetMs: overrides.clockOffsetMs !== undefined ? overrides.clockOffsetMs : clockOffsetFromEnv(),
   };
+}
+
+function clockOffsetFromEnv(): number | null {
+  const raw = process.env.TANDEMISE_CLOCK_OFFSET_MS;
+  if (raw === undefined || raw.trim() === '') return null;
+  const offset = Number(raw);
+  return Number.isFinite(offset) ? offset : null;
 }

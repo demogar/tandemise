@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import {
-  ACCESS_LEVELS, ARTIFACT_TYPES, AUTONOMY_LEVELS, LIMIT_METRICS, MISSION_PRIORITIES, MISSION_STATUSES, OVERSIGHT_MODES, RUNTIME_CAPABILITIES,
+  ACCESS_LEVELS, ARTIFACT_TYPES, AUTONOMY_LEVELS, LIMIT_METRICS, MISSION_PRIORITIES, MISSION_STATUSES, OVERSIGHT_MODES, ROUTINE_HOURS, ROUTINE_KINDS, RUNTIME_CAPABILITIES,
   staffingPatchSchema,
 } from '@tandemise/domain';
 
@@ -399,3 +399,45 @@ export const cancelMissionRequest = z.object({
 export const workspaceUsageQuery = z.object({
   month: z.string().regex(/^\d{4}-\d{2}$/, 'A month reads like 2026-09.').optional(),
 });
+
+/** The schedule presets (P11): daily, weekly or every N hours. Never cron. */
+export const routineScheduleSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('daily'), at: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Give the time as HH:MM on a 24-hour clock.') }),
+  z.object({ type: z.literal('weekly'), day: z.number().int().min(0).max(6), at: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Give the time as HH:MM on a 24-hour clock.') }),
+  z.object({ type: z.literal('hourly'), every: z.number().int().refine((n) => (ROUTINE_HOURS as readonly number[]).includes(n), `Every N hours takes one of ${ROUTINE_HOURS.join(', ')}.`) }),
+]);
+
+const routineFields = {
+  name: z.string().trim().min(1, 'A routine needs a name.').max(120),
+  kind: z.enum(ROUTINE_KINDS),
+  goal: z.string().max(8000),
+  successCriteria: z.array(z.string().max(2000)).max(50),
+  priority: z.enum(MISSION_PRIORITIES),
+  limits: limitsSchema.nullable(),
+  workflowPreset: z.string().min(1).nullable(),
+  schedule: routineScheduleSchema,
+  enabled: z.boolean(),
+};
+
+/** Creating a routine (P11). A mission routine needs a Done-when line; the service says so. */
+export const createRoutineRequest = z.object({
+  ...routineFields,
+  kind: routineFields.kind.default('mission'),
+  goal: routineFields.goal.default(''),
+  successCriteria: routineFields.successCriteria.default([]),
+  priority: routineFields.priority.optional(),
+  limits: routineFields.limits.optional(),
+  workflowPreset: routineFields.workflowPreset.optional(),
+  enabled: routineFields.enabled.optional(),
+});
+export type CreateRoutineRequest = z.input<typeof createRoutineRequest>;
+
+export const updateRoutineRequest = z.object(routineFields).partial()
+  .refine((r) => Object.keys(r).length > 0, 'Say what to change.');
+export type UpdateRoutineRequest = z.infer<typeof updateRoutineRequest>;
+
+/** Test clock (P11): only served when the daemon runs with TANDEMISE_CLOCK_OFFSET_MS. */
+export const advanceClockRequest = z.object({
+  advanceMs: z.number().int().min(0).max(366 * 24 * 3_600_000),
+});
+export type AdvanceClockRequest = z.infer<typeof advanceClockRequest>;

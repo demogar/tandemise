@@ -34,7 +34,8 @@ export async function startDaemon(overrides: Parameters<typeof loadConfig>[0] = 
   lock.acquire();
 
   const gitName = gitUserName();
-  const { container, services, lifecycle, events, projections, log } = bootstrap(config, { localPersonName: gitName });
+  const { container, services, lifecycle, events, projections, log, testClock } = bootstrap(config, { localPersonName: gitName });
+  if (testClock !== null) log.warn('daemon.test_clock', { offsetMs: testClock.offsetMs() });
   log.info('daemon.starting', { version: config.version, apiVersion: API_VERSION, home: config.home });
   adoptGitName(services, gitName, log);
 
@@ -69,7 +70,7 @@ export async function startDaemon(overrides: Parameters<typeof loadConfig>[0] = 
   if (replanned.length > 0) log.info('planning.resumed', { missions: replanned });
 
   const token = loadOrCreateToken(config.home);
-  const router = buildRouter(services);
+  const router = buildRouter(services, { testClock });
 
   let stream: StreamServer | undefined;
   const http = new HttpServer({

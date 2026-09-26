@@ -85,6 +85,8 @@ export { LivenessService } from './services/liveness-service.js';
 export type { LivenessDeps } from './services/liveness-service.js';
 export { DeskService } from './services/desk-service.js';
 export type { DeskDeps } from './services/desk-service.js';
+export { RoutineService } from './services/routine-service.js';
+export type { RoutineDeps } from './services/routine-service.js';
 export { RefinementServiceImpl } from './services/refinement-service.js';
 export type { RefinementDeps } from './services/refinement-service.js';
 export type { CriteriaServiceDeps } from './services/criteria-service.js';

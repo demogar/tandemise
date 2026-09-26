@@ -1,5 +1,5 @@
 import type {
-  ApprovalId, ArtifactId, CriterionId, FeedbackId, IntegrationId, QuestionId, MemberId, MissionId, PersonId, RepositoryId, RuntimeProfileId,
+  ApprovalId, ArtifactId, CriterionId, FeedbackId, IntegrationId, QuestionId, MemberId, MissionId, PersonId, RepositoryId, RoutineId, RuntimeProfileId,
   TaskId, WorkspaceId,
 } from '@tandemise/shared';
 import type {
@@ -58,6 +58,7 @@ export interface TandemiseServices {
   readonly liveness: import('./services/liveness-service.js').LivenessService;
   /** The owner's desk: Home's numbers and the status report (P10). */
   readonly desk: import('./services/desk-service.js').DeskService;
+  readonly routines: import('./services/routine-service.js').RoutineService;
 }
 
 /** Making a rough request ready to plan (P6). Every write is refused once the mission has left DRAFT. */
@@ -112,7 +113,8 @@ export interface WorkspaceService {
 
 export interface MissionService {
   list(filter: { workspaceId?: string; status?: string; limit?: number }): readonly MissionSummary[];
-  create(caller: Caller, request: CreateMissionRequest): Promise<Mission>;
+  /** `origin.routineId` marks a mission a routine created (P11). */
+  create(caller: Caller, request: CreateMissionRequest, origin?: { routineId?: RoutineId }): Promise<Mission>;
   start(id: MissionId): Promise<Mission>;
   pause(id: MissionId): Promise<Mission>;
   resume(id: MissionId): Promise<Mission>;

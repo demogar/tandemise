@@ -9,9 +9,11 @@ import {
   updateMemberRequest, roleStaffingPatchRequest, taskStaffingPatchRequest, missionFeedQuery, missionArtifactsQuery, artifactSearchQuery,
   dismissFeedbackRequest, giveFeedbackRequest, startRoundRequest,
   addCriterionRequest, answerQuestionRequest, criterionVerdictRequest, updateMissionRequest, workspaceUsageQuery,
+  advanceClockRequest, createRoutineRequest, updateRoutineRequest,
 } from '@tandemise/api-contract';
 import { normalizeLimits } from '@tandemise/domain';
 import type { TandemiseServices } from '@tandemise/application';
+import type { AdjustableClock } from '@tandemise/shared';
 import { Router, formatZodIssues, type RequestContext } from './http/router.js';
 
 /**
@@ -22,7 +24,7 @@ import { Router, formatZodIssues, type RequestContext } from './http/router.js';
  * way means the API is a projection of the application layer rather than a
  * second place where mission rules live.
  */
-export function buildRouter(services: TandemiseServices): Router {
+export function buildRouter(services: TandemiseServices, options: { readonly testClock?: AdjustableClock | null } = {}): Router {
   const r = new Router();
 
   /**
@@ -106,6 +108,26 @@ export function buildRouter(services: TandemiseServices): Router {
   // The status report (P10): rendered from stored facts, stored as the next version of the project's line.
   r.post('/v1/workspaces/:id/status-report', (ctx) => services.desk.writeStatusReport(asId(ctx.params.id!), ctx.caller));
   r.delete('/v1/missions/:id', (ctx) => services.missions.remove(asId(ctx.params.id!)));
+
+  // Routines (P11): standing work that adds queued missions on a schedule.
+  r.get('/v1/workspaces/:id/routines', (ctx) => services.routines.list(asId(ctx.params.id!)));
+  r.post('/v1/workspaces/:id/routines', async (ctx) =>
+    services.routines.create(ctx.caller, asId(ctx.params.id!), await ctx.body(createRoutineRequest)));
+  r.get('/v1/routines/:id', (ctx) => services.routines.view(asId(ctx.params.id!)));
+  r.patch('/v1/routines/:id', async (ctx) => services.routines.update(asId(ctx.params.id!), await ctx.body(updateRoutineRequest)));
+  r.delete('/v1/routines/:id', (ctx) => services.routines.remove(asId(ctx.params.id!)));
+  r.post('/v1/routines/:id/run-now', (ctx) => services.routines.runNow(ctx.caller, asId(ctx.params.id!)));
+
+  // The test clock (P11): registered only under TANDEMISE_CLOCK_OFFSET_MS, so a
+  // normal daemon answers 404 and nothing can move its time.
+  const testClock = options.testClock ?? null;
+  if (testClock !== null) {
+    r.post('/v1/test/clock', async (ctx) => {
+      const { advanceMs } = await ctx.body(advanceClockRequest);
+      const offsetMs = testClock.advance(advanceMs);
+      return { now: testClock.now(), offsetMs };
+    });
+  }
 
   r.post('/v1/missions/:id/plan', (ctx) => services.planning.begin(asId(ctx.params.id!)));
   r.post('/v1/missions/:id/start', (ctx) => services.missions.start(asId(ctx.params.id!)));

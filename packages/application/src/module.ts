@@ -49,7 +49,8 @@ import { BacklogService } from './services/backlog-service.js';
 import { LimitService } from './services/limit-service.js';
 import { LivenessService } from './services/liveness-service.js';
 import { DeskService } from './services/desk-service.js';
-import { DEFAULT_QUIET_AFTER_MS } from '@tandemise/domain';
+import { RoutineService } from './services/routine-service.js';
+import { DEFAULT_QUIET_AFTER_MS, reachedReason } from '@tandemise/domain';
 import { RefinementServiceImpl } from './services/refinement-service.js';
 import { PlanningServiceImpl } from './services/planning-service.js';
 import { ProjectionServiceImpl } from './services/projection-service.js';
@@ -327,6 +328,8 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       rounds: r.resolve(t.FEEDBACK_ROUNDS),
       // Resolved per pass, not at construction: the backlog plans through the
       // planning service, which is composed with the API services after this.
+      // Resolved per pass: routines create missions through the mission service, composed after this.
+      fireRoutines: () => r.resolve(t.ROUTINE_SERVICE).tick(),
       pullBacklog: () => r.resolve(t.BACKLOG_SERVICE).pull(),
       limits: r.resolve(t.LIMIT_SERVICE),
       // Resolved per pass, like the backlog: it reads the planner, composed after this.
@@ -692,6 +695,22 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       clock: clock(r),
     }), { source: SOURCE });
 
+    bind(t.ROUTINE_SERVICE, (r) => new RoutineService({
+      routines: r.resolve(t.ROUTINE_REPOSITORY),
+      workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
+      missions: r.resolve(t.MISSION_REPOSITORY),
+      members: r.resolve(t.MEMBER_REPOSITORY),
+      createMission: (caller, request, origin) => r.resolve(t.MISSION_SERVICE).create(caller, request, origin),
+      writeStatusReport: (workspaceId, caller) => r.resolve(t.DESK_SERVICE).writeStatusReport(workspaceId, caller),
+      monthHardStop: (workspaceId) => {
+        const { level, status } = r.resolve(t.LIMIT_SERVICE).monthLevel(workspaceId);
+        return level === 'hard' && status !== null ? reachedReason(status, 'month') : null;
+      },
+      recorder: r.resolve(t.EVENT_RECORDER),
+      clock: clock(r),
+      log: log(r).child({ component: 'routines' }),
+    }), { source: SOURCE });
+
     bind(t.CRITERIA_SERVICE, (r) => new CriteriaServiceImpl({
       missions: r.resolve(t.MISSION_REPOSITORY),
       artifacts: r.resolve(t.ARTIFACT_REPOSITORY),
@@ -720,6 +739,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       limits: r.resolve(t.LIMIT_SERVICE),
       liveness: r.resolve(t.LIVENESS_SERVICE),
       desk: r.resolve(t.DESK_SERVICE),
+      routines: r.resolve(t.ROUTINE_SERVICE),
     }), { source: SOURCE });
   });
 }

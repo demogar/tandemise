@@ -1,6 +1,6 @@
 import type {
   ApprovalId, ArtifactId, CriterionId, EventId, QuestionId, FeedbackId, MemberId, MissionId, PersonId, RepositoryId, RunId, RuntimeProfileId,
-  ExecutionTargetId, IntegrationId, TaskId, Timestamp, WorkerAssignmentId, WorkspaceId,
+  ExecutionTargetId, IntegrationId, RoutineId, TaskId, Timestamp, WorkerAssignmentId, WorkspaceId,
 } from '@tandemise/shared';
 import type { Mission, MissionDraft, MissionProgress, MissionStatus } from '../entities/mission.js';
 import type { MissionTask, TaskStatus } from '../entities/task.js';
@@ -21,6 +21,7 @@ import type { FeedbackItem, FeedbackStatus } from '../entities/feedback.js';
 import type { MissionCriterion, SpecCriterionInput } from '../entities/criteria.js';
 import type { MissionQuestion, QuestionInput } from '../entities/refinement.js';
 import type { LimitIncident, LimitIncidentStatus, LimitMetric, LimitThreshold, UsageTotals } from '../entities/limits.js';
+import type { Routine, RoutineDraft, RoutineRun } from '../entities/routine.js';
 
 /**
  * Persistence ports.
@@ -328,4 +329,24 @@ export interface LimitIncidentKey {
   readonly windowStart: string;
   readonly threshold: LimitThreshold;
   readonly amountLimit: number;
+}
+
+/**
+ * Routines and the note of every run (P11). `claim` is the one conditional
+ * write that makes a slot fire once: it moves the next run forward only if it
+ * still holds the value the caller read.
+ */
+export interface RoutineRepositoryPort {
+  create(draft: RoutineDraft): Routine;
+  get(id: RoutineId): Routine | undefined;
+  list(workspaceId: WorkspaceId): readonly Routine[];
+  /** Enabled routines whose next run is at or before `now`, oldest first. */
+  listDue(now: Timestamp): readonly Routine[];
+  update(id: RoutineId, patch: Partial<Omit<Routine, 'id' | 'workspaceId' | 'createdAt' | 'updatedAt'>>): Routine;
+  /** Moves `next_run_at` from `from` to `to`; false when another pass already did. */
+  claim(id: RoutineId, from: Timestamp, to: Timestamp): boolean;
+  remove(id: RoutineId): void;
+  recordRun(run: Omit<RoutineRun, 'id'>): RoutineRun;
+  /** Newest first. */
+  recentRuns(id: RoutineId, limit: number): readonly RoutineRun[];
 }

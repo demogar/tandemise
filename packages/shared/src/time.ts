@@ -11,6 +11,32 @@ export const systemClock: Clock = {
   epochMs: () => Date.now(),
 };
 
+/** A clock that can be moved forward while it runs. */
+export interface AdjustableClock extends Clock {
+  /** Adds to the offset; answers with the new offset. */
+  advance(ms: number): number;
+  offsetMs(): number;
+}
+
+/**
+ * Real time plus an offset the caller can grow: the daemon's test knob
+ * (TANDEMISE_CLOCK_OFFSET_MS), so a real-app suite can reach a routine's next
+ * run without waiting for it. Only ever moves forward, like time.
+ */
+export function adjustableClock(initialOffsetMs = 0, base: Clock = systemClock): AdjustableClock {
+  let offset = initialOffsetMs;
+  return {
+    now: () => new Date(base.epochMs() + offset).toISOString(),
+    epochMs: () => base.epochMs() + offset,
+    advance: (ms: number) => {
+      if (!Number.isFinite(ms) || ms < 0) throw new RangeError('The clock only moves forward.');
+      offset += ms;
+      return offset;
+    },
+    offsetMs: () => offset,
+  };
+}
+
 /** Deterministic clock for tests and the fake runtime. */
 export function fixedClock(startMs: number, stepMs = 1000): Clock {
   let t = startMs;
