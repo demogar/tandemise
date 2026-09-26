@@ -22,6 +22,12 @@ npm run daemon    # tandemd
 npm run desktop   # Electron app
 ```
 
+On macOS the Dock takes an app's name from its bundle, and the development app
+runs Electron's own `Electron.app`. So `npm ci` runs `scripts/dev-bundle-name.mjs`
+as a `postinstall` step, which renames that bundle to Tandemise and gives it the
+Tandemise icon. If the Dock still says "Electron" (for example after
+`npm ci --ignore-scripts`), run `npm run dev:bundle-name` and restart the app.
+
 ## Before you open a pull request
 
 Run what CI runs:

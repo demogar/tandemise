@@ -32,6 +32,8 @@
     "daemon:dev": "node --watch apps/daemon/dist/main.js",
     "desktop": "npm run -w @tandemise/desktop dev",
     "dev": "node scripts/dev.mjs",
+    "dev:bundle-name": "node scripts/dev-bundle-name.mjs",
+    "postinstall": "node scripts/dev-bundle-name.mjs",
     "test": "npm run check:offline",
     "check:offline": "node scripts/run-checks.mjs",
     "ci": "npm run build && npm run check:boundaries && npm run check:design && npm run check:licenses && npm run -w @tandemise/desktop typecheck && npm run check:offline",
