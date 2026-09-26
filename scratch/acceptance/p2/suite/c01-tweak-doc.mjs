@@ -12,7 +12,8 @@ await assertSolo(c, ev);
 const spec = (headline, changed) => ['---', 'type: ProductSpec', 'schemaVersion: 1', 'title: Hello spec', 'handoff:', `  headline: ${headline}`,
   '  points:', '    - Written by the fake runtime',
   ...(changed ? ['  changed:', '    - what: "Shortened the intro"', '      feedback: "{{fb}}"'] : []),
-  'acceptanceCriteria:', '  - id: AC1', '    statement: The page greets the visitor.', 'nonGoals: []', '---', '', `# Hello\n\n${headline}.`].join('\n');
+  // Covers the one Done-when line every mission now carries (P6), as the ledger requires of a spec.
+  'acceptanceCriteria:', '  - id: AC1', '    statement: The page greets the visitor.', '    covers: [U1]', 'nonGoals: []', '---', '', `# Hello\n\n${headline}.`].join('\n');
 const fake = await api.post('/v1/runtimes', {
   adapterId: 'fake', name: `Fake rounds ${Date.now().toString(36)}`, workspaceId: null, enabled: true, maxConcurrent: 2,
   settings: { script: { captures: { fb: '^\\d+\\. (fb_[0-9a-z]{20}) \\(' }, steps: [

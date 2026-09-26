@@ -1,0 +1,59 @@
+{
+  "id": "F5",
+  "title": "Autonomous accepts criteria, never answers questions",
+  "ok": true,
+  "checks": [
+    {
+      "label": "the mission runs autonomously",
+      "ok": true
+    },
+    {
+      "label": "every proposal was \"Accepted automatically\", as U1-U3",
+      "ok": true,
+      "observed": [
+        "U1 Visiting the home page shows \"Hello, <name>\" for a signed-in visitor Proposed by the product agent; accepted because this mission runs autonomously Accepted automatically",
+        "U2 A visitor who is not signed in sees \"Hello, friend\" instead of an empty name Proposed by the product agent; accepted because this mission runs autonomously Accepted automatically",
+        "U3 The greeting is readable on a 375px wide phone screen without scrolling sideways Proposed by the product agent; accepted because this mission runs autonomously Accepted automatically"
+      ]
+    },
+    {
+      "label": "nothing is left to decide among criteria",
+      "ok": true
+    },
+    {
+      "label": "the question still blocks: \"Answer 1 question to plan\", disabled",
+      "ok": true,
+      "observed": {
+        "text": "Answer 1 question to plan",
+        "disabled": true
+      }
+    },
+    {
+      "label": "proof (API): decided by autonomy, question open",
+      "ok": true,
+      "observed": {
+        "c": [
+          [
+            "U1",
+            "autonomy"
+          ],
+          [
+            "U2",
+            "autonomy"
+          ],
+          [
+            "U3",
+            "autonomy"
+          ]
+        ],
+        "q": [
+          "open"
+        ]
+      }
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p6-ready/scratch/acceptance/p6/evidence/F5-accepted-automatically.png"
+  ]
+}
