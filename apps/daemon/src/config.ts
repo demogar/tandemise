@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { createPaths, defaultRoot, type LogLevel, type TandemisePaths } from '@tandemise/shared';
 
 /**
@@ -13,6 +14,12 @@ export interface DaemonConfig {
   readonly port: number;
   readonly logLevel: LogLevel;
   readonly version: string;
+  /**
+   * Short git commit this daemon was built from, or `dev`. Written next to the
+   * compiled entry by `scripts/write-build-info.mjs` at `npm run build`, so it
+   * names the code that is running, not the checkout it happens to sit in.
+   */
+  readonly build: string;
   /** Disables spawning real agent runtimes. Used by smoke tests. */
   readonly offline: boolean;
   /** Scheduler tick interval. Short enough to feel live, long enough to idle. */
@@ -35,6 +42,7 @@ export function loadConfig(overrides: Partial<DaemonConfig> = {}): DaemonConfig 
     port: overrides.port ?? Number(process.env.TANDEMISE_PORT ?? 0),
     logLevel: overrides.logLevel ?? ((process.env.TANDEMISE_LOG_LEVEL as LogLevel) ?? 'info'),
     version: overrides.version ?? '0.5.0', // x-release-please-version
+    build: overrides.build ?? buildFromEnv() ?? readBuildInfo(),
     offline: overrides.offline ?? process.env.TANDEMISE_OFFLINE === '1',
     tickIntervalMs: overrides.tickIntervalMs ?? Number(process.env.TANDEMISE_TICK_MS ?? 1500),
     quietMs: overrides.quietMs ?? Number(process.env.TANDEMISE_QUIET_MS ?? 600_000),
@@ -47,4 +55,21 @@ function clockOffsetFromEnv(): number | null {
   if (raw === undefined || raw.trim() === '') return null;
   const offset = Number(raw);
   return Number.isFinite(offset) ? offset : null;
+}
+
+/** Test knob: a real-app suite names a different build to see the mismatch warning. */
+function buildFromEnv(): string | null {
+  const raw = process.env.TANDEMISE_BUILD?.trim();
+  return raw ? raw : null;
+}
+
+/** `dist/build-info.json`, beside this module once compiled; `dev` when absent or unreadable. */
+export function readBuildInfo(file: URL = new URL('./build-info.json', import.meta.url)): string {
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(file, 'utf8'));
+    const build = typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>).build : undefined;
+    return typeof build === 'string' && /^[0-9a-f]{4,40}$/.test(build) ? build : 'dev';
+  } catch {
+    return 'dev';
+  }
 }

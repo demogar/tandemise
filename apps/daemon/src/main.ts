@@ -36,7 +36,7 @@ export async function startDaemon(overrides: Parameters<typeof loadConfig>[0] = 
   const gitName = gitUserName();
   const { container, services, lifecycle, events, projections, log, testClock } = bootstrap(config, { localPersonName: gitName });
   if (testClock !== null) log.warn('daemon.test_clock', { offsetMs: testClock.offsetMs() });
-  log.info('daemon.starting', { version: config.version, apiVersion: API_VERSION, home: config.home });
+  log.info('daemon.starting', { version: config.version, build: config.build, apiVersion: API_VERSION, home: config.home });
   adoptGitName(services, gitName, log);
 
   // Recovery reconciles whatever the last daemon left behind, and must complete

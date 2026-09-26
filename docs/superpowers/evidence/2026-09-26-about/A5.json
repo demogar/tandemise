@@ -1,0 +1,44 @@
+{
+  "id": "A5",
+  "title": "Following the warning (kill the pid, npm run daemon) brings the app and daemon back in step",
+  "ok": true,
+  "checks": [
+    {
+      "label": "the warning names the stale daemon's process id",
+      "ok": true,
+      "observed": {
+        "named": 98738,
+        "pid": 98738
+      }
+    },
+    {
+      "label": "the window notices the daemon stopped",
+      "ok": true
+    },
+    {
+      "label": "npm run daemon started a new daemon",
+      "ok": true,
+      "observed": 99095
+    },
+    {
+      "label": "without pressing anything, About shows the new daemon at d9141a8 and no warning",
+      "ok": true,
+      "observed": {
+        "App": "0.5.0 (d9141a8)",
+        "Daemon": "0.5.0 (d9141a8)",
+        "Daemon status": "Running · up under a minute · process 99095",
+        "Database schema": "Version 17",
+        "Data folder": "/tmp/tdm-about/home Show in Finder",
+        "Electron": "33.4.11 (Chromium 130.0.6723.191, Node 20.18.3)",
+        "Operating system": "macOS 15.0.1 (x64)"
+      }
+    }
+  ],
+  "notes": [
+    "ran `npm run daemon` in the repository with the run's TANDEMISE_HOME"
+  ],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-about/scratch/acceptance/about/evidence/A5-daemon-stopped.png",
+    "/Users/demogar/projects/tandemise/tandemise-about/scratch/acceptance/about/evidence/A5-matching-again.png"
+  ]
+}

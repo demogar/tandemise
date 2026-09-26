@@ -1,0 +1,80 @@
+{
+  "id": "A1",
+  "title": "Settings → About shows versions, builds, schema and the data folder",
+  "ok": true,
+  "checks": [
+    {
+      "label": "the section is titled About, with the app version in its header",
+      "ok": true,
+      "observed": [
+        "About",
+        "0.5.0 (d9141a8)"
+      ]
+    },
+    {
+      "label": "App reads \"0.5.0 (d9141a8)\"",
+      "ok": true,
+      "observed": "0.5.0 (d9141a8)"
+    },
+    {
+      "label": "Daemon reads \"0.5.0 (d9141a8)\"",
+      "ok": true,
+      "observed": "0.5.0 (d9141a8)"
+    },
+    {
+      "label": "Daemon status reads Running, an uptime and the process id",
+      "ok": true,
+      "observed": "Running · up under a minute · process 92807"
+    },
+    {
+      "label": "Database schema reads the migration number",
+      "ok": true,
+      "observed": {
+        "row": "Version 17",
+        "migrated": 17
+      }
+    },
+    {
+      "label": "proof (API + SQL): /v1/system agrees with the database",
+      "ok": true,
+      "observed": {
+        "schemaVersion": 17,
+        "daemonBuild": "d9141a8"
+      }
+    },
+    {
+      "label": "Data folder is this run's TANDEMISE_HOME, with Show in Finder",
+      "ok": true,
+      "observed": "/tmp/tdm-about/home Show in Finder"
+    },
+    {
+      "label": "Electron row has Electron, Chromium and Node versions",
+      "ok": true,
+      "observed": "33.4.11 (Chromium 130.0.6723.191, Node 20.18.3)"
+    },
+    {
+      "label": "Operating system names macOS and the architecture",
+      "ok": true,
+      "observed": "macOS 15.0.1 (x64)"
+    },
+    {
+      "label": "no mismatch warning when both halves are this build",
+      "ok": true
+    },
+    {
+      "label": "links: Repository, Documentation, Report an issue, and Copy diagnostics",
+      "ok": true,
+      "observed": "About\n0.5.0 (d9141a8)\nCopy diagnostics\nApp\t0.5.0 (d9141a8)\nDaemon\t0.5.0 (d9141a8)\nDaemon status\tRunning · up under a minute · process 92807\nDatabase schema\tVersion 17\nData folder\t\n/tmp/tdm-about/home\nShow in Finder\n\nElectron\t33.4.11 (Chromium 130.0.6723.191, Node 20.18.3)\nOperating system\tmacOS 15.0.1 (x64)\nRepository\nDocumentation\nReport an issue\n\nReporting a problem? Press Copy diagnostics and paste the text into the issue. It holds versions, the data folder and the daemon's state, never tokens or settings."
+    },
+    {
+      "label": "says what the copied text holds and that it has no tokens",
+      "ok": true
+    }
+  ],
+  "notes": [
+    "screenshot copied to apps/desktop/screenshots/31-settings-about.png for the guide"
+  ],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-about/scratch/acceptance/about/evidence/A1-settings-about.png"
+  ]
+}

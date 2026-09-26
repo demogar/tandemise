@@ -1,9 +1,29 @@
+import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite';
 import react from '@vitejs/plugin-react';
 
 /** Resolve against this file, not `process.cwd()`: the build must not depend on where npm was run. */
 const here = (...segments: string[]): string => resolve(import.meta.dirname, ...segments);
+
+/**
+ * The short git commit this app is built from, shown in the About panel and in
+ * Settings → About next to the version. `dev` when git is not available. The
+ * daemon records the same value at `npm run build` (scripts/write-build-info.mjs),
+ * so the two can be compared.
+ */
+function shortCommit(): string {
+  try {
+    const sha = execFileSync('git', ['rev-parse', '--short=7', 'HEAD'], {
+      cwd: here(),
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    return /^[0-9a-f]{4,40}$/.test(sha) ? sha : 'dev';
+  } catch {
+    return 'dev';
+  }
+}
 
 /**
  * Injected only into the production bundle. In dev the policy arrives as a
@@ -39,6 +59,7 @@ function injectCsp() {
 export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin()],
+    define: { __TANDEMISE_BUILD__: JSON.stringify(shortCommit()) },
     build: { outDir: here('dist/main'), rollupOptions: { input: here('src/main/index.ts') } },
   },
   preload: {

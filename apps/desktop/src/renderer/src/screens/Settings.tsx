@@ -5,6 +5,7 @@ import { useConnection } from '../lib/connection.js';
 import { useThemePreference, type ThemePreference } from '../lib/theme.js';
 import { dateTime } from '../lib/format.js';
 import { NotificationSettings } from './settings/Notifications.js';
+import { SettingsAbout } from './SettingsAbout.js';
 
 export function Settings(): JSX.Element {
   const settings = useSettings();
@@ -117,6 +118,8 @@ export function Settings(): JSX.Element {
                 </div>
                 {updateSettings.isError ? <ErrorState error={updateSettings.error} /> : null}
               </section>
+
+              <SettingsAbout />
             </>
           )}
         </div>

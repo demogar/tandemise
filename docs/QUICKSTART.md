@@ -44,8 +44,10 @@ The guides in [`docs/guides/`](guides/) each answer one "how do I…":
 [Done when](guides/done-when.md), [Refine](guides/refine.md),
 [Backlog and work in progress](guides/backlog.md), [Limits](guides/limits.md),
 [The Inbox](guides/inbox.md),
-[The desk and the status report](guides/desk-and-status-report.md) and
-[Routines](guides/routines.md). [WORKFLOWS.md](WORKFLOWS.md) covers workflow
+[The desk and the status report](guides/desk-and-status-report.md),
+[Routines](guides/routines.md) and
+[About and diagnostics](guides/about-and-diagnostics.md) (what to check, and
+copy, when something goes wrong). [WORKFLOWS.md](WORKFLOWS.md) covers workflow
 files and every gate fact.
 
 ## Where things are

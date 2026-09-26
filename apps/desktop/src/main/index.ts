@@ -3,7 +3,8 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DaemonConnector } from './daemon-connection.js';
 import { Notifier } from './notifier.js';
-import { IPC, type NotificationOpen } from '../shared/bridge.js';
+import { IPC, TEST_HOOKS_ARGUMENT, type NotificationOpen } from '../shared/bridge.js';
+import { aboutPanelOptions, appAboutFacts, installApplicationMenu } from './about.js';
 import { WINDOW_BACKGROUND } from '../shared/brand.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -11,6 +12,8 @@ const isDev = !app.isPackaged;
 const devServerUrl = process.env['ELECTRON_RENDERER_URL'];
 
 const APP_NAME = 'Tandemise';
+/** Real-app suites only: exposes the About panel options to the renderer (see `TandemiseTestBridge`). */
+const testHooks = process.env['TANDEMISE_TEST_HOOKS'] === '1';
 /** Built from `build/icon.svg` by `npm run icons`. */
 const appIconPath = join(here, '../../build/icon.png');
 
@@ -24,11 +27,8 @@ const appIconPath = join(here, '../../build/icon.png');
  * recognisably itself.
  */
 app.setName(APP_NAME);
-app.setAboutPanelOptions({
-  applicationName: APP_NAME,
-  applicationVersion: app.getVersion(),
-  iconPath: appIconPath,
-});
+const aboutOptions = aboutPanelOptions(appIconPath);
+app.setAboutPanelOptions(aboutOptions);
 if (isDev && process.platform === 'darwin') {
   const icon = nativeImage.createFromPath(appIconPath);
   if (!icon.isEmpty()) app.dock?.setIcon(icon);
@@ -60,6 +60,7 @@ function createWindow(): BrowserWindow {
       nodeIntegration: false,
       sandbox: true,
       webviewTag: false,
+      ...(testHooks ? { additionalArguments: [TEST_HOOKS_ARGUMENT] } : {}),
     },
   });
 
@@ -160,8 +161,12 @@ function applyContentSecurityPolicy(): void {
     callback({ responseHeaders: { ...details.responseHeaders, 'Content-Security-Policy': [policy] } });
   });
 
-  // Deny every powerful web API outright; the app needs none of them.
-  session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
+  // Deny every powerful web API outright, except writing plain text to the
+  // clipboard: "Copy diagnostics" and the copyable ids need it, and Chromium
+  // asks for it even on a click. Reading the clipboard stays denied.
+  session.defaultSession.setPermissionRequestHandler((_contents, permission, callback) =>
+    callback(permission === 'clipboard-sanitized-write'),
+  );
 }
 
 function registerIpc(): void {
@@ -193,6 +198,9 @@ function registerIpc(): void {
   ipcMain.handle(IPC.revealInFinder, async (_event, path: unknown) => {
     if (typeof path === 'string' && path.length > 0) shell.showItemInFolder(path);
   });
+
+  ipcMain.handle(IPC.appInfo, () => appAboutFacts());
+  if (testHooks) ipcMain.handle(IPC.testAboutPanelOptions, () => ({ ...aboutOptions }));
 }
 
 function safeUrl(value: string): URL | null {
@@ -211,6 +219,7 @@ connector.on('status', (status) => {
 
 app.whenReady().then(() => {
   applyContentSecurityPolicy();
+  installApplicationMenu();
   registerIpc();
   createTray();
   mainWindow = createWindow();

@@ -88,6 +88,7 @@ export interface SettingsStorePort {
  */
 export interface SystemEnvironmentPort {
   readonly daemonVersion: string;
+  readonly daemonBuild: string;
   readonly schemaVersion: number;
   readonly home: string;
   readonly startedAt: Timestamp;

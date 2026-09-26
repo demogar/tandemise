@@ -5,3 +5,4 @@ export * from './stream.js';
 export * from './errors.js';
 export * from './for-me.js';
 export * from './notifications.js';
+export * from './about.js';

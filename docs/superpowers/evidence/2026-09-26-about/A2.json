@@ -1,0 +1,48 @@
+{
+  "id": "A2",
+  "title": "Copy diagnostics copies versions and the data folder, never the token",
+  "ok": true,
+  "checks": [
+    {
+      "label": "the button says Copied",
+      "ok": true,
+      "observed": "Copied"
+    },
+    {
+      "label": "the clipboard changed and starts with \"Tandemise diagnostics\"",
+      "ok": true,
+      "observed": "Tandemise diagnostics\nGenerated: 2026-09"
+    },
+    {
+      "label": "it has the app version and commit",
+      "ok": true
+    },
+    {
+      "label": "it has the daemon version and commit",
+      "ok": true
+    },
+    {
+      "label": "it has the schema, status, uptime and data folder",
+      "ok": true
+    },
+    {
+      "label": "it has Electron, Chromium, Node and the OS",
+      "ok": true
+    },
+    {
+      "label": "it has no bearer token (the one in daemon.json)",
+      "ok": true,
+      "observed": 43
+    },
+    {
+      "label": "it records no mismatch",
+      "ok": true
+    }
+  ],
+  "notes": [
+    "clipboard:\nTandemise diagnostics\nGenerated: 2026-09-26T23:00:22.763Z\n\nApp\n  Version: 0.5.0 (d9141a8)\n  Electron: 33.4.11\n  Chromium: 130.0.6723.191\n  Node (app): 20.18.3\n  OS: macOS 15.0.1 (x64)\n\nDaemon\n  Status: Running\n  Version: 0.5.0 (d9141a8)\n  API: v1\n  Database schema: 17\n  Uptime: under a minute (since 2026-09-26T22:59:46.753Z)\n  Process id: 92807\n  Node (daemon): v22.23.1\n  Platform: darwin-x64\n  Data folder: /tmp/tdm-about/home\n\nMismatch: none\n"
+  ],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-about/scratch/acceptance/about/evidence/A2-copied.png"
+  ]
+}

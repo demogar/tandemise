@@ -1,0 +1,51 @@
+{
+  "id": "A4",
+  "title": "A stale daemon shows a mismatch warning that says to restart it",
+  "ok": true,
+  "checks": [
+    {
+      "label": "the warning says the daemon was built from different code",
+      "ok": true,
+      "observed": "About\n0.5.0 (d9141a8)\nCopy diagnostics\nThe daemon was built from different code than the app. The app was built from commit d9141a8 but the daemon from 0000000. Run `npm run build`, then restart the daemon: run `kill 96922` in a terminal, then `npm run daemon` in the repository. The window reconnects by itself.\nApp\t0.5.0 (d9141a8)\nDaemon\t0.5.0 (0000000)\nDaemon status\tRunning · up under a minute · process 96922\nDatabase schema\tVersion 17\nData folder\t\n/tmp/tdm-about/home\nShow in Finder\n\nElectron\t33.4.11 (Chromium 130.0.6723.191, Node 20.18.3)\nOperating system\tmacOS 15.0.1 (x64)\nRepository\nDocumentation\nReport an issue\n\nReporting a problem? Press Copy diagnostics and paste the text into the issue. It holds versions, the data folder and the daemon's state, never tokens or settings."
+    },
+    {
+      "label": "it names both commits (d9141a8 and 0000000)",
+      "ok": true,
+      "observed": "About\n0.5.0 (d9141a8)\nCopy diagnostics\nThe daemon was built from different code than the app. The app was built from commit d9141a8 but the daemon from 0000000. Run `npm run build`, then restart the daemon: run `kill 96922` in a terminal, then `npm run daemon` in the repository. The window reconnects by itself.\nApp\t0.5.0 (d9141a8)\nDaemon\t0.5.0 (0000000)\nDaemon status\tRunning · up under a minute · process 96922\nDatabase schema\tVersion 17\nData folder\t\n/tmp/tdm-about/home\nShow in Finder\n\nElectron\t33.4.11 (Chromium 130.0.6723.191, Node 20.18.3)\nOperating system\tmacOS 15.0.1 (x64)\nRepository\nDocumentation\nReport an issue\n\nReporting a problem? Press Copy diagnostics and paste the text into the issue. It holds versions, the data folder and the daemon's state, never tokens or settings."
+    },
+    {
+      "label": "it says what to do: build, kill the daemon's pid, start it again",
+      "ok": true,
+      "observed": "About\n0.5.0 (d9141a8)\nCopy diagnostics\nThe daemon was built from different code than the app. The app was built from commit d9141a8 but the daemon from 0000000. Run `npm run build`, then restart the daemon: run `kill 96922` in a terminal, then `npm run daemon` in the repository. The window reconnects by itself.\nApp\t0.5.0 (d9141a8)\nDaemon\t0.5.0 (0000000)\nDaemon status\tRunning · up under a minute · process 96922\nDatabase schema\tVersion 17\nData folder\t\n/tmp/tdm-about/home\nShow in Finder\n\nElectron\t33.4.11 (Chromium 130.0.6723.191, Node 20.18.3)\nOperating system\tmacOS 15.0.1 (x64)\nRepository\nDocumentation\nReport an issue\n\nReporting a problem? Press Copy diagnostics and paste the text into the issue. It holds versions, the data folder and the daemon's state, never tokens or settings."
+    },
+    {
+      "label": "the Daemon row shows the other commit",
+      "ok": true,
+      "observed": "0.5.0 (0000000)"
+    },
+    {
+      "label": "the copied diagnostics record the mismatch",
+      "ok": true,
+      "observed": [
+        "Mismatch: build (app d9141a8, daemon 0000000)",
+        ""
+      ]
+    },
+    {
+      "label": "and still no token",
+      "ok": true
+    },
+    {
+      "label": "after restarting the daemon from this build the warning is gone",
+      "ok": true,
+      "observed": "About\n0.5.0 (d9141a8)\nCopy diagnostics\nApp\t0.5.0 (d9141a8)\nDaemon\t0.5.0 (d9141a8)\nDaemon status\tRunning · up under a minute · process 97376\nDatabase schema\tVersion 17\nData folder\t\n/tmp/tdm-about/home\nShow in Finder\n\nElectron\t33.4.11 (Chromium 130.0.6723.191, Node 20.18.3)\nOperating system\tmacOS 15.0.1 (x64)\nRepository\nDocumentation\nReport an issue\n\nReporting a problem? Press Copy diagnostics and paste the text into the issue. It holds versions, the data folder and the daemon's state, never tokens or settings."
+    }
+  ],
+  "notes": [
+    "daemon restarted with TANDEMISE_BUILD=0000000 (pid 96922)",
+    "daemon restarted from this build (pid 97376)"
+  ],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-about/scratch/acceptance/about/evidence/A4-mismatch-warning.png"
+  ]
+}
