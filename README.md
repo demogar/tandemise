@@ -207,6 +207,21 @@ Task-oriented, one per concept:
 
 `MVP.md` is the full product and architecture specification this implements.
 
+## Inspiration
+
+Tandemise is heavily inspired by projects exploring how people and agents work
+together:
+
+- [Grok Bot](https://x.ai/bot): persistent, always-on agents that do the work
+  in your own tools and come back only when something needs your approval.
+- [Paperclip](https://github.com/paperclipai/paperclip): open-source
+  orchestration that organizes existing agents into a company with roles,
+  budgets, goals, and governance.
+- [Buzz](https://buzz.xyz): a workspace where agents are full members next to
+  the people and the code.
+- [Hermes Agent](https://github.com/NousResearch/hermes-agent): a self-improving
+  agent that learns skills from experience and remembers what it has done.
+
 ## Contributing
 
 Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) for the
