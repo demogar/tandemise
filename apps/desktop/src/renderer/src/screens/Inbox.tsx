@@ -25,7 +25,7 @@ type Filter = 'me' | 'everyone';
  * card - rationale, evidence, options - opens under the row. Scanning twenty
  * one-liners is the job; reading one card is the exception.
  */
-export function Inbox(): JSX.Element {
+export function Inbox({ only }: { only?: 'stalled' } = {}): JSX.Element {
   const inbox = useInbox();
   // Decisions are history, not something waiting: read only while this screen is open.
   const decided = (useApprovals().data ?? []).filter((v) => v.approval.status !== 'PENDING');
@@ -35,7 +35,9 @@ export function Inbox(): JSX.Element {
   const [task, setTask] = useState<Extract<InboxItem, { kind: 'task' }> | null>(null);
   const [, navigate] = useLocation();
 
-  const items = filter === 'me' ? inbox.pending.filter((i) => i.forMe) : inbox.pending;
+  const mine = filter === 'me' ? inbox.pending.filter((i) => i.forMe) : inbox.pending;
+  // Opened from Home's "Stalled" card (P10): only the missions nothing moves.
+  const items = only === 'stalled' ? mine.filter((i) => i.kind === 'stalled') : mine;
   const others = inbox.pending.length - inbox.forMeCount;
 
   return (
@@ -62,13 +64,23 @@ export function Inbox(): JSX.Element {
         <div className="page__inner">
           {inbox.error ? <ErrorState error={inbox.error} onRetry={inbox.refetch} /> : null}
 
+          {only === 'stalled' ? (
+            <div className="banner" style={{ marginBottom: 'var(--s4)' }}>
+              <Icon name="alert" size={15} className="dim" />
+              <span style={{ flex: 1 }}>Showing stalled missions only: nothing moves them until you act.</span>
+              <button type="button" className="btn" onClick={() => navigate('/inbox')}>
+                Show everything
+              </button>
+            </div>
+          ) : null}
+
           {inbox.isPending ? (
             <SkeletonList rows={3} />
           ) : items.length === 0 ? (
             <div className="card">
               <Empty
                 icon="check"
-                title={filter === 'me' ? 'Nothing is waiting on you' : 'Nothing is waiting on anyone'}
+                title={only === 'stalled' ? 'Nothing is stalled' : filter === 'me' ? 'Nothing is waiting on you' : 'Nothing is waiting on anyone'}
                 body={
                   filter === 'me' && others > 0
                     ? `${pluralize(others, 'request')} ${others === 1 ? 'is' : 'are'} waiting on someone else. Switch to Everyone to see ${others === 1 ? 'it' : 'them'}.`
@@ -103,7 +115,7 @@ export function Inbox(): JSX.Element {
             </div>
           )}
 
-          {decided.length > 0 ? (
+          {decided.length > 0 && only === undefined ? (
             <section className="section" style={{ marginTop: 'var(--s8)' }}>
               <div className="section__head">
                 <h2 className="section__title">Decided</h2>

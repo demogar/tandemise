@@ -172,6 +172,15 @@ export function describeWip(counts: WipCounts & { readonly queued: number }): { 
   };
 }
 
+/**
+ * Home's banner when every slot is taken and work is queued behind them (P10):
+ * "Working on 2 of 2 — 3 queued missions wait for a free slot. …"
+ */
+export function wipBannerText(counts: { readonly active: number; readonly limit: number; readonly queued: number }): string {
+  const queued = counts.queued === 1 ? '1 queued mission waits' : `${counts.queued} queued missions wait`;
+  return `Working on ${counts.active} of ${counts.limit} — ${queued} for a free slot. The next ready one is planned as soon as one finishes.`;
+}
+
 // ------------------------------------------------------------------ moving
 
 export type BacklogMove = 'up' | 'down';

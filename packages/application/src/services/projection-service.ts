@@ -17,6 +17,8 @@ import type { GateService } from '../engine/gates.js';
 import type { ReadinessService } from './readiness.js';
 import type { LimitService } from './limit-service.js';
 import type { LivenessService } from './liveness-service.js';
+import type { DeskService } from './desk-service.js';
+import { criteriaSummary } from '../support/criteria-summary.js';
 import type { MetricsService } from '../engine/metrics.js';
 import { asPlannedTasks, validateTaskGraph } from '../support/dag.js';
 import { toApprovalView, toApprovalViews } from '../support/approval-view.js';
@@ -73,6 +75,8 @@ export interface ProjectionDeps {
   readonly limits?: Pick<LimitService, 'missionView' | 'alerts'>;
   /** Stalled missions and quiet runs (P9); optional for harnesses built before it. */
   readonly liveness?: Pick<LivenessService, 'stalled' | 'silentRuns' | 'watchOf'>;
+  /** The desk's numbers and banners (P10); optional for harnesses built before it. */
+  readonly desk?: Pick<DeskService, 'metrics' | 'banners'>;
 }
 
 /**
@@ -100,6 +104,8 @@ export class ProjectionServiceImpl implements ProjectionService {
     const missions = this.deps.missions.list({ ...scope, limit: HOME_MISSION_LIMIT });
     const summaries = missions.map((m) => this.#summary(m));
 
+    const metrics = workspace === null ? undefined : this.deps.desk?.metrics(workspace.id);
+    const banners = workspace === null || metrics === undefined ? [] : this.deps.desk?.banners(workspace.id, metrics) ?? [];
     return {
       workspace,
       activeMissions: summaries.filter((s) => ACTIVE_MISSION_STATUSES.includes(s.mission.status)),
@@ -109,6 +115,7 @@ export class ProjectionServiceImpl implements ProjectionService {
       runtimes: await this.#runtimeViews(workspace?.id),
       recentEvents: this.#recentEvents(missions),
       limitAlerts: workspace === null || this.deps.limits === undefined ? [] : this.deps.limits.alerts(workspace.id),
+      ...(metrics === undefined ? {} : { metrics, banners }),
     };
   }
 
@@ -541,6 +548,7 @@ export class ProjectionServiceImpl implements ProjectionService {
         ?? (blocked === undefined ? null : `Blocked: ${blocked.title}`)
         ?? mission.statusReason,
       lastEventAt: latest[latest.length - 1]?.createdAt ?? null,
+      criteria: mission.status === 'DRAFT' ? null : criteriaSummary(this.deps.gates.trace(mission.id).trace),
     };
   }
 

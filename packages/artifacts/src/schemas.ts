@@ -194,8 +194,15 @@ export const RefinementFrontMatter = z.object({
 export const FinanceReportFrontMatter = z.object(base('FinanceReport')).passthrough();
 export const EvidenceFrontMatter = z.object(base('Evidence')).passthrough();
 export const MissionPlanFrontMatter = z.object(base('MissionPlan')).passthrough();
-/** Rendered by the daemon from facts (P10); only the common part is fixed until then. */
-export const StatusReportFrontMatter = z.object(base('StatusReport')).passthrough();
+/**
+ * Rendered by the daemon from stored facts (P10), never by an agent. `asOf` is
+ * the instant the facts were read; it lives here rather than in the body so two
+ * reports of unchanged work compare as identical.
+ */
+export const StatusReportFrontMatter = z.object({
+  ...base('StatusReport'),
+  asOf: nonEmpty('asOf'),
+});
 
 /** Every artifact type's validated front-matter contract. */
 export const ARTIFACT_SCHEMAS = {

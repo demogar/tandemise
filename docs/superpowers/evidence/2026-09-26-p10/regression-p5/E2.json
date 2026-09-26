@@ -1,0 +1,80 @@
+{
+  "id": "E2",
+  "title": "A spec that misses a Done-when line cannot pass",
+  "ok": true,
+  "checks": [
+    {
+      "label": "the spec task blocks after its attempts",
+      "ok": true,
+      "observed": {
+        "status": "BLOCKED",
+        "attempts": 2
+      }
+    },
+    {
+      "label": "the Inbox card for spec reads \"Not met: criteria.uncovered_user is 1, needs 0\" and names U2",
+      "ok": true,
+      "observed": "Inbox\nWhat is waiting on a person.\nspec exhausted its retries\nProductSpec ready for the hello page\nFor you·E2 SCRIPTED_SPEC_MISSES_U2 muif9n5i\nIntervention\njust now\nRead only\nspec exhausted its retries\nIntervention\napr_01m3ey8vb037d6svqz3k\ntask\ntsk_01m3ey8f68brzcky7zrx\nE2 SCRIPTED_SPEC_MISSES_U2 muif9n5i\n·\nspec\n·\nrequested by Product Manager\n·\njust now\nWHY IS THIS BEING ASKED?\n\n'spec' failed its completion gate on every one of its 2 attempts.\n\nWHAT CHANGES IF YOU APPROVE?\n\nRetrying returns the task to the queue for one more attempt. Accepting marks its result good enough and lets dependent work continue. Leaving it blocked stops here.\n\nEVIDENCE\nLast measurement\nThis task failed its completion gate on every one of its 2 attempts.\nWhat the gate reads now\nNot met: criteria.uncovered_user is 1, needs 0\nDone when\nNot covered by the spec: U2 (The page works offline). Not verified yet: AC1 (Scripted criterion 1: the hello page greets the visitor by name.).\nObjective\nWrite the spec for the hello page.\nYOUR OPTIONS\nRetry once more\nAccept the result and continue\nLeave blocked\nApplies immediately.\nRetry once more\nDecided\n3 decisions\nApprove the plan for E2 SCRIPTED_SPEC_MISSES_U2 muif9n5i?\nAp"
+    },
+    {
+      "label": "U2 reads \"Not covered\": nothing in the spec covers it yet",
+      "ok": true,
+      "observed": "U2 The page works offline Nothing in the spec covers this yet Not covered"
+    },
+    {
+      "label": "U1 is covered by AC1",
+      "ok": true,
+      "observed": "U1 The page greets the visitor by name Covered by AC1 Not verified"
+    },
+    {
+      "label": "U2 still counts: \"0 of 2 verified\" (AC1 and U2)",
+      "ok": true,
+      "observed": "Done when\n0 of 2 verified\nU1\nThe page greets the visitor by name\nCovered by AC1\nNot verified\nU2\nThe page works offline\nNothing in the spec covers this yet\nNot covered\nAC1\nScripted criterion 1: the hello page greets the visitor by name.\nCovers U1 · Waiting for QA\nNot verified"
+    },
+    {
+      "label": "the spec ran twice",
+      "ok": true,
+      "observed": 2
+    },
+    {
+      "label": "the first prompt lists the ledger and says which lines to cover",
+      "ok": true,
+      "observed": "Done when (criteria ledger; cite these ids):\n- U1: The page greets the visitor by name\n- U2: The page works offline\nAutonomy: balanced\n\n## Your task\nKey: spec\nTitle: spec\n\nObjective:\nWrite the spec for the hel"
+    },
+    {
+      "label": "the retry prompt quotes the gate and names U2 with its words",
+      "ok": true,
+      "observed": "Tandemise measured: Not met: criteria.uncovered_user is 1, needs 0 The ProductSpec leaves U2 uncovered (\"The page works offline\"). Add U2 to `covers` on the acceptance criterion that proves it, or add a criterion for it. Fix exactly that before you finish; nothing else about the task has changed."
+    },
+    {
+      "label": "proof (SQL): each attempt's spec was stored, covering only U1; the first superseded by the second",
+      "ok": true,
+      "observed": [
+        {
+          "key": "AC1",
+          "covers": "[\"U1\"]",
+          "superseded": 1
+        },
+        {
+          "key": "AC1",
+          "covers": "[\"U1\"]",
+          "superseded": 0
+        }
+      ]
+    },
+    {
+      "label": "an intervention card asks you what to do",
+      "ok": true,
+      "observed": [
+        "spec exhausted its retries"
+      ]
+    }
+  ],
+  "notes": [
+    "mission msn_01m3ey8f5w8twaxqx4jn"
+  ],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p10-desk/scratch/acceptance/p5/evidence/E2-inbox-card-not-met.png",
+    "/Users/demogar/projects/tandemise/tandemise-p10-desk/scratch/acceptance/p5/evidence/E2-u2-not-covered.png"
+  ]
+}

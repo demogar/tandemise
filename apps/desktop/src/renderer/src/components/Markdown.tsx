@@ -143,8 +143,12 @@ function splitRow(line: string): string[] {
     .map((cell) => cell.trim());
 }
 
-/** Inline pass: code spans first (they suppress everything inside), then links, then emphasis. */
-const INLINE = /(`[^`]+`)|(\[[^\]]+\]\([^)\s]+\))|(\*\*[^*]+\*\*)|(\*[^*]+\*)|(_[^_]+_)/g;
+/**
+ * Inline pass: a backslash escape first (a status report quotes titles like
+ * SCRIPTED_FAIL_RELEASE literally), then code spans (they suppress everything
+ * inside), then links, then emphasis.
+ */
+const INLINE = /(\\[\\`*_[\]])|(`[^`]+`)|(\[[^\]]+\]\([^)\s]+\))|(\*\*[^*]+\*\*)|(\*[^*]+\*)|(_[^_]+_)/g;
 
 function renderInline(text: string): ReactNode {
   const parts: ReactNode[] = [];
@@ -156,7 +160,9 @@ function renderInline(text: string): ReactNode {
     if (index > cursor) parts.push(text.slice(cursor, index));
     const token = match[0];
 
-    if (token.startsWith('`')) {
+    if (token.startsWith('\\')) {
+      parts.push(token.slice(1));
+    } else if (token.startsWith('`')) {
       parts.push(<code key={key++}>{token.slice(1, -1)}</code>);
     } else if (token.startsWith('[')) {
       const link = /^\[([^\]]+)\]\(([^)\s]+)\)$/.exec(token);

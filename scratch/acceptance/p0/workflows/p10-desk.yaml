@@ -1,0 +1,23 @@
+name: P10 desk
+description: The P5 steps, with a release gate that also needs the release candidate itself (P10).
+steps:
+  - key: spec
+    role: product
+    objective: Write the spec for the hello page.
+    outputs: [ProductSpec]
+    gate: artifact.ProductSpec.exists && criteria.uncovered_user == 0 && criteria.unknown_covers == 0 && criteria.total >= 1
+  - key: qa
+    role: qa
+    dependsOn: [spec]
+    objective: Verify the hello page against every criterion.
+    inputs: [ProductSpec]
+    isolation: none
+    outputs: [QAReport]
+    gate: artifact.QAReport.exists && qa.criteria_failed == 0
+  - key: release
+    role: release
+    dependsOn: [qa]
+    objective: Assemble the release candidate for the hello page.
+    inputs: [QAReport]
+    outputs: [ReleaseCandidate]
+    gate: qa.criteria_unverified == 0 && qa.blocking_defects == 0 && artifact.ReleaseCandidate.exists

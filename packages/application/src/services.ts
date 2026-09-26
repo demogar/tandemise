@@ -56,6 +56,8 @@ export interface TandemiseServices {
   readonly limits: import('./services/limit-service.js').LimitService;
   /** Stalled missions and quiet runs (P9). */
   readonly liveness: import('./services/liveness-service.js').LivenessService;
+  /** The owner's desk: Home's numbers and the status report (P10). */
+  readonly desk: import('./services/desk-service.js').DeskService;
 }
 
 /** Making a rough request ready to plan (P6). Every write is refused once the mission has left DRAFT. */

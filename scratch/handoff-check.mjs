@@ -35,7 +35,7 @@ const FRONT = {
   Evidence: {},
   MissionPlan: {},
   Refinement: { proposedCriteria: [{ key: 'P1', statement: 'The page greets the visitor.' }], questions: [] },
-  StatusReport: {},
+  StatusReport: { asOf: '2026-09-26T08:00:00.000Z' },
 };
 
 const HANDOFF = {

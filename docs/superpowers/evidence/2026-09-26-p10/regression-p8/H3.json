@@ -1,0 +1,58 @@
+{
+  "id": "H3",
+  "title": "Raise the limit to 30 and the mission resumes",
+  "ok": true,
+  "checks": [
+    {
+      "label": "the Inbox card: \"reached its limit: 15 of 12 agent minutes\", with a number to raise to",
+      "ok": true,
+      "observed": "Tandemise\nAcceptance\n1 repository\nHome\nMissions\nInbox\n1\nArtifacts\nACCEPTANCE\nRepositories\nTeam\nRuntimes\nIntegrations\nAPP\nSettings\nDaemon connected · 61156\nInbox\nWhat is waiting on a person.\n“H3 greeting muifqiyj SCRIPTED_USAGE_MIN=5” reached its limit: 15 of 12 agent minutes\nFor you·H3 greeting muifqiyj SCRIPTED_USAGE_MIN=5\nLimit reached\njust now\n“H3 greeting muifqiyj SCRIPTED_USAGE_MIN=5” reached its limit: 15 of 12 agent minutes\nLimit reached\napr_01m3ez113ny7kpszznhw\nH3 greeting muifqiyj SCRIPTED_USAGE_MIN=5\n·\njust now\nWHY IS THIS BEING ASKED?\n\n“H3 greeting muifqiyj SCRIPTED_USAGE_MIN=5” used 15 of 12 agent minutes, the limit you set. Work stopped: running work was stopped and nothing more starts until you decide.\n\nWHAT HAPPENS WHEN YOU DECIDE?\n\nRaise the limit above 15 agent minutes and the mission resumes where it stopped. Keep paused and nothing more runs; you can raise the limit la"
+    },
+    {
+      "label": "raising to 14 is refused: \"Raise it above 15 agent minutes\"",
+      "ok": true,
+      "observed": "Tandemise\nAcceptance\n1 repository\nHome\nMissions\nInbox\n1\nArtifacts\nACCEPTANCE\nRepositories\nTeam\nRuntimes\nIntegrations\nAPP\nSettings\nDaemon connected · 61156\nInbox\nWhat is waiting on a person.\n“H3 greeting muifqiyj SCRIPTED_USAGE_MIN=5” reached its limit: 15 of 12 agent minutes\nFor you·H3 greeting muifqiyj SCRIPTED_USAGE_MIN=5\nLimit reached\njust now\n“H3 greeting muifqiyj SCRIPTED_USAGE_MIN=5” reached its limit: 15 of 12 agent minutes\nLimit reached\napr_01m3ez113ny7kpszznhw\nH3 greeting muifqiyj SCRIPTED_USAGE_MIN=5\n·\njust now\nWHY IS THIS BEING ASKED?\n\n“H3 greeting muifqiyj SCRIPTED_USAGE_MIN=5” used 15 of 12 agent minutes, the limit you set. Work stopped: running work was stopped and nothing more starts until you decide.\n\nWHAT HAPPENS WHEN YOU DECIDE?\n\nRaise the limit above 15 agent minutes and the mission resumes where it stopped. Keep paused and nothing more runs; you can raise the limit la"
+    },
+    {
+      "label": "proof (API): still paused after the refusal",
+      "ok": true
+    },
+    {
+      "label": "Metrics → Limit reads against 30: \"15 / 30 agent min\"",
+      "ok": true,
+      "observed": "Limit\nSet on this mission\nChange limit\nAgent minutes\n15 / 30 agent min\nAgent minutes used\n15\nTokens used\n4,500\nCost\nnot reported"
+    },
+    {
+      "label": "it is working again (Executing)",
+      "ok": true,
+      "observed": "EXECUTING"
+    },
+    {
+      "label": "proof (API): the mission now has a 30-minute limit",
+      "ok": true
+    },
+    {
+      "label": "proof (SQL): the incident at 12 is resolved",
+      "ok": true
+    },
+    {
+      "label": "proof (API): resumed exactly once, \"Limit raised to 30 agent minutes; resumed.\"",
+      "ok": true,
+      "observed": [
+        "Limit raised to 30 agent minutes; resumed."
+      ]
+    },
+    {
+      "label": "it finishes under the raised limit: \"25 / 30 agent min\"",
+      "ok": true,
+      "observed": "Limit\nSet on this mission\nAgent minutes\n25 / 30 agent min\n\nOver 80%: work stops at 30 agent minutes.\n\nAgent minutes used\n25\nTokens used\n7,500\nCost\nnot reported"
+    }
+  ],
+  "notes": [
+    "setup: cancelled 1 mission(s) left by earlier scenarios, limit off"
+  ],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p10-desk/scratch/acceptance/p8/evidence/H3-inbox-card.png",
+    "/Users/demogar/projects/tandemise/tandemise-p10-desk/scratch/acceptance/p8/evidence/H3-resumed-15-of-30.png"
+  ]
+}

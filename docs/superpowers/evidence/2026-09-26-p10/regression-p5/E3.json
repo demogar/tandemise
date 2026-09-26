@@ -1,0 +1,68 @@
+{
+  "id": "E3",
+  "title": "Unverified criteria keep the release shut",
+  "ok": true,
+  "checks": [
+    {
+      "label": "QA passes its own gate: a skipped criterion is not a failed one",
+      "ok": true,
+      "observed": {
+        "status": "SUCCEEDED",
+        "reason": null
+      }
+    },
+    {
+      "label": "the release blocks after its attempts",
+      "ok": true,
+      "observed": {
+        "status": "BLOCKED",
+        "attempts": 2,
+        "reason": "Not met: qa.criteria_unverified is 2, needs 0"
+      }
+    },
+    {
+      "label": "the checklist reads \"1 of 3 verified\"",
+      "ok": true,
+      "observed": "Done when\n1 of 3 verified\nU1\nThe page greets the visitor by name\nCovered by AC1, AC2, AC3 · QA could not verify it\nNot verified\nU2\nThe page works offline\nCovered by AC1, AC2, AC3 · QA could not verify it\nNot verified\nAC1\nScripted criterion 1: the hello page greets the visitor by name.\nCovers U1, U2 · Scripted check for AC1 passed\nVerified\nAC2\nScripted criterion 2: the hello page works offline.\nCovers U1, U2 · QA could not verify it · Not reached by the scripted run\nNot verified\nAC3\nScripted criterion 3: the hello page loads in under a second.\nCovers U1, U2 · QA could not verify it · Not reached by the scripted run\nNot verified"
+    },
+    {
+      "label": "AC1 Verified; AC2 and AC3 Not verified, and say QA could not verify them",
+      "ok": true,
+      "observed": [
+        "AC1 Scripted criterion 1: the hello page greets the visitor by name. Covers U1, U2 · Scripted check for AC1 passed Verified",
+        "AC2 Scripted criterion 2: the hello page works offline. Covers U1, U2 · QA could not verify it · Not reached by the scripted run Not verified",
+        "AC3 Scripted criterion 3: the hello page loads in under a second. Covers U1, U2 · QA could not verify it · Not reached by the scripted run Not verified"
+      ]
+    },
+    {
+      "label": "U1 and U2 are not verified either: not everything covering them passed",
+      "ok": true,
+      "observed": [
+        "U1 The page greets the visitor by name Covered by AC1, AC2, AC3 · QA could not verify it Not verified",
+        "U2 The page works offline Covered by AC1, AC2, AC3 · QA could not verify it Not verified"
+      ]
+    },
+    {
+      "label": "the Inbox card for release reads \"qa.criteria_unverified is 2, needs 0\" and names AC2 and AC3",
+      "ok": true,
+      "observed": "Inbox\nWhat is waiting on a person.\nrelease exhausted its retries\nReleaseCandidate ready for the hello page\nFor you·E3 SCRIPTED_QA_PARTIAL muifaqd1\nIntervention\njust now\nRead only\nrelease exhausted its retries\nIntervention\napr_01m3eyahjbadwqpbehqz\ntask\ntsk_01m3eya0t3z9abaxae9j\nE3 SCRIPTED_QA_PARTIAL muifaqd1\n·\nrelease\n·\nrequested by Release Manager\n·\njust now\nWHY IS THIS BEING ASKED?\n\n'release' failed its completion gate on every one of its 2 attempts.\n\nWHAT CHANGES IF YOU APPROVE?\n\nRetrying returns the task to the queue for one more attempt. Accepting marks its result good enough and lets dependent work continue. Leaving it blocked stops here.\n\nEVIDENCE\nLast measurement\nThis task failed its completion gate on every one of its 2 attempts.\nWhat the gate reads now\nNot met: qa.criteria_unverified is 2, needs 0\nDone when\nNot verified yet: AC2 (Scripted criterion 2: the hello page works offline.), AC3 (Scripted criterion 3: the hello page loads in under a second.).\nObjective\nAssemble the release candidate for the hello page.\nYOUR OPTIONS\nRetry once more\nAccept the result and continue\nLeave blocked\nApplies immediately.\nRetry once more\nDecided\n5 decisions\nApprove the plan for E3 SCRIPTED_QA_PARTIAL muifaqd1?\nApproved·\nby\nYou\nE3 SCRIPTED_QA_PARTIAL muifaqd1\nspec exhausted its retries\nWithdrawn — the work ended first · “acceptance: E2 proven”\nE2 SCRIPTED_SPEC_MISSES_U2 muif9n5i\nApprove t"
+    },
+    {
+      "label": "the mission is not COMPLETE",
+      "ok": true,
+      "observed": "BLOCKED"
+    },
+    {
+      "label": "proof (event log): the last gate evaluation names qa.criteria_unverified",
+      "ok": true,
+      "observed": "{\"type\":\"gate.evaluated\",\"gate\":\"qa.criteria_unverified == 0 && qa.blocking_defects == 0\",\"passed\":false,\"detail\":\"Not met: qa.criteria_unverified is 2, needs 0\"}"
+    }
+  ],
+  "notes": [
+    "mission msn_01m3eya0sqt67y8q15c0"
+  ],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p10-desk/scratch/acceptance/p5/evidence/E3-one-of-three.png",
+    "/Users/demogar/projects/tandemise/tandemise-p10-desk/scratch/acceptance/p5/evidence/E3-inbox-card-unverified.png"
+  ]
+}

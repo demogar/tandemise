@@ -1,10 +1,12 @@
 import { Link, useLocation } from 'wouter';
-import type { HomeView, MissionSummary } from '@tandemise/api-contract';
+import type { HomeMetricsView, HomeView, MissionSummary } from '@tandemise/api-contract';
 import { PageHeader } from '../components/PageHeader.js';
 import { Icon } from '../components/Icon.js';
-import { Empty, ErrorState, SectionHead, SkeletonCards, SkeletonList, StatusBadge, StatusDot } from '../components/primitives.js';
+import { Empty, ErrorState, SectionHead, SkeletonCards, SkeletonList, Stat, StatusBadge, StatusDot } from '../components/primitives.js';
 import { ApprovalPreviewCard } from './approvals/ApprovalCard.js';
-import { useHome, useRoles } from '../lib/queries.js';
+import { useDaemonMutation, useHome, useRoles } from '../lib/queries.js';
+import { useWorkspaceId } from '../lib/workspace.js';
+import { showFlash } from '../lib/notices.js';
 import { missionOfItem, useInbox, type InboxItem } from '../lib/inbox.js';
 import { QuietRow, StalledRow } from './inbox/LivenessRows.js';
 import { buildTimeline } from '../lib/events.js';
@@ -18,6 +20,18 @@ export function Home(): JSX.Element {
   // Home leaves out checks, which nothing waits on.
   const needsMe = useInbox().needsMe;
   const [, navigate] = useLocation();
+  const workspaceId = useWorkspaceId();
+  // Rendered by the daemon from stored facts; it opens in the reader as the project's next version.
+  const report = useDaemonMutation((daemon, workspace: string) => daemon.writeStatusReport(workspace), ['artifacts']);
+  const writeReport = (): void => {
+    if (!workspaceId) return;
+    report.mutate(workspaceId, {
+      onSuccess: (written) => {
+        showFlash(`Status report v${written.version} written from stored facts.`);
+        navigate(`/artifacts/${written.artifactId}`);
+      },
+    });
+  };
 
   const roleNames = new Map((roles.data ?? []).map((role) => [role.id, role.name]));
   const actors = useActors();
@@ -25,6 +39,9 @@ export function Home(): JSX.Element {
   // A blocked mission already in "Needs you now" (its card, its step, its Stalled row) is not shown twice (P9).
   const listed = new Set(needsMe.map(missionOfItem));
   const data = raw === undefined ? undefined : { ...raw, blockedMissions: raw.blockedMissions.filter((s) => !listed.has(s.mission.id)) };
+  // The desk's month banner says the project's warning with the rule it triggers first (P10): not twice.
+  const monthSaid = (data?.banners ?? []).some((b) => b.kind === 'month_warn');
+  const alerts = (data?.limitAlerts ?? []).filter((a) => !(monthSaid && a.scope === 'project' && a.level === 'soft'));
 
   return (
     <>
@@ -32,22 +49,46 @@ export function Home(): JSX.Element {
         title={headline(data, needsMe.length)}
         subtitle={data?.workspace ? `${data.workspace.name} workspace` : 'Your agent workforce at a glance'}
         actions={
-          <button type="button" className="btn btn--primary" onClick={() => navigate('/missions/new')}>
-            <Icon name="plus" size={14} />
-            New mission
-          </button>
+          <>
+            <button type="button" className="btn" disabled={report.isPending || !workspaceId} onClick={writeReport} title="A report of every mission, written from stored facts; no model writes it">
+              <Icon name="artifacts" size={14} />
+              {report.isPending ? 'Writing…' : 'Status report'}
+            </button>
+            <button type="button" className="btn btn--primary" onClick={() => navigate('/missions/new')}>
+              <Icon name="plus" size={14} />
+              New mission
+            </button>
+          </>
         }
       />
 
       <div className="page">
         <div className="page__inner">
           {home.isError ? <ErrorState error={home.error} onRetry={() => void home.refetch()} /> : null}
+          {report.isError ? <ErrorState error={report.error} onRetry={writeReport} /> : null}
+
+          {/* The desk (P10): five numbers, each opening the view behind it. */}
+          {data?.metrics ? <Desk metrics={data.metrics} needsYou={needsMe.filter((i) => i.kind !== 'stalled').length} /> : null}
+
+          {(data?.banners ?? []).length > 0 ? (
+            <section className="section" aria-label="What this means">
+              <div className="stack">
+                {(data?.banners ?? []).map((banner) => (
+                  <Link key={banner.kind} href={banner.href} className="banner banner--warn" style={{ textDecoration: 'none', color: 'inherit' }}>
+                    <Icon name="alert" size={15} />
+                    <span style={{ flex: 1 }}>{banner.text}</span>
+                    <span className="btn">{banner.kind === 'wip_full' ? 'See backlog' : 'See limit'}</span>
+                  </Link>
+                ))}
+              </div>
+            </section>
+          ) : null}
 
           {/* At or over a limit's warning level (P8): said with its numbers, above everything else. */}
-          {(data?.limitAlerts ?? []).length > 0 ? (
+          {alerts.length > 0 ? (
             <section className="section" aria-label="Limits">
               <div className="stack">
-                {(data?.limitAlerts ?? []).map((alert) => (
+                {alerts.map((alert) => (
                   <Link
                     key={`${alert.scope}-${alert.missionId ?? 'project'}`}
                     href={alert.missionId === null ? (alert.level === 'hard' ? '/inbox' : '/project') : `/missions/${alert.missionId}/metrics`}
@@ -234,6 +275,62 @@ export function Home(): JSX.Element {
         </div>
       </div>
     </>
+  );
+}
+
+/**
+ * The five numbers a person opening the app wants first. "Needs you" and
+ * "Stalled" never count the same thing: a stalled mission is counted once,
+ * as stalled, though it also sits in "Needs you now" below.
+ */
+function Desk({ metrics, needsYou }: { metrics: HomeMetricsView; needsYou: number }): JSX.Element {
+  const month = [...metrics.monthUsage].sort((a, b) => (b.percent ?? -1) - (a.percent ?? -1))[0];
+  const minutes = Math.round(metrics.usage.agentMinutes * 10) / 10;
+  return (
+    <section className="section" aria-label="Desk">
+      <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}>
+        <DeskCard
+          label="Needs you"
+          value={String(needsYou)}
+          note={needsYou === 0 ? 'Nothing waits on you' : 'Decisions and steps in your inbox'}
+          href="/inbox"
+        />
+        <DeskCard
+          label="Working on"
+          value={metrics.wipLimit === null ? String(metrics.active) : `${metrics.active} of ${metrics.wipLimit}`}
+          note={`${metrics.queued} queued${metrics.wipLimit === null ? ' · no limit' : ''}`}
+          href="/missions/in-progress"
+        />
+        <DeskCard
+          label="Criteria verified"
+          value={metrics.criteriaTotal === 0 ? 'None yet' : `${metrics.criteriaVerified} of ${metrics.criteriaTotal}`}
+          muted={metrics.criteriaTotal === 0}
+          note={metrics.criteriaTotal === 0 ? 'No mission in progress has criteria' : `Across ${pluralize(metrics.criteriaMissions, 'mission')} in progress`}
+          href="/missions/in-progress"
+        />
+        <DeskCard
+          label="This month"
+          value={month === undefined ? `${minutes} agent min` : month.percent === null ? 'Not reported' : `${Math.floor(month.percent)}%`}
+          muted={month === undefined}
+          note={month === undefined ? 'No monthly limit set' : `${month.bar} this month`}
+          href="/project"
+        />
+        <DeskCard
+          label="Stalled"
+          value={String(metrics.stalled)}
+          note={metrics.stalled === 0 ? 'Everything can move' : 'Nothing moves them'}
+          href="/inbox/stalled"
+        />
+      </div>
+    </section>
+  );
+}
+
+function DeskCard({ label, value, note, href, muted = false }: { label: string; value: string; note: string; href: string; muted?: boolean }): JSX.Element {
+  return (
+    <Link href={href} aria-label={label} style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}>
+      <Stat label={label} value={value} note={note} muted={muted} />
+    </Link>
   );
 }
 

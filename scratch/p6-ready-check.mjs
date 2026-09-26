@@ -65,7 +65,7 @@ section('contracts: the Refinement artifact');
   const template = A.renderArtifactTemplate('Refinement');
   check('the template shows proposedCriteria and questions', template.includes('proposedCriteria:') && template.includes('questions:') && template.includes('options:'));
   check('the template carries the product-owner guidance', /changes? the plan/i.test(template) && /observable/i.test(template) && /do not ask/i.test(template), template.slice(0, 400));
-  const status = A.parseArtifact('StatusReport', ['---', 'type: StatusReport', 'title: Week 39', 'handoff:', '  headline: Two missions moving', '---', '', '# Status'].join('\n'));
+  const status = A.parseArtifact('StatusReport', ['---', 'type: StatusReport', 'title: Week 39', 'asOf: "2026-09-26T08:00:00.000Z"', 'handoff:', '  headline: Two missions moving', '---', '', '# Status'].join('\n'));
   check('a StatusReport parses (P10 fills it in)', status.ok, status.ok ? null : status.error);
 }
 
