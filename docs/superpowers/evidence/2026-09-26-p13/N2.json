@@ -1,0 +1,130 @@
+{
+  "id": "N2",
+  "title": "A role pins a skill; the run gets it in its worktree, recorded by version and hash, never committed",
+  "ok": true,
+  "checks": [
+    {
+      "label": "Team → Roles → Developer has a Skills section with none attached",
+      "ok": true,
+      "observed": "Skills\n\nEvery run of this role gets these skills at the version shown. A step in a workflow file can add its own.\n\nNo skills attached. Import skills on the Skills screen, then attach them here.\n\nChoose a skill…\nhouse-style (v1)\nlint-rules (v1)\ntdd (v1)\nAttach"
+    },
+    {
+      "label": "after Attach: \"tdd v1\"",
+      "ok": true,
+      "observed": "Skills\n\nEvery run of this role gets these skills at the version shown. A step in a workflow file can add its own.\n\ntdd v1\nWrite the failing test first, then the code.\nRemove\nChoose a skill…\nhouse-style (v1)\nlint-rules (v1)\nAttach"
+    },
+    {
+      "label": "proof (API): the Developer role pins tdd v1",
+      "ok": true,
+      "observed": [
+        {
+          "name": "tdd",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "label": "the mission completes",
+      "ok": true,
+      "observed": "COMPLETE"
+    },
+    {
+      "label": "implement drawer: \"Skills: tdd v1 · bad50479a67c, house-style v1 · b204e7f41a08\"",
+      "ok": true,
+      "observed": "Skills: tdd v1 · bad50479a67c, house-style v1 · b204e7f41a08"
+    },
+    {
+      "label": "its gate read skills.loaded and skills.missing",
+      "ok": true,
+      "observed": "Implement\nRetry with more access\nSucceeded\nDeveloper\nScripted agent\nModel: runtime default\nn2-hello-page-muiwt1s6-implement\nworktree isolation\n\nSkills: tdd v1 · bad50479a67c, house-style v1 · b204e7f41a08\n\nDone by\nScripted agent\n·\nResponsible\nYou\nOBJECTIVE\nBuild the hello page.\nSTARTED\nSep 26, 2026, 4:36 PM\nFINISHED\nSep 26, 2026, 4:36 PM · 2s\nCOMPLETION GATE\nAll gate conditions met.\nartifact.ChangeSet.exists && skills.missing == 0 && skills.loaded >= 1\nARTIFACTS PRODUCED\nChangeSet: Scripted work\nDetails\nRequest changes\nClose"
+    },
+    {
+      "label": "the review step pins none: no Skills line",
+      "ok": true,
+      "observed": ""
+    },
+    {
+      "label": "the agent's handoff (feed) says \"Skills folder: house-style, tdd\"",
+      "ok": true,
+      "observed": "msn_01m3ftbfmd4hjdves21c\nMissions\np13-skills\nN2 hello page muiwt1s6\nN2 hello page muiwt1s6\nComplete\nFeed\nPlan\n2\nTimeline\nArtifacts\n3\nChecks & Gates\nMetrics\nDone when\n0 of 1 verified\nU1\nThe acceptance scenario finishes its steps\nThe spec will cover this\nNot verified\nDone\n3\nREVIEWER\nReview\nDone\njust now\nby\nRuntime\n·\nresponsible\nYou\nFull doc\nRequest changes\n\nReviewReport ready for the hello page\n\nWritten by the scripted acceptance agent\nSkills folder: none\nSkills in prompt: none\nDEVELOPER\nImplement\nDone\njust now\nby\nRuntime\n·\nresponsible\nYou\nFull doc\nRequest changes\n\nChangeSet ready for the hello page\n\nWritten by the scripted acceptance agent\nSkills folder: house-style, tdd\nSkills in prompt: none\nPlan for N2 hello page muiwt1s6\nApproved\njust now\nby\nRuntime\n·\nresponsible\nYou\nFull doc\n\nImplement with the Developer role's skills plus the house style, then a review that pins…\n\n2 tasks: development → review\nFirst gate: implement passes when artifact.ChangeSet.exists && skills.missing == 0 && skills.loaded >= 1"
+    },
+    {
+      "label": "proof (agent record): it found house-style and tdd in .claude/skills",
+      "ok": true,
+      "observed": {
+        "folder": [
+          "house-style",
+          "tdd"
+        ],
+        "prompt": [],
+        "cwd": "/tmp/tdm-p13/home/workspaces/ws_01m3fta23r1f0x29apgy/missions/msn_01m3ftbfmd4hjdves21c/worktrees/n2-hello-page-muiwt1s6-implement-kad5pcq9"
+      }
+    },
+    {
+      "label": "proof (disk): the worktree holds .claude/skills/tdd/SKILL.md and reference.md",
+      "ok": true,
+      "observed": "/tmp/tdm-p13/home/workspaces/ws_01m3fta23r1f0x29apgy/missions/msn_01m3ftbfmd4hjdves21c/worktrees/n2-hello-page-muiwt1s6-implement-kad5pcq9"
+    },
+    {
+      "label": "proof (git): info/exclude lists /.claude/skills/tdd/ and /.claude/skills/house-style/",
+      "ok": true,
+      "observed": "# git ls-files --others --exclude-from=.git/info/exclude\n# Lines that start with '#' are comments.\n# For a project mostly in C, the following would be a good set of\n# exclude patterns (uncomment them if you want to use them):\n# *.[oa]\n# *~\n/.claude/skills/tdd/\n/.claude/skills/house-style/\n"
+    },
+    {
+      "label": "proof (git): no commit on the branch contains .claude",
+      "ok": true,
+      "observed": "hello.txt\n.gitignore\n.tandemise/workflows/p0.yaml\n.tandemise/workflows/p10-desk.yaml\n.tandemise/workflows/p12-economy.yaml\n.tandemise/workflows/p12-escalate.yaml\n.tandemise/workflows/p12-models.yaml\n.tandemise/workflows/p12-review.yaml\n.tandemise/workflows/p13-lint.yaml\n.tandemise/workflows/p13-skills.yaml\n.tandemise/workflows/p13-unknown.yaml\n.tandemise/workflows/p2-chain.yaml\n.tandemise/workflows/p2-solo.yaml\n.tandemise/workflows/p5.yaml\n.tandemise/workflows/p8-steps.yaml\n.tandemise/workflows/p9-implement.yaml\nREADME.md\npackage.json\n"
+    },
+    {
+      "label": "proof (disk): the project checkout itself got nothing",
+      "ok": true
+    },
+    {
+      "label": "proof (SQL): runs.skills records name, version, hash and via",
+      "ok": true,
+      "observed": [
+        {
+          "key": "implement",
+          "attempt": 1,
+          "status": "SUCCEEDED",
+          "skills": [
+            {
+              "name": "tdd",
+              "version": 1,
+              "hash": "bad50479a67cfc3db30d70de265458a47c47e7683e02b76b0cd1f438a0aac94e",
+              "via": "folder"
+            },
+            {
+              "name": "house-style",
+              "version": 1,
+              "hash": "b204e7f41a084eadb3e21eb1b31b87dc4ac0064fa2dd7cd5ea853b950fc42dbb",
+              "via": "folder"
+            }
+          ]
+        },
+        {
+          "key": "review",
+          "attempt": 1,
+          "status": "SUCCEEDED",
+          "skills": []
+        }
+      ]
+    },
+    {
+      "label": "Skills → tdd reads \"Used by Developer v1\"",
+      "ok": true,
+      "observed": "tdd\nWrite the failing test first, then the code.\nv1 · 2 files · 248 B · Used by Developer v1"
+    },
+    {
+      "label": "its detail says \"Developer pins v1\"",
+      "ok": true,
+      "observed": "Used by\nDeveloper pins v1"
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "N2-developer-skills.png",
+    "N2-developer-saved.png",
+    "N2-implement-drawer.png"
+  ]
+}

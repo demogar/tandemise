@@ -77,6 +77,8 @@ section('pure: pins');
   check('prompt section: a folder skill is one line', section2?.includes('- Installed in .claude/skills/tdd (v1): Tests first.') && !section2.includes('unused'), section2);
   check('prompt section: a prompt skill carries its SKILL.md', section2?.includes('### Skill: style (v2)') && section2.includes('Short sentences.') && section2.includes('ref/words.md'), section2);
   check('no skills: no section', D.skillPromptSection([]) === null);
+  const long = D.skillPromptSection([{ name: 'big', version: 1, description: '', via: 'prompt', body: 'x'.repeat(50_000), otherFiles: [] }]);
+  check('a very long SKILL.md is cut in the prompt, saying so', long.length < 41_000 && long.includes('(This SKILL.md is 50,000 characters; the first 40,000 are shown.)'), long.length);
   check('missing reason names skill, version and hash', D.missingSkillReason([{ name: 'lint-rules', version: 1, hash: 'abcdef0123456789' }]) === "Skill 'lint-rules' v1 (abcdef012345) is missing from the skills library. Import it again on the Skills screen, then choose Retry.");
 }
 
@@ -122,6 +124,8 @@ process.env.SCRIPTED_ARGS_DIR = argsDir;
 process.env.SCRIPTED_PROMPT_DIR = promptDir;
 process.env.SCRIPTED_STATE_DIR = join(root, 'state');
 process.env.TANDEMISE_SKILLS_DISCOVER_DIR = found;
+// The scripted agent names the skills it found in its handoff.
+process.env.SCRIPTED_ECHO_SKILLS = '1';
 delete process.env.TANDEMISE_OWNER_NAME;
 
 const put = (path, text) => { mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, text); };

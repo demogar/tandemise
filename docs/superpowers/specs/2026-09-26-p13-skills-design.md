@@ -40,15 +40,15 @@ I import the skills I already have, attach them to the roles (or workflow steps)
 
 ## 2. Import and its safety rules
 
-Import is a two-step flow: **preview**, then **import the previewed hash**. The import refuses with 409 "The folder changed since you previewed it. Preview it again." when the content hash differs from the one the person saw.
+Import is a two-step flow: **preview**, then **import the previewed hash**. The daemon keeps the previewed bytes in memory by hash, so the import stores exactly what the person saw. When that preview is no longer held (a restart, many previews later), the source is read again and the import is refused with 409 "The folder changed since you previewed it. Preview it again." if its hash differs.
 
 A folder is refused (the preview says why, and the import button stays disabled) when:
 
 | Rule | Words |
 |---|---|
 | no `SKILL.md` at its top level | "No SKILL.md in this folder. A skill is a folder with a SKILL.md at its top." |
-| over 5 MB in total | "This skill is 7.2 MB; the limit is 5 MB." |
-| more than 500 files | "This skill has 812 files; the limit is 500." |
+| over 5 MB in total (reading stops there) | "This skill is over 5 MB; the limit is 5 MB." |
+| more than 500 files | "This skill has more than 500 files; the limit is 500." |
 | a symbolic link resolving outside the folder | "scripts/run links outside the skill folder (to /etc/hosts)." |
 | an invalid name | "The name “My Skill” can't be a folder name. Use letters, digits, dots, dashes or underscores." |
 
@@ -73,7 +73,7 @@ Order inside an attempt, before the prompt is compiled:
 2. **Materialise.** The runtime adapter says where it reads skills (`skillsFolder?(profile)`):
    - Claude Code: `.claude/skills`. Generic CLI: `.claude/skills` when its settings say `skillsFolder: true`, else none. Codex: none.
    - With a folder: each pinned skill is written to `<working folder>/.claude/skills/<name>/` (the worktree for code tasks, the repository folder for no-worktree tasks, the mission folder when there is no repository), plus a self-ignoring `.gitignore` marker; `.claude/skills/<name>/` is added to the repository's `info/exclude` (via `git rev-parse --git-path info/exclude`), so it is never committed. An existing folder of that name **without** the Tandemise marker is the repository's own skill: it is left alone and that pin is delivered through the prompt instead (with a timeline note).
-   - Without a folder: the prompt gains a section `## Skills pinned to this step` with, per skill, `### Skill: <name> (v<version>)` and the `SKILL.md` body (front matter removed). Other files of the skill are listed by path but not inlined.
+   - Without a folder: the prompt gains a section `## Skills pinned to this step` with, per skill, `### Skill: <name> (v<version>)` and the `SKILL.md` body (front matter removed). Other files of the skill are listed by path but not inlined. A SKILL.md longer than 40,000 characters is cut there, and the prompt says so.
    - With a folder the prompt still gets one short line per skill under the same heading ("Installed in .claude/skills/tdd (v1): <description>"), so the agent knows it has them.
 3. After a run on a target that is not a worktree (the person's own checkout, the mission folder), the materialised folders are removed again. A worktree keeps them: it is the reviewable record of the run and they are excluded from its commits.
 
@@ -145,7 +145,7 @@ ALTER TABLE runs ADD COLUMN skills TEXT;             -- JSON [{name, version, ha
   - A folder: path input (aria-label "Skill folder") + **Preview**. A git repository: URL (aria-label "Repository URL"), subfolder (aria-label "Subfolder"), + **Preview**.
   - Preview panel (aria-label "Preview"): name, description, "a1b2c3d4e5f6 · 3 files · 4 KB", what will happen, the file list, the `SKILL.md`. Button **Import** (disabled when refused).
 - **Team → Roles** editor, section "Skills" (aria-label): one row per pin "tdd v1" with **Use v2** when newer and **Remove**; select (aria-label "Attach a skill") + **Attach**; saved with **Save role**. Empty: "No skills attached. Import skills on the Skills screen, then attach them here."
-- **Step drawer**: line (aria-label "Skills") "Skills: tdd v1 · a1b2c3d4e5f6, house-style v2 · …" from the newest run (what it got), else from the task's pins with "(pinned)".
+- **Step drawer**: line (aria-label "Skills") "Skills: tdd v1 · a1b2c3d4e5f6, house-style v2 · …" from the newest run (what it got; a skill given through the prompt reads "… (in prompt)"), else from the task's pins as "Skills (pinned): …".
 - **Inbox**: the missing-skill card is an ordinary intervention card; its title and rationale name the skill.
 
 ## Testing
@@ -156,13 +156,13 @@ ALTER TABLE runs ADD COLUMN skills TEXT;             -- JSON [{name, version, ha
 - workflow compile: `skills:` reaches `PlannedTask.skills`; a bad ref is refused.
 - a real daemon (`startDaemon`, discovery root pointed at a fixture): discover lists good and refused folders (no SKILL.md, a link outside, over 5 MB); preview → import; re-import same content "unchanged", changed content v2; import with a stale hash → 409; a git source (a local repository by `file://` URL with a subfolder); a role attach and `skills.loaded`; a two-step mission on a worktree gets `.claude/skills/<name>/` in the worktree, `info/exclude` has it, the commit does not; the prompt-appended path for a runtime without a skills folder; `runs.skills` recorded; **an upstream edit does not change a pinned run** (edit the source after pinning: the next run of the old task still gets v1's hash; only an explicit update + re-pin moves it); a missing hash refuses the run with a named reason and an intervention card, re-import + Retry completes it; delete refused while a role uses it.
 
-**Real app** (`scratch/acceptance/p13/`, CDP 9348, home `/tmp/tdm-p13`, discovery root = a fixture folder, scripted agent knob `SCRIPTED_ECHO_SKILLS`):
+**Real app** (`scratch/acceptance/p13/`, CDP 9348, home `/tmp/tdm-p13`, discovery root = a fixture folder, scripted agent knob `SCRIPTED_ECHO_SKILLS`, set in the daemon's environment):
 
 | # | Scenario | Must observe in the window |
 |---|---|---|
 | N1 | Skills → Import skills → Your Claude skills lists the fixture folder: two good skills and one refused ("links outside the skill folder"); preview one; tick both; Import 2 skills; then import a third from A folder | the Library lists tdd v1, house-style v1, lint-rules v1 with descriptions; the refused folder cannot be ticked; the preview showed the file list and SKILL.md |
 | N2 | Team → Roles → Developer: attach tdd, save; run the "P13 skills" workflow (implement on a worktree, step `skills: [house-style@latest]`) with the scripted runtime reading `.claude/skills` | the implement drawer reads "Skills: tdd v1 · <hash>, house-style v1 · <hash>"; the agent's handoff says "Skills folder: house-style, tdd"; the worktree has `.claude/skills/tdd/SKILL.md`; the branch's commit does not include it; Skills shows "Used by Developer v1" |
-| N3 | Edit the fixture's tdd `SKILL.md` | Skills shows "Update available" on tdd; Update → v2 in Versions; Team → Roles → Developer offers "Use v2"; the N2 drawer still reads tdd v1 with the old hash; a new mission (runtime now without a skills folder) reads "tdd v2 · <new hash>" and the agent's handoff says "Skills in prompt: house-style, tdd" |
+| N3 | Edit the fixture's tdd `SKILL.md` | Skills shows "Update available" on tdd; Update → v2 in Versions; Team → Roles → Developer offers "Use v2"; the N2 drawer still reads tdd v1 with the old hash; a new mission (runtime now without a skills folder) reads "tdd v2 · <new hash> (in prompt)" and the agent's handoff says "Skills in prompt: house-style, tdd" |
 | N4 | A two-step mission whose second step pins lint-rules; while step 1 runs, delete lint-rules on the Skills screen | step 2 is refused: Inbox card "‘Check lint’ needs a skill that is missing" naming lint-rules v1; re-import lint-rules from its folder; Retry on the card → the mission completes |
 
 ## Rulings
@@ -177,3 +177,5 @@ ALTER TABLE runs ADD COLUMN skills TEXT;             -- JSON [{name, version, ha
 8. **Git sources are checked only on Update**, never on a list (no network on a screen load).
 9. **Generic CLI profiles opt in to a skills folder with `skillsFolder: true`** in their settings (no new Runtimes-form field, as P12 did for `modelFlag`); the acceptance setup sets it through the API.
 10. **Hashing covers relative path, size and bytes**, not modes or timestamps, so the same files copied anywhere hash the same.
+11. **The scripted agent's knob is set in the daemon's environment** (`SCRIPTED_ECHO_SKILLS=1`), not in a step objective, so screenshots show the product's own words.
+12. **Import keeps the previewed bytes** (by hash, in memory, 16 previews) rather than re-reading the folder: what is stored is exactly what the person saw. Without a held preview the folder is read again and a changed hash is refused (409).

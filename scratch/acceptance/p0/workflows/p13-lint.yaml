@@ -11,7 +11,7 @@ steps:
     title: Check lint
     role: review
     dependsOn: [implement]
-    objective: Check the change against the lint rules. SCRIPTED_ECHO_SKILLS
+    objective: Check the change against the lint rules.
     inputs: [ChangeSet]
     outputs: [ReviewReport]
     skills: [lint-rules@1]

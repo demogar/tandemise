@@ -101,6 +101,25 @@ A model name is one word, passed to the runtime as written; a ladder has at most
 five entries; `independentOf` must name a step this one depends on. See
 [the models guide](guides/models.md).
 
+## Skills
+
+A step can pin skills from the project's skills library, on top of the ones its
+role pins (Team → Roles):
+
+```yaml
+  - key: implement
+    role: development
+    skills: [house-style@latest, tdd@2]   # name, name@<version> or name@latest
+    gate: artifact.ChangeSet.exists && skills.missing == 0
+```
+
+`latest` becomes the newest version when the mission is planned. A step's pin
+wins over its role's pin of the same skill. A skill or version the library does
+not have stops the workflow when it is planned, naming the step.
+
+Two gate facts, `skills.loaded` and `skills.missing`, are measured in every
+step gate (see [Gate facts](#skills-facts)). See [the skills guide](guides/skills.md).
+
 ## When something is wrong
 
 Mistakes are caught when the workflow is read, naming the step and the problem —
@@ -181,6 +200,17 @@ release:  artifact.ReleaseCandidate.exists && qa.criteria_unverified == 0 && qa.
 Every preset gate names its step's own output (`artifact.<Type>.exists`), so a
 step that wrote nothing cannot pass on facts other steps produced. Do the same in
 your own files.
+
+### Skills
+
+See [Giving your agents your skills](guides/skills.md). Measured for every
+step, so a gate can require its skills; both read 0 for a step that pins none.
+<a id="skills-facts"></a>
+
+| Fact | Type | Meaning | Measured in |
+|---|---|---|---|
+| `skills.loaded` | number | pinned skills the step's newest run got, as a folder or in its prompt; 0 before it ran | step gate |
+| `skills.missing` | number | the step's pinned skills that run did not get at the pinned version and hash | step gate |
 
 ### Daemon rules and published facts (new in 0.5)
 

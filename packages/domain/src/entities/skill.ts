@@ -270,6 +270,12 @@ export interface PromptSkill {
 }
 
 export const SKILLS_PROMPT_HEADING = '## Skills pinned to this step';
+/**
+ * The most of one SKILL.md a prompt carries. A skill may be 5 MB; a prompt
+ * that size would crowd out the task itself, so a longer body is cut, saying
+ * so, and the run still records that it was given the skill.
+ */
+export const MAX_PROMPT_SKILL_CHARS = 40_000;
 
 /**
  * The prompt section that tells a run about its skills. A skill delivered as a
@@ -292,7 +298,10 @@ export function skillPromptSection(skills: readonly PromptSkill[]): string | nul
   for (const s of skills.filter((x) => x.via === 'prompt')) {
     lines.push(`### Skill: ${s.name} (v${s.version})`, '');
     if (s.description) lines.push(`${s.description}`, '');
-    lines.push(s.body.trim(), '');
+    const body = s.body.trim();
+    lines.push(body.length <= MAX_PROMPT_SKILL_CHARS
+      ? body
+      : `${body.slice(0, MAX_PROMPT_SKILL_CHARS)}\n\n(This SKILL.md is ${body.length.toLocaleString('en-US')} characters; the first ${MAX_PROMPT_SKILL_CHARS.toLocaleString('en-US')} are shown.)`, '');
     if (s.otherFiles.length > 0) lines.push(`Other files in this skill (not shown): ${s.otherFiles.join(', ')}`, '');
   }
   return lines.join('\n').trimEnd();

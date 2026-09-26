@@ -1,0 +1,122 @@
+{
+  "id": "N3",
+  "title": "An edited source shows \"Update available\"; updating and moving the role are explicit; old runs keep their hash",
+  "ok": true,
+  "checks": [
+    {
+      "label": "the tdd row says \"Update available\"",
+      "ok": true,
+      "observed": "tdd\nWrite the failing test first, then the code.\nv1 · 2 files · 248 B · Used by Developer v1\nUpdate available"
+    },
+    {
+      "label": "the other skills do not",
+      "ok": true,
+      "observed": [
+        {
+          "name": "house-style",
+          "text": "house-style\nHow our copy reads.\nv1 · 1 file · 138 B"
+        },
+        {
+          "name": "lint-rules",
+          "text": "lint-rules\nThe lint rules we keep.\nv1 · 1 file · 119 B"
+        },
+        {
+          "name": "tdd",
+          "text": "tdd\nWrite the failing test first, then the code.\nv1 · 2 files · 248 B · Used by Developer v1\nUpdate available"
+        }
+      ]
+    },
+    {
+      "label": "its Source says the source changed since v1 and roles keep their version",
+      "ok": true,
+      "observed": "Source\n\n/tmp/tdm-p13/claude-skills/tdd\n\nUpdate available The source changed since v1. Update imports it as v2; roles keep their version until you move them.\n\nUpdate\nDelete"
+    },
+    {
+      "label": "proof (API): still one version (nothing was updated by itself)",
+      "ok": true
+    },
+    {
+      "label": "Versions now lists v2 and v1",
+      "ok": true,
+      "observed": "Versions\nv2 73c86d77ec4e\n2 files · 284 B · imported Sep 26, 2026, 4:37 PM\nv1 bad50479a67c\n2 files · 248 B · imported Sep 26, 2026, 4:35 PM"
+    },
+    {
+      "label": "proof (API): v2 has a new hash, v1 keeps its own",
+      "ok": true,
+      "observed": [
+        [
+          2,
+          "73c86d77ec4e"
+        ],
+        [
+          1,
+          "bad50479a67c"
+        ]
+      ]
+    },
+    {
+      "label": "Used by: \"Developer pins v1 · v2 is available\"",
+      "ok": true,
+      "observed": "Used by\nDeveloper pins v1 · v2 is available in Team → Roles"
+    },
+    {
+      "label": "Team → Roles → Developer still pins tdd v1 and offers \"Use v2\"",
+      "ok": true,
+      "observed": "Skills\n\nEvery run of this role gets these skills at the version shown. A step in a workflow file can add its own.\n\ntdd v1\nWrite the failing test first, then the code.\nUse v2\nRemove\nChoose a skill…\nhouse-style (v1)\nlint-rules (v1)\nAttach"
+    },
+    {
+      "label": "after Use v2 and Save: \"tdd v2\"",
+      "ok": true
+    },
+    {
+      "label": "N2's implement drawer still reads tdd v1 · bad50479a67c",
+      "ok": true,
+      "observed": "Skills: tdd v1 · bad50479a67c, house-style v1 · b204e7f41a08"
+    },
+    {
+      "label": "the new mission completes",
+      "ok": true,
+      "observed": "COMPLETE"
+    },
+    {
+      "label": "its implement drawer: \"Skills: tdd v2 · 73c86d77ec4e (in prompt), house-style v1 · b204e7f41a08 (in prompt)\"",
+      "ok": true,
+      "observed": "Skills: tdd v2 · 73c86d77ec4e (in prompt), house-style v1 · b204e7f41a08 (in prompt)"
+    },
+    {
+      "label": "the agent's handoff says \"Skills in prompt: house-style, tdd\" and no folder",
+      "ok": true,
+      "observed": "msn_01m3ftd55vg99mtzdm74\nMissions\np13-skills\nN3 hello page muiwu83a\nN3 hello page muiwu83a\nComplete\nFeed\nPlan\n2\nTimeline\nArtifacts\n3\nChecks & Gates\nMetrics\nDone when\n0 of 1 verified\nU1\nThe acceptance scenario finishes its steps\nThe spec will cover this\nNot verified\nDone\n3\nREVIEWER\nReview\nDone\njust now\nby\nRuntime\n·\nresponsible\nYou\nFull doc\nRequest changes\n\nReviewReport ready for the hello page\n\nWritten by the scripted acceptance agent\nSkills folder: none\nSkills in prompt: none\nDEVELOPER\nImplement\nDone\njust now\nby\nRuntime\n·\nresponsible\nYou\nFull doc\nRequest changes\n\nChangeSet ready for the hello page\n\nWritten by the scripted acceptance agent\nSkills folder: none\nSkills in prompt: house-style, tdd\nPlan for N3 hello page muiwu83a\nApproved\njust now\nby\nRuntime\n·\nresponsible\nYou\nFull doc\n\nImplement with the Developer role's skills plus the house style, then a review that pins…\n\n2 tasks: development → review\nFirst gate: implement passes when artifact.ChangeSet.exists && skills.missing == 0 && skills.loaded >= 1"
+    },
+    {
+      "label": "proof (prompt): \"## Skills pinned to this step\" with the v2 SKILL.md",
+      "ok": true,
+      "observed": "## Skills pinned to this step\n\nThe person pinned these skills to this step. Use them where they apply.\n\n### Skill: tdd (v2)\n\nWrite the failing test first, then the code.\n\n# Test first\n\n1. Write a test that fails.\n2. Make it pass with the least code.\n3. Tidy up while it stays green.\n4. Commit when the tests are green.\n\nOther files in this skill (not shown): reference.md\n\n### Skill: house-style (v1)\n\nHow our copy reads.\n\n# House style\n\nShort sentences. Plain words. Say what the reader can do next.\n"
+    },
+    {
+      "label": "proof (agent record): prompt [house-style, tdd], folder []",
+      "ok": true,
+      "observed": {
+        "folder": [],
+        "prompt": [
+          "house-style",
+          "tdd"
+        ],
+        "cwd": "/tmp/tdm-p13/home/workspaces/ws_01m3fta23r1f0x29apgy/missions/msn_01m3ftd55vg99mtzdm74/worktrees/n3-hello-page-muiwu83a-implement-118nj7nw"
+      }
+    },
+    {
+      "label": "proof (SQL): N2's run still records tdd v1 with its old hash",
+      "ok": true
+    }
+  ],
+  "notes": [
+    "edited claude-skills/tdd/SKILL.md on disk (a fourth step)",
+    "setup shortcut: the scripted runtime no longer reads .claude/skills (settings.skillsFolder false), so skills go into its prompt"
+  ],
+  "shots": [
+    "N3-update-available.png",
+    "N3-versions.png",
+    "N3-drawer-v2-in-prompt.png"
+  ]
+}

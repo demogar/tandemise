@@ -137,3 +137,10 @@ restart ends the run; the question is withdrawn, and the task retries and may
 ask again. A question is also answered or expired within 24 hours, after which
 the worker decides on its own and records the assumption.
 
+
+## Planning and refinement runs get no skills
+
+Pinned skills reach the steps of a mission, not the planner or the refinement
+run that happen before it: those have no run record to pin a version on. A
+skill that should shape the plan itself has to be said in the mission's request
+for now.

@@ -48,7 +48,7 @@ put(`${LINK}/more-skills/lint-rules/SKILL.md`, '---\nname: lint-rules\ndescripti
 log('setup');
 // Runs take a few seconds each, so a scenario can read the window between two of them.
 execFileSync(process.execPath, [join(here, '../p0/setup.mjs'), LINK], {
-  env: { ...process.env, SCRIPTED_DELAY_MS: '1500', SCRIPTED_ARGS_DIR: `${LINK}/args`, SCRIPTED_STATE_DIR: `${LINK}/scripted-state`, TANDEMISE_SKILLS_DISCOVER_DIR: `${LINK}/claude-skills` },
+  env: { ...process.env, SCRIPTED_DELAY_MS: '1500', SCRIPTED_ARGS_DIR: `${LINK}/args`, SCRIPTED_STATE_DIR: `${LINK}/scripted-state`, TANDEMISE_SKILLS_DISCOVER_DIR: `${LINK}/claude-skills`, SCRIPTED_ECHO_SKILLS: '1' },
   stdio: ['ignore', 'pipe', 'inherit'],
 });
 // Setup shortcut: the scripted agent reads skills from .claude/skills in its working folder (skillsFolder), like

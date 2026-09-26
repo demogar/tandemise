@@ -4,7 +4,7 @@ steps:
   - key: implement
     title: Implement
     role: development
-    objective: Build the hello page. SCRIPTED_ECHO_SKILLS
+    objective: Build the hello page.
     outputs: [ChangeSet]
     skills: [house-style@latest]
     gate: artifact.ChangeSet.exists && skills.missing == 0 && skills.loaded >= 1
@@ -12,7 +12,7 @@ steps:
     title: Review
     role: review
     dependsOn: [implement]
-    objective: Review the hello page change. SCRIPTED_ECHO_SKILLS
+    objective: Review the hello page change.
     inputs: [ChangeSet]
     outputs: [ReviewReport]
     gate: artifact.ReviewReport.exists && skills.loaded == 0

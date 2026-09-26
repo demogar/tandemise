@@ -124,7 +124,7 @@ function FromClaude({ onImported }: { onImported: (messages: readonly string[]) 
           disabled={ticked.length === 0 || importAll.isPending}
           onClick={() => importAll.mutate(ticked, { onSuccess: (done) => onImported(done.map((d) => d.message)) })}
         >
-          {importAll.isPending ? 'Importing…' : ticked.length === 1 ? 'Import 1 skill' : `Import ${ticked.length} skills`}
+          {importAll.isPending ? 'Importing…' : ticked.length === 0 ? 'Tick the skills to import' : ticked.length === 1 ? 'Import 1 skill' : `Import ${ticked.length} skills`}
         </button>
       </div>
     </div>

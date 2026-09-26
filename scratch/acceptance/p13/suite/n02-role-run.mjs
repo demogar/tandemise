@@ -24,6 +24,9 @@ await page.evaluate(`document.querySelector('section[aria-label="Skills"]').scro
 await sleep(300);
 await page.screenshot(ev.shot('developer-skills'));
 await saveRole(c);
+await page.evaluate(`document.querySelector('section[aria-label="Skills"]').scrollIntoView({ block: 'center' })`);
+await sleep(300);
+await page.screenshot(ev.shot('developer-saved'));
 const role = (await c.api.get(`/v1/roles?workspaceId=${c.env.workspaceId}`)).find((r) => r.id === 'development');
 ev.check('proof (API): the Developer role pins tdd v1', JSON.stringify(role?.skills) === JSON.stringify([{ name: 'tdd', version: 1 }]), role?.skills);
 
