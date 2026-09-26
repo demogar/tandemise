@@ -1,4 +1,5 @@
 import type { ArtifactType } from '@tandemise/domain';
+import { REFINEMENT_LIMITS } from '@tandemise/domain';
 import { z } from 'zod';
 import { HANDOFF_LIMITS, handoffSchema } from './handoff.js';
 
@@ -37,9 +38,15 @@ const base = <T extends ArtifactType>(type: T) => ({
 const FINDING_SEVERITY = z.enum(['blocking', 'major', 'minor', 'nit']);
 const CHECK_OUTCOME = z.enum(['PASS', 'FAIL', 'SKIP']);
 
+/**
+ * `covers` names the person's Done-when lines (`U1`, `U2`) this criterion
+ * proves. The harvester checks it against the mission's ledger: the schema can
+ * only say it is a list of ids, not which ids exist.
+ */
 const acceptanceCriterion = z.object({
   id: nonEmpty('criterion id'),
   statement: nonEmpty('criterion statement'),
+  covers: z.array(nonEmpty('covered criterion id')).default([]),
 });
 
 export const ProblemBriefFrontMatter = z.object({
@@ -111,13 +118,25 @@ export const QAPlanFrontMatter = z.object({
   })).min(1, 'a QAPlan needs at least one test case'),
 });
 
+/**
+ * A result names the criterion it verified by its ledger id. `criterion` is
+ * the pre-ledger field, still accepted so a report written from an older
+ * template is read rather than refused; the harvester then requires its text
+ * to be a ledger id.
+ */
+const qaResult = z.object({
+  criterionId: z.string().trim().min(1, 'criterionId must not be empty').optional(),
+  criterion: z.string().trim().min(1, 'criterion must not be empty').optional(),
+  outcome: CHECK_OUTCOME,
+  evidence: z.string().trim().default(''),
+}).refine((r) => r.criterionId !== undefined || r.criterion !== undefined, {
+  message: 'each result needs criterionId: the ledger id it verifies (AC1, U2)',
+  path: ['criterionId'],
+});
+
 export const QAReportFrontMatter = z.object({
   ...base('QAReport'),
-  results: z.array(z.object({
-    criterion: nonEmpty('criterion'),
-    outcome: CHECK_OUTCOME,
-    evidence: z.string().trim().default(''),
-  })).min(1, 'a QAReport needs a result for at least one criterion'),
+  results: z.array(qaResult).min(1, 'a QAReport needs a result for at least one criterion'),
   blockingDefects: z.number().int().nonnegative().default(0),
 });
 
@@ -140,6 +159,32 @@ export const DecisionRecordFrontMatter = z.object({
   supersedes: z.string().trim().default(''),
 });
 
+/**
+ * What refining a rough request produced (P6): criteria the person can accept
+ * or reject, and the few questions whose answers change the plan. The keys an
+ * author writes are for reading the document; the daemon numbers proposals
+ * and questions itself, so a key is only required to be present.
+ *
+ * The limits are the point: a refinement that asks twelve questions has not
+ * done the product owner's job, it has handed it back.
+ */
+export const RefinementFrontMatter = z.object({
+  ...base('Refinement'),
+  proposedCriteria: z.array(z.object({
+    key: nonEmpty('criterion key'),
+    statement: nonEmpty('criterion statement')
+      .max(REFINEMENT_LIMITS.statement, `a criterion statement must be at most ${REFINEMENT_LIMITS.statement} characters: one observable outcome`),
+  })).max(REFINEMENT_LIMITS.criteria, `propose at most ${REFINEMENT_LIMITS.criteria} criteria; keep the ones that matter most`).default([]),
+  questions: z.array(z.object({
+    key: nonEmpty('question key'),
+    text: nonEmpty('question text')
+      .max(REFINEMENT_LIMITS.question, `a question must be at most ${REFINEMENT_LIMITS.question} characters`),
+    why: z.string().trim().max(REFINEMENT_LIMITS.why, `why must be at most ${REFINEMENT_LIMITS.why} characters`).default(''),
+    options: z.array(nonEmpty('option').max(REFINEMENT_LIMITS.option, `an option must be at most ${REFINEMENT_LIMITS.option} characters`))
+      .max(REFINEMENT_LIMITS.options, `offer at most ${REFINEMENT_LIMITS.options} options per question`).default([]),
+  })).max(REFINEMENT_LIMITS.questions, `ask at most ${REFINEMENT_LIMITS.questions} questions; ask only the ones whose answers change the plan`).default([]),
+});
+
 /*
  * Evidence, FinanceReport and MissionPlan have no machine-read facts of their
  * own, so their contract is only the common part: a title and a handoff. Other
@@ -149,6 +194,8 @@ export const DecisionRecordFrontMatter = z.object({
 export const FinanceReportFrontMatter = z.object(base('FinanceReport')).passthrough();
 export const EvidenceFrontMatter = z.object(base('Evidence')).passthrough();
 export const MissionPlanFrontMatter = z.object(base('MissionPlan')).passthrough();
+/** Rendered by the daemon from facts (P10); only the common part is fixed until then. */
+export const StatusReportFrontMatter = z.object(base('StatusReport')).passthrough();
 
 /** Every artifact type's validated front-matter contract. */
 export const ARTIFACT_SCHEMAS = {
@@ -166,6 +213,8 @@ export const ARTIFACT_SCHEMAS = {
   FinanceReport: FinanceReportFrontMatter,
   Evidence: EvidenceFrontMatter,
   MissionPlan: MissionPlanFrontMatter,
+  Refinement: RefinementFrontMatter,
+  StatusReport: StatusReportFrontMatter,
 } as const satisfies Record<ArtifactType, z.ZodTypeAny>;
 
 export type SchemaBackedArtifactType = keyof typeof ARTIFACT_SCHEMAS;

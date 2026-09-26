@@ -1,5 +1,5 @@
 import type {
-  ApprovalId, ArtifactId, FeedbackId, IntegrationId, MemberId, MissionId, PersonId, RepositoryId, RuntimeProfileId,
+  ApprovalId, ArtifactId, CriterionId, FeedbackId, IntegrationId, QuestionId, MemberId, MissionId, PersonId, RepositoryId, RuntimeProfileId,
   TaskId, WorkspaceId,
 } from '@tandemise/shared';
 import type {
@@ -17,6 +17,7 @@ import type {
   AddMemberRequest, ArtifactView, CreatePersonRequest, MeView, MemberView, PersonView, StaffingPreviewView,
   TeamView, UpdateMemberRequest, UpdatePersonRequest, MissionArtifactView, MissionFeedView, ArtifactReadView,
   DismissFeedbackRequest, FeedbackGivenView, FeedbackView, GiveFeedbackRequest, StartRoundRequest, TaskFeedbackView,
+  MissionCriterionView, RefinementView, CriterionVerdictRequest, AnswerQuestionRequest, AddCriterionRequest,
 } from '@tandemise/api-contract';
 import type { Caller, IdentityPort } from './support/identity.js';
 import type { RoundBegun } from './engine/feedback-rounds.js';
@@ -47,6 +48,28 @@ export interface TandemiseServices {
   readonly team: TeamService;
   readonly staffing: StaffingService;
   readonly feedback: FeedbackService;
+  readonly criteria: CriteriaService;
+  readonly refinement: RefinementService;
+}
+
+/** Making a rough request ready to plan (P6). Every write is refused once the mission has left DRAFT. */
+export interface RefinementService {
+  /** Starts a refinement pass in the background; answers at once with the view (`running`). */
+  begin(caller: Caller, missionId: MissionId): RefinementView;
+  /** Resolves once the mission's current pass, if any, has settled. */
+  settled(missionId: MissionId): Promise<void>;
+  view(missionId: MissionId): RefinementView;
+  /** Accepts (optionally reworded) or rejects a proposed criterion. */
+  decide(caller: Caller, criterionId: CriterionId, request: CriterionVerdictRequest): RefinementView;
+  answer(caller: Caller, questionId: QuestionId, request: AnswerQuestionRequest): RefinementView;
+  /** Adds an accepted criterion in the person's own words. */
+  addCriterion(caller: Caller, missionId: MissionId, request: AddCriterionRequest): RefinementView;
+}
+
+/** The Done-when ledger of a mission (P5). */
+export interface CriteriaService {
+  /** Live criteria, user first then spec, each traced against the newest QA report. */
+  list(missionId: MissionId): readonly MissionCriterionView[];
 }
 
 export interface SystemService {

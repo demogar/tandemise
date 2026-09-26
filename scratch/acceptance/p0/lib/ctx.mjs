@@ -42,6 +42,8 @@ export async function context() {
       await page.waitForText('What outcome do you want?', { timeoutMs: 30_000 });
       await sleep(400);
       await page.fill('What outcome do you want?', title);
+      // A request is planned only once it says what done means (P6); these suites are about what happens after.
+      await page.fill('Done when', 'The acceptance scenario finishes its steps');
       await page.select('Repository', 'acceptance-project');
       await page.select('Workflow', workflow);
       await page.click('Plan mission …');

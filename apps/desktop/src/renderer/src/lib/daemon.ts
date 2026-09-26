@@ -12,6 +12,8 @@ import type {
   MissionArtifactView,
   MissionDetail,
   MissionFeedView,
+  MissionCriterionView,
+  RefinementView,
   MissionSummary,
   RepositoryProbe,
   RuntimeDiscoveryView,
@@ -232,6 +234,35 @@ export class DaemonClient {
   /** The mission's cards grouped for the principal; `doneLimit` defaults to 5 on the daemon. */
   missionFeed(id: string, query?: { doneLimit?: number }): Promise<MissionFeedView> {
     return this.#get(`/missions/${id}/feed`, query);
+  }
+
+  /** The mission's Done-when ledger, traced against the newest QA report. */
+  missionCriteria(id: string): Promise<readonly MissionCriterionView[]> {
+    return this.#get(`/missions/${id}/criteria`);
+  }
+
+  /** Where a DRAFT mission stands: proposals, questions and the readiness gate. */
+  missionRefinement(id: string): Promise<RefinementView> {
+    return this.#get(`/missions/${id}/refinement`);
+  }
+
+  /** Starts a refinement pass; the result arrives over the stream. */
+  refineMission(id: string): Promise<RefinementView> {
+    return this.#request('POST', `/missions/${id}/refine`, {});
+  }
+
+  /** Accepts (optionally reworded) or rejects a proposed criterion. */
+  decideCriterion(id: string, body: { verdict: 'accept' | 'reject'; statement?: string }): Promise<RefinementView> {
+    return this.#request('POST', `/criteria/${id}/verdict`, body);
+  }
+
+  answerQuestion(id: string, text: string): Promise<RefinementView> {
+    return this.#request('POST', `/questions/${id}/answer`, { text });
+  }
+
+  /** Adds an accepted Done-when criterion to a DRAFT mission, in the person's words. */
+  addCriterion(missionId: string, statement: string): Promise<RefinementView> {
+    return this.#request('POST', `/missions/${missionId}/criteria`, { statement });
   }
 
   /** A person reporting they have done a `human` task, with what they produced; `onBehalfOf` records it for a teammate. */

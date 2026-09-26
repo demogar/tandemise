@@ -34,6 +34,8 @@ const FRONT = {
   FinanceReport: {},
   Evidence: {},
   MissionPlan: {},
+  Refinement: { proposedCriteria: [{ key: 'P1', statement: 'The page greets the visitor.' }], questions: [] },
+  StatusReport: {},
 };
 
 const HANDOFF = {
@@ -66,12 +68,12 @@ const hasIssueAt = (result, path) => issuesOf(result).some((i) => i.path === pat
 
 section('pure: handoff schema');
 {
-  check('FRONT covers all 14 types', ARTIFACT_TYPES.length === 14 && ARTIFACT_TYPES.every((t) => t in FRONT));
+  check('FRONT covers all 16 types', ARTIFACT_TYPES.length === 16 && ARTIFACT_TYPES.every((t) => t in FRONT));
   for (const type of ARTIFACT_TYPES) {
     const parsed = parseArtifact(type, doc(type));
     check(`${type} accepts a valid handoff`, parsed.ok && parsed.value.frontMatter.handoff?.headline === HANDOFF.headline, issuesOf(parsed));
   }
-  check('hasSchema is true for every type', ARTIFACT_TYPES.every((t) => hasSchema(t)) && Object.keys(ARTIFACT_SCHEMAS).length === 14);
+  check('hasSchema is true for every type', ARTIFACT_TYPES.every((t) => hasSchema(t)) && Object.keys(ARTIFACT_SCHEMAS).length === 16);
   check('HANDOFF_LIMITS match the contract', eq(HANDOFF_LIMITS, { title: 60, headline: 90, point: 140, points: 3, needs: 140, changedWhat: 140, changed: 3, linkLabel: 40, links: 5 }));
 
   const missingHandoff = parseArtifact('Evidence', doc('Evidence', { handoff: OMIT }));
@@ -195,8 +197,9 @@ section('pure: measureBody and budgets');
     DesignBrief: 500, ReviewReport: 500, QAReport: 500, ChangeSet: 500,
     ProductSpec: 600, FinanceReport: 600,
     ArchitecturePlan: 800, ImplementationPlan: 800,
+    Refinement: 300, StatusReport: 600,
   };
-  check('WORD_BUDGETS match the table for all 14 types', Object.keys(WORD_BUDGETS).length === 14 && eq(Object.fromEntries(ARTIFACT_TYPES.map((t) => [t, WORD_BUDGETS[t]])), Object.fromEntries(ARTIFACT_TYPES.map((t) => [t, expected[t]]))), WORD_BUDGETS);
+  check('WORD_BUDGETS match the table for all 16 types', Object.keys(WORD_BUDGETS).length === 16 && eq(Object.fromEntries(ARTIFACT_TYPES.map((t) => [t, WORD_BUDGETS[t]])), Object.fromEntries(ARTIFACT_TYPES.map((t) => [t, expected[t]]))), WORD_BUDGETS);
 }
 
 section('pure: templates');
@@ -574,7 +577,7 @@ section('engine');
 
   // ---- (f) the MissionPlan artifact
   {
-    const planned = await h.services.missions.create(caller, { workspaceId: ws, goal: 'Plan the onboarding', title: 'Planned' });
+    const planned = await h.services.missions.create(caller, { workspaceId: ws, goal: 'Plan the onboarding', title: 'Planned', successCriteria: ['The onboarding has a plan'] });
     await h.services.planning.plan(planned.id);
     const plan = h.repo.artifacts.listByMission(planned.id).find((x) => x.type === 'MissionPlan');
     const body = plan === undefined ? '' : (await h.repo.store.read(plan.id)).body;

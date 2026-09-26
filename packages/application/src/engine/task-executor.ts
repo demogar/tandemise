@@ -2,9 +2,9 @@ import type {
   Approval, ApprovalRepositoryPort, ArtifactManifest, ArtifactRepositoryPort, ArtifactStorePort, ArtifactType,
   AssignmentRepositoryPort, CapabilityGrant, CheckResult, CheckpointRepositoryPort,
   DecisionRepositoryPort, EventRepositoryPort, ExecutionTargetRepositoryPort, ExecutionTargetRecord, ExternalRef,
-  GateOutcome, LoadedArtifact, Member, MemberRepositoryPort, Mission, MissionRepositoryPort, MissionTask, RepoRepositoryPort,
+  CriteriaTrace, GateOutcome, LoadedArtifact, Member, MemberRepositoryPort, Mission, MissionCriterion, MissionQuestionRepositoryPort, MissionRepositoryPort, MissionTask, RepoRepositoryPort,
   Repository, ResourceLease, RoleRepositoryPort, RoleTemplate, Run, RunEventRecord, RunInputRepositoryPort, RunPurpose,
-  RunRepositoryPort, RunUsage,
+  RunRepositoryPort, RunUsage, TracedCriterion,
   RuntimeProfile, RuntimeProfileRepositoryPort, TargetKind, TaskRepositoryPort, TaskStatus,
   Workspace, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
@@ -115,6 +115,8 @@ export interface TaskExecutorDeps {
   readonly harvester: ArtifactHarvester;
   readonly checks: CheckService;
   readonly gates: GateService;
+  /** What the person answered while the request was refined; optional for harnesses built before P6. */
+  readonly questions?: Pick<MissionQuestionRepositoryPort, 'listByMission'>;
   /** Who looks at a passed round, and who every card about a task is addressed to. */
   readonly reviews: ReviewPipeline;
   /** Reads a round's brief and contract, and settles the notes a pass answered. */
@@ -1399,9 +1401,14 @@ export class TaskExecutor {
       wordBudget: this.deps.measure.measure(type, '').budget,
     }));
 
+    // The ledger as the gates will measure it, so the prompt names the same ids.
+    const ledger = this.deps.gates.trace(mission.id).trace.rows.map((r) => r.criterion);
     const compiled = this.deps.contextCompiler.compile({
       role,
       workspaceName: workspace.name,
+      criteria: ledger.map((c) => ({ key: c.key, statement: c.statement, covers: c.covers })),
+      answers: (this.deps.questions?.listByMission(mission.id) ?? [])
+        .flatMap((q) => (q.status === 'answered' && q.answer !== null ? [{ key: q.key, text: q.text, answer: q.answer }] : [])),
       knowledge: workspace.knowledge,
       mission,
       task,
@@ -1413,7 +1420,10 @@ export class TaskExecutor {
         artifacts: expected,
         workingDirectory: target.workingDirectory,
         completionGate: task.completionGate,
-        notes: this.#contractNotes(task, target, input.tools, input.feedback, input.tighten, input.round ?? null),
+        notes: [
+          ...this.#contractNotes(task, target, input.tools, input.feedback, input.tighten, input.round ?? null),
+          ...ledgerNotes(task, ledger),
+        ],
       },
     });
 
@@ -1822,6 +1832,7 @@ export class TaskExecutor {
             ? 'Every condition is met as the work stands. One more attempt should clear it.'
             : summarize(gateNow.detail, 600),
         }]),
+        ...doneWhenEvidence(task, this.deps.gates.trace(mission.id).trace),
         { kind: 'text', label: 'Objective', value: summarize(task.objective, 600) },
       ],
       options: [
@@ -2346,4 +2357,52 @@ function hasUsage(usage: RunUsage): boolean {
   return usage.inputTokens !== undefined
     || usage.outputTokens !== undefined
     || (usage.costUsd !== null && usage.costUsd !== undefined);
+}
+
+/**
+ * What a spec author and a tester owe the Done-when ledger, with the ids
+ * spelled out: an agent told "cover every criterion" without the list guesses,
+ * and the harvester then refuses what it guessed.
+ */
+function ledgerNotes(task: MissionTask, ledger: readonly MissionCriterion[]): readonly string[] {
+  const users = ledger.filter((c) => c.source === 'user').map((c) => c.key);
+  const notes: string[] = [];
+  if (task.expectedOutputs.includes('ProductSpec') && users.length > 0) {
+    notes.push(
+      `The person's Done-when lines are ${users.join(', ')}. Every one must appear in the \`covers\` list of at least `
+      + 'one acceptance criterion in your ProductSpec; name your own criteria AC1, AC2, and so on. '
+      + 'Tandemise checks this: a line left uncovered fails the task.',
+    );
+  }
+  if (task.expectedOutputs.includes('QAReport') && ledger.length > 0) {
+    const covered = new Set(ledger.filter((c) => c.source === 'spec').flatMap((c) => c.covers));
+    const verify = ledger.filter((c) => c.source === 'spec' || !covered.has(c.key)).map((c) => c.key);
+    notes.push(
+      `Give one QAReport result per criterion, with \`criterionId\` set to its ledger id: ${verify.join(', ')}. `
+      + 'A result naming any other id is refused. A criterion you could not verify is SKIP, and it counts as not verified.',
+    );
+  }
+  return notes;
+}
+
+/**
+ * For a card about a task whose gate reads the Done-when ledger: which
+ * criteria hold it up, by id and in the person's words. The gate line says
+ * "criteria.uncovered_user is 1"; this says which one.
+ */
+function doneWhenEvidence(task: MissionTask, trace: CriteriaTrace): readonly { kind: 'text'; label: string; value: string }[] {
+  if (task.completionGate === null) return [];
+  const reads = gateDependencies(task.completionGate);
+  if (!reads.some((fact) => fact.startsWith('criteria.') || fact.startsWith('qa.criteria_'))) return [];
+  const named = (rows: readonly TracedCriterion[]): string =>
+    rows.map((r) => `${r.criterion.key} (${summarize(r.criterion.statement, 80)})`).join(', ');
+  const uncovered = trace.rows.filter((r) => r.uncovered);
+  const failed = trace.rows.filter((r) => r.counted && r.result === 'FAIL');
+  const unverified = trace.rows.filter((r) => r.counted && !r.uncovered && r.result !== 'PASS' && r.result !== 'FAIL');
+  const lines = [
+    ...(uncovered.length > 0 ? [`Not covered by the spec: ${named(uncovered)}.`] : []),
+    ...(failed.length > 0 ? [`Failed in QA: ${named(failed)}.`] : []),
+    ...(unverified.length > 0 ? [`Not verified yet: ${named(unverified)}.`] : []),
+  ];
+  return lines.length === 0 ? [] : [{ kind: 'text', label: 'Done when', value: summarize(lines.join(' '), 600) }];
 }

@@ -22,6 +22,8 @@ export const OFFLINE_CHECKS = [
   'handoff-check',
   'mcp-integration-check',
   'multirepo-check',
+  'p5-done-when-check',
+  'p6-ready-check',
   'oauth-connect-check',
   'persistence-check',
   'planner-steps-check',

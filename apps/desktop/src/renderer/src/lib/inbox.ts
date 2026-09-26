@@ -1,11 +1,12 @@
 import { useMemo } from 'react';
-import type { ApprovalView, InboxTaskView } from '@tandemise/api-contract';
+import type { ApprovalView, InboxRefinementView, InboxTaskView } from '@tandemise/api-contract';
 import { isApprovalForMember, isHumanTaskForMember } from '@tandemise/api-contract/for-me';
 import { useInboxView, useMyMemberId } from './queries.js';
 
 export type InboxItem =
   | { readonly kind: 'approval'; readonly id: string; readonly view: ApprovalView; readonly forMe: boolean; readonly escalated: boolean; readonly at: string }
-  | { readonly kind: 'task'; readonly id: string; readonly task: InboxTaskView; readonly forMe: boolean; readonly escalated: boolean; readonly at: string };
+  | { readonly kind: 'task'; readonly id: string; readonly task: InboxTaskView; readonly forMe: boolean; readonly escalated: boolean; readonly at: string }
+  | { readonly kind: 'refinement'; readonly id: string; readonly refinement: InboxRefinementView; readonly forMe: boolean; readonly escalated: boolean; readonly at: string };
 
 /**
  * Everything waiting on a person: open approvals and tasks parked for a human.
@@ -58,6 +59,17 @@ export function useInbox(): {
         forMe: isHumanTaskForMember(people, meId),
         escalated,
         at: task.updatedAt,
+      });
+    }
+    // A request that cannot be planned until its creator decides what refinement proposed (P6).
+    for (const refinement of inbox.data?.refinements ?? []) {
+      items.push({
+        kind: 'refinement',
+        id: `refinement:${refinement.missionId}`,
+        refinement,
+        forMe: refinement.forIds.length === 0 || (meId !== null && refinement.forIds.includes(meId)),
+        escalated: false,
+        at: refinement.updatedAt,
       });
     }
     // Escalated first: someone already missed it. Then oldest, because it has waited longest.

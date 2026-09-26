@@ -1,9 +1,9 @@
 import type {
-  ApprovalRepositoryPort, ArtifactRepositoryPort, CheckResult, Evaluation,
-  EvaluationRepositoryPort, GateFacts, GateOutcome, MissionRepositoryPort, MissionTask, RiskClass,
+  ApprovalRepositoryPort, ArtifactRepositoryPort, CheckResult, CriteriaTrace, Evaluation,
+  EvaluationRepositoryPort, GateFacts, GateOutcome, MissionCriteriaRepositoryPort, MissionRepositoryPort, MissionTask, RiskClass,
   TaskRepositoryPort,
 } from '@tandemise/domain';
-import { blockingFindings, evaluateGate, maxRisk } from '@tandemise/domain';
+import { blockingFindings, evaluateGate, maxRisk, traceCriteria } from '@tandemise/domain';
 import { riskForCapability } from '@tandemise/policy';
 import { GateFactBuilder, evaluateNamedGate } from '@tandemise/evaluation';
 import type { MissionId } from '@tandemise/shared';
@@ -38,6 +38,8 @@ export class GateService {
     private readonly evaluations: EvaluationRepositoryPort,
     private readonly approvals: ApprovalRepositoryPort,
     private readonly missions: MissionRepositoryPort,
+    /** Optional so a harness built before the ledger still composes; the module always passes it. */
+    private readonly criteria?: MissionCriteriaRepositoryPort,
   ) {}
 
   /**
@@ -59,6 +61,8 @@ export class GateService {
     if (review) builder.withReview(review);
 
     const qa = this.#latestEvaluation(task.missionId, 'qa');
+    // Before withQa: the ledger's coverage replaces the one QA's own list implies.
+    builder.withCriteria(this.trace(task.missionId, qa).trace);
     if (qa) {
       builder.withQa({
         criteria: qa.criteriaCoverage,
@@ -69,6 +73,18 @@ export class GateService {
 
     builder.withApprovals(this.approvals.list({ missionId: task.missionId }));
     return builder.build();
+  }
+
+  /**
+   * The Done-when ledger traced against the newest QA evaluation - the one the
+   * qa.* facts read, so the checklist and the gate can never disagree.
+   */
+  trace(missionId: MissionId, qa: Evaluation | undefined = this.#latestEvaluation(missionId, 'qa')): { readonly trace: CriteriaTrace; readonly qa: Evaluation | undefined } {
+    const live = this.criteria?.listActive(missionId) ?? [];
+    return {
+      trace: traceCriteria(live, qa === undefined ? null : { results: qa.criteriaCoverage, recordedAt: qa.createdAt }),
+      qa,
+    };
   }
 
   /** `null` when the task declares no completion gate - not a pass, an absence. */

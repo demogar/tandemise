@@ -1,0 +1,148 @@
+{
+  "id": "C1",
+  "title": "Tweak a finished doc: round 2 continues the session and cites the note",
+  "ok": true,
+  "checks": [
+    {
+      "label": "solo workspace: you are the only person",
+      "ok": true,
+      "observed": [
+        "Demostenes Garcia G."
+      ]
+    },
+    {
+      "label": "round 1 ran on the fake runtime",
+      "ok": true,
+      "observed": {
+        "profile": "rt_01m3e6srbfg812xhqfsc",
+        "round": 1
+      }
+    },
+    {
+      "label": "the done card offers Request changes",
+      "ok": true,
+      "observed": "PRODUCT MANAGER\ndoc\nDone\njust now\nby\nC1 writer\n·\nresponsible\nYou\nFull doc\nRequest changes\n\nA hello page with a long intro\n\nWritten by the fake runtime"
+    },
+    {
+      "label": "no \"Recording for\" on screen (composer)",
+      "ok": true
+    },
+    {
+      "label": "the composer asks \"What should change?\" and has no About for a single output",
+      "ok": true,
+      "observed": "Request changes to doc\nWhat should change?\nCancel\nRequest changes"
+    },
+    {
+      "label": "no dependents: no impact dialog, the flash says \"Round 2 started\"",
+      "ok": true,
+      "observed": "Round 2 started"
+    },
+    {
+      "label": "the note is addressed in round 2",
+      "ok": true,
+      "observed": [
+        {
+          "id": "fb_01m3e6t2jajwhmtbmws5",
+          "taskId": "tsk_01m3e6st6g8xms5gjyj3",
+          "artifactId": null,
+          "author": {
+            "id": "mem_01m3e6snwkzmqkmwrfdq",
+            "name": "Demostenes Garcia G.",
+            "kind": "person"
+          },
+          "recordedBy": null,
+          "text": "Shorter intro",
+          "status": "addressed",
+          "round": 2,
+          "createdAt": "2026-09-26T06:35:28.714Z"
+        }
+      ]
+    },
+    {
+      "label": "round 2 ran on the same session",
+      "ok": true,
+      "observed": [
+        {
+          "id": "run_01m3e6sx8c63w6989e3f",
+          "attempt": 1,
+          "status": "SUCCEEDED",
+          "round": 1,
+          "purpose": "round",
+          "sessionId": "c1-session",
+          "profileId": "rt_01m3e6srbfg812xhqfsc",
+          "startedAt": "2026-09-26T06:35:23.319Z",
+          "errorCode": null,
+          "errorMessage": null
+        },
+        {
+          "id": "run_01m3e6t2k4wcgxqrbjse",
+          "attempt": 2,
+          "status": "SUCCEEDED",
+          "round": 2,
+          "purpose": "round",
+          "sessionId": "c1-session",
+          "profileId": "rt_01m3e6srbfg812xhqfsc",
+          "startedAt": "2026-09-26T06:35:28.787Z",
+          "errorCode": null,
+          "errorMessage": null
+        }
+      ]
+    },
+    {
+      "label": "both rounds are runs on the same fake profile and session",
+      "ok": true,
+      "observed": [
+        {
+          "id": "run_01m3e6sx8c63w6989e3f",
+          "attempt": 1,
+          "status": "SUCCEEDED",
+          "round": 1,
+          "purpose": "round",
+          "sessionId": "c1-session",
+          "profileId": "rt_01m3e6srbfg812xhqfsc",
+          "startedAt": "2026-09-26T06:35:23.319Z",
+          "errorCode": null,
+          "errorMessage": null
+        },
+        {
+          "id": "run_01m3e6t2k4wcgxqrbjse",
+          "attempt": 2,
+          "status": "SUCCEEDED",
+          "round": 2,
+          "purpose": "round",
+          "sessionId": "c1-session",
+          "profileId": "rt_01m3e6srbfg812xhqfsc",
+          "startedAt": "2026-09-26T06:35:28.787Z",
+          "errorCode": null,
+          "errorMessage": null
+        }
+      ]
+    },
+    {
+      "label": "the round-2 run resumed the session rather than starting a new one",
+      "ok": true,
+      "observed": [
+        "session.resumed",
+        "session.init"
+      ]
+    },
+    {
+      "label": "the card shows Round 2 and What changed citing the note's author, with no ids",
+      "ok": true,
+      "observed": "PRODUCT MANAGER\ndoc\nDone\nRound 2\njust now\nby\nC1 writer\n·\nresponsible\nYou\nFull doc\nRequest changes\n\nA hello page with a short intro\n\nWHAT CHANGED\nShortened the intro\n· You\nWritten by the fake runtime"
+    },
+    {
+      "label": "no \"Recording for\" on screen (feed)",
+      "ok": true
+    }
+  ],
+  "notes": [
+    "mission msn_01m3e6st67pczm1bmdpn"
+  ],
+  "shots": [
+    "scratch/acceptance/p0/evidence/C1-card-done.png",
+    "scratch/acceptance/p0/evidence/C1-composer.png",
+    "scratch/acceptance/p0/evidence/C1-flash.png",
+    "scratch/acceptance/p0/evidence/C1-card-round-2.png"
+  ]
+}

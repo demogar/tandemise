@@ -25,7 +25,22 @@ export interface PlannerPromptInput {
   readonly repositoryContext: string | null;
   /** Healthy integrations in the project, so a plan can route work to them. */
   readonly connectedApps?: readonly ConnectedApp[];
+  /**
+   * The accepted Done-when ledger (P6). When given it replaces the request's
+   * own lines: it also holds what refinement proposed and the person accepted,
+   * and never what they rejected.
+   */
+  readonly criteria?: readonly { readonly key: string; readonly statement: string }[];
+  /** What the person answered while the request was refined. */
+  readonly answers?: readonly { readonly key: string; readonly text: string; readonly answer: string }[];
 }
+
+/**
+ * Types no plan task produces: a Refinement comes from refining the request
+ * before planning, a StatusReport from the daemon. Offering them would invite
+ * a task that writes one.
+ */
+const NOT_TASK_OUTPUTS: ReadonlySet<string> = new Set(['Refinement', 'StatusReport']);
 
 export interface ConnectedApp {
   readonly name: string;
@@ -64,8 +79,14 @@ Goal (the user's own words):
 ${fence(mission.goal)}
 
 ${mission.constraints.length > 0 ? `Constraints:\n${mission.constraints.map((c) => `- ${c}`).join('\n')}\n` : ''}${
-    mission.successCriteria.length > 0
-      ? `Stated success criteria:\n${mission.successCriteria.map((c) => `- ${c}`).join('\n')}\n`
+    (input.criteria ?? []).length > 0
+      ? `Done when (the criteria the person accepted; every one must be provable when the plan is finished):\n${(input.criteria ?? []).map((c) => `- ${c.key}: ${c.statement}`).join('\n')}\n`
+      : mission.successCriteria.length > 0
+        ? `Stated success criteria:\n${mission.successCriteria.map((c) => `- ${c}`).join('\n')}\n`
+        : ''
+  }${
+    (input.answers ?? []).length > 0
+      ? `\nDecided during refinement (the person's own answers; plan around them, do not re-open them):\n${(input.answers ?? []).map((a) => `- ${a.text}\n  Answer: ${a.answer}`).join('\n')}\n`
       : ''
   }
 Repository: ${repository ? `${repository.name} at ${repository.path} (default branch ${repository.defaultBranch})` : 'none selected — plan tasks that do not require a repository'}
@@ -92,7 +113,7 @@ ${roleCatalogue}
 
 You may ONLY use these artifact type names:
 
-${ARTIFACT_TYPES.join(', ')}
+${ARTIFACT_TYPES.filter((t) => !NOT_TASK_OUTPUTS.has(t)).join(', ')}
 
 # Capabilities
 
@@ -139,6 +160,10 @@ ${fence(JSON.stringify(presetPlan, null, 2), 'json')}
    - \`review.verdict\` — pass | fail | needs_changes
    - \`qa.acceptance_criteria_coverage\` — number, 0-100
    - \`qa.blocking_defects\` — number
+   - \`criteria.uncovered_user\`, \`criteria.unknown_covers\`, \`criteria.total\` — numbers from the
+     Done-when ledger: gate the task that writes the ProductSpec on the first two being 0
+   - \`qa.criteria_failed\`, \`qa.criteria_unverified\` — numbers: gate QA on
+     \`qa.criteria_failed == 0\` and the release on \`qa.criteria_unverified == 0\`
 ${hasTestCommand
     ? `   This repository declares a test command, so gate code-writing tasks on
    \`checks.tests == PASS\`. \`checks.tests != FAIL\` is also true when the tests

@@ -1,0 +1,135 @@
+{
+  "id": "C8",
+  "title": "Your own step: the note shows on your card, completing it addresses the note",
+  "ok": true,
+  "checks": [
+    {
+      "label": "solo workspace: you are the only person",
+      "ok": true,
+      "observed": [
+        "Demostenes Garcia G."
+      ]
+    },
+    {
+      "label": "docs is yours",
+      "ok": true,
+      "observed": {
+        "id": "mem_01m3e6snwkzmqkmwrfdq",
+        "name": "Demostenes Garcia G.",
+        "kind": "person"
+      }
+    },
+    {
+      "label": "the drawer footer has Request changes",
+      "ok": true
+    },
+    {
+      "label": "no \"Recording for\" on screen (composer over the drawer)",
+      "ok": true
+    },
+    {
+      "label": "the flash says the note was added to the task",
+      "ok": true,
+      "observed": "Added to the task"
+    },
+    {
+      "label": "the drawer is still open and its thread shows the note",
+      "ok": true,
+      "observed": "docs\nThis one is yours\n\nWrite the README paragraph for the hello page yourself.\n\nAwaiting human\nProduct Manager\nnone isolation\nDone by\nYou\nChange\nWaiting for you.\nOBJECTIVE\nWrite the README paragraph for the hello page yourself.\nSTARTED\n—\nFINISHED\n—\nFEEDBACK\nFor this step\nYou\nOpen\nDismiss\n\nMention the pricing page\n\nDetails\nMark done\nRequest changes\nClose"
+    },
+    {
+      "label": "the note is \"For this step\", not waiting for a round, with no Start round",
+      "ok": true,
+      "observed": "docs\nThis one is yours\n\nWrite the README paragraph for the hello page yourself.\n\nAwaiting human\nProduct Manager\nnone isolation\nDone by\nYou\nChange\nWaiting for you.\nOBJECTIVE\nWrite the README paragraph for the hello page yourself.\nSTARTED\n—\nFINISHED\n—\nFEEDBACK\nFor this step\nYou\nOpen\nDismiss\n\nMention the pricing page\n\nDetails\nMark done\nRequest changes\nClose"
+    },
+    {
+      "label": "no \"Recording for\" on screen (drawer)",
+      "ok": true
+    },
+    {
+      "label": "the item is on the task, open in round 1, by you",
+      "ok": true,
+      "observed": [
+        {
+          "id": "fb_01m3e764fp9emwet6db1",
+          "taskId": "tsk_01m3e75vwy139dhe0j99",
+          "artifactId": null,
+          "author": {
+            "id": "mem_01m3e6snwkzmqkmwrfdq",
+            "name": "Demostenes Garcia G.",
+            "kind": "person"
+          },
+          "recordedBy": null,
+          "text": "Mention the pricing page",
+          "status": "open",
+          "round": 1,
+          "createdAt": "2026-09-26T06:42:03.894Z"
+        }
+      ]
+    },
+    {
+      "label": "your card shows \"1 note pending\" with the note",
+      "ok": true,
+      "observed": "PRODUCT MANAGER\ndocs\nPerson step\njust now\nby\nYou\n\nWrite the README paragraph for the hello page yourself.\n\n1 note pending\nMention the pricing page\nNeeds You to do this step and mark it done.\nDo it"
+    },
+    {
+      "label": "no \"Recording for\" on screen (feed)",
+      "ok": true
+    },
+    {
+      "label": "after completion the note is addressed in round 1",
+      "ok": true,
+      "observed": [
+        {
+          "id": "fb_01m3e764fp9emwet6db1",
+          "taskId": "tsk_01m3e75vwy139dhe0j99",
+          "artifactId": null,
+          "author": {
+            "id": "mem_01m3e6snwkzmqkmwrfdq",
+            "name": "Demostenes Garcia G.",
+            "kind": "person"
+          },
+          "recordedBy": null,
+          "text": "Mention the pricing page",
+          "status": "addressed",
+          "round": 1,
+          "createdAt": "2026-09-26T06:42:03.894Z"
+        }
+      ]
+    },
+    {
+      "label": "the artifact is round 1, authored by you",
+      "ok": true,
+      "observed": [
+        {
+          "id": "art_01m3e76cmhqv4c6nbr3r",
+          "round": 1,
+          "authorId": "mem_01m3e6snwkzmqkmwrfdq",
+          "type": "Evidence"
+        }
+      ]
+    },
+    {
+      "label": "the task stays in round 1",
+      "ok": true
+    },
+    {
+      "label": "the timeline records the note as answered",
+      "ok": true
+    },
+    {
+      "label": "the done card no longer shows the note as pending",
+      "ok": true,
+      "observed": "PRODUCT MANAGER\ndocs\nDone\njust now\nby\nYou\nFull doc\nRequest changes\n\nREADME: the hello page greets visitors by name."
+    }
+  ],
+  "notes": [
+    "mission msn_01m3e75vwpbj5nmjeswf"
+  ],
+  "shots": [
+    "scratch/acceptance/p0/evidence/C8-composer.png",
+    "scratch/acceptance/p0/evidence/C8-drawer-note.png",
+    "scratch/acceptance/p0/evidence/C8-card-with-note.png",
+    "scratch/acceptance/p0/evidence/C8-card-done.png"
+  ]
+}

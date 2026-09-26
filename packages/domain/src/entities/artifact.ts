@@ -13,6 +13,10 @@ export const ARTIFACT_TYPES = [
   'Evidence',
   /** The mission plan itself, so plan approval has something to point at. */
   'MissionPlan',
+  /** What refining a rough request proposed: criteria to accept and questions to answer (P6). */
+  'Refinement',
+  /** A status report rendered from facts alone (P10). */
+  'StatusReport',
 ] as const;
 export type ArtifactType = (typeof ARTIFACT_TYPES)[number];
 

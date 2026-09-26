@@ -1,0 +1,82 @@
+{
+  "id": "F2",
+  "title": "Planning is refused until the request is ready",
+  "ok": true,
+  "checks": [
+    {
+      "label": "the Plan button is disabled with the readiness sentence",
+      "ok": true,
+      "observed": {
+        "text": "Answer 1 question and decide 3 criteria to plan",
+        "disabled": true
+      }
+    },
+    {
+      "label": "clicking it anyway leaves the mission a draft",
+      "ok": true
+    },
+    {
+      "label": "API bypass: POST /v1/missions/:id/plan is 412 PRECONDITION_FAILED",
+      "ok": true,
+      "observed": {
+        "error": {
+          "code": "PRECONDITION_FAILED",
+          "message": "Not ready to plan: answer 1 question and decide 3 criteria first. (Not met: ready.criteria is 0, needs >= 1; ready.open_questions is 1, needs 0; ready.proposed_pending is 3, needs 0)",
+          "details": {
+            "missionId": "msn_01m3ecnvtp0kps8q8zg4",
+            "gate": "ready.criteria >= 1 && ready.open_questions == 0 && ready.proposed_pending == 0",
+            "facts": {
+              "ready.criteria": 0,
+              "ready.open_questions": 1,
+              "ready.proposed_pending": 3
+            }
+          },
+          "retryable": false
+        }
+      }
+    },
+    {
+      "label": "it says what to do, then the gate's explanation",
+      "ok": true,
+      "observed": "Not ready to plan: answer 1 question and decide 3 criteria first. (Not met: ready.criteria is 0, needs >= 1; ready.open_questions is 1, needs 0; ready.proposed_pending is 3, needs 0)"
+    },
+    {
+      "label": "API: planNow with no Done-when line is refused too",
+      "ok": true,
+      "observed": {
+        "error": {
+          "code": "PRECONDITION_FAILED",
+          "message": "Not ready to plan: add at least one Done-when criterion first. (Not met: ready.criteria is 0, needs >= 1)",
+          "details": {
+            "missionId": null,
+            "gate": "ready.criteria >= 1 && ready.open_questions == 0 && ready.proposed_pending == 0",
+            "facts": {
+              "ready.criteria": 0,
+              "ready.open_questions": 0,
+              "ready.proposed_pending": 0
+            }
+          },
+          "retryable": false
+        }
+      }
+    },
+    {
+      "label": "proof (SQL): and it wrote no mission",
+      "ok": true
+    },
+    {
+      "label": "proof (SQL): the mission is still DRAFT with no tasks",
+      "ok": true,
+      "observed": {
+        "row": {
+          "status": "DRAFT"
+        },
+        "tasks": 0
+      }
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p6-ready/scratch/acceptance/p6/evidence/F2-plan-disabled.png"
+  ]
+}

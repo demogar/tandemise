@@ -1,0 +1,56 @@
+{
+  "id": "F7",
+  "title": "Real runtime: Claude Code refines a rough request",
+  "ok": true,
+  "checks": [
+    {
+      "label": "the real pass finished and was accepted by the contract",
+      "ok": true,
+      "observed": {
+        "state": "idle",
+        "failure": null
+      }
+    },
+    {
+      "label": "it proposed between 1 and 8 criteria",
+      "ok": true,
+      "observed": 4
+    },
+    {
+      "label": "it asked at most 5 questions",
+      "ok": true,
+      "observed": 1
+    },
+    {
+      "label": "each proposal is on screen with Accept and Reject",
+      "ok": true,
+      "observed": [
+        "P1 Someone who has never seen the repo can say, after reading only the README's opening paragraph, what the project is for (a fixture for exercising Tandemise workflows) and that it is not a real product. Proposed by the product agent. Accept it to make it part of what done means. Accept Reject Edit",
+        "P2 The README lists every workflow in .tandemise/workflows by name, with one sentence each on what it exercises, and the list matches the files in the folder. Proposed by the product agent. Accept it to make it part of what done means. Accept Reject Edit",
+        "P3 Following the README's setup steps on a fresh clone, a newcomer runs `npm test` and `npm run build` successfully, and the README says both are placeholders that always pass. Proposed by the product agent. Accept it to make it part of what done means. Accept Reject Edit",
+        "P4 The README states that the \"hello page\" the workflows refer to does not exist yet and is what the workflows are meant to produce, so nobody goes looking for it. Proposed by the product agent. Accept it to make it part of what done means. Accept Reject Edit"
+      ]
+    },
+    {
+      "label": "the Plan button says what is left",
+      "ok": true,
+      "observed": {
+        "text": "Answer 1 question and decide 4 criteria to plan",
+        "disabled": true
+      }
+    }
+  ],
+  "notes": [
+    "mission msn_01m3ecvtp7d09cymdymt",
+    "P1: Someone who has never seen the repo can say, after reading only the README's opening paragraph, what the project is for (a fixture for exercising Tandemise workflows) and that it is not a real product.",
+    "P2: The README lists every workflow in .tandemise/workflows by name, with one sentence each on what it exercises, and the list matches the files in the folder.",
+    "P3: Following the README's setup steps on a fresh clone, a newcomer runs `npm test` and `npm run build` successfully, and the README says both are placeholders that always pass.",
+    "P4: The README states that the \"hello page\" the workflows refer to does not exist yet and is what the workflows are meant to produce, so nobody goes looking for it.",
+    "Q1: Who is the newcomer the README is for? | why: If they will run these workflows, the README must also explain how to start one in Tandemise and what output to expect; if they only need orientation, that section is dropped. | options: Someone who will run the workflows in Tandemise / Someone who only needs to understand the repo",
+    "headline: A newcomer learns what this repo is for and how to use it from the README alone",
+    "panel: Get it ready 5 to decide A newcomer learns what this repo is for and how to use it from the README alone Refine again Read the refinement Answer 1 question and decide 4 criteria to plan."
+  ],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p6-ready/scratch/acceptance/p6/evidence/F7-real-refinement.png"
+  ]
+}

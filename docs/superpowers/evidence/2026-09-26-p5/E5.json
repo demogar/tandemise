@@ -1,0 +1,103 @@
+{
+  "id": "E5",
+  "title": "A revised spec replaces its criteria",
+  "ok": true,
+  "checks": [
+    {
+      "label": "round 1: AC1 and AC2, \"0 of 2 verified\", no AC3",
+      "ok": true,
+      "observed": "Done when\n0 of 2 verified\nU1\nThe page greets the visitor by name\nCovered by AC1, AC2\nNot verified\nU2\nThe page works offline\nCovered by AC1, AC2\nNot verified\nAC1\nScripted criterion 1: the hello page greets the visitor by name.\nCovers U1, U2 · Waiting for QA\nNot verified\nAC2\nScripted criterion 2: the hello page works offline.\nCovers U1, U2 · Waiting for QA\nNot verified"
+    },
+    {
+      "label": "round 2 adds AC3, which reads \"Not verified\"",
+      "ok": true,
+      "observed": "AC3 Scripted criterion 3: the hello page loads in under a second. Covers U1, U2 · Waiting for QA Not verified"
+    },
+    {
+      "label": "the header now reads \"0 of 3 verified\"",
+      "ok": true,
+      "observed": "Done when\n0 of 3 verified\nU1\nThe page greets the visitor by name\nCovered by AC1, AC2, AC3\nNot verified\nU2\nThe page works offline\nCovered by AC1, AC2, AC3\nNot verified\nAC1\nScripted criterion 1: the hello page greets the visitor by name.\nCovers U1, U2 · Waiting for QA\nNot verified\nAC2\nScripted criterion 2: the hello page works offline.\nCovers U1, U2 · Waiting for QA\nNot verified\nAC3\nScripted criterion 3: the hello page loads in under a second.\nCovers U1, U2 · Waiting for QA\nNot verified"
+    },
+    {
+      "label": "proof (SQL): round 1's AC1 and AC2 are superseded",
+      "ok": true,
+      "observed": [
+        {
+          "key": "AC1",
+          "superseded": 1,
+          "spec": "art_01m3e7tg2gqsvg31sc8e"
+        },
+        {
+          "key": "AC2",
+          "superseded": 1,
+          "spec": "art_01m3e7tg2gqsvg31sc8e"
+        },
+        {
+          "key": "AC1",
+          "superseded": 0,
+          "spec": "art_01m3e7tq1cex2bdvcnhg"
+        },
+        {
+          "key": "AC2",
+          "superseded": 0,
+          "spec": "art_01m3e7tq1cex2bdvcnhg"
+        },
+        {
+          "key": "AC3",
+          "superseded": 0,
+          "spec": "art_01m3e7tq1cex2bdvcnhg"
+        }
+      ]
+    },
+    {
+      "label": "proof (SQL): AC1, AC2, AC3 are live, from the round-2 spec",
+      "ok": true,
+      "observed": [
+        {
+          "key": "AC1",
+          "superseded": 0,
+          "spec": "art_01m3e7tq1cex2bdvcnhg"
+        },
+        {
+          "key": "AC2",
+          "superseded": 0,
+          "spec": "art_01m3e7tq1cex2bdvcnhg"
+        },
+        {
+          "key": "AC3",
+          "superseded": 0,
+          "spec": "art_01m3e7tq1cex2bdvcnhg"
+        }
+      ]
+    },
+    {
+      "label": "the checklist shows only the live criteria",
+      "ok": true,
+      "observed": [
+        "U1",
+        "U2",
+        "AC1",
+        "AC2",
+        "AC3"
+      ]
+    },
+    {
+      "label": "after QA: \"3 of 3 verified\"",
+      "ok": true,
+      "observed": "Done when\n3 of 3 verified\nU1\nThe page greets the visitor by name\nCovered by AC1, AC2, AC3\nVerified\nU2\nThe page works offline\nCovered by AC1, AC2, AC3\nVerified\nAC1\nScripted criterion 1: the hello page greets the visitor by name.\nCovers U1, U2 · Scripted check for AC1 passed\nVerified\nAC2\nScripted criterion 2: the hello page works offline.\nCovers U1, U2 · Scripted check for AC2 passed\nVerified\nAC3\nScripted criterion 3: the hello page loads in under a second.\nCovers U1, U2 · Scripted check for AC3 passed\nVerified"
+    },
+    {
+      "label": "the mission completes",
+      "ok": true,
+      "observed": "COMPLETE"
+    }
+  ],
+  "notes": [
+    "mission msn_01m3e7tbdxb5wxhwcx1n"
+  ],
+  "shots": [
+    "scratch/acceptance/p5/evidence/E5-round-1-two-criteria.png",
+    "scratch/acceptance/p5/evidence/E5-round-2-ac3.png",
+    "scratch/acceptance/p5/evidence/E5-three-of-three.png"
+  ]
+}

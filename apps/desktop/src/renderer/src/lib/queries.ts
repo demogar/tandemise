@@ -27,6 +27,9 @@ export const keys = {
   missionArtifacts: (id: string, all: boolean) => ['mission', id, 'artifacts', all ? 'all' : 'live'] as const,
   // Under 'mission' too: a feed changes on exactly the topics the mission detail does.
   missionFeed: (id: string, doneLimit: number | 'all') => ['mission', id, 'feed', String(doneLimit)] as const,
+  // Under 'mission' too: artifacts and tasks changing refresh it with the rest of the mission.
+  missionCriteria: (id: string) => ['mission', id, 'criteria'] as const,
+  missionRefinement: (id: string) => ['mission', id, 'refinement'] as const,
   missionEvents: (id: string) => ['mission-events', id] as const,
   // Not under 'mission': the drawer and the reader read it outside a mission's screen, so it is refreshed with every task change.
   taskFeedback: (id: string) => ['mission-task-feedback', id] as const,
@@ -57,6 +60,9 @@ const TOPIC_KEYS: Readonly<Record<ProjectionTopic, readonly (readonly string[])[
   workspaces: [['workspaces'], ['home'], ['settings'], ['workflows'], ['team'], ['staffing'], ['me']],
   decisions: [['mission']],
   checks: [['mission'], ['home']],
+  criteria: [['mission']],
+  // A refinement decision changes the mission's readiness and the inbox row that asks for it.
+  refinement: [['mission'], ['inbox'], ['home']],
 };
 
 export function invalidateTopic(
@@ -107,6 +113,30 @@ export function useMission(id: string) {
  * larger `doneLimit`. "Show all" asks for this many, so a mission with more
  * finished work than this shows the latest ones and says so.
  */
+/** The Done-when ledger of a mission: criteria, what covers them, and what QA found. */
+export function useMissionCriteria(id: string) {
+  const daemon = useDaemon();
+  return useQuery({
+    queryKey: keys.missionCriteria(id),
+    queryFn: () => daemon.missionCriteria(id),
+    enabled: id.length > 0,
+    placeholderData: (previous) => previous,
+  });
+}
+
+/** A DRAFT mission's refinement: proposals, questions and whether it is ready to plan. */
+export function useMissionRefinement(id: string, enabled = true) {
+  const daemon = useDaemon();
+  return useQuery({
+    queryKey: keys.missionRefinement(id),
+    queryFn: () => daemon.missionRefinement(id),
+    enabled: enabled && id.length > 0,
+    placeholderData: (previous) => previous,
+    // The stream says when a pass lands; polling while one runs covers a dropped frame.
+    refetchInterval: (query) => (query.state.data?.state === 'running' ? 2_000 : false),
+  });
+}
+
 export const FEED_ALL_DONE_LIMIT = 500;
 
 /**

@@ -15,6 +15,8 @@ import { SqliteIntegrationRepository } from './repositories/integration-reposito
 import { SqliteLeaseRepository } from './repositories/lease-repository.js';
 import { SqliteMemberRepository } from './repositories/member-repository.js';
 import { SqliteMissionRepository } from './repositories/mission-repository.js';
+import { SqliteMissionCriteriaRepository } from './repositories/mission-criteria-repository.js';
+import { SqliteMissionQuestionRepository } from './repositories/mission-question-repository.js';
 import { SqlitePersonRepository } from './repositories/person-repository.js';
 import { SqliteRepoRepository } from './repositories/repo-repository.js';
 import { SqliteRoleRepository } from './repositories/role-repository.js';
@@ -27,7 +29,7 @@ import { createUnitOfWork } from './repositories/unit-of-work.js';
 import {
   APPROVAL_REPOSITORY, ARTIFACT_REPOSITORY, ASSIGNMENT_REPOSITORY, CHECKPOINT_REPOSITORY,
   DATABASE, DECISION_REPOSITORY, EVALUATION_REPOSITORY, EVENT_REPOSITORY,
-  EXECUTION_TARGET_REPOSITORY, FEEDBACK_REPOSITORY, INTEGRATION_REPOSITORY, LEASE_REPOSITORY, MEMBER_REPOSITORY, MISSION_REPOSITORY,
+  EXECUTION_TARGET_REPOSITORY, FEEDBACK_REPOSITORY, INTEGRATION_REPOSITORY, LEASE_REPOSITORY, MEMBER_REPOSITORY, MISSION_CRITERIA_REPOSITORY, MISSION_QUESTION_REPOSITORY, MISSION_REPOSITORY,
   PERSON_REPOSITORY, REPO_REPOSITORY, ROLE_REPOSITORY, RUN_INPUT_REPOSITORY, RUN_REPOSITORY, RUNTIME_PROFILE_REPOSITORY,
   TASK_REPOSITORY, UNIT_OF_WORK, WORKSPACE_REPOSITORY,
 } from './tokens.js';
@@ -94,5 +96,7 @@ export function persistenceModule(options: PersistenceOptions): TandemiseModule 
     container.bind(MEMBER_REPOSITORY, (r) => new SqliteMemberRepository(db(r), clock), { source: SOURCE });
     container.bind(FEEDBACK_REPOSITORY, (r) => new SqliteFeedbackRepository(db(r), clock), { source: SOURCE });
     container.bind(RUN_INPUT_REPOSITORY, (r) => new SqliteRunInputRepository(db(r)), { source: SOURCE });
+    container.bind(MISSION_CRITERIA_REPOSITORY, (r) => new SqliteMissionCriteriaRepository(db(r), clock), { source: SOURCE });
+    container.bind(MISSION_QUESTION_REPOSITORY, (r) => new SqliteMissionQuestionRepository(db(r), clock), { source: SOURCE });
   });
 }

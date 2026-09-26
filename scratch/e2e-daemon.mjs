@@ -198,6 +198,8 @@ try {
     repositoryId,
     goal: 'Add a "Clear completed" button to Taskly that removes all done tasks, with a confirmation and a test.',
     workflowPreset: 'quick-change',
+    // A DRAFT is planned only once it says what done means (P6).
+    successCriteria: ['Clear completed removes every done task and keeps open ones'],
     planNow: false,
   });
   ok('mission created', mission.status === 200 || mission.status === 201, JSON.stringify(mission.body).slice(0, 160));

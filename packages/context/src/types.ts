@@ -30,6 +30,32 @@ export interface ContextRequest {
   readonly outputContract: OutputContract;
   /** Hard character budget for the whole prompt. */
   readonly maxChars?: number;
+  /**
+   * The mission's live Done-when ledger. When given (and not empty) it
+   * replaces the plain success-criteria bullets, so every role sees the ids
+   * the spec must cover and QA must verify.
+   */
+  readonly criteria?: readonly LedgerLine[];
+  /**
+   * What the person decided while the request was refined (P6): each question
+   * and its answer. Every role reads them, not only the planner - a spec
+   * written without them would re-open what the person already settled.
+   */
+  readonly answers?: readonly AnsweredQuestion[];
+}
+
+/** A refinement question and the person's answer, as a prompt states it. */
+export interface AnsweredQuestion {
+  readonly key: string;
+  readonly text: string;
+  readonly answer: string;
+}
+
+/** One criterion as a prompt states it. */
+export interface LedgerLine {
+  readonly key: string;
+  readonly statement: string;
+  readonly covers: readonly string[];
 }
 
 export interface EvidenceItem {

@@ -1,12 +1,13 @@
 import type {
   ApprovalRepositoryPort, ArtifactHandoff, ArtifactRepositoryPort, ArtifactStorePort, Capability, MemberRepositoryPort, Mission,
-  MissionPlan, MissionRepositoryPort, MissionTask, PlanValidationIssue, RepoRepositoryPort,
+  MissionCriteriaRepositoryPort, MissionPlan, MissionQuestionRepositoryPort, MissionRepositoryPort, MissionTask, PlanValidationIssue, RepoRepositoryPort,
   Repository, RoleRepositoryPort, RoleTemplate, RuntimeProfile, RuntimeProfileRepositoryPort,
   TaskRepositoryPort, Workspace, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
 import { ARTIFACT_OUT_DIR, CORE_CAPABILITIES, RUNTIME_ACTOR, DEFAULT_ESCALATE_AFTER_MS, canTransition, indexTeam, isActiveMember, compileWorkflow, validateMissionPlan } from '@tandemise/domain';
 import type { MissionDetail } from '@tandemise/api-contract';
 import type { ArtifactMeasurePort, WorkflowSourcePort } from '../ports.js';
+import type { ReadinessService } from './readiness.js';
 import type { ApprovalFactory } from '@tandemise/policy';
 import type { ExecutionTarget, ExecutionTargetManager } from '@tandemise/execution-core';
 import { describeRejections, onlyBusy } from '@tandemise/runtimes-core';
@@ -62,6 +63,15 @@ export interface PlanningDeps {
   readonly log: Logger;
   /** Healthy integrations in the workspace. Optional: a composition without integrations plans without them. */
   readonly connectedApps?: (workspaceId: string) => Promise<readonly ConnectedApp[]>;
+  /**
+   * The readiness gate a DRAFT mission must pass before it is planned (P6).
+   * Optional only so harnesses built before it still compose; the module
+   * always passes it, and so does every route.
+   */
+  readonly readiness?: ReadinessService;
+  /** The accepted ledger and the answers, which the planner is told. */
+  readonly criteria?: Pick<MissionCriteriaRepositoryPort, 'listActive'>;
+  readonly questions?: Pick<MissionQuestionRepositoryPort, 'listByMission'>;
 }
 
 /**
@@ -150,6 +160,11 @@ export class PlanningServiceImpl implements PlanningService {
         { details: { missionId: id, status: mission.status } },
       );
     }
+    // The Definition of Ready (P6). Every way into planning - the Plan
+    // button, POST /plan, planNow - comes through here, so none can skip it.
+    // Only the first plan is gated: a mission that already left DRAFT was
+    // judged ready then, and one from before P6 must stay re-plannable.
+    if (mission.status === 'DRAFT') this.deps.readiness?.assertReady(id);
     // A re-plan replaces the tasks the pending plan approval describes, so that
     // approval would authorize a plan that no longer exists.
     for (const approval of this.deps.approvals.list({ missionId: id, statuses: ['PENDING'] })) {
@@ -403,7 +418,12 @@ export class PlanningServiceImpl implements PlanningService {
     repositories: readonly Repository[],
     connectedApps: readonly ConnectedApp[] = [],
   ): string {
+    const answers = (this.deps.questions?.listByMission(mission.id) ?? [])
+      .flatMap((q) => (q.status === 'answered' && q.answer !== null ? [{ key: q.key, text: q.text, answer: q.answer }] : []));
     const base = buildPlannerPrompt({
+      criteria: (this.deps.criteria?.listActive(mission.id) ?? [])
+        .filter((c) => c.source === 'user').map((c) => ({ key: c.key, statement: c.statement })),
+      answers,
       connectedApps,
       mission,
       repository,

@@ -43,6 +43,9 @@ import { Waiter } from './engine/waiter.js';
 import { IntegrationServiceImpl } from './services/integration-service.js';
 import { MissionServiceImpl } from './services/mission-service.js';
 import { FeedbackServiceImpl } from './services/feedback-service.js';
+import { CriteriaServiceImpl } from './services/criteria-service.js';
+import { ReadinessService } from './services/readiness.js';
+import { RefinementServiceImpl } from './services/refinement-service.js';
 import { PlanningServiceImpl } from './services/planning-service.js';
 import { ProjectionServiceImpl } from './services/projection-service.js';
 import { RoleServiceImpl } from './services/role-service.js';
@@ -168,6 +171,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       r.resolve(t.EVALUATION_REPOSITORY),
       r.resolve(t.APPROVAL_REPOSITORY),
       r.resolve(t.MISSION_REPOSITORY),
+      r.resolve(t.MISSION_CRITERIA_REPOSITORY),
     ), { source: SOURCE });
 
     bind(t.REVIEW_PIPELINE, (r) => new ReviewPipeline({
@@ -201,6 +205,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       r.resolve(t.EVENT_RECORDER),
       clock(r),
       r.resolve(t.TASK_REPOSITORY),
+      r.resolve(t.MISSION_CRITERIA_REPOSITORY),
     ), { source: SOURCE });
 
     bind(t.METRICS_SERVICE, (r) => new MetricsService(
@@ -251,6 +256,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       harvester: r.resolve(t.ARTIFACT_HARVESTER),
       checks: r.resolve(t.CHECK_SERVICE),
       gates: r.resolve(t.GATE_SERVICE),
+      questions: r.resolve(t.MISSION_QUESTION_REPOSITORY),
       reviews: r.resolve(t.REVIEW_PIPELINE),
       rounds: r.resolve(t.FEEDBACK_ROUNDS),
       runInputs: r.resolve(t.RUN_INPUT_REPOSITORY),
@@ -457,6 +463,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       members: r.resolve(t.MEMBER_REPOSITORY),
       staffing: r.resolve(t.STAFFING_RESOLVER),
       feedback: r.resolve(t.FEEDBACK_REPOSITORY),
+      readiness: r.resolve(t.READINESS_SERVICE),
     }), { source: SOURCE });
 
     // Default: this installation has no workflow files. A composition root that
@@ -469,7 +476,15 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       r.resolve(t.REPO_REPOSITORY),
     ), { source: SOURCE });
 
+    bind(t.READINESS_SERVICE, (r) => new ReadinessService({
+      criteria: r.resolve(t.MISSION_CRITERIA_REPOSITORY),
+      questions: r.resolve(t.MISSION_QUESTION_REPOSITORY),
+    }), { source: SOURCE });
+
     bind(t.PLANNING_SERVICE, (r) => new PlanningServiceImpl({
+      readiness: r.resolve(t.READINESS_SERVICE),
+      criteria: r.resolve(t.MISSION_CRITERIA_REPOSITORY),
+      questions: r.resolve(t.MISSION_QUESTION_REPOSITORY),
       workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
       repositories: r.resolve(t.REPO_REPOSITORY),
       workflows: r.resolve(t.WORKFLOW_SOURCE),
@@ -536,6 +551,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
     }), { source: SOURCE });
 
     bind(t.MISSION_SERVICE, (r) => new MissionServiceImpl({
+      criteria: r.resolve(t.MISSION_CRITERIA_REPOSITORY),
       workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
       repositories: r.resolve(t.REPO_REPOSITORY),
       missions: r.resolve(t.MISSION_REPOSITORY),
@@ -560,6 +576,35 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       log: log(r).child({ component: 'missions' }),
     }), { source: SOURCE });
 
+    bind(t.REFINEMENT_SERVICE, (r) => new RefinementServiceImpl({
+      workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
+      repositories: r.resolve(t.REPO_REPOSITORY),
+      missions: r.resolve(t.MISSION_REPOSITORY),
+      members: r.resolve(t.MEMBER_REPOSITORY),
+      runtimeProfiles: r.resolve(t.RUNTIME_PROFILE_REPOSITORY),
+      runtimeManager: r.resolve(RUNTIME_MANAGER),
+      targetManager: r.resolve(EXECUTION_TARGET_MANAGER),
+      artifacts: r.resolve(t.ARTIFACT_REPOSITORY),
+      artifactStore: r.resolve(t.ARTIFACT_STORE),
+      measure: r.resolve(t.ARTIFACT_MEASURE),
+      parser: r.resolve(t.ARTIFACT_PARSER),
+      templates: r.resolve(t.ARTIFACT_TEMPLATES),
+      criteria: r.resolve(t.MISSION_CRITERIA_REPOSITORY),
+      questions: r.resolve(t.MISSION_QUESTION_REPOSITORY),
+      readiness: r.resolve(t.READINESS_SERVICE),
+      unitOfWork: r.resolve(t.UNIT_OF_WORK),
+      recorder: r.resolve(t.EVENT_RECORDER),
+      paths: paths(r),
+      clock: clock(r),
+      log: log(r).child({ component: 'refinement' }),
+    }), { source: SOURCE });
+
+    bind(t.CRITERIA_SERVICE, (r) => new CriteriaServiceImpl({
+      missions: r.resolve(t.MISSION_REPOSITORY),
+      artifacts: r.resolve(t.ARTIFACT_REPOSITORY),
+      gates: r.resolve(t.GATE_SERVICE),
+    }), { source: SOURCE });
+
     bind(t.TANDEMISE_SERVICES, (r): TandemiseServices => ({
       system: r.resolve(t.SYSTEM_SERVICE),
       workspaces: r.resolve(t.WORKSPACE_SERVICE),
@@ -576,6 +621,8 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       team: r.resolve(t.TEAM_SERVICE),
       staffing: r.resolve(t.STAFFING_SERVICE),
       feedback: r.resolve(t.FEEDBACK_SERVICE),
+      criteria: r.resolve(t.CRITERIA_SERVICE),
+      refinement: r.resolve(t.REFINEMENT_SERVICE),
     }), { source: SOURCE });
   });
 }

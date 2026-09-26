@@ -92,9 +92,17 @@ const ARTIFACT_TYPE_SET: Readonly<Record<ArtifactType, true>> = {
   FinanceReport: true,
   Evidence: true,
   MissionPlan: true,
+  Refinement: true,
+  StatusReport: true,
 };
 
-export const ARTIFACT_TYPES = Object.keys(ARTIFACT_TYPE_SET) as readonly ArtifactType[];
+/**
+ * Types a role can produce or consume. A Refinement comes from refining a
+ * request before planning and a StatusReport from the daemon, so no role is
+ * offered either; the set above still names them so a new type is not missed.
+ */
+const NOT_ROLE_OUTPUTS: ReadonlySet<ArtifactType> = new Set<ArtifactType>(['Refinement', 'StatusReport']);
+export const ARTIFACT_TYPES = (Object.keys(ARTIFACT_TYPE_SET) as ArtifactType[]).filter((t) => !NOT_ROLE_OUTPUTS.has(t)) as readonly ArtifactType[];
 
 export function criteriaCoveragePercent(results: readonly CriterionResult[]): number {
   const scored = results.filter((result) => result.outcome !== 'SKIP');

@@ -1,0 +1,56 @@
+{
+  "id": "E4",
+  "title": "A failed criterion shows as Failed and stops QA",
+  "ok": true,
+  "checks": [
+    {
+      "label": "QA blocks: a failed criterion fails its gate",
+      "ok": true,
+      "observed": {
+        "status": "BLOCKED",
+        "reason": "Not met: qa.criteria_failed is 1, needs 0"
+      }
+    },
+    {
+      "label": "AC2 reads \"Failed\" with QA's evidence",
+      "ok": true,
+      "observed": "AC2 Scripted criterion 2: the hello page works offline. Covers U1, U2 · The scripted check for AC2 failed Failed"
+    },
+    {
+      "label": "AC1 reads \"Verified\"; the header reads \"1 of 2 verified\"",
+      "ok": true,
+      "observed": "Done when\n1 of 2 verified\nU1\nThe page greets the visitor by name\nCovered by AC1, AC2\nFailed\nU2\nThe page works offline\nCovered by AC1, AC2\nFailed\nAC1\nScripted criterion 1: the hello page greets the visitor by name.\nCovers U1, U2 · Scripted check for AC1 passed\nVerified\nAC2\nScripted criterion 2: the hello page works offline.\nCovers U1, U2 · The scripted check for AC2 failed\nFailed"
+    },
+    {
+      "label": "the user lines AC2 covers read \"Failed\" too",
+      "ok": true,
+      "observed": "U1 The page greets the visitor by name Covered by AC1, AC2 Failed"
+    },
+    {
+      "label": "clicking AC2 opens the QA report that failed it",
+      "ok": true,
+      "observed": "QA report\nQAReport: Scripted work\nby\nRuntime\n·\nresponsible\nYou\nRequest changes\n\nQAReport ready for the hello page\n\nWritten by the scripted acceptance agent\nNo model was called\nv1\nv2\nCompare with v1\nQAReport\nSep 26, 2026, 1:52 AM\nqa branch\nDetails\n\nWritten by the scripted acceptance agent.\n\nResults\nAC1: PASS — Scripted check for AC1 passed\nAC2: FAIL — The scripted check for AC2 failed"
+    },
+    {
+      "label": "the Inbox card for qa reads \"qa.criteria_failed is 1, needs 0\" and names AC2",
+      "ok": true,
+      "observed": "Inbox\nWhat is waiting on a person.\nqa exhausted its retries\nQAReport ready for the hello page\nFor you·E4 SCRIPTED_QA_FAIL_AC2 mui184rp\nIntervention\njust now\nRead only\nqa exhausted its retries\nIntervention\napr_01m3e7s5dtqfx9x576d5\ntask\ntsk_01m3e7rpvkm2hmqqr3pe\nE4 SCRIPTED_QA_FAIL_AC2 mui184rp\n·\nqa\n·\nrequested by QA Engineer\n·\njust now\nWHY IS THIS BEING ASKED?\n\n'qa' failed its completion gate on every one of its 2 attempts.\n\nWHAT CHANGES IF YOU APPROVE?\n\nRetrying returns the task to the queue for one more attempt. Accepting marks its result good enough and lets dependent work continue. Leaving it blocked stops here.\n\nEVIDENCE\nLast measurement\nThis task failed its completion gate on every one of its 2 attempts.\nWhat the gate reads now\nNot met: qa.criteria_failed is 1, needs 0\nDone when\nFailed in QA: AC2 (Scripted criterion 2: the hello page works offline.).\nObjective\nVerify the hello page against every criterion.\nYOUR OPTIONS\nRetry once more\nAccept the result and continue\nLeave blocked\nApplies immediately.\nRetry once more\nDecided\n7 decisions\nApprove the plan for E4 SCRIPTED_QA_FAIL_AC2 mui184rp?\nApproved·\nby\nYou\nE4 SCRIPTED_QA_FAIL_AC2 mui184rp\nrelease exhausted its retries\nWithdrawn — the work ended first · “acceptance: E3 proven”\nE3 SCRIPTED_QA_PARTIAL mui16yj0\nApprove the plan for E3 SCRIPTED_QA_PARTIAL mui16yj0?\nApproved·\nby\nYou\nE3 SCRIPTED_QA_PARTIAL mui16yj0\nspec exhausted i"
+    },
+    {
+      "label": "the release never started",
+      "ok": true,
+      "observed": {
+        "status": "PENDING",
+        "attempts": 0
+      }
+    }
+  ],
+  "notes": [
+    "mission msn_01m3e7rpva53b3jw6xsp"
+  ],
+  "shots": [
+    "scratch/acceptance/p5/evidence/E4-ac2-failed.png",
+    "scratch/acceptance/p5/evidence/E4-qa-report-ac2.png",
+    "scratch/acceptance/p5/evidence/E4-inbox-card-failed.png"
+  ]
+}
