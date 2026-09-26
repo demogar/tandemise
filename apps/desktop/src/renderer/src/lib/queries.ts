@@ -64,7 +64,8 @@ const TOPIC_KEYS: Readonly<Record<ProjectionTopic, readonly (readonly string[])[
   integrations: [['integrations']],
   targets: [['mission']],
   // Members and staffing have no topic of their own; they change with the workspace.
-  workspaces: [['workspaces'], ['home'], ['settings'], ['workflows'], ['team'], ['staffing'], ['me']],
+  // Roles too: a saved role was never re-read, so the editor kept saying "Unsaved changes" after a save.
+  workspaces: [['workspaces'], ['home'], ['settings'], ['workflows'], ['team'], ['staffing'], ['me'], ['roles']],
   decisions: [['mission']],
   checks: [['mission'], ['home']],
   criteria: [['mission']],

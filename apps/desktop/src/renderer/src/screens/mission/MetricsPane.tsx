@@ -53,6 +53,29 @@ export function MetricsPane({ detail }: { detail: MissionDetail }): JSX.Element 
           </div>
         </section>
 
+        {(m.byModel ?? []).length > 0 ? (
+          <section className="section" aria-label="Usage by model">
+            <SectionHead title="Usage by model" meta="Which model each run was given" />
+            <div className="list">
+              {(m.byModel ?? []).map((usage) => (
+                <div key={`${usage.model ?? ''}:${usage.label}`} className="list__row">
+                  <div className="list__main">
+                    <div className="list__title">{usage.label}</div>
+                    <div className="list__subtitle">
+                      {[
+                        `${usage.runs} ${usage.runs === 1 ? 'run' : 'runs'}`,
+                        duration(usage.agentMs),
+                        usage.tokens === null ? 'tokens not reported' : `${metric(usage.tokens)} tokens`,
+                        ...(usage.costUsd === null ? [] : [money(usage.costUsd)]),
+                      ].join(' · ')}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
         <section className="section">
           <SectionHead title="Usage and cost" meta="As observed, not as invoiced" />
           <div className="grid grid--3">

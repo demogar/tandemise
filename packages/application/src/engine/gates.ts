@@ -1,12 +1,13 @@
 import type {
   ApprovalRepositoryPort, ArtifactRepositoryPort, CheckResult, CriteriaTrace, Evaluation,
-  EvaluationRepositoryPort, GateFacts, GateOutcome, MissionCriteriaRepositoryPort, MissionRepositoryPort, MissionTask, RiskClass,
-  TaskRepositoryPort,
+  EvaluationRepositoryPort, GateFacts, GateOutcome, MissionCriteriaRepositoryPort, MissionRepositoryPort, MissionTask, ModelIdentity, RiskClass,
+  Run, RunRepositoryPort, RuntimeProfileRepositoryPort, TaskRepositoryPort,
 } from '@tandemise/domain';
-import { blockingFindings, evaluateGate, maxRisk, traceCriteria } from '@tandemise/domain';
+import { blockingFindings, evaluateGate, maxRisk, modelsIndependent, traceCriteria } from '@tandemise/domain';
 import { riskForCapability } from '@tandemise/policy';
 import { GateFactBuilder, evaluateNamedGate } from '@tandemise/evaluation';
 import type { MissionId } from '@tandemise/shared';
+import { asId } from '@tandemise/shared';
 
 /**
  * Turns everything Tandemise has measured into the fact map a gate reads, and
@@ -40,6 +41,9 @@ export class GateService {
     private readonly missions: MissionRepositoryPort,
     /** Optional so a harness built before the ledger still composes; the module always passes it. */
     private readonly criteria?: MissionCriteriaRepositoryPort,
+    /** Runs and profiles, for `review.independent` (P12). Optional for the same reason. */
+    private readonly runs?: RunRepositoryPort,
+    private readonly profiles?: RuntimeProfileRepositoryPort,
   ) {}
 
   /**
@@ -72,7 +76,30 @@ export class GateService {
     }
 
     builder.withApprovals(this.approvals.list({ missionId: task.missionId }));
+    const independent = this.#independence(task);
+    if (independent !== null) builder.withIndependence(independent);
     return builder.build();
+  }
+
+  /**
+   * `review.independent` for a step with `independentOf` (P12): this task's
+   * newest run against the newest successful run of the step it names. Null -
+   * the fact stays absent, so a gate reading it fails as unmeasured - when
+   * either run does not exist yet.
+   */
+  #independence(task: MissionTask): boolean | null {
+    const upstreamKey = task.modelPolicy?.independentOf;
+    if (upstreamKey === undefined || this.runs === undefined || this.profiles === undefined) return null;
+    const upstream = this.tasks.getByKey(task.missionId, upstreamKey);
+    if (upstream === undefined) return null;
+    const reviewing = this.runs.listByTask(task.id).at(-1);
+    const reviewed = this.runs.listByTask(upstream.id).filter((r) => r.status === 'SUCCEEDED').at(-1);
+    if (reviewing === undefined || reviewed === undefined) return null;
+    const identity = (run: Run): ModelIdentity => ({
+      adapterId: this.profiles?.get(asId<'RuntimeProfileId'>(run.runtimeProfileId))?.adapterId ?? run.runtimeProfileId,
+      model: run.model ?? null,
+    });
+    return modelsIndependent(identity(reviewing), identity(reviewed));
   }
 
   /**

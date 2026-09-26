@@ -132,7 +132,8 @@ export function buildInvocation(request: RunRequest, resumeSessionRef: string | 
   const args: string[] = viaStdin ? ['-p'] : ['-p', request.prompt];
   args.push('--output-format', 'stream-json', '--verbose');
 
-  const model = settings['model'];
+  // The engine resolves the model per run (P12); an older caller leaves it to the profile.
+  const model = request.model !== undefined ? request.model : settings['model'];
   if (typeof model === 'string' && model.length > 0) args.push('--model', model);
 
   args.push('--permission-mode', permissionMode(request.grants, settings));

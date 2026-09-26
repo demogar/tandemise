@@ -30,6 +30,8 @@ interface RunRow {
   agent_member_id: string | null;
   round: number | null;
   purpose: string | null;
+  model: string | null;
+  model_reason: string | null;
 }
 
 function toRow(r: Run): RunRow {
@@ -57,6 +59,8 @@ function toRow(r: Run): RunRow {
     agent_member_id: r.agentMemberId ?? null,
     round: r.round ?? null,
     purpose: r.purpose ?? null,
+    model: r.model ?? null,
+    model_reason: r.modelReason ?? null,
   };
 }
 
@@ -85,13 +89,15 @@ function fromRow(r: RunRow): Run {
     agentMemberId: r.agent_member_id,
     round: r.round,
     purpose: r.purpose as RunPurpose | null,
+    model: r.model,
+    modelReason: r.model_reason,
   };
 }
 
 const COLUMNS = `id, mission_id, task_id, assignment_id, attempt, status, role_id,
   runtime_profile_id, execution_target_id, external_session_id, pid, exit_code,
   error_code, error_message, usage, started_at, finished_at, heartbeat_at, last_event_at, watch_snoozed_until, agent_member_id,
-  round, purpose`;
+  round, purpose, model, model_reason`;
 
 interface UsageParams {
   runId: string;
@@ -128,7 +134,7 @@ export class SqliteRunRepository implements RunRepositoryPort {
         :id, :mission_id, :task_id, :assignment_id, :attempt, :status, :role_id,
         :runtime_profile_id, :execution_target_id, :external_session_id, :pid, :exit_code,
         :error_code, :error_message, :usage, :started_at, :finished_at, :heartbeat_at, :last_event_at, :watch_snoozed_until, :agent_member_id,
-        :round, :purpose)`,
+        :round, :purpose, :model, :model_reason)`,
     );
     this.#update = db.handle.prepare<RunRow>(
       `UPDATE runs SET
@@ -139,7 +145,7 @@ export class SqliteRunRepository implements RunRepositoryPort {
          error_message = :error_message, usage = :usage, finished_at = :finished_at,
          heartbeat_at = :heartbeat_at, last_event_at = :last_event_at,
          watch_snoozed_until = :watch_snoozed_until, agent_member_id = :agent_member_id,
-         round = :round, purpose = :purpose
+         round = :round, purpose = :purpose, model = :model, model_reason = :model_reason
        WHERE id = :id`,
     );
     this.#selectOne = db.handle.prepare<{ id: string }, RunRow>(

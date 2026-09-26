@@ -4,6 +4,7 @@ import { DEFAULT_WAIT_EVERY_MS, DEFAULT_WAIT_TIMEOUT_MS, ISOLATION_MODES } from 
 import type { IsolationMode } from './entities/task.js';
 import { Err, Ok, type Result } from '@tandemise/shared';
 import type { MissionPlan, PlannedTask } from './plan.js';
+import { MAX_LADDER, MAX_MODEL_NAME, normalizeModelPolicy } from './entities/models.js';
 
 /**
  * A workflow someone wrote, as opposed to one a model proposed.
@@ -26,6 +27,8 @@ import type { MissionPlan, PlannedTask } from './plan.js';
  */
 
 const templateString = z.string().min(1);
+/** A model name as the runtime will receive it: one word (P12). */
+const modelName = z.string().trim().min(1).max(MAX_MODEL_NAME).regex(/^\S+$/, 'a model name has no spaces');
 
 const workflowStep = z.object({
   /** Stable key, referenced by `dependsOn`. Lowercase with underscores. */
@@ -73,6 +76,15 @@ const workflowStep = z.object({
   approval: z.enum(['none', 'before', 'after']).default('none'),
   maxWallTimeMs: z.number().int().positive().optional(),
   maxAttempts: z.number().int().min(1).max(10).optional(),
+  /** This step's model, over its role's and the runtime profile's (P12). */
+  model: modelName.optional(),
+  /** Models for retries: attempt 2 uses the first, attempt 3 and later the next (the last repeats). */
+  escalate: z.array(modelName).max(MAX_LADDER).optional(),
+  /**
+   * An upstream step this one must be independent of: its run must use a
+   * different runtime or model. Adds `review.independent` to the gate.
+   */
+  independentOf: z.string().trim().min(1).optional(),
 });
 
 const workflowInput = z.object({
@@ -176,6 +188,16 @@ export function compileWorkflow(
       issues.push({ path: `steps.${index}.waitFor`, message: `Step '${step.key}' sets \`waitFor\` but is not a wait step.` });
     }
   }
+  const byKey = new Map(definition.steps.map((step) => [step.key, step]));
+  for (const [index, step] of definition.steps.entries()) {
+    if (step.independentOf === undefined) continue;
+    if (!upstreamOf(step.key, byKey).has(step.independentOf)) {
+      issues.push({
+        path: `steps.${index}.independentOf`,
+        message: `Step '${step.key}' must be independent of '${step.independentOf}', so it has to depend on that step (directly or through others).`,
+      });
+    }
+  }
 
   if (issues.length > 0) return Err(issues);
 
@@ -186,6 +208,27 @@ export function compileWorkflow(
     summary: definition.description ?? `Runs the "${definition.name}" workflow.`,
     tasks,
   });
+}
+
+/** Every step `key` depends on, directly or through others. */
+function upstreamOf(key: string, byKey: ReadonlyMap<string, WorkflowStep>): Set<string> {
+  const seen = new Set<string>();
+  const stack = [...(byKey.get(key)?.dependsOn ?? [])];
+  while (stack.length > 0) {
+    const next = stack.pop()!;
+    if (seen.has(next) || next === key) continue;
+    seen.add(next);
+    stack.push(...(byKey.get(next)?.dependsOn ?? []));
+  }
+  return seen;
+}
+
+/** `independentOf` is enforced by the gate: the fact is added to it (P12). */
+function withIndependence(gate: string | null, independentOf: string | undefined): string | null {
+  if (independentOf === undefined) return gate;
+  if (gate === null) return 'review.independent';
+  if (/\breview\.independent\b/.test(gate)) return gate;
+  return `(${gate}) && review.independent`;
 }
 
 function resolveInputs(
@@ -286,6 +329,11 @@ function toPlannedTask(
       backoffMs: 5_000,
       onExhausted: 'block',
     },
-    completionGate: step.gate ?? null,
+    completionGate: withIndependence(step.gate ?? null, step.independentOf),
+    modelPolicy: normalizeModelPolicy({
+      ...(step.model === undefined ? {} : { model: step.model }),
+      ...(step.escalate === undefined ? {} : { escalate: step.escalate }),
+      ...(step.independentOf === undefined ? {} : { independentOf: step.independentOf }),
+    }),
   };
 }

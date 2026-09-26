@@ -94,6 +94,12 @@ export class GenericCliAdapter implements AgentRuntimeAdapter {
       : this.#health(profile, 'healthy', version, `${command} (${version})`);
   }
 
+  /** Only a profile that names its CLI's model flag can be given a model (P12). */
+  acceptsModel(profile: RuntimeProfile): boolean {
+    const parsed = parseGenericCliSettings(profile.settings);
+    return parsed.ok && parsed.value.modelFlag !== null;
+  }
+
   capabilities(profile: RuntimeProfile): readonly RuntimeCapability[] {
     const parsed = parseGenericCliSettings(profile.settings);
     return withDeclaredCapabilities(profile, parsed.ok ? parsed.value.capabilities : [], this.baseCapabilities);
@@ -231,6 +237,12 @@ export function buildArgv(
   if (!viaStdin) values['prompt'] = request.prompt;
 
   const args = settings.args.map((a) => substitute(a, values));
+  // P12: the run's model, only when the profile says how to pass one. The
+  // profile's own `model` is the fallback for a caller from before P12.
+  const model = request.model !== undefined
+    ? request.model
+    : typeof request.profile.settings['model'] === 'string' ? request.profile.settings['model'] : null;
+  if (settings.modelFlag !== null && model !== null && model.length > 0) args.push(settings.modelFlag, model);
   const mentionsPrompt = settings.args.some((a) => a.includes(PROMPT_PLACEHOLDER));
   if (!viaStdin && !mentionsPrompt) args.push(request.prompt);
   return { args, stdin: viaStdin ? request.prompt : null };

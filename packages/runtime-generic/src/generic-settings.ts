@@ -44,6 +44,12 @@ export interface GenericCliSettings {
   readonly eventMap: GenericEventMap;
   readonly versionArgs: readonly string[];
   readonly capabilities: readonly RuntimeCapability[];
+  /**
+   * The flag that gives the CLI a model (`--model`), or null when it takes
+   * none (P12). With it the run's model goes after the argument template, as
+   * `<modelFlag> <model>`, before a prompt that is appended.
+   */
+  readonly modelFlag: string | null;
 }
 
 /** Runtimes wired purely by configuration make no promises we can verify. */
@@ -85,6 +91,7 @@ export function parseGenericCliSettings(
     eventMap: eventMap.value,
     versionArgs: settings['versionArgs'] === undefined ? ['--version'] : stringList(settings['versionArgs']),
     capabilities: parseCapabilities(settings['capabilities']) ?? DEFAULT_GENERIC_CAPABILITIES,
+    modelFlag: typeof settings['modelFlag'] === 'string' && settings['modelFlag'].trim().length > 0 ? settings['modelFlag'].trim() : null,
   });
 }
 

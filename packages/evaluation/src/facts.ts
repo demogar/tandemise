@@ -93,6 +93,12 @@ export const GATE_FACT_VOCABULARY: readonly FactDefinition[] = [
     example: 'review.major_findings <= 2',
   },
   {
+    name: 'review.independent',
+    type: 'boolean',
+    description: "Set on a step with `independentOf: <step>`: true when this step's run used a different runtime, or a different known model, than that step's run. A model left to the runtime's default cannot be shown to differ on the same runtime, so it reads false. Absent until both runs exist.",
+    example: 'artifact.ReviewReport.exists && review.independent',
+  },
+  {
     name: 'qa.acceptance_criteria_coverage',
     type: 'number',
     description: 'Percentage (0-100) of the mission\'s criteria QA verified as PASS. A criterion QA skipped or never reported counts as not verified. Without a Done-when ledger, the share of QA\'s own results that passed.',
@@ -446,6 +452,12 @@ export class GateFactBuilder {
    * anything that ships". The caller classifies the risk: this package knows
    * the order of the classes, not which capability falls in which.
    */
+  /** P12: whether the step's run differs in runtime or model from the run it must be independent of. */
+  withIndependence(independent: boolean): this {
+    this.#facts['review.independent'] = independent;
+    return this;
+  }
+
   withTask(input: { readonly attempt: number; readonly roleId: string; readonly risk: RiskClass }): this {
     this.#facts['task.attempt'] = input.attempt;
     this.#facts['task.role'] = input.roleId;

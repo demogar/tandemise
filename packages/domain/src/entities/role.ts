@@ -2,6 +2,7 @@ import type { Timestamp, WorkspaceId } from '@tandemise/shared';
 import type { Capability } from '../capability.js';
 import type { ArtifactType } from './artifact.js';
 import type { IsolationMode } from './task.js';
+import type { RoleModels } from './models.js';
 
 /**
  * A role is an organizational responsibility, not a runtime and not a persona.
@@ -22,6 +23,8 @@ export interface RoleTemplate {
   /** Quality bar the evaluator checks this role's output against. */
   readonly outputContract: string;
   readonly builtIn: boolean;
+  /** Which models this role's runs use (P12). Absent or null: the runtime profile decides. */
+  readonly models?: RoleModels | null;
   readonly createdAt: Timestamp;
   readonly updatedAt: Timestamp;
 }

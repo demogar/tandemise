@@ -1,0 +1,90 @@
+{
+  "id": "M4",
+  "title": "A review on the same model as the work fails its gate; on a different model it passes",
+  "ok": true,
+  "checks": [
+    {
+      "label": "review drawer: \"Model: shared-model · role model\"",
+      "ok": true,
+      "observed": "Model: shared-model · role model"
+    },
+    {
+      "label": "the step is Blocked and its gate names review.independent",
+      "ok": true,
+      "observed": "Review\nRetry with more access\nBlocked\nReviewer\nScripted agent\nModel: shared-model · role model\nm4-hello-page-muit3lmp-review\nworktree isolation\n\nThis step: must differ from implement\n\nDone by\nScripted agent\n·\nResponsible\nYou\nNot met: review.independent is false\nRetry task\nOBJECTIVE\nReview the hello page change.\nSTARTED\nSep 26, 2026, 2:52 PM\nFINISHED\n—\nCOMPLETION GATE\nNot met: review.independent is false\n(artifact.ReviewReport.exists) && review.independent\nEVALUATION — PASS\n\nReviewReport ready for the hello page\n\nARTIFACTS PRODUCED\nReviewReport: Scripted work\nDetails\nRequest changes\nClose"
+    },
+    {
+      "label": "proof (API): the gate failed on review.independent = false",
+      "ok": true,
+      "observed": {
+        "expression": "(artifact.ReviewReport.exists) && review.independent",
+        "passed": false,
+        "detail": "Not met: review.independent is false",
+        "facts": {
+          "artifact.ReviewReport.exists": true,
+          "review.independent": false
+        }
+      }
+    },
+    {
+      "label": "after \"Retry task\" on the new model the mission completes",
+      "ok": true,
+      "observed": "COMPLETE"
+    },
+    {
+      "label": "review drawer: \"Model: review-model · role model\"",
+      "ok": true,
+      "observed": "Model: review-model · role model"
+    },
+    {
+      "label": "proof (agent argv): implement shared-model, review shared-model, review again review-model",
+      "ok": true,
+      "observed": [
+        [
+          "--model",
+          "shared-model"
+        ],
+        [
+          "--model",
+          "shared-model"
+        ],
+        [
+          "--model",
+          "review-model"
+        ]
+      ]
+    },
+    {
+      "label": "proof (SQL): runs and models",
+      "ok": true,
+      "observed": [
+        {
+          "attempt": 1,
+          "status": "SUCCEEDED",
+          "model": "shared-model",
+          "reason": "step override",
+          "key": "implement"
+        },
+        {
+          "attempt": 1,
+          "status": "SUCCEEDED",
+          "model": "shared-model",
+          "reason": "role model",
+          "key": "review"
+        },
+        {
+          "attempt": 2,
+          "status": "SUCCEEDED",
+          "model": "review-model",
+          "reason": "role model",
+          "key": "review"
+        }
+      ]
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p12-models/scratch/acceptance/p12/evidence/M4-review-blocked.png",
+    "/Users/demogar/projects/tandemise/tandemise-p12-models/scratch/acceptance/p12/evidence/M4-review-passed.png"
+  ]
+}

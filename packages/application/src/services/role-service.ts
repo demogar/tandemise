@@ -1,4 +1,5 @@
-import type { RoleRepositoryPort, RoleTemplate } from '@tandemise/domain';
+import type { RoleModels, RoleRepositoryPort, RoleTemplate } from '@tandemise/domain';
+import { hasRoleModels, normalizeRoleModels } from '@tandemise/domain';
 import type { UpsertRoleRequest } from '@tandemise/api-contract';
 import type { Clock, WorkspaceId } from '@tandemise/shared';
 import { TandemiseError, asId } from '@tandemise/shared';
@@ -45,6 +46,11 @@ export class RoleServiceImpl implements RoleService {
       consumesArtifacts: request.consumesArtifacts,
       defaultIsolation: request.defaultIsolation,
       outputContract: request.outputContract,
+      // Omitted keeps what the role has (a client from before P12 must not
+      // wipe them); null clears them.
+      models: request.models === undefined
+        ? existing?.models ?? null
+        : request.models === null ? null : nullIfEmpty(normalizeRoleModels(request.models)),
       // An edited built-in keeps the flag: the UI shows it as a customized
       // built-in, and `remove` restores the shipped definition.
       builtIn: BUILT_IN_ROLE_MAP.has(request.id),
@@ -127,4 +133,8 @@ function sameDefinition(stored: RoleTemplate, shipped: Omit<RoleTemplate, 'works
     [...r.consumesArtifacts].sort(), r.defaultIsolation, r.outputContract,
   ]);
   return pick(stored) === pick(shipped);
+}
+
+function nullIfEmpty(models: RoleModels): RoleModels | null {
+  return hasRoleModels(models) ? models : null;
 }

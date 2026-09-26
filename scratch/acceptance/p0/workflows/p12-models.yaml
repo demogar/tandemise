@@ -1,0 +1,21 @@
+name: P12 models
+description: Implement on the step's own model, then an independent review on the runtime's default model.
+steps:
+  - key: implement
+    title: Implement
+    role: development
+    objective: Build the hello page.
+    outputs: [ChangeSet]
+    gate: artifact.ChangeSet.exists
+    model: step-model
+    escalate: [strong-model]
+  - key: review
+    title: Review
+    role: review
+    dependsOn: [implement]
+    independentOf: implement
+    objective: Review the hello page change.
+    inputs: [ChangeSet]
+    outputs: [ReviewReport]
+    gate: artifact.ReviewReport.exists
+    maxAttempts: 1
