@@ -16,5 +16,5 @@ steps:
     dependsOn: [build]
     objective: Review the build against the design.
     inputs: [ChangeSet]
-    gate: review.blocking_findings == 0
+    gate: artifact.ReviewReport.exists && review.blocking_findings == 0
     outputs: [ReviewReport]

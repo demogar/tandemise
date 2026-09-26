@@ -65,10 +65,15 @@ export function testsClause(context: PresetContext = {}): string {
  * criterion; the release must leave none unverified. Each reads a count the
  * daemon traced from the ledger and the newest QA report, never a verdict an
  * agent wrote about itself.
+ *
+ * A gate replaces the "every expected output was produced" rule, so each one
+ * also demands its own step's output: a release step that wrote nothing must
+ * not pass on QA's facts alone.
  */
 export const SPEC_CRITERIA_GATE = 'artifact.ProductSpec.exists && criteria.uncovered_user == 0 && criteria.unknown_covers == 0 && criteria.total >= 1';
 export const QA_CRITERIA_GATE = 'artifact.QAReport.exists && review.blocking_findings == 0 && qa.criteria_failed == 0';
-export const RELEASE_CRITERIA_GATE = 'qa.criteria_unverified == 0 && qa.blocking_defects == 0';
+const RELEASE_LEDGER_CLAUSE = 'qa.criteria_unverified == 0 && qa.blocking_defects == 0';
+export const RELEASE_CRITERIA_GATE = `artifact.ReleaseCandidate.exists && ${RELEASE_LEDGER_CLAUSE}`;
 
 function task(t: Partial<PlannedTask> & Pick<PlannedTask, 'key' | 'title' | 'objective' | 'roleId'>): PlannedTask {
   return {

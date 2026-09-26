@@ -39,7 +39,8 @@ import {
   APPROVAL_REPOSITORY, ARTIFACT_REPOSITORY, EVALUATION_REPOSITORY, MISSION_REPOSITORY,
   REPO_REPOSITORY, TASK_REPOSITORY, WORKSPACE_REPOSITORY, persistenceModule,
 } from '../packages/persistence/dist/index.js';
-import { GateService, buildPlannerPrompt, findPreset } from '../packages/application/dist/index.js';
+import { GateService, WORKFLOW_PRESETS, buildPlannerPrompt, findPreset } from '../packages/application/dist/index.js';
+import { evaluateGate } from '../packages/domain/dist/index.js';
 
 let passed = 0;
 const failures = [];
@@ -352,6 +353,47 @@ section('an unmeasured test result never passes a preset gate');
     strict.includes('"completionGate": "artifact.ChangeSet.exists && checks.typecheck != FAIL && checks.tests == PASS"')
     && strict.includes('declares a test command') && !strict.includes('Prefer `checks.tests != FAIL`'));
   check('and that SKIP is the only answer when it has none', prompt(null).includes('declares no test command'));
+}
+
+// ---------------------------------------------------------------------------
+section('a step with no output artifact does not pass');
+{
+  // Found in P10: the release step's gate read only QA facts, so a release run
+  // that wrote nothing passed. A gate replaces the "every expected output was
+  // produced" rule (task-executor `decide`), so a gate on a step that declares
+  // outputs must itself demand one of them: "the step produced its output" is a
+  // measured fact like any other.
+  const ownsOutput = (task) => task.completionGate === null || task.expectedOutputs.length === 0
+    || task.expectedOutputs.some((type) => task.completionGate.split(/[\s()!&|]+/).includes(`artifact.${type}.exists`));
+  for (const preset of WORKFLOW_PRESETS) {
+    for (const context of [{ hasTestCommand: true }, { hasTestCommand: false }]) {
+      for (const task of preset.build(context).tasks) {
+        check(`${preset.id}/${task.key} (${context.hasTestCommand ? 'tests' : 'no tests'}): its gate demands its own output`,
+          ownsOutput(task), `${task.expectedOutputs.join(', ')} :: ${task.completionGate}`);
+      }
+    }
+  }
+
+  // The release gate, evaluated: every QA fact green and nothing written.
+  const release = findPreset('feature-delivery').build({ hasTestCommand: true }).tasks.find((t) => t.key === 'release_candidate');
+  const missionId = newMission();
+  const [rc] = R.tasks.replaceAll(missionId, [{
+    ...mkTask(missionId, 'release_candidate'), roleId: 'release', expectedOutputs: ['ReleaseCandidate'], completionGate: release.completionGate,
+  }]);
+  const facts = { ...gates.factsFor(R.tasks.get(rc.id)), 'qa.criteria_unverified': 0, 'qa.blocking_defects': 0 };
+  const empty = evaluateGate(release.completionGate, facts);
+  check('a release step with no ReleaseCandidate does not pass on QA facts alone', empty.passed === false, empty.detail);
+  check('and the reason names the missing release candidate', empty.detail.includes('artifact.ReleaseCandidate.exists'), empty.detail);
+  const written = evaluateGate(release.completionGate, { ...facts, 'artifact.ReleaseCandidate.exists': true });
+  check('once it is written the same facts pass', written.passed === true, written.detail);
+
+  // The planner is handed the same rule for the gates it writes.
+  const text = buildPlannerPrompt({
+    mission: { title: 'x', goal: 'g', constraints: [], successCriteria: [], autonomy: 'balanced' },
+    repository: null, roles: [], preset: findPreset('feature-delivery'), availableCapabilities: [], repositoryContext: null,
+  });
+  check('the planner is told every gate must demand the task\'s own output',
+    text.includes('must include `artifact.<Type>.exists` for an artifact in') && text.includes('`artifact.ReleaseCandidate.exists'));
 }
 
 rmSync(dir, { recursive: true, force: true });
