@@ -1,0 +1,132 @@
+
+### setup
+
+### s01-a1-solo.mjs
+(node:36708) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+  · mission msn_01m3er27sdz042rws05f
+  ok   plan approval appears in Inbox → For me, marked "For you"
+  ok   solo: your step is assigned to you, not up for grabs  → {"id":"mem_01m3er22vzq1k4b1zc17","name":"Demostenes Garcia G.","kind":"person"}
+  ok   status reason has no double period  → Waiting for Demostenes Garcia G.
+  ok   no Claim button for your own step
+  ok   mission completes  → COMPLETE
+  ok   every task: responsible is you  → ["spec:Demostenes Garcia G.","design:Demostenes Garcia G.","architecture:Demostenes Garcia G.","build:Demostenes Garcia G.","docs:Demostenes Garcia G.","finance:Demostenes Garcia G.","qa:Demostenes Garcia G.","release:Demostenes Garcia G."]
+  ok   agent artifacts are authored by the runtime (no agents configured)  → ["ReleaseCandidate:Runtime","QAPlan:Runtime","ChangeSet:Runtime","Evidence:Demostenes Garcia G.","FinanceReport:Runtime","ArchitecturePlan:Runtime","DesignBrief:Runtime","ProductSpec:Runtime","MissionPlan:Runtime"]
+  ok   your docs are authored by you and readable as text  → {"author":"Demostenes Garcia G.","mediaType":"text/markdown"}
+  ok   plan approval addressed to you and decided by you (a member, not "user")
+  ok   Plan shows "Responsible You"
+  ok   Artifacts reader shows your docs text and "by You"
+A1: PASS (11/11)
+
+### s02-team.mjs
+(node:38005) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+file:///Users/demogar/projects/tandemise/tandemise-p9-liveness/scratch/acceptance/p0/lib/cdp.mjs:78
+      if (!ok) throw new Error(`no clickable element labelled "${label}" in ${within}`);
+                     ^
+
+Error: no clickable element labelled "Add person" in body
+    at Object.click (file:///Users/demogar/projects/tandemise/tandemise-p9-liveness/scratch/acceptance/p0/lib/cdp.mjs:78:22)
+    at async openAdd (file:///Users/demogar/projects/tandemise/tandemise-p9-liveness/scratch/acceptance/p0/suite/s02-team.mjs:17:3)
+    at async addPerson (file:///Users/demogar/projects/tandemise/tandemise-p9-liveness/scratch/acceptance/p0/suite/s02-team.mjs:20:3)
+    at async file:///Users/demogar/projects/tandemise/tandemise-p9-liveness/scratch/acceptance/p0/suite/s02-team.mjs:39:1
+
+Node.js v22.23.1
+
+### s03-team-mission.mjs
+(node:38032) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+file:///Users/demogar/projects/tandemise/tandemise-p9-liveness/scratch/acceptance/p0/lib/ctx.mjs:24
+  const id = async (name) => { const m = (await team()).find((x) => x.name === name); if (!m) throw new Error(`no member ${name}`); return m.id; };
+                                                                                                    ^
+
+Error: no member Maria Lopez
+    at Object.id (file:///Users/demogar/projects/tandemise/tandemise-p9-liveness/scratch/acceptance/p0/lib/ctx.mjs:24:101)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async file:///Users/demogar/projects/tandemise/tandemise-p9-liveness/scratch/acceptance/p0/suite/s03-team-mission.mjs:8:176
+
+Node.js v22.23.1
+
+### s04-escalation-signoff.mjs
+(node:38033) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+file:///Users/demogar/projects/tandemise/tandemise-p9-liveness/scratch/acceptance/p0/lib/ctx.mjs:24
+  const id = async (name) => { const m = (await team()).find((x) => x.name === name); if (!m) throw new Error(`no member ${name}`); return m.id; };
+                                                                                                    ^
+
+Error: no member Ana Ruiz
+    at Object.id (file:///Users/demogar/projects/tandemise/tandemise-p9-liveness/scratch/acceptance/p0/lib/ctx.mjs:24:101)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async file:///Users/demogar/projects/tandemise/tandemise-p9-liveness/scratch/acceptance/p0/suite/s04-escalation-signoff.mjs:7:13
+
+Node.js v22.23.1
+
+### restart daemon (SCRIPTED_DELAY_MS=20000)
+
+### s05-midway.mjs
+(node:38125) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+file:///Users/demogar/projects/tandemise/tandemise-p9-liveness/scratch/acceptance/p0/lib/ctx.mjs:24
+  const id = async (name) => { const m = (await team()).find((x) => x.name === name); if (!m) throw new Error(`no member ${name}`); return m.id; };
+                                                                                                    ^
+
+Error: no member Ana Ruiz
+    at Object.id (file:///Users/demogar/projects/tandemise/tandemise-p9-liveness/scratch/acceptance/p0/lib/ctx.mjs:24:101)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async file:///Users/demogar/projects/tandemise/tandemise-p9-liveness/scratch/acceptance/p0/suite/s05-midway.mjs:8:13
+
+Node.js v22.23.1
+
+### restart daemon (SCRIPTED_DELAY_MS=1500)
+
+### s07-remove-person.mjs
+(node:38217) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+file:///Users/demogar/projects/tandemise/tandemise-p9-liveness/scratch/acceptance/p0/lib/ctx.mjs:24
+  const id = async (name) => { const m = (await team()).find((x) => x.name === name); if (!m) throw new Error(`no member ${name}`); return m.id; };
+                                                                                                    ^
+
+Error: no member Ana Ruiz
+    at Object.id (file:///Users/demogar/projects/tandemise/tandemise-p9-liveness/scratch/acceptance/p0/lib/ctx.mjs:24:101)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async file:///Users/demogar/projects/tandemise/tandemise-p9-liveness/scratch/acceptance/p0/suite/s07-remove-person.mjs:7:13
+
+Node.js v22.23.1
+
+### s04b-pool-escalation.mjs
+(node:38218) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+file:///Users/demogar/projects/tandemise/tandemise-p9-liveness/scratch/acceptance/p0/lib/ctx.mjs:24
+  const id = async (name) => { const m = (await team()).find((x) => x.name === name); if (!m) throw new Error(`no member ${name}`); return m.id; };
+                                                                                                    ^
+
+Error: no member Bo Chen
+    at Object.id (file:///Users/demogar/projects/tandemise/tandemise-p9-liveness/scratch/acceptance/p0/lib/ctx.mjs:24:101)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async file:///Users/demogar/projects/tandemise/tandemise-p9-liveness/scratch/acceptance/p0/suite/s04b-pool-escalation.mjs:7:12
+
+Node.js v22.23.1
+
+### s08-person-review-reassign.mjs
+(node:38219) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+file:///Users/demogar/projects/tandemise/tandemise-p9-liveness/scratch/acceptance/p0/lib/ctx.mjs:24
+  const id = async (name) => { const m = (await team()).find((x) => x.name === name); if (!m) throw new Error(`no member ${name}`); return m.id; };
+                                                                                                    ^
+
+Error: no member Bo Chen
+    at Object.id (file:///Users/demogar/projects/tandemise/tandemise-p9-liveness/scratch/acceptance/p0/lib/ctx.mjs:24:101)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    at async file:///Users/demogar/projects/tandemise/tandemise-p9-liveness/scratch/acceptance/p0/suite/s08-person-review-reassign.mjs:8:12
+
+Node.js v22.23.1
+
+# P0 acceptance report
+
+Run: 2026-09-26T11:38:11.725Z · build 730e098 · fresh install at /var/folders/dh/glpvvh110393gdzjc_v2x1sr0000gn/T/tdm-p0-run-muibec3q
+Result: **FAILED at s02-team.mjs** (1/1 scenarios)
+
+| Scenario | Result | Checks |
+|---|---|---|
+| A1 — Solo, no configuration | PASS | 11/11 |
+

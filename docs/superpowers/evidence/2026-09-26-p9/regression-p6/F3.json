@@ -1,0 +1,77 @@
+{
+  "id": "F3",
+  "title": "Decisions make it ready; the planner reads them",
+  "ok": true,
+  "checks": [
+    {
+      "label": "accepted proposals become U1 and U2 under \"Done when\"",
+      "ok": true,
+      "observed": [
+        "U1 Visiting the home page shows \"Hello, <name>\" for a signed-in visitor Proposed by the product agent; accepted by you Accepted",
+        "U2 A visitor who is not signed in sees \"Hello, friend\" instead of an empty name Proposed by the product agent; accepted by you Accepted"
+      ]
+    },
+    {
+      "label": "the rejected one moves to \"Earlier proposals\" as Rejected",
+      "ok": true,
+      "observed": [
+        "P3 The greeting is readable on a 375px wide phone screen without scrolling sideways Rejected"
+      ]
+    },
+    {
+      "label": "only the question is left: \"Answer 1 question to plan\"",
+      "ok": true,
+      "observed": {
+        "text": "Answer 1 question to plan",
+        "disabled": true
+      }
+    },
+    {
+      "label": "the question shows its answer",
+      "ok": true,
+      "observed": "Questions\nAll answered\nQ1\nWHICH PAGES SHOULD GREET THE VISITOR BY NAME?\nAnswered: Only the home page"
+    },
+    {
+      "label": "the button now reads \"Plan\" and is enabled",
+      "ok": true,
+      "observed": {
+        "text": "Plan",
+        "disabled": false
+      }
+    },
+    {
+      "label": "the panel says it is ready",
+      "ok": true
+    },
+    {
+      "label": "clicking Plan starts planning",
+      "ok": true,
+      "observed": "msn_01m3es951yjzjsmjdx2p\nMissions\nfeature-delivery\nF3 hello page muic5rfo\nF3 hello page muic5rfo\nPlanning\nCancel"
+    },
+    {
+      "label": "the planner prompt holds the answer to Q1",
+      "ok": true,
+      "observed": "You are the Planner for Tandemise, an orchestration system that runs software\nmissions across multiple AI workers. You do not implement anything. You produce\none thing: a mission plan, as JSON.\n\n# The mission\n\nGoal (the user's own words):\n````\nF3 hello page muic5rfo\n````\n\nDone when (the criteria the person accepted; every one must be provable when the plan is finished):\n- U1: Visiting the home page shows \"Hello, <name>\" for a signed-in visitor\n- U2: A visitor who is not signed in sees \"Hello, friend\" instead of an empty name\n\nDecided during refinement (the person's own answers; plan around them, do not re-open them):\n- Which pages should greet the visitor by name?\n  Answer: Only the home page\n\nRepository: acceptance-project at /tmp/tdm-p6/project (default branch main)\n\nAutonomy level: balanced\n\n# What the repository looks like\n\nCheckout at /tmp/tdm-p6/project on main. Configured checks: install (`npm install`), test (`npm test`), build (`npm run build`).\n\n# Roles you may assign work to\n\nYou may ONLY use these role ids. Inventing a role causes the plan to be rejected.\n\n- id: architecture — Architect\n  responsibility: Chooses the technical approach and the order of work.\n  produces: ArchitecturePlan, ImplementationPlan\n  consumes: ProductSpec, DesignBrief\n  default isolation: none\n- id: design — Product Designer\n  responsibility: Produces the design itself, in the tool the project uses, before code is written.\n  produces: DesignBrief\n  consumes: ProductSpec\n  default isolation: none\n- id: development — Developer\n  responsibility: Implements the approved plan in an isolated worktree, with tests.\n  produces: ChangeSet\n  consumes: ProductSpec, DesignBrief, ArchitecturePlan, ImplementationPlan, ReviewReport, QAReport\n  default isolation: worktree\n- id: finance — Finance Analy"
+    },
+    {
+      "label": "and both accepted criteria, as U1 and U2",
+      "ok": true
+    },
+    {
+      "label": "and not the rejected one",
+      "ok": true,
+      "observed": "The greeting is readable on a 375px wide phone screen without scrolling sideways"
+    },
+    {
+      "label": "proof (API): the mission left DRAFT",
+      "ok": true,
+      "observed": "PLANNING"
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p9-liveness/scratch/acceptance/p6/evidence/F3-criteria-decided.png",
+    "/Users/demogar/projects/tandemise/tandemise-p9-liveness/scratch/acceptance/p6/evidence/F3-ready-to-plan.png",
+    "/Users/demogar/projects/tandemise/tandemise-p9-liveness/scratch/acceptance/p6/evidence/F3-planning.png"
+  ]
+}

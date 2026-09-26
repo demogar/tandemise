@@ -1,0 +1,130 @@
+{
+  "id": "C7",
+  "title": "AI reviewer: findings become notes, round 2 starts by itself, the review passes",
+  "ok": true,
+  "checks": [
+    {
+      "label": "solo workspace: you are the only person",
+      "ok": true,
+      "observed": [
+        "Demostenes Garcia G."
+      ]
+    },
+    {
+      "label": "build's thread holds a note authored by \"Review agent\", recorded by Tandemise",
+      "ok": true,
+      "observed": [
+        {
+          "author": {
+            "id": "mem_01m3erd0vp0j84q1r5m9",
+            "name": "Review agent",
+            "kind": "agent"
+          },
+          "recordedBy": {
+            "id": "system",
+            "name": "Tandemise",
+            "kind": "system"
+          },
+          "status": "addressed",
+          "round": 2,
+          "text": "The greeting ignores the visitor name (hello.txt)"
+        }
+      ]
+    },
+    {
+      "label": "the note is the finding, addressed in round 2",
+      "ok": true,
+      "observed": {
+        "id": "fb_01m3erpewq72a7jh99g7",
+        "taskId": "tsk_01m3erp4fn4zjttzpxmx",
+        "artifactId": null,
+        "author": {
+          "id": "mem_01m3erd0vp0j84q1r5m9",
+          "name": "Review agent",
+          "kind": "agent"
+        },
+        "recordedBy": {
+          "id": "system",
+          "name": "Tandemise",
+          "kind": "system"
+        },
+        "text": "The greeting ignores the visitor name (hello.txt)",
+        "status": "addressed",
+        "round": 2,
+        "createdAt": "2026-09-26T11:48:04.631Z"
+      }
+    },
+    {
+      "label": "build round 2 started without a person",
+      "ok": true,
+      "observed": {
+        "round": 2,
+        "actor": "mem_01m3erd0vp0j84q1r5m9",
+        "downstream": "redo"
+      }
+    },
+    {
+      "label": "review ran twice",
+      "ok": true,
+      "observed": [
+        {
+          "purpose": "round",
+          "status": "SUCCEEDED",
+          "round": 1
+        },
+        {
+          "purpose": "retry",
+          "status": "SUCCEEDED",
+          "round": 1
+        }
+      ]
+    },
+    {
+      "label": "the first ReviewReport failed and the last one passes",
+      "ok": true,
+      "observed": {
+        "reports": 2,
+        "first": "verdict: \"fail\"",
+        "last": "verdict: \"pass\""
+      }
+    },
+    {
+      "label": "no fix_ or recheck task was planned",
+      "ok": true,
+      "observed": [
+        "design",
+        "build",
+        "review"
+      ]
+    },
+    {
+      "label": "the mission completes",
+      "ok": true,
+      "observed": {
+        "status": "COMPLETE",
+        "reason": "Every task succeeded."
+      }
+    },
+    {
+      "label": "the build card shows Round 2 and What changed with the Review agent's name",
+      "ok": true,
+      "observed": "DEVELOPER\nbuild\nDone\nRound 2\njust now\nby\nRuntime\n·\nresponsible\nYou\nFull doc\nRequest changes\n\nChangeSet ready for the hello page\n\nWHAT CHANGED\nApplied: The greeting ignores the visitor name (hello.txt)\n· Review agent\nWritten by the scripted acceptance agent\nNo model was called"
+    },
+    {
+      "label": "no \"Recording for\" on screen (feed)",
+      "ok": true
+    },
+    {
+      "label": "the build drawer thread shows the Review agent's note under Round 2",
+      "ok": true,
+      "observed": "build\nRetry with more access\nSucceeded\nDeveloper\nScripted agent\nc7-reviewer-scripted-review-blocking-muibse5l-build\nworktree isolation\nDone by\nScripted agent\n·\nResponsible\nYou\nOBJECTIVE\nBuild the hello page.\nSTARTED\nSep 26, 2026, 6:47 AM\nFINISHED\nSep 26, 2026, 6:48 AM · 6s\nFEEDBACK\nRound 2\nReview agent\nAddressed\n\nThe greeting ignores the visitor name (hello.txt)\n\nARTIFACTS PRODUCED\nChangeSet: Scripted work\nv2\nDetails\nRequest changes\nClose"
+    }
+  ],
+  "notes": [
+    "mission msn_01m3erp4fdw51hxgtq98"
+  ],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p9-liveness/scratch/acceptance/p0/evidence/C7-feed-after-loop.png",
+    "/Users/demogar/projects/tandemise/tandemise-p9-liveness/scratch/acceptance/p0/evidence/C7-build-drawer-thread.png"
+  ]
+}
