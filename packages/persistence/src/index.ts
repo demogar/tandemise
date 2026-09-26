@@ -42,4 +42,5 @@ export { SqlitePersonRepository } from './repositories/person-repository.js';
 export { SqliteMemberRepository } from './repositories/member-repository.js';
 export { SqliteFeedbackRepository } from './repositories/feedback-repository.js';
 export { SqliteRunInputRepository } from './repositories/run-input-repository.js';
+export { SqliteMissionCriteriaRepository } from './repositories/mission-criteria-repository.js';
 export { createUnitOfWork } from './repositories/unit-of-work.js';

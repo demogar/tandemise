@@ -17,6 +17,7 @@ import type {
   AddMemberRequest, ArtifactView, CreatePersonRequest, MeView, MemberView, PersonView, StaffingPreviewView,
   TeamView, UpdateMemberRequest, UpdatePersonRequest, MissionArtifactView, MissionFeedView, ArtifactReadView,
   DismissFeedbackRequest, FeedbackGivenView, FeedbackView, GiveFeedbackRequest, StartRoundRequest, TaskFeedbackView,
+  MissionCriterionView,
 } from '@tandemise/api-contract';
 import type { Caller, IdentityPort } from './support/identity.js';
 import type { RoundBegun } from './engine/feedback-rounds.js';
@@ -47,6 +48,13 @@ export interface TandemiseServices {
   readonly team: TeamService;
   readonly staffing: StaffingService;
   readonly feedback: FeedbackService;
+  readonly criteria: CriteriaService;
+}
+
+/** The Done-when ledger of a mission (P5). */
+export interface CriteriaService {
+  /** Live criteria, user first then spec, each traced against the newest QA report. */
+  list(missionId: MissionId): readonly MissionCriterionView[];
 }
 
 export interface SystemService {

@@ -12,6 +12,7 @@ import type {
   MissionArtifactView,
   MissionDetail,
   MissionFeedView,
+  MissionCriterionView,
   MissionSummary,
   RepositoryProbe,
   RuntimeDiscoveryView,
@@ -232,6 +233,11 @@ export class DaemonClient {
   /** The mission's cards grouped for the principal; `doneLimit` defaults to 5 on the daemon. */
   missionFeed(id: string, query?: { doneLimit?: number }): Promise<MissionFeedView> {
     return this.#get(`/missions/${id}/feed`, query);
+  }
+
+  /** The mission's Done-when ledger, traced against the newest QA report. */
+  missionCriteria(id: string): Promise<readonly MissionCriterionView[]> {
+    return this.#get(`/missions/${id}/criteria`);
   }
 
   /** A person reporting they have done a `human` task, with what they produced; `onBehalfOf` records it for a teammate. */

@@ -59,6 +59,22 @@ const OMIT_ONCE = mode('SCRIPTED_OMIT_CITATION_ONCE') && !/must cite fb_/.test(p
 const DECLINE = mode('SCRIPTED_DECLINE');
 const REVIEW_BLOCKING = mode('SCRIPTED_REVIEW_BLOCKING') && !/feedback: "?fb_[0-9a-z]{20}/.test(prompt);
 const FAIL_UNTIL_NOTE = mode('SCRIPTED_FAIL_UNTIL_NOTE') && !inRound;
+// P5, the Done-when ledger. The prompt lists it as "- U1: …" lines and tells a
+// tester which ids to verify; the agent covers and verifies exactly those.
+//   SCRIPTED_SPEC_MISSES_U2  the spec's criteria never cover U2 (the task blocks on criteria.uncovered_user)
+//   SCRIPTED_SPEC_TWO_ACS    the spec writes AC1 and AC2
+//   SCRIPTED_QA_PARTIAL      the spec writes AC1-AC3; QA passes AC1 and skips the rest
+//   SCRIPTED_QA_FAIL_AC2     the spec writes AC1 and AC2; QA fails AC2
+// A spec written in a round adds one criterion per note, so a note adds AC3 to two.
+const ledgerBlock = /^Done when \(criteria ledger[^\n]*\n((?:- [^\n]+\n?)+)/m.exec(prompt)?.[1] ?? '';
+const ledgerKeys = [...ledgerBlock.matchAll(/^- ([A-Za-z][\w-]*): /gm)].map((m) => m[1]);
+const userKeys = ledgerKeys.filter((k) => /^U\d+$/.test(k));
+const verifyKeys = /with `criterionId` set to its ledger id: ([^.]+)\./.exec(prompt)?.[1]?.split(',').map((k) => k.trim()).filter(Boolean)
+  ?? (ledgerKeys.length > 0 ? ledgerKeys.filter((k) => !/^U\d+$/.test(k)) : ['AC1']);
+const SPEC_MISSES_U2 = mode('SCRIPTED_SPEC_MISSES_U2');
+const QA_PARTIAL = mode('SCRIPTED_QA_PARTIAL');
+const QA_FAIL_AC2 = mode('SCRIPTED_QA_FAIL_AC2');
+const baseAcs = QA_PARTIAL ? 3 : (QA_FAIL_AC2 || mode('SCRIPTED_SPEC_TWO_ACS')) ? 2 : 1;
 if (process.env.SCRIPTED_PROMPT_DIR) {
   mkdirSync(process.env.SCRIPTED_PROMPT_DIR, { recursive: true });
   writeFileSync(join(process.env.SCRIPTED_PROMPT_DIR, `${Date.now()}-${process.pid}.txt`), prompt);
@@ -93,16 +109,31 @@ const prose = (words) => {
 const delay = Number(process.env.SCRIPTED_DELAY_MS ?? 0);
 if (delay > 0) await new Promise((r) => setTimeout(r, delay));
 
+const specCriteria = () => {
+  const count = baseAcs + feedbackItems.length;
+  const covers = userKeys.filter((k) => !(SPEC_MISSES_U2 && k === 'U2'));
+  return Array.from({ length: count }, (_, i) => ({
+    id: `AC${i + 1}`,
+    statement: `Scripted criterion ${i + 1}: the hello page ${['greets the visitor by name', 'works offline', 'loads in under a second', 'reads well on a phone'][i % 4]}.`,
+    ...(covers.length > 0 ? { covers } : {}),
+  }));
+};
+const qaResults = () => (verifyKeys.length > 0 ? verifyKeys : ['AC1']).map((key, i) => {
+  const outcome = QA_FAIL_AC2 && key === 'AC2' ? 'FAIL' : QA_PARTIAL && i > 0 ? 'SKIP' : 'PASS';
+  const evidence = outcome === 'FAIL' ? `The scripted check for ${key} failed` : outcome === 'SKIP' ? `Not reached by the scripted run` : `Scripted check for ${key} passed`;
+  return { criterionId: key, outcome, evidence };
+});
+
 const FRONT = {
   ProblemBrief: { successMetric: 'Scenario passes', evidence: [] },
-  ProductSpec: { acceptanceCriteria: [{ id: 'AC1', statement: 'The scenario observes the expected state.' }], nonGoals: [] },
+  ProductSpec: { acceptanceCriteria: specCriteria(), nonGoals: [] },
   DesignBrief: { flows: ['Main flow'], accessibility: ['Keyboard reachable'], openQuestions: [] },
   ArchitecturePlan: { components: ['app'], risks: [], migration: '' },
   ImplementationPlan: { steps: [{ id: 's1', summary: 'Make the change', files: ['README.md'], dependsOn: [] }] },
   ChangeSet: { branch: 'scripted/change', commits: [], filesChanged: 0, testsRun: [], knownLimitations: [] },
   ReviewReport: { verdict: 'pass', reviewedRef: 'HEAD', findings: [] },
-  QAPlan: { cases: [{ id: 'c1', criterion: 'AC1', method: 'manual' }] },
-  QAReport: { results: [{ criterion: 'AC1', outcome: 'PASS', evidence: 'scripted' }], blockingDefects: 0 },
+  QAPlan: { cases: [{ id: 'c1', criterion: verifyKeys[0] ?? 'AC1', method: 'manual' }] },
+  QAReport: { results: qaResults(), blockingDefects: 0 },
   ReleaseCandidate: { ref: 'HEAD', checks: [], unresolvedRisks: [], rollback: 'Revert the commit.' },
   DecisionRecord: { status: 'accepted', decision: 'Proceed', owner: 'scripted', supersedes: '' },
 };
@@ -152,11 +183,13 @@ for (const { type, destination } of outputs) {
   // body, with the supporting detail moved under "## Appendix" (within 2x budget).
   // A round's body lists the notes it answered, so the reader's comparison shows what moved.
   const roundNotes = inRound ? `\nRound notes:\n${feedbackItems.map((f) => `- ${f.text}`).join('\n')}\n` : '';
+  // A QA report says what it found per criterion in its body too, so a reader sees it without the front matter.
+  const qaBody = type === 'QAReport' ? `\n## Results\n\n${typeFront.results.map((r) => `- ${r.criterionId}: ${r.outcome} — ${r.evidence}`).join('\n')}\n` : '';
   const body = (long
     ? `# ${front.title}\n\n${prose(Math.ceil(budget * 1.5))}\n`
     : LONG && tightening
       ? `# ${front.title}\n\nWritten by the scripted acceptance agent.\n\n## Appendix\n\n${prose(Math.ceil(budget * 0.8))}\n`
-      : `# ${front.title}\n\nWritten by the scripted acceptance agent.\n`) + roundNotes;
+      : `# ${front.title}\n\nWritten by the scripted acceptance agent.\n`) + qaBody + roundNotes;
   writeFileSync(path, `---${yaml(front)}\n---\n\n${body}`);
   console.log(`wrote ${type} to ${path}`);
 }

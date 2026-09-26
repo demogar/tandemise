@@ -51,6 +51,11 @@ export interface Finding {
 
 /** Maps one acceptance criterion to the evidence that it holds. */
 export interface CriterionResult {
+  /**
+   * The ledger key QA verified (`AC1`, `U2`). Absent on results recorded
+   * before the ledger existed; `resultKey` falls back to `criterion` for them.
+   */
+  readonly criterionId?: string | null;
   readonly criterion: string;
   readonly outcome: CheckOutcome;
   readonly evidence: string;

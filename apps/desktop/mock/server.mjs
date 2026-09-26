@@ -334,6 +334,15 @@ route('GET', '/missions/:id/events', (params, _b, query) => {
   return events.slice(-limit);
 });
 
+// The Done-when ledger: the mission's lines as U1…, unverified. The mock has no QA to trace them against.
+route('GET', '/missions/:id/criteria', (params) => {
+  const detail = detailFor(params.id);
+  return (detail.mission.successCriteria ?? []).map((statement, i) => ({
+    id: `crt_mock_${i}`, key: `U${i + 1}`, statement, source: 'user', covers: [], coveredBy: [], result: 'UNVERIFIED',
+    evidence: '', qaArtifactId: null, specArtifactId: null, counted: true, uncovered: false, createdAt: detail.mission.createdAt,
+  }));
+});
+
 // The mission feed, projected simply: the mock has one person, so every open
 // approval and every person step is "mine". Enough to render the Feed tab.
 route('GET', '/missions/:id/feed', (params, _b, query) => {

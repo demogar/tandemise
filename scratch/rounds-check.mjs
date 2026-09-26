@@ -60,7 +60,8 @@ section('persistence: migration 010');
   // that has nothing to do with what this section tests (same convention as
   // staffing-check.mjs).
 
-  const result = P.migrate(db);
+  // Up to 10 only: later migrations belong to later phases and are proven by their own checks.
+  const result = P.migrate(db, undefined, P.MIGRATIONS.filter((m) => m.version <= 10));
   check('a version 9 database migrates to 10', eq(result.applied, [10]) && P.schemaVersion(db) === 10, result);
   const tasks = new P.SqliteTaskRepository(db, systemClock);
   const runs = new P.SqliteRunRepository(db, systemClock);

@@ -85,6 +85,8 @@ title: <one line naming the scope of this spec, at most ${HANDOFF_LIMITS.title} 
 acceptanceCriteria:
   - id: AC1
     statement: <an observable, testable statement — QA will map a test to this id>
+    covers:
+      - <each Done-when id this criterion proves, e.g. U1; every U id must be covered by at least one criterion>
 nonGoals:
   - <something a reader might reasonably expect that is explicitly excluded>
 ---
@@ -246,7 +248,7 @@ type: QAReport
 schemaVersion: 1
 title: <one line naming the test run, at most ${HANDOFF_LIMITS.title} characters>
 results:
-  - criterion: <the acceptance criterion id, e.g. AC1>
+  - criterionId: <the criterion id from the Done-when ledger, e.g. AC1; one result per id>
     outcome: PASS | FAIL | SKIP
     evidence: <artifact id of a screenshot/log, or a one-line observation>
 blockingDefects: <integer>

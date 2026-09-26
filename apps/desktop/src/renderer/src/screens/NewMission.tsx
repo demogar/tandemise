@@ -213,6 +213,21 @@ export function NewMission(): JSX.Element {
               </Field>
             ) : null}
 
+            {/* Out in the open, not under "More options": these lines are the
+                contract the spec must cover and QA must verify before the
+                mission can ship, so they are part of saying what you want. */}
+            <Field
+              label="Done when (one per line)"
+              hint="Each line becomes a numbered criterion (U1, U2, …). The spec must cover every one and QA must verify it before the mission can ship."
+            >
+              <textarea
+                className="textarea"
+                value={criteria}
+                onChange={(event) => setCriteria(event.target.value)}
+                placeholder={'Existing password sign-in still works\nEnrolment is covered by an end-to-end test'}
+              />
+            </Field>
+
             <Field label="Autonomy" hint={AUTONOMY.find((option) => option.value === autonomy)?.hint}>
               <Segmented
                 block
@@ -244,14 +259,6 @@ export function NewMission(): JSX.Element {
                       value={constraints}
                       onChange={(event) => setConstraints(event.target.value)}
                       placeholder={'Do not change the public API\nNo new runtime dependencies'}
-                    />
-                  </Field>
-                  <Field label="Success criteria" hint="One per line. The evaluator checks the result against each of these.">
-                    <textarea
-                      className="textarea"
-                      value={criteria}
-                      onChange={(event) => setCriteria(event.target.value)}
-                      placeholder={'Existing password sign-in still works\nEnrolment is covered by an end-to-end test'}
                     />
                   </Field>
                   {actors.solo ? null : (
