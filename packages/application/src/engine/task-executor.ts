@@ -2,7 +2,7 @@ import type {
   Approval, ApprovalRepositoryPort, ArtifactManifest, ArtifactRepositoryPort, ArtifactStorePort, ArtifactType,
   AssignmentRepositoryPort, CapabilityGrant, CheckResult, CheckpointRepositoryPort,
   DecisionRepositoryPort, EventRepositoryPort, ExecutionTargetRepositoryPort, ExecutionTargetRecord, ExternalRef,
-  CriteriaTrace, GateOutcome, LoadedArtifact, Member, MemberRepositoryPort, Mission, MissionCriterion, MissionRepositoryPort, MissionTask, RepoRepositoryPort,
+  CriteriaTrace, GateOutcome, LoadedArtifact, Member, MemberRepositoryPort, Mission, MissionCriterion, MissionQuestionRepositoryPort, MissionRepositoryPort, MissionTask, RepoRepositoryPort,
   Repository, ResourceLease, RoleRepositoryPort, RoleTemplate, Run, RunEventRecord, RunInputRepositoryPort, RunPurpose,
   RunRepositoryPort, RunUsage, TracedCriterion,
   RuntimeProfile, RuntimeProfileRepositoryPort, TargetKind, TaskRepositoryPort, TaskStatus,
@@ -115,6 +115,8 @@ export interface TaskExecutorDeps {
   readonly harvester: ArtifactHarvester;
   readonly checks: CheckService;
   readonly gates: GateService;
+  /** What the person answered while the request was refined; optional for harnesses built before P6. */
+  readonly questions?: Pick<MissionQuestionRepositoryPort, 'listByMission'>;
   /** Who looks at a passed round, and who every card about a task is addressed to. */
   readonly reviews: ReviewPipeline;
   /** Reads a round's brief and contract, and settles the notes a pass answered. */
@@ -1405,6 +1407,8 @@ export class TaskExecutor {
       role,
       workspaceName: workspace.name,
       criteria: ledger.map((c) => ({ key: c.key, statement: c.statement, covers: c.covers })),
+      answers: (this.deps.questions?.listByMission(mission.id) ?? [])
+        .flatMap((q) => (q.status === 'answered' && q.answer !== null ? [{ key: q.key, text: q.text, answer: q.answer }] : [])),
       knowledge: workspace.knowledge,
       mission,
       task,

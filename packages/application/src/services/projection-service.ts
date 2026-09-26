@@ -14,6 +14,7 @@ import type { MissionId, TaskId, WorkspaceId } from '@tandemise/shared';
 import { TandemiseError, asId } from '@tandemise/shared';
 import type { ProjectionService, RuntimeService } from '../services.js';
 import type { GateService } from '../engine/gates.js';
+import type { ReadinessService } from './readiness.js';
 import type { MetricsService } from '../engine/metrics.js';
 import { asPlannedTasks, validateTaskGraph } from '../support/dag.js';
 import { toApprovalView, toApprovalViews } from '../support/approval-view.js';
@@ -62,6 +63,8 @@ export interface ProjectionDeps {
   readonly members: MemberRepositoryPort;
   readonly staffing: StaffingResolver;
   readonly feedback: FeedbackRepositoryPort;
+  /** DRAFT missions waiting on a refinement decision (P6); optional for harnesses built before it. */
+  readonly readiness?: ReadinessService;
 }
 
 /**
@@ -129,9 +132,26 @@ export class ProjectionServiceImpl implements ProjectionService {
         updatedAt: task.updatedAt,
       }];
     });
+    // A request waiting on the person's decisions before it can be planned:
+    // one row per mission, gone as soon as nothing is left to decide.
+    const refinements = this.deps.readiness === undefined ? [] : this.deps.missions.list({ workspaceId, statuses: ['DRAFT'] }).flatMap((mission) => {
+      const counts = this.deps.readiness!.counts(mission.id);
+      const toDecide = counts.openQuestions + counts.proposedPending;
+      if (toDecide === 0) return [];
+      return [{
+        missionId: mission.id,
+        missionTitle: mission.title,
+        toDecide,
+        openQuestions: counts.openQuestions,
+        proposedPending: counts.proposedPending,
+        forIds: mission.createdBy == null ? [] : [mission.createdBy],
+        updatedAt: mission.updatedAt,
+      }];
+    });
     return {
       approvals: toApprovalViews(named, this.deps.approvals.list({ workspaceId, statuses: ['PENDING'] })),
       tasks,
+      refinements,
     };
   }
 

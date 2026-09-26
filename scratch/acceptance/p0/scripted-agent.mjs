@@ -124,6 +124,30 @@ const qaResults = () => (verifyKeys.length > 0 ? verifyKeys : ['AC1']).map((key,
   return { criterionId: key, outcome, evidence };
 });
 
+// P6, refinement. The prompt lists what the person already accepted, answered
+// and rejected; the agent proposes the next three criteria it has not seen there
+// and asks the one question not yet answered, so a second pass reads as new.
+const REFINE_POOL = [
+  'Visiting the home page shows "Hello, <name>" for a signed-in visitor',
+  'A visitor who is not signed in sees "Hello, friend" instead of an empty name',
+  'The greeting is readable on a 375px wide phone screen without scrolling sideways',
+  'The greeting appears within one second of opening the page',
+  'Screen readers announce the greeting as the page heading',
+  'The greeting still shows when the visitor is offline after a first visit',
+];
+const REFINE_QUESTIONS = [
+  { text: 'Which pages should greet the visitor by name?', why: 'It decides how many pages the plan touches and what QA checks', options: ['Only the home page', 'Every page'] },
+  { text: 'Should a returning visitor see a different greeting?', why: 'A second greeting adds a remembered-visit state to build and verify', options: ['Yes, "Welcome back"', 'No, always the same'] },
+];
+const refinement = () => {
+  const proposed = REFINE_POOL.filter((line) => !prompt.includes(line)).slice(0, 3);
+  const asked = REFINE_QUESTIONS.filter((q) => !prompt.includes(q.text)).slice(0, 1);
+  return {
+    proposedCriteria: proposed.map((statement, i) => ({ key: `P${i + 1}`, statement })),
+    questions: asked.map((q, i) => ({ key: `Q${i + 1}`, ...q })),
+  };
+};
+
 const FRONT = {
   ProblemBrief: { successMetric: 'Scenario passes', evidence: [] },
   ProductSpec: { acceptanceCriteria: specCriteria(), nonGoals: [] },
@@ -136,6 +160,7 @@ const FRONT = {
   QAReport: { results: qaResults(), blockingDefects: 0 },
   ReleaseCandidate: { ref: 'HEAD', checks: [], unresolvedRisks: [], rollback: 'Revert the commit.' },
   DecisionRecord: { status: 'accepted', decision: 'Proceed', owner: 'scripted', supersedes: '' },
+  get Refinement() { return refinement(); },
 };
 
 const yaml = (value, indent = '') => {

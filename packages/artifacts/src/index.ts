@@ -4,8 +4,8 @@ export type { FrontMatterDocument } from './front-matter.js';
 export {
   ARTIFACT_SCHEMAS, ArchitecturePlanFrontMatter, ChangeSetFrontMatter, DecisionRecordFrontMatter,
   DesignBriefFrontMatter, EvidenceFrontMatter, FinanceReportFrontMatter, hasSchema, MissionPlanFrontMatter, ImplementationPlanFrontMatter, ProblemBriefFrontMatter,
-  ProductSpecFrontMatter, QAPlanFrontMatter, QAReportFrontMatter, ReleaseCandidateFrontMatter,
-  ReviewReportFrontMatter,
+  ProductSpecFrontMatter, QAPlanFrontMatter, QAReportFrontMatter, RefinementFrontMatter, ReleaseCandidateFrontMatter,
+  ReviewReportFrontMatter, StatusReportFrontMatter,
 } from './schemas.js';
 export type { FrontMatterFor, SchemaBackedArtifactType } from './schemas.js';
 

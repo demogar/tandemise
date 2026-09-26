@@ -36,6 +36,19 @@ export interface ContextRequest {
    * the spec must cover and QA must verify.
    */
   readonly criteria?: readonly LedgerLine[];
+  /**
+   * What the person decided while the request was refined (P6): each question
+   * and its answer. Every role reads them, not only the planner - a spec
+   * written without them would re-open what the person already settled.
+   */
+  readonly answers?: readonly AnsweredQuestion[];
+}
+
+/** A refinement question and the person's answer, as a prompt states it. */
+export interface AnsweredQuestion {
+  readonly key: string;
+  readonly text: string;
+  readonly answer: string;
 }
 
 /** One criterion as a prompt states it. */

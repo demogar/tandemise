@@ -141,6 +141,24 @@ export const GATE_FACT_VOCABULARY: readonly FactDefinition[] = [
     example: 'criteria.unknown_covers == 0',
   },
   {
+    name: 'ready.criteria',
+    type: 'number',
+    description: 'Accepted Done-when criteria of a DRAFT mission: the person\'s lines, ones added by hand and accepted proposals. Read by the readiness gate before planning.',
+    example: 'ready.criteria >= 1',
+  },
+  {
+    name: 'ready.open_questions',
+    type: 'number',
+    description: 'Questions refinement asked that the person has not answered yet.',
+    example: 'ready.open_questions == 0',
+  },
+  {
+    name: 'ready.proposed_pending',
+    type: 'number',
+    description: 'Criteria refinement proposed that the person has not accepted or rejected yet.',
+    example: 'ready.proposed_pending == 0',
+  },
+  {
     name: 'qa.blocking_defects',
     type: 'number',
     description: 'Count of QA defects that block release.',

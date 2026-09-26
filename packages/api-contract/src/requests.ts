@@ -95,6 +95,23 @@ export const createMissionRequest = z.object({
 });
 export type CreateMissionRequest = z.infer<typeof createMissionRequest>;
 
+/** A verdict on a proposed criterion; `statement` accepts it in the person's own words. */
+export const criterionVerdictRequest = z.object({
+  verdict: z.enum(['accept', 'reject']),
+  statement: z.string().trim().min(1, 'A criterion needs a statement.').max(2000).optional(),
+});
+export type CriterionVerdictRequest = z.infer<typeof criterionVerdictRequest>;
+
+export const answerQuestionRequest = z.object({
+  text: z.string().trim().min(1, 'An answer needs some text.').max(2000),
+});
+export type AnswerQuestionRequest = z.infer<typeof answerQuestionRequest>;
+
+export const addCriterionRequest = z.object({
+  statement: z.string().trim().min(1, 'A criterion needs a statement.').max(2000),
+});
+export type AddCriterionRequest = z.infer<typeof addCriterionRequest>;
+
 export const listMissionsQuery = z.object({
   workspaceId: z.string().optional(),
   status: z.enum(MISSION_STATUSES).optional(),

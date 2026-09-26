@@ -22,6 +22,7 @@ export * from './entities/decision.js';
 export * from './entities/evaluation.js';
 export * from './entities/feedback.js';
 export * from './entities/criteria.js';
+export * from './entities/refinement.js';
 
 export * from './ports/repositories.js';
 export * from './ports/artifact-store.js';

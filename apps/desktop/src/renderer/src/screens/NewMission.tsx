@@ -75,6 +75,10 @@ export function NewMission(): JSX.Element {
   // A workflow that declares a required input cannot start without it, and
   // the button says so rather than failing after the click.
   const ready = goal.trim().length >= 3 && Boolean(workspace) && missingInput === undefined;
+  // A request is planned only once it says what done means. Without a line it
+  // is created as a draft and opened on "Get it ready", where the product
+  // agent proposes criteria and asks what it needs (P6).
+  const hasCriteria = splitLines(criteria).length > 0;
 
   const submit = (): void => {
     if (!ready || !workspace || create.isPending) return;
@@ -90,7 +94,7 @@ export function NewMission(): JSX.Element {
         workflowPreset: preset,
         workflowInputs,
         baseBranch: baseBranch.trim() || null,
-        planNow: true,
+        planNow: hasCriteria,
         ...behalfOf(actors, createdFor),
         ...(Object.keys(staffing).length > 0
           ? { staffing: Object.fromEntries(Object.entries(staffing).map(([role, patch]) => [role, toWire(patch)])) as RoleStaffingPatchRequest }
@@ -116,7 +120,7 @@ export function NewMission(): JSX.Element {
               Cancel
             </button>
             <button type="button" className="btn btn--primary" onClick={submit} disabled={!ready || create.isPending}>
-              {create.isPending ? 'Planning…' : 'Plan mission'}
+              {create.isPending ? (hasCriteria ? 'Planning…' : 'Creating…') : hasCriteria ? 'Plan mission' : 'Create and refine'}
               <kbd style={{ marginLeft: 2 }}>⌘↵</kbd>
             </button>
           </>
@@ -218,7 +222,11 @@ export function NewMission(): JSX.Element {
                 mission can ship, so they are part of saying what you want. */}
             <Field
               label="Done when (one per line)"
-              hint="Each line becomes a numbered criterion (U1, U2, …). The spec must cover every one and QA must verify it before the mission can ship."
+              hint={
+                hasCriteria
+                  ? 'Each line becomes a numbered criterion (U1, U2, …). The spec must cover every one and QA must verify it before the mission can ship.'
+                  : 'Not sure yet? Leave it empty: the product agent will propose criteria and ask what it needs, and you decide before anything is planned.'
+              }
             >
               <textarea
                 className="textarea"

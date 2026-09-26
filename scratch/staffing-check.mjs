@@ -1677,6 +1677,9 @@ section('engine: reviews and escalation');
   // ---- concern 5: a plan approval is for whoever asked for the mission
   {
     const planCard = async (missionId) => {
+      // A DRAFT is planned only once it has a Done-when criterion (P6); rows written straight to the repository have none.
+      const ledger = h.container.resolve(h.app.MISSION_CRITERIA_REPOSITORY);
+      if (ledger.listActive(missionId).length === 0) ledger.addUserCriteria(missionId, ['The onboarding plan exists']);
       await h.services.planning.plan(missionId);
       return h.repo.approvals.list({ missionId, statuses: ['PENDING'] }).find((a) => a.kind === 'plan');
     };
@@ -1853,7 +1856,7 @@ section('http: principal, team and staffing routes');
     // ---- mission, plan approval on behalf, mission/task staffing, preview, claim
     const badCreate = await api('POST', '/v1/missions', { workspaceId: ws, goal: 'Update the readme', onBehalfOf: agentM.body?.id });
     check('http: createMission onBehalfOf an agent is 400 VALIDATION', errCode(badCreate) === '400 VALIDATION', badCreate.body);
-    const created = await api('POST', '/v1/missions', { workspaceId: ws, goal: 'Update the readme with a usage section', onBehalfOf: anaM.body?.id });
+    const created = await api('POST', '/v1/missions', { workspaceId: ws, goal: 'Update the readme with a usage section', successCriteria: ['The readme has a usage section'], onBehalfOf: anaM.body?.id });
     const missionId = created.body?.mission?.id;
     check('http: createMission onBehalfOf a person', created.status === 200 && created.body?.mission?.createdBy === anaM.body?.id, created.body?.mission ?? created.body);
     await api('POST', `/v1/missions/${missionId}/plan`);
@@ -1900,7 +1903,7 @@ section('http: principal, team and staffing routes');
     check('http: the pooled task waits for a person', waiting !== undefined);
     {
       // final I4: one request for everything waiting on a person.
-      const other = await api('POST', '/v1/missions', { workspaceId: ws, goal: 'Write a changelog entry for the usage section', planNow: true });
+      const other = await api('POST', '/v1/missions', { workspaceId: ws, goal: 'Write a changelog entry for the usage section', successCriteria: ['The changelog names the usage section'], planNow: true });
       const inboxOf = () => api('GET', `/v1/inbox?workspaceId=${ws}`);
       const withPlan = await poll(async () => {
         const r = await inboxOf();
@@ -1964,7 +1967,7 @@ section('http: principal, team and staffing routes');
       check('http: createMission with invalid staffing is 400 VALIDATION', errCode(badStaffed) === '400 VALIDATION', badStaffed.body);
       check('http: the rejected create made no mission', (await api('GET', `/v1/missions?workspaceId=${ws}`)).body?.length === countBefore);
       const staffedCreate = await api('POST', '/v1/missions', {
-        workspaceId: ws, goal: 'Update the readme with a usage section', planNow: true,
+        workspaceId: ws, goal: 'Update the readme with a usage section', successCriteria: ['The readme has a usage section'], planNow: true,
         staffing: { [first?.roleId]: { assignees: [boM.body?.id], mode: 'first_available' } },
       });
       const staffedId = staffedCreate.body?.mission?.id;

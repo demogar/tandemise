@@ -97,6 +97,9 @@ function buildSections(request: ContextRequest): Section[] {
     ...((request.criteria ?? []).length > 0
       ? [`Done when (criteria ledger; cite these ids):\n${ledgerLines(request.criteria ?? [])}`]
       : mission.successCriteria.length ? [`Success criteria:\n${bullets(mission.successCriteria)}`] : []),
+    ...((request.answers ?? []).length > 0
+      ? [`Decided before planning (the person's answers; do not re-open them):\n${(request.answers ?? []).map((a) => `- ${a.text} → ${a.answer}`).join('\n')}`]
+      : []),
     `Autonomy: ${mission.autonomy}`,
   ].join('\n')));
 

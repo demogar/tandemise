@@ -234,8 +234,9 @@ try {
   section('migration 011');
   {
     const cols = h.db.handle.prepare("SELECT name FROM pragma_table_info('mission_criteria')").all().map((r) => r.name);
-    check('mission_criteria has the ledger columns', eq(cols, ['id', 'mission_id', 'key', 'statement', 'source', 'covers', 'spec_artifact_id', 'position', 'superseded_at', 'created_at']), cols);
-    check('schema version is 11', h.persistence.SCHEMA_VERSION === 11);
+    // P6 (migration 012) appends status columns; the ledger's own columns come first and are unchanged.
+    check('mission_criteria has the ledger columns', eq(cols.slice(0, 10), ['id', 'mission_id', 'key', 'statement', 'source', 'covers', 'spec_artifact_id', 'position', 'superseded_at', 'created_at']), cols);
+    check('schema version is at least 11', h.persistence.SCHEMA_VERSION >= 11);
     const idx = h.db.handle.prepare("SELECT sql FROM sqlite_master WHERE name = 'ux_mission_criteria_live_key'").get();
     check('keys are unique among live rows only (partial index)', /WHERE superseded_at IS NULL/.test(idx?.sql ?? ''), idx);
   }

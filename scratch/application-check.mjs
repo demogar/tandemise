@@ -825,6 +825,7 @@ ok('mission events page by sequence',
 
 const throwaway = await services.missions.create({ personId: services.identity.localPerson().id }, {
   workspaceId, goal: 'A mission created only to exercise pause, resume, cancel and delete.',
+  successCriteria: ['The mission can be paused, resumed, cancelled and deleted'],
 });
 await services.planning.plan(throwaway.id);
 const throwawayApproval = services.approvals.list({ missionId: throwaway.id, status: 'PENDING' })[0];
