@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useLocation } from 'wouter';
 import type { ApprovalView } from '@tandemise/api-contract';
 import type { Approval } from '@tandemise/domain';
 import { PageHeader } from '../components/PageHeader.js';
@@ -31,6 +32,7 @@ export function Inbox(): JSX.Element {
   const [filter, setFilter] = useState<Filter>('me');
   const [open, setOpen] = useState<string | null>(null);
   const [task, setTask] = useState<Extract<InboxItem, { kind: 'task' }> | null>(null);
+  const [, navigate] = useLocation();
 
   const items = filter === 'me' ? inbox.pending.filter((i) => i.forMe) : inbox.pending;
   const others = inbox.pending.length - inbox.forMeCount;
@@ -81,7 +83,14 @@ export function Inbox(): JSX.Element {
                     item={item}
                     actors={actors}
                     open={open === item.id}
-                    onClick={() => (item.kind === 'task' ? setTask(item) : setOpen(open === item.id ? null : item.id))}
+                    onClick={() =>
+                      item.kind === 'task'
+                        ? setTask(item)
+                        : item.kind === 'refinement'
+                          ? // Decided on the mission itself, where the proposals and questions are.
+                            navigate(`/missions/${item.refinement.missionId}`)
+                          : setOpen(open === item.id ? null : item.id)
+                    }
                   />
                   {item.kind === 'approval' && open === item.id ? (
                     <div className="inbox__open">
@@ -134,6 +143,7 @@ function OpenTask({ item, onClose }: { item: Extract<InboxItem, { kind: 'task' }
 }
 
 function InboxRow({ item, actors, open, onClick }: { item: InboxItem; actors: Actors; open: boolean; onClick: () => void }): JSX.Element {
+  if (item.kind === 'refinement') return <RefinementRow item={item} onClick={onClick} />;
   const title = item.kind === 'approval' ? item.view.approval.title : item.task.title;
   const mission = item.kind === 'approval' ? item.view.missionTitle : item.task.missionTitle;
   const forRefs =
@@ -179,6 +189,33 @@ function InboxRow({ item, actors, open, onClick }: { item: InboxItem; actors: Ac
         <span className="chip chip--muted">{label}</span>
         <span className="dim" style={{ fontSize: 'var(--fs-xs)', minWidth: 56, textAlign: 'right' }}>{relativeTime(item.at)}</span>
         <Icon name={item.kind === 'task' ? 'chevronRight' : open ? 'chevronUp' : 'chevronDown'} size={13} className="dim" />
+      </div>
+    </button>
+  );
+}
+
+/** A request that cannot be planned yet: what is left to decide, and the mission it is for. */
+function RefinementRow({ item, onClick }: { item: Extract<InboxItem, { kind: 'refinement' }>; onClick: () => void }): JSX.Element {
+  const { refinement } = item;
+  const parts = [
+    refinement.proposedPending > 0 ? pluralize(refinement.proposedPending, 'criterion', 'criteria') + ' to decide' : null,
+    refinement.openQuestions > 0 ? pluralize(refinement.openQuestions, 'question') + ' to answer' : null,
+  ].filter((p): p is string => p !== null);
+  return (
+    <button type="button" className="list__row inbox__row" onClick={onClick}>
+      <span className="dot dot--blocked" />
+      <div className="list__main">
+        <div className="list__title">Refinement: {refinement.toDecide} to decide</div>
+        <div className="list__subtitle truncate">
+          {parts.join(' and ')} before it can be planned
+          <span className="sep">·</span>
+          {refinement.missionTitle}
+        </div>
+      </div>
+      <div className="list__aside">
+        <span className="chip chip--muted">Refinement</span>
+        <span className="dim" style={{ fontSize: 'var(--fs-xs)', minWidth: 56, textAlign: 'right' }}>{relativeTime(item.at)}</span>
+        <Icon name="chevronRight" size={13} className="dim" />
       </div>
     </button>
   );

@@ -341,6 +341,50 @@ title: <one line naming what this evidence shows, at most ${HANDOFF_LIMITS.title
 <The relevant excerpt of the log or test output, not the whole log.>
 `,
 
+  Refinement: `---
+type: Refinement
+schemaVersion: 1
+title: <one line naming the request you refined, at most ${HANDOFF_LIMITS.title} characters>
+proposedCriteria:
+  - key: P1
+    statement: <one observable outcome the person could check themselves, at most 400 characters; up to 8, or delete this key's items>
+questions:
+  - key: Q1
+    text: <one question whose answer changes the plan or the criteria, at most 300 characters; up to 5, or delete this key's items>
+    why: <what changes depending on the answer, at most 300 characters>
+    options:
+      - <a likely answer the person can pick with one click; two to four, or delete this key's items>
+---
+
+## What I understood
+<The request restated in two or three sentences, in the person's own terms: who it is for and what changes for them.>
+
+## Why these criteria
+<For each proposed criterion, by key: which part of the request it proves and how someone would check it.>
+
+## What I assumed
+<Every decision you made yourself instead of asking, and why it is safe. The person can overrule any of them.>
+
+## Out of scope
+<What a reader might expect from this request that it does not include.>
+`,
+
+  StatusReport: `---
+type: StatusReport
+schemaVersion: 1
+title: <one line naming the period this report covers, at most ${HANDOFF_LIMITS.title} characters>
+---
+
+## Missions
+<Each mission: its status and what it waits on.>
+
+## Criteria
+<How much of every mission's Done-when list is verified.>
+
+## Decisions waiting
+<What is waiting on a person.>
+`,
+
   MissionPlan: `---
 type: MissionPlan
 schemaVersion: 1
@@ -356,6 +400,38 @@ title: <one line naming the plan, at most ${HANDOFF_LIMITS.title} characters>
 ## Risks
 <What could derail the plan, and what happens then.>
 `,
+};
+
+/**
+ * How to do the job a type exists for, where filling in the skeleton is not
+ * enough. Only Refinement has one: it is the product owner's first job -
+ * turning a rough request into one that is ready to plan - and the difference
+ * between a good pass and a bad one is almost entirely what it chooses to ask
+ * and propose, which no schema can check.
+ */
+const TYPE_GUIDANCE: Partial<Record<SchemaBackedArtifactType, string>> = {
+  Refinement: [
+    'How to refine a request (you are acting as the person\'s product owner):',
+    '  - Your job is to make this request ready to plan, not to plan or build it. Read the request, the Done-when lines',
+    '    and the repository first: anything they already answer is not a question.',
+    '  - Propose the criteria that together mean "done" for this person. Each is one observable outcome someone could',
+    '    check without reading code ("On a phone, /settings shows every section without scrolling sideways"), never an',
+    '    activity ("Refactor the settings page") and never an implementation ("Use CSS grid").',
+    '  - Cover the whole request: every part of what they asked for is proven by at least one criterion. Add the',
+    '    unhappy path (empty, error, offline, permissions) only where the request implies the person cares about it.',
+    '  - Do not repeat a Done-when line the person already has; propose only what is missing. Fewer, sharper criteria',
+    '    beat many vague ones: three to five is typical, eight is the limit.',
+    '  - Ask a question only when its answer changes the plan or the criteria: a different scope, a different user, a',
+    '    different page, a different meaning of done. If a safe default exists, take it, write it under',
+    '    "What I assumed", and do not ask.',
+    '  - Do not ask what the repository answers (the framework, where a file lives), what only matters while building',
+    '    (names, colours, library choices), or anything you could look up yourself.',
+    '  - One decision per question, answerable in a few words. Offer two to four options when the likely answers are',
+    '    known, and say in `why` what changes depending on the answer.',
+    '  - No questions at all is a good outcome for a clear request. Five is the limit.',
+    '  - The handoff headline says what you propose ("Four criteria and one question about which pages"); `needs`',
+    '    says what the person must do ("Decide 4 criteria and answer 1 question").',
+  ].join('\n'),
 };
 
 /** Adds the handoff, which every type shares, right after the skeleton's title. */
@@ -379,7 +455,8 @@ export function renderArtifactTemplate(type: ArtifactType): string | undefined {
   if (!hasSchema(type)) return undefined;
   const budget = WORD_BUDGETS[type];
   const budgetRule = `  - Main body: at most ${budget} words for ${type}. Put supporting detail under "## Appendix" (up to ${budget * 2} words).`;
-  return `${HOW_TO_FILL}\n${budgetRule}\n\n${artifactSkeleton(type)}`;
+  const guidance = TYPE_GUIDANCE[type];
+  return `${HOW_TO_FILL}\n${budgetRule}\n\n${guidance === undefined ? '' : `${guidance}\n\n`}${artifactSkeleton(type)}`;
 }
 
 /** The skeleton alone, without the instruction preamble. */

@@ -10,6 +10,7 @@ import { pluralize } from '../../lib/format.js';
 import { ArtifactReader } from '../artifacts/ArtifactReader.js';
 import { TaskDetail } from './TaskDetail.js';
 import { DoneWhen } from './DoneWhen.js';
+import { GetReady } from './GetReady.js';
 
 /** Finished cards shown before "Show N more"; the daemon's default, named here so the button can count past it. */
 const DONE_SHOWN = 5;
@@ -139,9 +140,16 @@ export function FeedPane({ detail, focusNeeds, onFocused }: { detail: MissionDet
       {/* Left-aligned with the tabs above it, at a reading measure rather than the page's full width. */}
       <div className="page__inner">
         <div className="feed">
-          {/* Above "Needs you": what the mission has to prove comes before what it is doing. */}
-          <DoneWhen missionId={missionId} />
-          {body}
+          {detail.mission.status === 'DRAFT' ? (
+            // Nothing runs before a plan, and nothing is planned before the request is ready: a draft's feed is getting it ready.
+            <GetReady missionId={missionId} />
+          ) : (
+            <>
+              {/* Above "Needs you": what the mission has to prove comes before what it is doing. */}
+              <DoneWhen missionId={missionId} />
+              {body}
+            </>
+          )}
         </div>
       </div>
 

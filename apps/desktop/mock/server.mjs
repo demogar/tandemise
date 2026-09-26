@@ -343,6 +343,26 @@ route('GET', '/missions/:id/criteria', (params) => {
   }));
 });
 
+// Refinement (P6): the mock never runs a pass; a draft is ready when it has Done-when lines.
+route('GET', '/missions/:id/refinement', (params) => {
+  const detail = detailFor(params.id);
+  const lines = detail.mission.successCriteria ?? [];
+  const ready = lines.length > 0;
+  return {
+    missionId: params.id, state: 'idle', failure: null, artifactId: null, headline: null,
+    criteria: lines.map((statement, i) => ({
+      id: `crt_mock_${i}`, key: `U${i + 1}`, statement, status: 'accepted', origin: 'request', decidedBy: null, decidedById: null,
+      createdAt: detail.mission.createdAt, decidedAt: null,
+    })),
+    questions: [],
+    readiness: {
+      ready, criteria: lines.length, openQuestions: 0, proposedPending: 0,
+      label: ready ? 'Plan' : 'Add at least one Done-when criterion to plan',
+      detail: ready ? 'All gate conditions met.' : 'Not met: ready.criteria is 0, needs >= 1',
+    },
+  };
+});
+
 // The mission feed, projected simply: the mock has one person, so every open
 // approval and every person step is "mine". Enough to render the Feed tab.
 route('GET', '/missions/:id/feed', (params, _b, query) => {

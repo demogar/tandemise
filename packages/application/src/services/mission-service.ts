@@ -3,7 +3,7 @@ import type {
   MissionTask, RepoRepositoryPort, RoleRepositoryPort, RunRepositoryPort, TaskRepositoryPort, UnitOfWork, WorkspaceRepositoryPort,
   ArtifactStorePort,
 } from '@tandemise/domain';
-import { canTransition, indexTeam, isTaskFinished, isTerminalMissionStatus, responsibleFor } from '@tandemise/domain';
+import { canTransition, evaluateReadiness, indexTeam, isTaskFinished, isTerminalMissionStatus, responsibleFor } from '@tandemise/domain';
 import type {
   ClaimTaskRequest, CompleteTaskRequest, CreateMissionRequest, MissionSummary, TaskView,
 } from '@tandemise/api-contract';
@@ -22,6 +22,7 @@ import type { FeedbackRounds } from '../engine/feedback-rounds.js';
 import type { ArtifactMeasurePort } from '../ports.js';
 import { feedbackEffectFor } from '../support/feedback-rules.js';
 import { assertStaffing, mergeRoleStaffing } from '../support/staffing-edit.js';
+import { assertReadiness } from './readiness.js';
 
 /** Statuses from which a task may be put back in the queue by hand. */
 const RETRYABLE_TASK_STATUSES: readonly MissionTask['status'][] = [
@@ -104,6 +105,15 @@ export class MissionServiceImpl implements MissionService {
     const repository = repositoryId === null ? undefined : this.deps.repositories.get(repositoryId);
     if (repositoryId !== null && repository === undefined) {
       throw TandemiseError.notFound('Repository', repositoryId);
+    }
+
+    if (request.planNow === true) {
+      // The readiness gate a plan would meet, applied before anything is
+      // written: a new mission has no proposals or questions, so it is ready
+      // exactly when it has a Done-when line. Creating it and then refusing
+      // its plan would leave a mission the caller did not ask for (P6 ruling 2).
+      const lines = (request.successCriteria ?? []).filter((line) => line.trim().length > 0).length;
+      assertReadiness(null, evaluateReadiness({ criteria: lines, openQuestions: 0, proposedPending: 0 }));
     }
 
     const id = ids.mission();

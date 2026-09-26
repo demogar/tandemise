@@ -57,7 +57,13 @@ export function Home(): JSX.Element {
             ) : (
               <div className="stack">
                 {needsMe.slice(0, 2).map((item) =>
-                  item.kind === 'approval' ? <ApprovalPreviewCard key={item.id} view={item.view} /> : <HumanTaskRow key={item.id} item={item} />,
+                  item.kind === 'approval' ? (
+                    <ApprovalPreviewCard key={item.id} view={item.view} />
+                  ) : item.kind === 'task' ? (
+                    <HumanTaskRow key={item.id} item={item} />
+                  ) : (
+                    <RefinementRow key={item.id} item={item} />
+                  ),
                 )}
                 {needsMe.length > 2 ? (
                   <Link href="/inbox" className="btn btn--ghost" style={{ alignSelf: 'flex-start' }}>
@@ -269,6 +275,19 @@ function HumanTaskRow({ item }: { item: Extract<InboxItem, { kind: 'task' }> }):
       <div className="list__main">
         <div className="list__title">{item.task.title}</div>
         <div className="list__subtitle truncate">Yours to do · {item.task.missionTitle}</div>
+      </div>
+      <Icon name="chevronRight" size={13} className="dim" />
+    </Link>
+  );
+}
+
+function RefinementRow({ item }: { item: Extract<InboxItem, { kind: 'refinement' }> }): JSX.Element {
+  return (
+    <Link href={`/missions/${item.refinement.missionId}`} className="list__row list__row--bordered" style={{ textDecoration: 'none', color: 'inherit' }}>
+      <StatusDot tone="blocked" />
+      <div className="list__main">
+        <div className="list__title">Refinement: {item.refinement.toDecide} to decide</div>
+        <div className="list__subtitle truncate">Get it ready to plan · {item.refinement.missionTitle}</div>
       </div>
       <Icon name="chevronRight" size={13} className="dim" />
     </Link>

@@ -17,6 +17,17 @@ import type { CriterionResult } from './evaluation.js';
 export const CRITERION_SOURCES = ['user', 'spec'] as const;
 export type CriterionSource = (typeof CRITERION_SOURCES)[number];
 
+/**
+ * Where a criterion stands (P6). Only `accepted` rows are the ledger: a
+ * refinement's proposals wait as `proposed` until the person decides them,
+ * and `rejected` and `stale` (replaced by a newer proposal) are history.
+ */
+export const CRITERION_STATUSES = ['proposed', 'accepted', 'rejected', 'stale'] as const;
+export type CriterionStatus = (typeof CRITERION_STATUSES)[number];
+
+/** Who accepted a proposal when no person did: a mission run with autonomy `autonomous`. */
+export const AUTONOMY_DECIDER = 'autonomy';
+
 /** Longest statement kept, matching the SQL CHECK: a criterion is a sentence, not a document. */
 export const CRITERION_STATEMENT_MAX = 2000;
 export const CRITERION_KEY_MAX = 40;
@@ -37,6 +48,13 @@ export interface MissionCriterion {
   /** Set when a newer spec replaced it; superseded rows never count. */
   readonly supersededAt: Timestamp | null;
   readonly createdAt: Timestamp;
+  /** `accepted` for everything written before P6; proposals start `proposed`. */
+  readonly status: CriterionStatus;
+  /** The Refinement that proposed it; null for the person's own lines and for spec criteria. */
+  readonly refinementArtifactId: ArtifactId | null;
+  /** The member who accepted, rejected or added it, or `autonomy`; null for lines written at creation. */
+  readonly decidedBy: string | null;
+  readonly decidedAt: Timestamp | null;
 }
 
 /** A criterion a spec declares, before it is on the ledger. */

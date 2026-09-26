@@ -3,7 +3,7 @@ import type {
   ApprovalRepositoryPort, ArtifactRepositoryPort, ArtifactStorePort, AssignmentRepositoryPort,
   CheckpointRepositoryPort, DecisionRepositoryPort, EvaluationRepositoryPort, EventBusPort,
   EventRepositoryPort, ExecutionTargetRepositoryPort, FeedbackRepositoryPort, IntegrationRepositoryPort,
-  LeaseRepositoryPort, MemberRepositoryPort, MissionCriteriaRepositoryPort, MissionRepositoryPort, PersonRepositoryPort, ProjectionBusPort, RepoRepositoryPort,
+  LeaseRepositoryPort, MemberRepositoryPort, MissionCriteriaRepositoryPort, MissionQuestionRepositoryPort, MissionRepositoryPort, PersonRepositoryPort, ProjectionBusPort, RepoRepositoryPort,
   RoleRepositoryPort, RunInputRepositoryPort, RunRepositoryPort, RuntimeProfileRepositoryPort, SecretStorePort,
   TaskRepositoryPort, UnitOfWork, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
@@ -12,9 +12,10 @@ import type {
   ApprovalService, ArtifactService, IntegrationService, MissionService, PlanningService,
   ProjectionService, RoleService, RuntimeService, SystemService, TandemiseServices,
   StaffingService, TeamService, WorkspaceService,
-  WorkflowService, FeedbackService, CriteriaService,
+  WorkflowService, FeedbackService, CriteriaService, RefinementService,
 } from './services.js';
 import type { IdentityPort } from './support/identity.js';
+import type { ReadinessService } from './services/readiness.js';
 import type { StaffingResolver } from './engine/staffing-resolver.js';
 import type { ReviewPipeline } from './engine/reviews.js';
 import type { ArtifactHarvester } from './engine/harvester.js';
@@ -80,6 +81,7 @@ export const MEMBER_REPOSITORY = token<MemberRepositoryPort>('port.MemberReposit
 export const FEEDBACK_REPOSITORY = token<FeedbackRepositoryPort>('port.FeedbackRepository');
 export const RUN_INPUT_REPOSITORY = token<RunInputRepositoryPort>('port.RunInputRepository');
 export const MISSION_CRITERIA_REPOSITORY = token<MissionCriteriaRepositoryPort>('port.MissionCriteriaRepository');
+export const MISSION_QUESTION_REPOSITORY = token<MissionQuestionRepositoryPort>('port.MissionQuestionRepository');
 
 export const ARTIFACT_STORE = token<ArtifactStorePort>('port.ArtifactStore');
 /** Workflow files, read from the project's repositories. */
@@ -153,6 +155,8 @@ export const TEAM_SERVICE = token<TeamService>('application.TeamService');
 export const STAFFING_SERVICE = token<StaffingService>('application.StaffingService');
 export const FEEDBACK_SERVICE = token<FeedbackService>('application.FeedbackService');
 export const CRITERIA_SERVICE = token<CriteriaService>('application.CriteriaService');
+export const REFINEMENT_SERVICE = token<RefinementService>('application.RefinementService');
+export const READINESS_SERVICE = token<ReadinessService>('application.ReadinessService');
 
 export const TANDEMISE_SERVICES = token<TandemiseServices>('application.TandemiseServices');
 

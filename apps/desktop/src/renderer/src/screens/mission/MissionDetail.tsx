@@ -14,7 +14,7 @@ import { ArtifactsPane } from './ArtifactsPane.js';
 import { ChecksPane } from './ChecksPane.js';
 import { MetricsPane } from './MetricsPane.js';
 import { isApprovalForMember, isApprovalWaitingOnMember, isHumanTaskForMember, isPlanUnstarted, planStanding } from '@tandemise/api-contract/for-me';
-import { useDaemonMutation, useMission, useMyMemberId } from '../../lib/queries.js';
+import { useDaemonMutation, useMission, useMissionRefinement, useMyMemberId } from '../../lib/queries.js';
 import { missionTone, pluralize } from '../../lib/format.js';
 import { describeError } from '../../lib/daemon.js';
 import { clearMissionNotice, useMissionNotice } from '../../lib/notices.js';
@@ -39,6 +39,9 @@ export function MissionDetail({ id, tab }: { id: string; tab: MissionTab }): JSX
     id,
   );
   const remove = useDaemonMutation((daemon) => daemon.deleteMission(id), ['missions']);
+  // A DRAFT is planned only once the readiness gate passes (P6): the button
+  // says what is left, from the same counts the daemon refuses a plan on.
+  const readiness = useMissionRefinement(id, mission.data?.mission.status === 'DRAFT').data?.readiness;
 
   if (mission.isPending) return <MissionSkeleton />;
   if (mission.isError) {
@@ -73,18 +76,23 @@ export function MissionDetail({ id, tab }: { id: string; tab: MissionTab }): JSX
         actions={
           <>
             <StatusBadge status={status} tone={tone} />
-            {actionsFor(status, isPlanUnstarted(detail.tasks)).map((action) => (
-              <button
-                key={action.id}
-                type="button"
-                className={`btn${action.primary ? ' btn--primary' : ''}`}
-                disabled={act.isPending}
-                onClick={() => (action.id === 'cancel' ? setConfirming('cancel') : act.mutate({ action: action.id }))}
-              >
-                <Icon name={action.icon} size={13} />
-                {action.label}
-              </button>
-            ))}
+            {actionsFor(status, isPlanUnstarted(detail.tasks)).map((action) => {
+              const gated = action.id === 'plan' && status === 'DRAFT';
+              const notReady = gated && readiness?.ready !== true;
+              return (
+                <button
+                  key={action.id}
+                  type="button"
+                  className={`btn${action.primary ? ' btn--primary' : ''}`}
+                  disabled={act.isPending || notReady}
+                  title={notReady ? readiness?.detail : undefined}
+                  onClick={() => (action.id === 'cancel' ? setConfirming('cancel') : act.mutate({ action: action.id }))}
+                >
+                  <Icon name={action.icon} size={13} />
+                  {notReady && readiness !== undefined ? readiness.label : action.label}
+                </button>
+              );
+            })}
             <button type="button" className="btn btn--icon btn--ghost" title="Delete mission" onClick={() => setConfirming('delete')}>
               <Icon name="trash" size={14} />
             </button>

@@ -1,5 +1,5 @@
 import type {
-  ApprovalId, ArtifactId, EventId, FeedbackId, MemberId, MissionId, PersonId, RepositoryId, RunId, RuntimeProfileId,
+  ApprovalId, ArtifactId, CriterionId, EventId, QuestionId, FeedbackId, MemberId, MissionId, PersonId, RepositoryId, RunId, RuntimeProfileId,
   ExecutionTargetId, IntegrationId, TaskId, Timestamp, WorkerAssignmentId, WorkspaceId,
 } from '@tandemise/shared';
 import type { Mission, MissionDraft, MissionProgress, MissionStatus } from '../entities/mission.js';
@@ -19,6 +19,7 @@ import type { Decision } from '../entities/decision.js';
 import type { CheckResult, Evaluation } from '../entities/evaluation.js';
 import type { FeedbackItem, FeedbackStatus } from '../entities/feedback.js';
 import type { MissionCriterion, SpecCriterionInput } from '../entities/criteria.js';
+import type { MissionQuestion, QuestionInput } from '../entities/refinement.js';
 
 /**
  * Persistence ports.
@@ -254,11 +255,34 @@ export interface MissionCriteriaRepositoryPort {
   listActive(missionId: MissionId): readonly MissionCriterion[];
   /** Every row, superseded included, oldest first. */
   listAll(missionId: MissionId): readonly MissionCriterion[];
-  /** Appends `U<n>` rows after any the mission already has. */
-  addUserCriteria(missionId: MissionId, statements: readonly string[]): readonly MissionCriterion[];
+  /** Appends accepted `U<n>` rows after any the mission already has; `addedBy` marks one a person added later. */
+  addUserCriteria(missionId: MissionId, statements: readonly string[], addedBy?: string): readonly MissionCriterion[];
   /**
    * Supersedes every live spec criterion of the mission and records these in
    * one transaction, so no reader ever sees two specs' criteria at once.
    */
   replaceSpecCriteria(missionId: MissionId, specArtifactId: ArtifactId, criteria: readonly SpecCriterionInput[]): readonly MissionCriterion[];
+  get(id: CriterionId): MissionCriterion | undefined;
+  /** The person's criteria in every status - the refinement view's rows - oldest first. */
+  listUserRows(missionId: MissionId): readonly MissionCriterion[];
+  /** Proposals still waiting for a verdict. */
+  listProposed(missionId: MissionId): readonly MissionCriterion[];
+  /**
+   * Records a refinement's proposals as `P<n>` rows, numbered after every key
+   * the mission ever had, and marks proposals still undecided `stale` - in one
+   * transaction, so a reader never sees two passes' proposals as pending.
+   */
+  propose(missionId: MissionId, refinementArtifactId: ArtifactId, statements: readonly string[]): readonly MissionCriterion[];
+  /** Accepts a proposal (it takes the next `U<n>` key, optionally reworded) or rejects it. */
+  decide(id: CriterionId, verdict: 'accept' | 'reject', options: { readonly statement?: string; readonly decidedBy: string }): MissionCriterion;
+}
+
+/** Questions a refinement pass asked, and their answers (P6). */
+export interface MissionQuestionRepositoryPort {
+  get(id: QuestionId): MissionQuestion | undefined;
+  /** Every question, oldest first. */
+  listByMission(missionId: MissionId): readonly MissionQuestion[];
+  /** Marks every open question `stale` and records these as `Q<n>`, numbered on, in one transaction. */
+  replaceOpen(missionId: MissionId, refinementArtifactId: ArtifactId, questions: readonly QuestionInput[]): readonly MissionQuestion[];
+  answer(id: QuestionId, text: string, answeredBy: string): MissionQuestion;
 }

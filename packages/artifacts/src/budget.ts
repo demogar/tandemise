@@ -13,6 +13,8 @@ export const WORD_BUDGETS: Readonly<Record<ArtifactType, number>> = {
   ReleaseCandidate: 300,
   DecisionRecord: 300,
   MissionPlan: 300,
+  // What was understood and assumed: the proposals and questions themselves are front matter.
+  Refinement: 300,
   ProblemBrief: 400,
   QAPlan: 400,
   Evidence: 400,
@@ -22,6 +24,7 @@ export const WORD_BUDGETS: Readonly<Record<ArtifactType, number>> = {
   ChangeSet: 500,
   ProductSpec: 600,
   FinanceReport: 600,
+  StatusReport: 600,
   ArchitecturePlan: 800,
   ImplementationPlan: 800,
 };

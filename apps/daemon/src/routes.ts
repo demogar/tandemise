@@ -8,6 +8,7 @@ import {
   claimTaskRequest, completeTaskRequest, createPersonRequest, updatePersonRequest, addMemberRequest,
   updateMemberRequest, roleStaffingPatchRequest, taskStaffingPatchRequest, missionFeedQuery, missionArtifactsQuery, artifactSearchQuery,
   dismissFeedbackRequest, giveFeedbackRequest, startRoundRequest,
+  addCriterionRequest, answerQuestionRequest, criterionVerdictRequest,
 } from '@tandemise/api-contract';
 import type { TandemiseServices } from '@tandemise/application';
 import { Router, formatZodIssues, type RequestContext } from './http/router.js';
@@ -99,6 +100,16 @@ export function buildRouter(services: TandemiseServices): Router {
     services.projections.missionFeed(asId(ctx.params.id!), ctx.caller, query(ctx, missionFeedQuery)));
   r.get('/v1/missions/:id/tasks', (ctx) => services.projections.missionTasks(asId(ctx.params.id!)));
   r.get('/v1/missions/:id/criteria', (ctx) => services.criteria.list(asId(ctx.params.id!)));
+
+  // ------------------------------------------------ refinement (ready before planning)
+  r.post('/v1/missions/:id/refine', (ctx) => services.refinement.begin(ctx.caller, asId(ctx.params.id!)));
+  r.get('/v1/missions/:id/refinement', (ctx) => services.refinement.view(asId(ctx.params.id!)));
+  r.post('/v1/missions/:id/criteria', async (ctx) =>
+    services.refinement.addCriterion(ctx.caller, asId(ctx.params.id!), await ctx.body(addCriterionRequest)));
+  r.post('/v1/criteria/:id/verdict', async (ctx) =>
+    services.refinement.decide(ctx.caller, asId(ctx.params.id!), await ctx.body(criterionVerdictRequest)));
+  r.post('/v1/questions/:id/answer', async (ctx) =>
+    services.refinement.answer(ctx.caller, asId(ctx.params.id!), await ctx.body(answerQuestionRequest)));
 
   r.post('/v1/tasks/:id/retry', async (ctx) =>
     services.missions.retryTask(ctx.caller, asId(ctx.params.id!), await ctx.body(retryTaskRequest)));

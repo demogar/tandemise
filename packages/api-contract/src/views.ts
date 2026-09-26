@@ -272,6 +272,76 @@ export interface MissionCriterionView {
   readonly createdAt: string;
 }
 
+/** Where a DRAFT mission stands against the readiness gate (P6). */
+export interface ReadinessView {
+  readonly ready: boolean;
+  /** Accepted Done-when criteria. */
+  readonly criteria: number;
+  readonly openQuestions: number;
+  readonly proposedPending: number;
+  /** What the Plan button says: "Plan", or what is left ("Answer 1 question and decide 3 criteria to plan"). */
+  readonly label: string;
+  /** The gate's own explanation ("Not met: ready.open_questions is 1, needs 0"). */
+  readonly detail: string;
+}
+
+/** A criterion as refinement shows it: proposed, accepted, rejected or replaced. */
+export interface RefinementCriterionView {
+  readonly id: string;
+  /** `P<n>` while proposed, rejected or stale; `U<n>` once accepted. */
+  readonly key: string;
+  readonly statement: string;
+  readonly status: 'proposed' | 'accepted' | 'rejected' | 'stale';
+  /** Where it came from: the request's own lines, added by hand later, or proposed by refinement. */
+  readonly origin: 'request' | 'added' | 'refinement';
+  /** `autonomy` when accepted automatically, `person` when someone decided it, null while undecided or for request lines. */
+  readonly decidedBy: 'autonomy' | 'person' | null;
+  readonly decidedById: string | null;
+  readonly createdAt: string;
+  readonly decidedAt: string | null;
+}
+
+export interface RefinementQuestionView {
+  readonly id: string;
+  readonly key: string;
+  readonly text: string;
+  readonly why: string;
+  readonly options: readonly string[];
+  readonly status: 'open' | 'answered' | 'stale';
+  readonly answer: string | null;
+  readonly answeredBy: string | null;
+  readonly createdAt: string;
+  readonly answeredAt: string | null;
+}
+
+/** GET /v1/missions/:id/refinement: everything the "Get it ready" panel shows. */
+export interface RefinementView {
+  readonly missionId: string;
+  /** `running` while a pass is in flight; `failed` when the last pass could not finish. */
+  readonly state: 'idle' | 'running' | 'failed';
+  /** Why the last pass failed, in words a person can act on. */
+  readonly failure: string | null;
+  /** The newest Refinement artifact, and its headline. */
+  readonly artifactId: string | null;
+  readonly headline: string | null;
+  readonly criteria: readonly RefinementCriterionView[];
+  readonly questions: readonly RefinementQuestionView[];
+  readonly readiness: ReadinessView;
+}
+
+/** A DRAFT mission with something left to decide before it can be planned. */
+export interface InboxRefinementView {
+  readonly missionId: string;
+  readonly missionTitle: string;
+  /** Proposals to decide plus questions to answer. */
+  readonly toDecide: number;
+  readonly openQuestions: number;
+  readonly proposedPending: number;
+  /** Who it is for: the mission's creator, or empty when nobody in particular. */
+  readonly forIds: readonly string[];
+  readonly updatedAt: string;
+}
+
 export interface SystemInfo {
   readonly daemonVersion: string;
   readonly apiVersion: string;
@@ -481,6 +551,8 @@ export interface InboxTaskView {
 export interface InboxView {
   readonly approvals: readonly ApprovalView[];
   readonly tasks: readonly InboxTaskView[];
+  /** DRAFT missions whose refinement waits on a person (P6). */
+  readonly refinements: readonly InboxRefinementView[];
 }
 
 export interface WorkspaceView {
