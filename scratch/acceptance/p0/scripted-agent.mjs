@@ -20,6 +20,7 @@
 // agent answers every note in handoff.changed, citing its id. The P2 modes are
 // listed where they are read, below.
 // A task objective that mentions "preview" gets an "Open preview" link in its handoff.
+// P8 usage knobs (SCRIPTED_USAGE_MIN, SCRIPTED_COST_USD) are described where they are read, at the end.
 import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join } from 'node:path';
 
@@ -219,3 +220,26 @@ for (const { type, destination } of outputs) {
   console.log(`wrote ${type} to ${path}`);
 }
 if (outputs.length === 0) console.log('No artifacts requested.');
+
+// P8, limits. The agent reports usage as one NDJSON line, which a runtime
+// profile with outputFormat "ndjson" reads (a "text" profile shows it as a line).
+//   SCRIPTED_USAGE_MIN=<n>   report n agent minutes, 1200 input and 300 output tokens, no cost
+//   SCRIPTED_COST_USD=<x>    also report a cost of x US dollars
+// A number can come from the environment or from "SCRIPTED_USAGE_MIN=5" in the prompt (the mission goal).
+const knobNumber = (name) => {
+  const fromEnv = process.env[name];
+  if (fromEnv !== undefined && fromEnv !== '') return Number(fromEnv);
+  const match = new RegExp(`${name}=([0-9.]+)`).exec(prompt);
+  return match === null ? null : Number(match[1]);
+};
+const usageMinutes = knobNumber('SCRIPTED_USAGE_MIN');
+const costUsd = knobNumber('SCRIPTED_COST_USD');
+if (usageMinutes !== null || costUsd !== null) {
+  console.log(JSON.stringify({
+    type: 'usage',
+    ...(usageMinutes === null ? {} : { wallTimeMs: Math.round(usageMinutes * 60_000) }),
+    inputTokens: 1200,
+    outputTokens: 300,
+    ...(costUsd === null ? {} : { costUsd }),
+  }));
+}
