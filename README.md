@@ -86,6 +86,9 @@ copy-pasted between tools. Everything is attributable and recoverable.
   </tr>
 </table>
 
+Each step can run on the model that fits it, retry on a stronger one and drop to a
+cheaper one near a limit — see [Choosing models](docs/guides/models.md).
+
 ## Architecture
 
 ```

@@ -504,6 +504,23 @@ export interface MissionMetrics {
   readonly outputTokens: number | null;
   readonly costUsd: number | null;
   readonly runtimeFallbacks: number;
+  /**
+   * Usage per model the mission's runs were given (P12), most runs first.
+   * Optional: a daemon from before P12 does not send it.
+   */
+  readonly byModel?: readonly ModelUsageView[];
+}
+
+/** One model's share of a mission's runs. Tokens and cost stay null when no run of it reported them. */
+export interface ModelUsageView {
+  /** Null: the runtime's own default (or a run from before P12, with `recorded` false). */
+  readonly model: string | null;
+  /** What the person reads: the model, "runtime default", or "not recorded". */
+  readonly label: string;
+  readonly runs: number;
+  readonly agentMs: number;
+  readonly tokens: number | null;
+  readonly costUsd: number | null;
 }
 
 export interface RuntimeView {

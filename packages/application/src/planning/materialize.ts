@@ -89,6 +89,7 @@ function fromPlanned(
     approvalPolicy: task.approvalPolicy,
     retryPolicy: task.retryPolicy,
     completionGate: task.completionGate,
+    modelPolicy: task.modelPolicy ?? null,
     status: task.dependsOn.length === 0 ? 'READY' : 'PENDING',
     statusReason: null,
     attempts: 0,

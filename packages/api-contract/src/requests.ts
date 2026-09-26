@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import {
-  ACCESS_LEVELS, ARTIFACT_TYPES, AUTONOMY_LEVELS, LIMIT_METRICS, MISSION_PRIORITIES, MISSION_STATUSES, OVERSIGHT_MODES, ROUTINE_HOURS, ROUTINE_KINDS, RUNTIME_CAPABILITIES,
+  ACCESS_LEVELS, ARTIFACT_TYPES, AUTONOMY_LEVELS, LIMIT_METRICS, MAX_LADDER, MAX_MODEL_NAME, MISSION_PRIORITIES, MISSION_STATUSES, OVERSIGHT_MODES, ROUTINE_HOURS, ROUTINE_KINDS, RUNTIME_CAPABILITIES,
   staffingPatchSchema,
 } from '@tandemise/domain';
 
@@ -312,6 +312,9 @@ export const connectIntegrationRequest = z.object({
 });
 export type ConnectIntegrationRequest = z.infer<typeof connectIntegrationRequest>;
 
+/** A model name: blank means "not set"; otherwise one word of at most 100 characters (P12). */
+const roleModelName = z.string().trim().max(MAX_MODEL_NAME).regex(/^\S*$/, 'A model name is passed to the runtime as one word, without spaces.');
+
 export const upsertRoleRequest = z.object({
   workspaceId: z.string().min(1),
   id: z.string().min(1).max(60),
@@ -323,6 +326,15 @@ export const upsertRoleRequest = z.object({
   consumesArtifacts: z.array(z.enum(ARTIFACT_TYPES)),
   defaultIsolation: z.enum(['none', 'worktree', 'docker', 'browser']),
   outputContract: z.string().max(8000),
+  /**
+   * Which models this role's runs use (P12). Omitted keeps what the role has;
+   * null clears them. Names are passed to the runtime verbatim: one word each.
+   */
+  models: z.object({
+    model: roleModelName.nullable(),
+    escalate: z.array(roleModelName).max(MAX_LADDER),
+    economyModel: roleModelName.nullable(),
+  }).nullable().optional(),
 });
 export type UpsertRoleRequest = z.infer<typeof upsertRoleRequest>;
 

@@ -5,6 +5,7 @@ import type { ArtifactType } from './entities/artifact.js';
 import { isArtifactType } from './entities/artifact.js';
 import type { ArtifactRequirement, ExecutionPolicy, ApprovalPolicy, RetryPolicy } from './entities/task.js';
 import { validateGate } from './gate.js';
+import type { ModelPolicy } from './entities/models.js';
 
 /**
  * A proposed mission plan.
@@ -55,6 +56,8 @@ export interface PlannedTask {
   readonly approvalPolicy: ApprovalPolicy;
   readonly retryPolicy: RetryPolicy;
   readonly completionGate: string | null;
+  /** Model settings from a workflow step (P12). A planner never sets them. */
+  readonly modelPolicy?: ModelPolicy | null;
 }
 
 export interface PlanValidationIssue {

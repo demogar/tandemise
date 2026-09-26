@@ -225,6 +225,30 @@ export const ROUTINE_TEMPLATES: readonly RoutineTemplate[] = [
   },
 ];
 
+/**
+ * P12 model routing. Mirrors `modelLabel` and `modelPolicyLabel` in
+ * @tandemise/domain (entities/models.ts); the renderer may not import values.
+ */
+export function modelLabel(run: { readonly model?: string | null; readonly modelReason?: string | null }): string {
+  if (run.modelReason === null || run.modelReason === undefined) return 'Model: not recorded';
+  if (run.model === null || run.model === undefined) return `Model: ${run.modelReason}`;
+  return `Model: ${run.model} · ${run.modelReason}`;
+}
+
+export function modelPolicyLabel(policy: { readonly model?: string; readonly escalate?: readonly string[]; readonly independentOf?: string } | null | undefined): string | null {
+  if (policy === null || policy === undefined) return null;
+  const parts: string[] = [];
+  if (policy.model) parts.push(`model ${policy.model}`);
+  if (policy.escalate && policy.escalate.length > 0) parts.push(`retries use ${policy.escalate.join(', then ')}`);
+  if (policy.independentOf) parts.push(`must differ from ${policy.independentOf}`);
+  return parts.length === 0 ? null : `This step: ${parts.join(' · ')}`;
+}
+
+/** Splits "a, b" or one-per-line into model names; blanks dropped. */
+export function modelList(text: string): string[] {
+  return text.split(/[\n,]/).map((part) => part.trim()).filter((part) => part.length > 0);
+}
+
 export const API_VERSION = 'v1';
 export const API_VERSION_HEADER = 'x-tandemise-api-version';
 export const STREAM_PATH = '/v1/stream';

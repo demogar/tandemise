@@ -1,0 +1,60 @@
+{
+  "id": "M2",
+  "title": "A step that fails once retries on the stronger model of its ladder",
+  "ok": true,
+  "checks": [
+    {
+      "label": "the mission completes on the second attempt",
+      "ok": true,
+      "observed": "COMPLETE"
+    },
+    {
+      "label": "drawer: \"Model: strong-model · retry escalation (attempt 2)\"",
+      "ok": true,
+      "observed": "Model: strong-model · retry escalation (attempt 2)"
+    },
+    {
+      "label": "drawer: \"This step: model step-model · retries use strong-model\"",
+      "ok": true,
+      "observed": "This step: model step-model · retries use strong-model"
+    },
+    {
+      "label": "proof (agent argv): run 1 --model step-model, run 2 --model strong-model",
+      "ok": true,
+      "observed": [
+        [
+          "--model",
+          "step-model"
+        ],
+        [
+          "--model",
+          "strong-model"
+        ]
+      ]
+    },
+    {
+      "label": "proof (SQL): attempt 1 failed its gate on step-model; attempt 2 on strong-model",
+      "ok": true,
+      "observed": [
+        {
+          "attempt": 1,
+          "status": "SUCCEEDED",
+          "model": "step-model",
+          "reason": "step override",
+          "key": "implement"
+        },
+        {
+          "attempt": 2,
+          "status": "SUCCEEDED",
+          "model": "strong-model",
+          "reason": "retry escalation (attempt 2)",
+          "key": "implement"
+        }
+      ]
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p12-models/scratch/acceptance/p12/evidence/M2-drawer-escalated.png"
+  ]
+}

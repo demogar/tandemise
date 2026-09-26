@@ -1,5 +1,5 @@
 import type {
-  Approval, ApprovalRepositoryPort, EventRepositoryPort, GateFacts, Limit, LimitIncident, LimitRepositoryPort, LimitStatus, Mission,
+  Approval, ApprovalRepositoryPort, EventRepositoryPort, GateFacts, Limit, LimitIncident, LimitPressure, LimitRepositoryPort, LimitStatus, Mission,
   MissionRepositoryPort, MissionStatus, RunRepositoryPort, TaskRepositoryPort, UnitOfWork, UsageTotals, Workspace,
   WorkspaceRepositoryPort,
 } from '@tandemise/domain';
@@ -127,6 +127,24 @@ export class LimitService implements LimitGuard {
     if (mission === undefined || workspace === undefined) return {};
     const m = this.#missionScope(mission, workspace);
     return { ...limitFacts({ mission: { totals: m.totals, statuses: m.statuses }, month: this.#monthScope(workspace, mission).statuses }) };
+  }
+
+  /**
+   * The limit furthest past its warning level, on the mission or the project's
+   * month, or null when none is (P12: the economy model rule reads this).
+   */
+  pressure(missionId: MissionId): LimitPressure | null {
+    const mission = this.deps.missions.get(missionId);
+    const workspace = mission === undefined ? undefined : this.deps.workspaces.get(mission.workspaceId);
+    if (mission === undefined || workspace === undefined) return null;
+    let worst: LimitPressure | null = null;
+    for (const scope of [this.#missionScope(mission, workspace), this.#monthScope(workspace, mission)]) {
+      for (const status of scope.statuses) {
+        if ((status.level !== 'soft' && status.level !== 'hard') || status.percent === null) continue;
+        if (worst === null || status.percent > worst.percent) worst = { percent: status.percent, scope: scope.kind };
+      }
+    }
+    return worst;
   }
 
   // ------------------------------------------------------------ admission

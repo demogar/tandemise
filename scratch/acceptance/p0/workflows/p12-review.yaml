@@ -1,0 +1,20 @@
+name: P12 review
+description: Implement on one model; the review must run on a different one.
+steps:
+  - key: implement
+    title: Implement
+    role: development
+    objective: Build the hello page.
+    outputs: [ChangeSet]
+    gate: artifact.ChangeSet.exists
+    model: shared-model
+  - key: review
+    title: Review
+    role: review
+    dependsOn: [implement]
+    independentOf: implement
+    objective: Review the hello page change.
+    inputs: [ChangeSet]
+    outputs: [ReviewReport]
+    gate: artifact.ReviewReport.exists
+    maxAttempts: 1

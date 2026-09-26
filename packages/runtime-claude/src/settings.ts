@@ -85,7 +85,7 @@ export const CLAUDE_SETTINGS_SCHEMA: readonly RuntimeSettingField[] = [
     label: 'Model',
     kind: 'text',
     placeholder: 'inherit the CLI default',
-    hint: 'Passed as --model. An alias like `opus` or `haiku`, or a full model id.',
+    hint: 'Passed as --model. An alias like `opus` or `haiku`, or a full model id. A role or workflow step can choose another model; this is the default.',
   },
   {
     key: 'userSettings',

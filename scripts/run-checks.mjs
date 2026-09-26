@@ -29,6 +29,7 @@ export const OFFLINE_CHECKS = [
   'p9-liveness-check',
   'p10-desk-check',
   'p11-routines-check',
+  'p12-models-check',
   'oauth-connect-check',
   'persistence-check',
   'planner-steps-check',

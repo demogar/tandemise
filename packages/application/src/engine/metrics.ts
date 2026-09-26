@@ -1,9 +1,9 @@
 import type {
   ApprovalRepositoryPort, ArtifactRepositoryPort, EvaluationRepositoryPort, EventRepositoryPort,
-  Evaluation, Mission, RunRepositoryPort, TaskRepositoryPort, Workspace,
+  Evaluation, Mission, Run, RunRepositoryPort, TaskRepositoryPort, Workspace,
 } from '@tandemise/domain';
 import { blockingFindings } from '@tandemise/domain';
-import type { MissionMetrics } from '@tandemise/api-contract';
+import type { MissionMetrics, ModelUsageView } from '@tandemise/api-contract';
 import type { Clock } from '@tandemise/shared';
 
 /**
@@ -92,6 +92,7 @@ export class MetricsService {
       outputTokens,
       costUsd,
       runtimeFallbacks: this.#countFallbacks(mission, workspace, runs),
+      byModel: usageByModel(runs, now),
     };
   }
 
@@ -113,6 +114,29 @@ export class MetricsService {
     }
     return fallbacks;
   }
+}
+
+/**
+ * Usage grouped by the model each run was given (P12). Runs from before P12
+ * have no reason recorded and are grouped as "not recorded", apart from runs
+ * that really ran on the runtime's default.
+ */
+export function usageByModel(runs: readonly Run[], now: string): ModelUsageView[] {
+  const groups = new Map<string, { model: string | null; label: string; runs: number; agentMs: number; tokens: number | null; costUsd: number | null }>();
+  for (const run of runs) {
+    const recorded = run.modelReason !== null && run.modelReason !== undefined;
+    const model = run.model ?? null;
+    const label = model ?? (recorded ? 'runtime default' : 'not recorded');
+    const key = model === null ? `~${label}` : `=${model}`;
+    const group = groups.get(key) ?? { model, label, runs: 0, agentMs: 0, tokens: null, costUsd: null };
+    group.runs += 1;
+    group.agentMs += run.usage?.wallTimeMs ?? Math.max(0, Date.parse(run.finishedAt ?? now) - Date.parse(run.startedAt));
+    const used = (run.usage?.inputTokens ?? 0) + (run.usage?.outputTokens ?? 0);
+    if (run.usage?.inputTokens !== undefined || run.usage?.outputTokens !== undefined) group.tokens = (group.tokens ?? 0) + used;
+    if (run.usage?.costUsd !== undefined && run.usage.costUsd !== null) group.costUsd = (group.costUsd ?? 0) + run.usage.costUsd;
+    groups.set(key, group);
+  }
+  return [...groups.values()].sort((a, b) => b.runs - a.runs || a.label.localeCompare(b.label));
 }
 
 /** Review findings worth surfacing: anything a human would have to act on. */

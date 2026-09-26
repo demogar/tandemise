@@ -49,6 +49,10 @@ export interface Run {
   readonly round?: number | null;
   /** Why this run exists; null for the same reason as `round`. */
   readonly purpose?: RunPurpose | null;
+  /** The model the run was given (P12); null = the runtime's own default. */
+  readonly model?: string | null;
+  /** Why that model: "step override", "retry escalation (attempt 2)"… Null for a run from before P12. */
+  readonly modelReason?: string | null;
 }
 
 /**

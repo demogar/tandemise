@@ -3,6 +3,7 @@ import type { Capability } from '../capability.js';
 import type { ArtifactType } from './artifact.js';
 import type { GateExpression } from '../gate.js';
 import type { ResolvedStaffingSnapshot, StaffingPatch } from '../staffing.js';
+import type { ModelPolicy } from './models.js';
 
 /** Who carries a task out (MVP.md §11). */
 export const TASK_EXECUTORS = ['agent', 'human', 'wait'] as const;
@@ -132,6 +133,8 @@ export interface MissionTask {
   readonly approvalPolicy: ApprovalPolicy;
   readonly retryPolicy: RetryPolicy;
   readonly completionGate: GateExpression | null;
+  /** The workflow step's model settings (P12); null or absent when it has none. */
+  readonly modelPolicy?: ModelPolicy | null;
   readonly status: TaskStatus;
   /** What a person reads about the task's current state. Changes whenever it waits. */
   readonly statusReason: string | null;

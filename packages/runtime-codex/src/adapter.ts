@@ -100,6 +100,11 @@ export class CodexAdapter implements AgentRuntimeAdapter {
     return this.#health(profile, 'healthy', version, `${detail} — signed in`);
   }
 
+  /** Codex takes its model flag (`-m` unless the profile says otherwise) on every run (P12). */
+  acceptsModel(_profile: RuntimeProfile): boolean {
+    return true;
+  }
+
   capabilities(profile: RuntimeProfile): readonly RuntimeCapability[] {
     return withDeclaredCapabilities(profile, parseCodexSettings(profile.settings).capabilities ?? CODEX_CAPABILITIES, this.baseCapabilities);
   }
@@ -253,7 +258,9 @@ export function buildInvocation(
 
   if (!viaStdin) args.push(request.prompt);
   if (settings.jsonFlag !== null) args.push(settings.jsonFlag);
-  if (settings.model !== null) args.push(settings.modelFlag, settings.model);
+  // The engine resolves the model per run (P12); an older caller leaves it to the profile.
+  const model = request.model !== undefined ? request.model : settings.model;
+  if (model !== null && model.length > 0) args.push(settings.modelFlag, model);
   if (settings.workingDirectoryFlag !== null) {
     args.push(settings.workingDirectoryFlag, request.workingDirectory);
   }

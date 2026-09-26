@@ -80,6 +80,27 @@ Referenced as `{{ issue }}` in any `objective` or `waitFor`. That is the whole
 templating language: a workflow that needs conditionals is a program, and the
 DAG is where branching belongs.
 
+## Models
+
+A step can choose its model, a ladder of models for retries, and a step whose
+run it must differ from:
+
+```yaml
+  - key: implement
+    role: development
+    model: my-fast-model                        # this step's model
+    escalate: [my-strong-model, my-strongest]   # attempt 2, then attempt 3 and later
+  - key: review
+    role: review
+    dependsOn: [implement]
+    independentOf: implement                    # adds review.independent to the gate
+```
+
+A step's model wins over its role's (Team → Roles) and the runtime profile's.
+A model name is one word, passed to the runtime as written; a ladder has at most
+five entries; `independentOf` must name a step this one depends on. See
+[the models guide](guides/models.md).
+
 ## When something is wrong
 
 Mistakes are caught when the workflow is read, naming the step and the problem —

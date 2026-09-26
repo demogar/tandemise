@@ -48,6 +48,13 @@ export interface RunRequest {
   /** Filesystem roots this run may read/write, beyond `workingDirectory`. */
   readonly allowedRoots: readonly string[];
   readonly mcpConfigPath: string | null;
+  /**
+   * The model this run is given (P12), already resolved by the engine. A
+   * string is passed to the runtime; null means pass nothing (the runtime's
+   * own default). Undefined - a caller from before P12 - leaves the adapter to
+   * read its profile's own `model` setting.
+   */
+  readonly model?: string | null;
   readonly maxWallTimeMs: number;
   /** Aborting must terminate the child process, not merely stop iteration. */
   readonly signal: AbortSignal;
@@ -123,6 +130,12 @@ export interface AgentRuntimeAdapter {
   discover(): Promise<RuntimeDiscovery>;
   healthCheck(profile: RuntimeProfile): Promise<RuntimeHealth>;
   capabilities(profile: RuntimeProfile): readonly RuntimeCapability[];
+  /**
+   * Whether this profile can be given a model per run (P12). Absent means no:
+   * the run is recorded as using the runtime's default, never a model that was
+   * not passed.
+   */
+  acceptsModel?(profile: RuntimeProfile): boolean;
 
   start(request: RunRequest): AsyncIterable<AgentEvent>;
   /**

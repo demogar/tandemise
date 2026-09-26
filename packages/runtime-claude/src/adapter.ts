@@ -150,6 +150,11 @@ export class ClaudeCodeAdapter implements AgentRuntimeAdapter {
     return this.#health(profile, quota?.blocking === true ? 'degraded' : 'healthy', version, detail);
   }
 
+  /** Claude Code takes `--model` on every run (P12). */
+  acceptsModel(_profile: RuntimeProfile): boolean {
+    return true;
+  }
+
   capabilities(profile: RuntimeProfile): readonly RuntimeCapability[] {
     return withDeclaredCapabilities(profile, CLAUDE_CAPABILITIES, this.baseCapabilities);
   }

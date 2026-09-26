@@ -1,0 +1,11 @@
+name: P12 escalate
+description: One step on its own model that retries on a stronger one.
+steps:
+  - key: implement
+    title: Record the decision
+    role: product
+    objective: Record how the hello page is implemented.
+    outputs: [DecisionRecord]
+    gate: artifact.DecisionRecord.exists
+    model: step-model
+    escalate: [strong-model]

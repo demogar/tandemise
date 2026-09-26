@@ -81,6 +81,18 @@ const SPEC_MISSES_U2 = mode('SCRIPTED_SPEC_MISSES_U2');
 const QA_PARTIAL = mode('SCRIPTED_QA_PARTIAL');
 const QA_FAIL_AC2 = mode('SCRIPTED_QA_FAIL_AC2');
 const baseAcs = (QA_PARTIAL || mode('SCRIPTED_SPEC_THREE_ACS')) ? 3 : (QA_FAIL_AC2 || mode('SCRIPTED_SPEC_TWO_ACS')) ? 2 : 1;
+// P12, model routing. The runtime passes the run's model as `--model <name>` when its profile names
+// that flag (settings.modelFlag). SCRIPTED_ARGS_DIR (env): every run's argv is saved there with its
+// step title and mission goal, so a scenario can assert which model each run was started with.
+if (process.env.SCRIPTED_ARGS_DIR) {
+  mkdirSync(process.env.SCRIPTED_ARGS_DIR, { recursive: true });
+  const argv = process.argv.slice(2);
+  const at = argv.indexOf('--model');
+  writeFileSync(
+    join(process.env.SCRIPTED_ARGS_DIR, `${Date.now()}-${process.pid}.json`),
+    JSON.stringify({ argv, model: at < 0 ? null : argv[at + 1] ?? null, title, goal: /^Goal: (.*)$/m.exec(prompt)?.[1] ?? '' }),
+  );
+}
 if (process.env.SCRIPTED_PROMPT_DIR) {
   mkdirSync(process.env.SCRIPTED_PROMPT_DIR, { recursive: true });
   writeFileSync(join(process.env.SCRIPTED_PROMPT_DIR, `${Date.now()}-${process.pid}.txt`), prompt);

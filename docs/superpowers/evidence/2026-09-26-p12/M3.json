@@ -1,0 +1,86 @@
+{
+  "id": "M3",
+  "title": "Past its warning level a mission runs on the role's economy model",
+  "ok": true,
+  "checks": [
+    {
+      "label": "proof (API): Product Manager economy model saved",
+      "ok": true,
+      "observed": {
+        "model": null,
+        "escalate": [],
+        "economyModel": "economy-model"
+      }
+    },
+    {
+      "label": "proof (API): a 20-minute limit warning at 25%",
+      "ok": true,
+      "observed": [
+        {
+          "metric": "agent_minutes",
+          "amount": 20,
+          "warnPercent": 25
+        }
+      ]
+    },
+    {
+      "label": "the mission completes",
+      "ok": true,
+      "observed": "COMPLETE"
+    },
+    {
+      "label": "step 1 (under the warning level): \"Model: profile-model · runtime profile default\"",
+      "ok": true,
+      "observed": "Model: profile-model · runtime profile default"
+    },
+    {
+      "label": "step 2 (6 of 20 minutes used): \"Model: economy-model · economy: 30% of limit\"",
+      "ok": true,
+      "observed": "Model: economy-model · economy: 30% of limit"
+    },
+    {
+      "label": "Metrics → \"Usage by model\": profile-model and economy-model, 6 min each",
+      "ok": true,
+      "observed": "Usage by model\nWhich model each run was given\neconomy-model\n1 run · 6m 0s · 1,500 tokens\nprofile-model\n1 run · 6m 0s · 1,500 tokens"
+    },
+    {
+      "label": "proof (agent argv): --model profile-model, then --model economy-model",
+      "ok": true,
+      "observed": [
+        [
+          "--model",
+          "profile-model"
+        ],
+        [
+          "--model",
+          "economy-model"
+        ]
+      ]
+    },
+    {
+      "label": "proof (SQL): the reasons recorded",
+      "ok": true,
+      "observed": [
+        {
+          "attempt": 1,
+          "status": "SUCCEEDED",
+          "model": "profile-model",
+          "reason": "runtime profile default",
+          "key": "first"
+        },
+        {
+          "attempt": 1,
+          "status": "SUCCEEDED",
+          "model": "economy-model",
+          "reason": "economy: 30% of limit",
+          "key": "second"
+        }
+      ]
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p12-models/scratch/acceptance/p12/evidence/M3-drawer-economy.png",
+    "/Users/demogar/projects/tandemise/tandemise-p12-models/scratch/acceptance/p12/evidence/M3-usage-by-model.png"
+  ]
+}

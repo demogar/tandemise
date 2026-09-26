@@ -180,6 +180,8 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       r.resolve(t.APPROVAL_REPOSITORY),
       r.resolve(t.MISSION_REPOSITORY),
       r.resolve(t.MISSION_CRITERIA_REPOSITORY),
+      r.resolve(t.RUN_REPOSITORY),
+      r.resolve(t.RUNTIME_PROFILE_REPOSITORY),
     ), { source: SOURCE });
 
     bind(t.REVIEW_PIPELINE, (r) => new ReviewPipeline({

@@ -1,0 +1,97 @@
+{
+  "id": "M1",
+  "title": "A step's own model wins over its role's; each run records which model and why",
+  "ok": true,
+  "checks": [
+    {
+      "label": "Team → Roles → Developer shows the Models section",
+      "ok": true,
+      "observed": "Models\n\nNames are passed to the runtime exactly as you type them. A workflow step's own model wins over these; leave a field empty to use the runtime's model.\n\nModel\nEvery run of this role, unless a step says otherwise.\nOn retry, use\nAttempt 2 uses the first, attempt 3 and later the next. Comma-sepa"
+    },
+    {
+      "label": "proof (API): the Developer role now has model role-dev",
+      "ok": true,
+      "observed": {
+        "model": "role-dev",
+        "escalate": [],
+        "economyModel": null
+      }
+    },
+    {
+      "label": "the mission completes",
+      "ok": true,
+      "observed": "COMPLETE"
+    },
+    {
+      "label": "implement drawer: \"Model: step-model · step override\"",
+      "ok": true,
+      "observed": "Model: step-model · step override"
+    },
+    {
+      "label": "and its own settings: \"This step: model step-model · retries use strong-model\"",
+      "ok": true,
+      "observed": "This step: model step-model · retries use strong-model"
+    },
+    {
+      "label": "review drawer: \"Model: profile-model · runtime profile default\"",
+      "ok": true,
+      "observed": "Model: profile-model · runtime profile default"
+    },
+    {
+      "label": "and \"This step: must differ from implement\"",
+      "ok": true,
+      "observed": "This step: must differ from implement"
+    },
+    {
+      "label": "its gate includes review.independent and passed",
+      "ok": true,
+      "observed": "Review\nRetry with more access\nSucceeded\nReviewer\nScripted agent\nModel: profile-model · runtime profile default\nm1-hello-page-muit0dna-review\nworktree isolation\n\nThis step: must differ from implement\n\nDone by\nScripted agent\n·\nResponsible\nYou\nOBJECTIVE\nReview the hello page change.\nSTARTED\nSep 26, 2026, 2:50 PM\nFINISHED\nSep 26, 2026, 2:50 PM · 2s\nCOMPLETION GATE\nAll gate conditions met.\n(artifact.ReviewReport.exists) && review.independent\nEVALUATION — PASS\n\nReviewReport ready for the hello page\n\nARTIFACTS PRODUCED\nReviewReport: Scripted work\nDetails\nRequest changes\nClose"
+    },
+    {
+      "label": "Metrics → \"Usage by model\" lists step-model and profile-model, one run each",
+      "ok": true,
+      "observed": "Usage by model\nWhich model each run was given\nprofile-model\n1 run · 2s · tokens not reported\nstep-model\n1 run · 2s · tokens not reported"
+    },
+    {
+      "label": "proof (agent argv): run 1 got --model step-model, run 2 --model profile-model",
+      "ok": true,
+      "observed": [
+        [
+          "--model",
+          "step-model"
+        ],
+        [
+          "--model",
+          "profile-model"
+        ]
+      ]
+    },
+    {
+      "label": "proof (SQL): runs.model / model_reason recorded",
+      "ok": true,
+      "observed": [
+        {
+          "attempt": 1,
+          "status": "SUCCEEDED",
+          "model": "step-model",
+          "reason": "step override",
+          "key": "implement"
+        },
+        {
+          "attempt": 1,
+          "status": "SUCCEEDED",
+          "model": "profile-model",
+          "reason": "runtime profile default",
+          "key": "review"
+        }
+      ]
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p12-models/scratch/acceptance/p12/evidence/M1-developer-models.png",
+    "/Users/demogar/projects/tandemise/tandemise-p12-models/scratch/acceptance/p12/evidence/M1-implement-drawer.png",
+    "/Users/demogar/projects/tandemise/tandemise-p12-models/scratch/acceptance/p12/evidence/M1-review-drawer.png",
+    "/Users/demogar/projects/tandemise/tandemise-p12-models/scratch/acceptance/p12/evidence/M1-usage-by-model.png"
+  ]
+}

@@ -2,14 +2,14 @@ import type {
   Approval, ApprovalRepositoryPort, ArtifactManifest, ArtifactRepositoryPort, ArtifactStorePort, ArtifactType,
   AssignmentRepositoryPort, CapabilityGrant, CheckResult, CheckpointRepositoryPort,
   DecisionRepositoryPort, EventRepositoryPort, ExecutionTargetRepositoryPort, ExecutionTargetRecord, ExternalRef,
-  CriteriaTrace, GateOutcome, LoadedArtifact, Member, MemberRepositoryPort, Mission, MissionCriterion, MissionQuestionRepositoryPort, MissionRepositoryPort, MissionTask, RepoRepositoryPort,
+  CriteriaTrace, GateOutcome, LimitPressure, LoadedArtifact, Member, MemberRepositoryPort, Mission, MissionCriterion, MissionQuestionRepositoryPort, MissionRepositoryPort, MissionTask, RepoRepositoryPort,
   Repository, ResourceLease, RoleRepositoryPort, RoleTemplate, Run, RunEventRecord, RunInputRepositoryPort, RunPurpose,
-  RunRepositoryPort, RunUsage, TracedCriterion,
+  ResolvedModel, RunRepositoryPort, RunUsage, TracedCriterion,
   RuntimeProfile, RuntimeProfileRepositoryPort, TargetKind, TaskRepositoryPort, TaskStatus,
   Workspace, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
 import {
-  ACCEPT_RESULT_OPTION, CORE_CAPABILITIES, RUNTIME_ACTOR, anyCapabilityMatches, gateDependencies, indexTeam, isActiveMember, responsibleFor,
+  ACCEPT_RESULT_OPTION, CORE_CAPABILITIES, RUNTIME_ACTOR, anyCapabilityMatches, gateDependencies, indexTeam, isActiveMember, resolveModel, responsibleFor,
 } from '@tandemise/domain';
 import { isDaemonStopping } from '../support/shutdown.js';
 import { LIVE_RUN_STATUSES } from '../support/downstream.js';
@@ -83,6 +83,8 @@ export interface LimitGuard {
   admit(missionId: MissionId): string | null;
   /** Measures the mission and its project after a run's usage was recorded; warns or stops. */
   afterUsage(missionId: MissionId, finishedRunId: RunId): void;
+  /** The limit furthest past its warning level, or null (P12: the economy model rule). Optional for older harnesses. */
+  pressure?(missionId: MissionId): LimitPressure | null;
 }
 
 export interface TaskExecutorDeps {
@@ -596,6 +598,8 @@ export class TaskExecutor {
     // attempt count: a resumed session continues an attempt in a new run, and
     // (task, attempt) is unique on the runs table.
     const runNumber = Math.max(task.attempts, ...deps.runs.listByTask(task.id).map((r) => r.attempt + 1));
+    // P12: the model, decided by the one rule and recorded on the run before it starts.
+    const chosen = this.#modelFor(task, mission, profile, input.adapter);
     deps.runs.create({
       id: runId,
       missionId: mission.id,
@@ -618,6 +622,8 @@ export class TaskExecutor {
       agentMemberId: input.agent?.id ?? null,
       round: input.round,
       purpose: input.purpose,
+      model: chosen.model,
+      modelReason: chosen.reason,
     });
     // Recorded before the run starts, so a round started while it runs already sees it as a consumer.
     deps.runInputs.record(runId, input.inputs);
@@ -660,6 +666,7 @@ export class TaskExecutor {
       grants: grants.map((g) => g.capability),
       allowedRoots: allowedRoots(grants, target.workingDirectory),
       mcpConfigPath: input.mcpConfigPath,
+      model: chosen.model,
       // The adapter runs its own timer, which cannot be paused. Given the real
       // budget it would kill a worker mid-question; given this it remains a
       // backstop against a runaway adapter and never fires before the deadline
@@ -760,6 +767,35 @@ export class TaskExecutor {
     });
 
     return { runId, status, failure, cancelled, interrupted };
+  }
+
+  /**
+   * The model for a run of this task (P12). Gathers what `resolveModel` reads -
+   * the step's settings, the role's, the profile's, the attempt, how close a
+   * limit is, whether the runtime can take a model - and decides nothing itself.
+   */
+  #modelFor(
+    task: MissionTask,
+    mission: Mission,
+    profile: RuntimeProfile,
+    adapter: { acceptsModel?(profile: RuntimeProfile): boolean },
+  ): ResolvedModel {
+    const role = this.deps.roles.get(task.roleId, mission.workspaceId);
+    const profileModel = profile.settings['model'];
+    let pressure: LimitPressure | null = null;
+    try {
+      pressure = this.deps.limits?.pressure?.(mission.id) ?? null;
+    } catch (e) {
+      this.deps.log.warn('limits.pressure_failed', { missionId: mission.id, error: errorMessage(e) });
+    }
+    return resolveModel({
+      step: task.modelPolicy ?? null,
+      role: role?.models ?? null,
+      profileModel: typeof profileModel === 'string' ? profileModel : null,
+      attempt: Math.max(1, task.attempts),
+      pressure,
+      runtimeTakesModel: adapter.acceptsModel?.(profile) ?? false,
+    });
   }
 
   /**
@@ -2089,7 +2125,7 @@ interface TightenInput extends AttemptContext {
   readonly retained: SlotRetention;
   readonly harvest: HarvestResult;
   readonly profile: RuntimeProfile;
-  readonly adapter: { resume?: unknown };
+  readonly adapter: { resume?: unknown; acceptsModel?(profile: RuntimeProfile): boolean };
   readonly target: ExecutionTarget;
   readonly assignment: { id: import('@tandemise/shared').WorkerAssignmentId };
   readonly grants: readonly CapabilityGrant[];
@@ -2117,7 +2153,7 @@ interface DriveInput {
   readonly task: MissionTask;
   readonly mission: Mission;
   readonly profile: RuntimeProfile;
-  readonly adapter: { resume?: unknown };
+  readonly adapter: { resume?: unknown; acceptsModel?(profile: RuntimeProfile): boolean };
   readonly target: ExecutionTarget;
   readonly assignment: { id: import('@tandemise/shared').WorkerAssignmentId };
   readonly prompt: string;

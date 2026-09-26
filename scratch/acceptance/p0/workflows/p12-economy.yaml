@@ -1,0 +1,17 @@
+name: P12 economy
+description: Two document steps, so the second one starts past a limit's warning level.
+steps:
+  - key: first
+    title: First decision
+    role: product
+    objective: Record the first decision about the hello page.
+    outputs: [DecisionRecord]
+    gate: artifact.DecisionRecord.exists
+  - key: second
+    title: Second decision
+    role: product
+    dependsOn: [first]
+    objective: Record the second decision about the hello page.
+    inputs: [DecisionRecord]
+    outputs: [DecisionRecord]
+    gate: artifact.DecisionRecord.exists
