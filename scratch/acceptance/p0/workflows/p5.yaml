@@ -20,4 +20,4 @@ steps:
     objective: Assemble the release candidate for the hello page.
     inputs: [QAReport]
     outputs: [ReleaseCandidate]
-    gate: qa.criteria_unverified == 0 && qa.blocking_defects == 0
+    gate: artifact.ReleaseCandidate.exists && qa.criteria_unverified == 0 && qa.blocking_defects == 0

@@ -140,7 +140,7 @@ section('presets read the ledger');
   check('product_spec: spec exists, every line covered, no unknown ids, at least one criterion',
     gate(fd, 'product_spec') === 'artifact.ProductSpec.exists && criteria.uncovered_user == 0 && criteria.unknown_covers == 0 && criteria.total >= 1', gate(fd, 'product_spec'));
   check('qa: no failed criterion', gate(fd, 'qa') === 'artifact.QAReport.exists && review.blocking_findings == 0 && qa.criteria_failed == 0', gate(fd, 'qa'));
-  check('release_candidate: none left unverified', gate(fd, 'release_candidate') === 'qa.criteria_unverified == 0 && qa.blocking_defects == 0', gate(fd, 'release_candidate'));
+  check('release_candidate: a release candidate exists and none is left unverified', gate(fd, 'release_candidate') === 'artifact.ReleaseCandidate.exists && qa.criteria_unverified == 0 && qa.blocking_defects == 0', gate(fd, 'release_candidate'));
   check('implement keeps the Slice 0 tests clause', gate(fd, 'implement').endsWith('checks.tests == PASS'));
   const bug = app.findPreset('bug-investigation').build({ hasTestCommand: false });
   check('bug-investigation gates its spec and its verification the same way', gate(bug, 'investigate') === app.SPEC_CRITERIA_GATE && gate(bug, 'verify') === app.QA_CRITERIA_GATE);
@@ -223,6 +223,9 @@ const specDoc = (criteria) => ['---', 'type: ProductSpec', 'title: Hello spec', 
   ...criteria.flatMap((c) => [`  - id: ${c.id}`, `    statement: ${c.statement ?? `${c.id} holds`}`, `    covers: [${(c.covers ?? []).join(', ')}]`]), '---', '', '# Hello'].join('\n');
 const qaDoc = (results) => ['---', 'type: QAReport', 'title: Hello QA', 'handoff:', '  headline: QA ran', 'results:',
   ...results.flatMap((r) => [`  - ${r.legacy ? 'criterion' : 'criterionId'}: ${r.id}`, `    outcome: ${r.outcome}`, `    evidence: ${r.evidence ?? 'observed'}`]), 'blockingDefects: 0', '---', '', '# QA'].join('\n');
+
+const rcDoc = () => ['---', 'type: ReleaseCandidate', 'title: Hello release', 'handoff:', '  headline: The hello page is ready to ship', 'ref: abc1234',
+  'checks:', '  - name: tests', '    outcome: PASS', 'unresolvedRisks: []', 'rollback: git revert abc1234', '---', '', '# Release'].join('\n');
 
 const HOME = mkdtempSync(join(tmpdir(), 'tdm-p5-'));
 const keepAlive = setInterval(() => {}, 1000);
@@ -354,7 +357,13 @@ try {
 
     await tick();
     await harvest(qa, 'QAReport', qaDoc([{ id: 'AC1', outcome: 'PASS' }, { id: 'AC2', outcome: 'PASS' }]));
-    check('all verified: the release gate passes', h.gates.evaluate(h.tasks.get(release.id)).passed, h.gates.evaluate(h.tasks.get(release.id)).detail);
+    // A release step that wrote nothing has not produced its output: the QA
+    // facts alone must not pass it (found in P10).
+    const empty = h.gates.evaluate(h.tasks.get(release.id));
+    check('all verified but no release candidate written: the release gate is not met', !empty.passed && empty.detail.includes('artifact.ReleaseCandidate.exists'), empty.detail);
+    const rc = await harvest(release, 'ReleaseCandidate', rcDoc());
+    check('the release candidate is stored', rc.manifests.length === 1, rc.issues);
+    check('all verified and a release candidate: the release gate passes', h.gates.evaluate(h.tasks.get(release.id)).passed, h.gates.evaluate(h.tasks.get(release.id)).detail);
     const all = h.services.criteria.list(mission.id);
     check('every row reads PASS and U rows say what verified them', all.every((v) => v.result === 'PASS') && all.find((v) => v.key === 'U2').evidence === 'Through AC1, AC2', all.map((v) => [v.key, v.result, v.evidence]));
     check('"N of M verified" counts the spec criteria: 2 of 2', all.filter((v) => v.counted).length === 2 && all.filter((v) => v.counted && v.result === 'PASS').length === 2);

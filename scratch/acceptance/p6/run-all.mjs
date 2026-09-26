@@ -14,8 +14,8 @@ import { tmpdir } from 'node:os';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '../../..');
-const LINK = '/tmp/tdm-p6';
-const PORT = 9341;
+const LINK = process.env.ACCEPTANCE_LINK ?? '/tmp/tdm-p6';
+const PORT = Number(process.env.CDP_PORT ?? 9341);
 const EVIDENCE = join(here, 'evidence');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const log = (m) => console.log(`\n### ${m}`);

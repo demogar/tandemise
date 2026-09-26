@@ -153,6 +153,10 @@ ${fence(JSON.stringify(presetPlan, null, 2), 'json')}
 6. Any task that writes code must use \`executionPolicy.isolation: "worktree"\`.
 7. \`completionGate\`, when present, is a boolean expression over measured facts.
    The available operators are \`&& || ! == != > >= < <=\` and parentheses.
+   A gate replaces the check that the task wrote its outputs, so a gate on a
+   task with outputs must include \`artifact.<Type>.exists\` for an artifact in
+   its own \`expectedOutputs\` (for a release: \`artifact.ReleaseCandidate.exists
+   && qa.criteria_unverified == 0\`). With no gate, every expected output must exist.
    The facts you may reference:
    - \`artifact.<Type>.exists\` — boolean
    - \`checks.typecheck\`, \`checks.lint\`, \`checks.tests\`, \`checks.build\` — PASS | FAIL | SKIP
