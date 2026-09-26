@@ -267,7 +267,7 @@ export class PlanningServiceImpl implements PlanningService {
         + 'Re-plan once a runtime is available if you want a tailored plan.',
         'warn',
       );
-      return { plan: preset.build(), source: 'preset', fallbackReason: reason, issues: [] };
+      return { plan: preset.build({ hasTestCommand: (repository?.checks?.test ?? null) !== null }), source: 'preset', fallbackReason: reason, issues: [] };
     };
 
     const candidates = this.#plannerCandidates(workspace);
