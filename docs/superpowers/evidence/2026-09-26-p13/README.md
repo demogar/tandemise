@@ -1,6 +1,6 @@
 # P13 evidence: skills library
 
-Headline: **4/4 real-app scenarios pass** (N1–N4, 55/55 checks) on a fresh install, built from `feat/p13-skills-library`. Offline: `p13-skills-check` 105/105 (written first and seen failing on the base build: `D.hashSkillFiles is not a function`); `npm run ci` green (37 offline checks).
+Headline: **4/4 real-app scenarios pass** (N1–N4, 55/55 checks) on a fresh install, built from `feat/p13-skills-library` rebased onto `main` (563f0e6, after #18 merged). Offline: `p13-skills-check` 105/105 (written first and seen failing on the base build: `D.hashSkillFiles is not a function`); `npm run ci` green (37 offline checks).
 
 ## How it was run
 
@@ -33,7 +33,7 @@ Content hashes are deterministic, so the same fixture always shows the same shor
 
 | Suite | Result |
 |---|---|
-| p0 | A1 PASS; stops at s02, which fails on the base already ("Add person" removed in 0.4.0; rewritten in #17) |
+| p0 | ALL PASS 14/14 |
 | p1 | ALL PASS 14/14 |
 | p2 | ALL PASS 11/11 |
 | p5 | ALL PASS 5/5 |
