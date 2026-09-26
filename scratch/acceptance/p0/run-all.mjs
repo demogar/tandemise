@@ -74,15 +74,14 @@ const scenarios = (P2 ? [
   ['../../p1/suite/b13-plan-and-checks.mjs'],
   ...(skipClaude ? [] : [['../../p1/suite/b11-real-claude.mjs']]),
 ] : [
+  // s04 (A5, A10) and s04b (A16) are retired: they need a second person (see README.md).
   ['s01-a1-solo.mjs'],
   ['s02-team.mjs'],
   ['s03-team-mission.mjs'],
-  ['s04-escalation-signoff.mjs'],
   ['s05-midway.mjs', { daemonDelay: 20000 }],
   ...(skipClaude ? [] : [['s06-real-claude.mjs', { daemonDelay: 1500 }]]),
-  ['s07-remove-person.mjs', { daemonDelay: 1500 }],
-  ['s04b-pool-escalation.mjs'],
-  ['s08-person-review-reassign.mjs'],
+  ['s07-remove-agent.mjs', { daemonDelay: 1500 }],
+  ['s08-reassign-task.mjs'],
 ]).filter(([file]) => !only || only.some((o) => file.includes(o)));
 
 let failed = null;
@@ -104,7 +103,7 @@ for (const [file, opts = {}] of scenarios) {
 
 // ---------------------------------------------------------------- report
 const results = readdirSync(join(here, 'evidence')).filter((f) => f.endsWith('.json')).map((f) => JSON.parse(readFileSync(join(here, 'evidence', f), 'utf8')));
-const order = ['C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9', 'C10', 'C11', 'C12', 'B1', 'B2', 'B3', 'B3a', 'B4', 'B5', 'B6', 'B7', 'B8', 'B9', 'B10', 'B11', 'B12', 'A1', 'TEAM', 'PLAN', 'A2', 'A4', 'A6', 'A8', 'A9a', 'A3', 'A7', 'A9b', 'A13', 'A5', 'A10', 'A12', 'A15', 'A11', 'A16', 'A17', 'A18'];
+const order = ['C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9', 'C10', 'C11', 'C12', 'B1', 'B2', 'B3', 'B3a', 'B4', 'B5', 'B6', 'B7', 'B8', 'B9', 'B10', 'B11', 'B12', 'A1', 'TEAM', 'PLAN', 'A2', 'A2d', 'A8', 'A9a', 'A3', 'A7q', 'A9b', 'A13', 'A12', 'A15', 'A11', 'A18'];
 results.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
 const lines = [
   `# ${P2 ? 'P2' : P1 ? 'P1' : 'P0'} acceptance report`,
