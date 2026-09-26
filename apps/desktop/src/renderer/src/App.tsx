@@ -104,16 +104,21 @@ function ProjectShell(): JSX.Element {
         <ErrorBoundary resetKey={location}>
           <Switch>
             <Route path="/" component={Home} />
-            <Route path="/missions" component={Missions} />
+            <Route path="/missions">{() => <Missions />}</Route>
             <Route path="/missions/new" component={NewMission} />
+            {/* Home's desk opens the list behind each number (P10). */}
+            <Route path="/missions/backlog">{() => <Missions initial="backlog" />}</Route>
+            <Route path="/missions/in-progress">{() => <Missions initial="progress" />}</Route>
             <Route path="/missions/:id/:tab?">
               {(params) => <MissionDetail id={params.id ?? ''} tab={normalizeTab(params.tab)} />}
             </Route>
-            <Route path="/inbox" component={Inbox} />
+            <Route path="/inbox">{() => <Inbox />}</Route>
+            <Route path="/inbox/stalled">{() => <Inbox only="stalled" />}</Route>
             <Route path="/approvals">
               <Redirect to="/inbox" replace />
             </Route>
-            <Route path="/artifacts" component={Artifacts} />
+            <Route path="/artifacts">{() => <Artifacts />}</Route>
+            <Route path="/artifacts/:id">{(params) => <Artifacts openId={params.id ?? null} />}</Route>
             <Route path="/team/:tab?">{(params) => <Team tab={normalizeTeamTab(params.tab)} />}</Route>
             <Route path="/workforce">
               <Redirect to="/team" replace />

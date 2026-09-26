@@ -103,6 +103,8 @@ export function buildRouter(services: TandemiseServices): Router {
     return services.backlog.update(id, backlog);
   });
   r.get('/v1/workspaces/:id/backlog', (ctx) => services.backlog.view(asId(ctx.params.id!)));
+  // The status report (P10): rendered from stored facts, stored as the next version of the project's line.
+  r.post('/v1/workspaces/:id/status-report', (ctx) => services.desk.writeStatusReport(asId(ctx.params.id!), ctx.caller));
   r.delete('/v1/missions/:id', (ctx) => services.missions.remove(asId(ctx.params.id!)));
 
   r.post('/v1/missions/:id/plan', (ctx) => services.planning.begin(asId(ctx.params.id!)));

@@ -32,7 +32,8 @@ await page.screenshot(ev.shot('project-limits'));
 await page.navigate('#/');
 await sleep(1500);
 const home = await page.text('body');
-ev.check('Home: "Monthly limit warning: this project used … this month (85%). Only urgent and high missions are pulled …"', home.includes('Monthly limit warning: this project used') && home.includes('Only urgent and high missions are pulled'), home.slice(0, 700));
+// P10: the desk's month banner replaced the P8 wording on Home (same numbers, the rule first).
+ev.check('Home: "Monthly limit at 8x% — only urgent and high work will be pulled. This project used … this month …"', /Monthly limit at 8\d% — only urgent and high work will be pulled\. This project used /.test(home), home.slice(0, 700));
 await page.screenshot(ev.shot('home-month-warning'));
 
 await openBacklog(c);

@@ -463,6 +463,12 @@ export interface MissionSummary {
   /** Title of whatever is currently happening, for the list row subtitle. */
   readonly currentActivity: string | null;
   readonly lastEventAt: string | null;
+  /**
+   * Its Done-when ledger as the feed counts it (P5): counted rows that PASS of
+   * counted rows. Null for a draft or a mission with nothing to verify yet.
+   * Optional so views built before P10 still type-check.
+   */
+  readonly criteria?: { readonly verified: number; readonly counted: number } | null;
 }
 
 export interface MissionDetail {
@@ -660,6 +666,52 @@ export interface HomeView {
   readonly recentEvents: readonly RunEventRecord[];
   /** Missions and the project at or over a limit's warning level (P8). */
   readonly limitAlerts: readonly LimitAlertView[];
+  /** The desk's numbers (P10); absent only when there is no project. */
+  readonly metrics?: HomeMetricsView;
+  /** What the numbers mean for what runs next (P10), in order. */
+  readonly banners?: readonly HomeBannerView[];
+}
+
+/**
+ * The owner's desk (P10): five numbers, each read from rows on every request.
+ * Nothing here is stored.
+ */
+export interface HomeMetricsView {
+  /** Open cards other than checks, steps parked for a person, refinements to decide, silent runs: for anyone. */
+  readonly needsYou: number;
+  /** Missions in progress: not DRAFT, not PAUSED, not finished (P7). */
+  readonly active: number;
+  /** The work-in-progress limit; null when off. */
+  readonly wipLimit: number | null;
+  readonly queued: number;
+  /** P5's trace summed over the missions in progress: counted rows that PASS. */
+  readonly criteriaVerified: number;
+  readonly criteriaTotal: number;
+  /** Missions in progress that have any counted criteria. */
+  readonly criteriaMissions: number;
+  /** The local month the monthly limits measure, "2026-09". */
+  readonly month: string;
+  /** The project's monthly limits measured now (P8); empty when none is set. */
+  readonly monthUsage: readonly LimitStatusView[];
+  /** The month's usage, limit or not. */
+  readonly usage: UsageView;
+  /** Missions nothing moves and nothing asks about (P9). */
+  readonly stalled: number;
+}
+
+export interface HomeBannerView {
+  /** month_warn: the monthly limit is at its warning level; wip_full: every slot taken, work queued. */
+  readonly kind: 'month_warn' | 'wip_full';
+  readonly text: string;
+  /** Where the banner leads. */
+  readonly href: string;
+}
+
+/** A status report was rendered and stored (P10). */
+export interface StatusReportWritten {
+  readonly artifactId: string;
+  /** Its place in the project's line of reports, 1-based. */
+  readonly version: number;
 }
 
 /** One limit as measured now (P8). */

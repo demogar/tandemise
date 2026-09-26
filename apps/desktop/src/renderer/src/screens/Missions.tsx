@@ -9,7 +9,14 @@ import { useListNavigation } from '../lib/keyboard.js';
 import { missionTone, pluralize, relativeTime } from '../lib/format.js';
 import { Backlog } from './missions/Backlog.js';
 
-type Filter = 'backlog' | 'active' | 'blocked' | 'finished' | 'all';
+type Filter = 'backlog' | 'active' | 'blocked' | 'finished' | 'all' | 'progress';
+
+/**
+ * In progress as the desk counts it (P7's rule): not a draft, not paused, not
+ * finished. Wider than the Active tab, which leaves blocked missions to "Needs
+ * attention"; Home's "Working on" and "Criteria verified" cards open this view.
+ */
+const IN_PROGRESS = (status: MissionStatus): boolean => status !== 'DRAFT' && status !== 'PAUSED' && !FINISHED.includes(status);
 
 // Drafts live in the Backlog tab: they are waiting to be planned, not being worked on.
 const ACTIVE: readonly MissionStatus[] = ['PLANNING', 'EXECUTING', 'REVIEWING', 'QA', 'READY_TO_SHIP', 'OBSERVING'];
@@ -24,8 +31,8 @@ const FILTERS: readonly { value: Filter; label: string }[] = [
   { value: 'all', label: 'All' },
 ];
 
-export function Missions(): JSX.Element {
-  const [filter, setFilter] = useState<Filter>('active');
+export function Missions({ initial = 'active' }: { initial?: Filter } = {}): JSX.Element {
+  const [filter, setFilter] = useState<Filter>(initial);
   const [query, setQuery] = useState('');
   const [, navigate] = useLocation();
   const missions = useMissions();
@@ -38,6 +45,7 @@ export function Missions(): JSX.Element {
       blocked: all.filter((m) => BLOCKED.includes(m.mission.status)).length,
       finished: all.filter((m) => FINISHED.includes(m.mission.status)).length,
       all: all.length,
+      progress: all.filter((m) => IN_PROGRESS(m.mission.status)).length,
     };
   }, [missions.data]);
 
@@ -49,6 +57,7 @@ export function Missions(): JSX.Element {
         if (filter === 'active') return ACTIVE.includes(summary.mission.status);
         if (filter === 'blocked') return BLOCKED.includes(summary.mission.status);
         if (filter === 'finished') return FINISHED.includes(summary.mission.status);
+        if (filter === 'progress') return IN_PROGRESS(summary.mission.status);
         return true;
       })
       .filter(
@@ -107,6 +116,15 @@ export function Missions(): JSX.Element {
       <div className="page">
         <div className="page__inner">
           {missions.isError ? <ErrorState error={missions.error} onRetry={() => void missions.refetch()} /> : null}
+          {filter === 'progress' ? (
+            <div className="banner" style={{ marginBottom: 'var(--s4)' }}>
+              <Icon name="activity" size={15} className="dim" />
+              <span style={{ flex: 1 }}>Showing the {pluralize(counts.progress, 'mission')} in progress, blocked ones included: the work Home counts.</span>
+              <button type="button" className="btn" onClick={() => setFilter('all')}>
+                Show all missions
+              </button>
+            </div>
+          ) : null}
 
           {filter === 'backlog' ? (
             <Backlog />
@@ -155,6 +173,12 @@ export function Missions(): JSX.Element {
                         </div>
                       </div>
                       <div className="list__aside">
+                        {/* The Done-when ledger at a glance (P5), what the desk's "Criteria verified" adds up (P10). */}
+                        {summary.criteria ? (
+                          <span className={`chip${summary.criteria.verified === summary.criteria.counted ? '' : ' chip--muted'}`} title="Done-when criteria verified by QA">
+                            {summary.criteria.verified} of {summary.criteria.counted} verified
+                          </span>
+                        ) : null}
                         {progress.pendingApprovals > 0 ? (
                           <span className="badge badge--blocked">
                             <Icon name="approvals" size={11} />

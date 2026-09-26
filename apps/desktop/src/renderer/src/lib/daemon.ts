@@ -31,6 +31,7 @@ import type {
   UpdateWorkspaceRequest,
   UpdateMissionRequest,
   BacklogView,
+  StatusReportWritten,
   AddRepositoryRequest,
   CreateWorkspaceRequest,
   AddMemberRequest,
@@ -220,6 +221,11 @@ export class DaemonClient {
   /** The project's backlog: drafts in the order they are planned, and the work-in-progress limit. */
   backlog(workspaceId: string): Promise<BacklogView> {
     return this.#get(`/workspaces/${workspaceId}/backlog`);
+  }
+
+  /** Renders a status report from stored facts and stores it as the project's next version (P10). */
+  writeStatusReport(workspaceId: string): Promise<StatusReportWritten> {
+    return this.#request('POST', `/workspaces/${workspaceId}/status-report`);
   }
 
   /** Priority, queue or a move up/down; answered with the backlog. */

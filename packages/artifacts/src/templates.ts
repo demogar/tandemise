@@ -372,17 +372,25 @@ questions:
   StatusReport: `---
 type: StatusReport
 schemaVersion: 1
-title: <one line naming the period this report covers, at most ${HANDOFF_LIMITS.title} characters>
+title: Status report: <the project's name, at most ${HANDOFF_LIMITS.title} characters>
+asOf: <the instant the facts were read, ISO 8601>
+handoff:
+  headline: <needs you · working on · criteria verified · stalled, as counts>
 ---
 
+# Status report: <the project's name>
+
+## At a glance
+<Needs you, Working on (of the limit, and queued), Criteria verified, This month against the monthly limit, Stalled: one line each, as numbers.>
+
 ## Missions
-<Each mission: its status and what it waits on.>
+<Each mission not in draft and not finished, in backlog order: status, whether it moves, is stalled (and the one action) or waits on you, criteria verified of total with the keys that are not, its limit, what waits on a person, its last gate failure verbatim.>
 
-## Criteria
-<How much of every mission's Done-when list is verified.>
+## Backlog
+<Queued drafts in pull order, then drafts not queued: priority and readiness.>
 
-## Decisions waiting
-<What is waiting on a person.>
+## How this report was made
+<Rendered by Tandemise from stored facts; no model wrote it.>
 `,
 
   MissionPlan: `---

@@ -1,4 +1,5 @@
 import type {
+  CriteriaTrace,
   ApprovalRepositoryPort, ArtifactRepositoryPort, MemberRepositoryPort, Mission, MissionCriteriaRepositoryPort, MissionRepositoryPort, MissionStatus,
   MissionTask, RepoRepositoryPort, RoleRepositoryPort, RunRepositoryPort, TaskRepositoryPort, UnitOfWork, WorkspaceRepositoryPort,
   ArtifactStorePort,
@@ -23,6 +24,7 @@ import type { ArtifactMeasurePort } from '../ports.js';
 import { feedbackEffectFor } from '../support/feedback-rules.js';
 import { assertStaffing, mergeRoleStaffing } from '../support/staffing-edit.js';
 import { assertReadiness } from './readiness.js';
+import { criteriaSummary } from '../support/criteria-summary.js';
 
 /** Statuses from which a task may be put back in the queue by hand. */
 const RETRYABLE_TASK_STATUSES: readonly MissionTask['status'][] = [
@@ -51,6 +53,8 @@ export interface MissionDeps {
   readonly planning: PlanningService;
   /** Why a mission may not resume: it is at a limit (P8). Null when it may. */
   readonly limitRefusal?: (missionId: MissionId) => string | null;
+  /** The Done-when trace (P5), so a mission row can say "1 of 3 verified" (P10); optional for older harnesses. */
+  readonly criteriaTrace?: (missionId: MissionId) => CriteriaTrace;
   readonly projections: ProjectionService;
   readonly scheduler: SchedulerService;
   /** A retry with a note is the next round, started the way any note starts one. */
@@ -658,6 +662,7 @@ export class MissionServiceImpl implements MissionService {
         : this.deps.repositories.get(mission.repositoryId)?.name ?? null,
       currentActivity: running?.title ?? mission.statusReason,
       lastEventAt: null,
+      criteria: mission.status === 'DRAFT' || this.deps.criteriaTrace === undefined ? null : criteriaSummary(this.deps.criteriaTrace(mission.id)),
     };
   }
 

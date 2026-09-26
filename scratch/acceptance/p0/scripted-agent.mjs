@@ -68,6 +68,9 @@ const FAIL_UNTIL_NOTE = mode('SCRIPTED_FAIL_UNTIL_NOTE') && !inRound;
 //   SCRIPTED_SPEC_TWO_ACS    the spec writes AC1 and AC2
 //   SCRIPTED_QA_PARTIAL      the spec writes AC1-AC3; QA passes AC1 and skips the rest
 //   SCRIPTED_QA_FAIL_AC2     the spec writes AC1 and AC2; QA fails AC2
+//   SCRIPTED_SPEC_THREE_ACS  the spec writes AC1-AC3 (QA passes all three) (P10)
+//   SCRIPTED_FAIL_RELEASE    a step asked for a ReleaseCandidate writes nothing, every time; the "P10 desk"
+//                            workflow's release gate needs the artifact, so its retries exhaust (P10)
 // A spec written in a round adds one criterion per note, so a note adds AC3 to two.
 const ledgerBlock = /^Done when \(criteria ledger[^\n]*\n((?:- [^\n]+\n?)+)/m.exec(prompt)?.[1] ?? '';
 const ledgerKeys = [...ledgerBlock.matchAll(/^- ([A-Za-z][\w-]*): /gm)].map((m) => m[1]);
@@ -77,13 +80,14 @@ const verifyKeys = /with `criterionId` set to its ledger id: ([^.]+)\./.exec(pro
 const SPEC_MISSES_U2 = mode('SCRIPTED_SPEC_MISSES_U2');
 const QA_PARTIAL = mode('SCRIPTED_QA_PARTIAL');
 const QA_FAIL_AC2 = mode('SCRIPTED_QA_FAIL_AC2');
-const baseAcs = QA_PARTIAL ? 3 : (QA_FAIL_AC2 || mode('SCRIPTED_SPEC_TWO_ACS')) ? 2 : 1;
+const baseAcs = (QA_PARTIAL || mode('SCRIPTED_SPEC_THREE_ACS')) ? 3 : (QA_FAIL_AC2 || mode('SCRIPTED_SPEC_TWO_ACS')) ? 2 : 1;
 if (process.env.SCRIPTED_PROMPT_DIR) {
   mkdirSync(process.env.SCRIPTED_PROMPT_DIR, { recursive: true });
   writeFileSync(join(process.env.SCRIPTED_PROMPT_DIR, `${Date.now()}-${process.pid}.txt`), prompt);
 }
 if (SLOW) await new Promise((r) => setTimeout(r, 20_000));
 if (FAIL_UNTIL_NOTE) { console.log('SCRIPTED_FAIL_UNTIL_NOTE: nothing written'); process.exit(0); }
+if (mode('SCRIPTED_FAIL_RELEASE') && outputs.some((o) => o.type === 'ReleaseCandidate')) { console.log('SCRIPTED_FAIL_RELEASE: nothing written'); process.exit(0); }
 
 // P9, liveness. Both count runs per step of one mission in SCRIPTED_STATE_DIR
 // (default: a folder in the system temp dir), keyed by the knob's line in the

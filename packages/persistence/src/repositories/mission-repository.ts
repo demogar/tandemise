@@ -2,7 +2,7 @@ import { TandemiseError, asId, type Clock, type MissionId, type WorkspaceId } fr
 import type {
   AutonomyLevel, Limit, Mission, MissionDraft, MissionPriority, MissionProgress, MissionRepositoryPort, MissionStatus, RoleStaffing,
 } from '@tandemise/domain';
-import { DEFAULT_MISSION_PRIORITY } from '@tandemise/domain';
+import { DEFAULT_MISSION_PRIORITY, REPORT_HOLDER_PRESET } from '@tandemise/domain';
 import type { TandemiseDatabase } from '../database.js';
 import { parseJson, toJson } from '../json.js';
 import { applyPatch } from '../patch.js';
@@ -151,12 +151,15 @@ export class SqliteMissionRepository implements MissionRepositoryPort {
     // One statement covers every filter combination: a NULL parameter disables
     // its clause, and the status set arrives as a JSON array so the placeholder
     // count - and therefore the prepared statement - never varies.
+    // A project's report holder (P10) is never listed: it holds status reports,
+    // it is not work, so no count, backlog, liveness or scheduler pass sees it.
     this.#selectList = db.handle.prepare<
-      { workspaceId: string | null; statuses: string | null; limit: number | null },
+      { workspaceId: string | null; statuses: string | null; limit: number | null; holder: string },
       MissionRow
     >(
       `SELECT ${COLUMNS} FROM missions
        WHERE (:workspaceId IS NULL OR workspace_id = :workspaceId)
+         AND workflow_preset <> :holder
          AND (:statuses IS NULL OR status IN (SELECT value FROM json_each(:statuses)))
        ORDER BY created_at DESC, id DESC
        LIMIT COALESCE(:limit, -1)`,
@@ -226,6 +229,7 @@ export class SqliteMissionRepository implements MissionRepositoryPort {
         workspaceId: filter?.workspaceId ?? null,
         statuses: filter?.statuses && filter.statuses.length > 0 ? toJson(filter.statuses) : null,
         limit: filter?.limit ?? null,
+        holder: REPORT_HOLDER_PRESET,
       })
       .map(fromRow);
   }

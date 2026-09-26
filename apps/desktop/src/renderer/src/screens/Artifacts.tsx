@@ -7,10 +7,11 @@ import { ArtifactRows } from './artifacts/ArtifactRows.js';
 import { useArtifactSearch } from '../lib/queries.js';
 import { pluralize } from '../lib/format.js';
 
-export function Artifacts(): JSX.Element {
+export function Artifacts({ openId = null }: { openId?: string | null } = {}): JSX.Element {
   const [input, setInput] = useState('');
   const [query, setQuery] = useState('');
-  const [selected, setSelected] = useState<string | null>(null);
+  // Opened from elsewhere (a status report from Home): that artifact first, even an older version the list leaves out.
+  const [selected, setSelected] = useState<string | null>(openId);
   const artifacts = useArtifactSearch(query);
 
   // Debounce: the daemon searches artifact bodies, which is not free.
@@ -21,8 +22,12 @@ export function Artifacts(): JSX.Element {
 
   useEffect(() => {
     const first = artifacts.data?.[0]?.id ?? null;
-    setSelected((current) => (current && artifacts.data?.some((a) => a.id === current) ? current : first));
-  }, [artifacts.data]);
+    setSelected((current) => (current && (current === openId || artifacts.data?.some((a) => a.id === current)) ? current : first));
+  }, [artifacts.data, openId]);
+
+  useEffect(() => {
+    if (openId !== null) setSelected(openId);
+  }, [openId]);
 
   return (
     <>

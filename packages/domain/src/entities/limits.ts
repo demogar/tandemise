@@ -260,6 +260,18 @@ export function warningNote(status: LimitStatus, scope: 'mission' | 'month'): st
     : `Monthly limit warning: this project used ${amounts} this month (${percent}%). Only urgent and high missions are pulled from the backlog; work stops at ${formatAmount(status.metric, status.amount)}.`;
 }
 
+/**
+ * Home's banner at the project's monthly warning level (P10): the rule it
+ * triggers first, then the numbers. "Monthly limit at 85% — only urgent and
+ * high work will be pulled. This project used 25.5 of 30 agent minutes this
+ * month; work stops at 30 agent minutes."
+ */
+export function monthBannerText(status: LimitStatus): string {
+  const amounts = ofAmount(status.metric, status.observed ?? 0, status.amount);
+  const percent = Math.floor(status.percent ?? 0);
+  return `Monthly limit at ${percent}% — only urgent and high work will be pulled. This project used ${amounts} this month; work stops at ${formatAmount(status.metric, status.amount)}.`;
+}
+
 /** Said once on a mission whose USD limit cannot be read. */
 export const UNMEASURED_USD_NOTE =
   'USD limit cannot be measured for this runtime: it does not report cost, so this limit never stops work. Set an agent minutes or tokens limit to cap this mission.';

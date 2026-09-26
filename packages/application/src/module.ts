@@ -48,6 +48,7 @@ import { ReadinessService } from './services/readiness.js';
 import { BacklogService } from './services/backlog-service.js';
 import { LimitService } from './services/limit-service.js';
 import { LivenessService } from './services/liveness-service.js';
+import { DeskService } from './services/desk-service.js';
 import { DEFAULT_QUIET_AFTER_MS } from '@tandemise/domain';
 import { RefinementServiceImpl } from './services/refinement-service.js';
 import { PlanningServiceImpl } from './services/planning-service.js';
@@ -479,6 +480,11 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       readiness: r.resolve(t.READINESS_SERVICE),
       limits: r.resolve(t.LIMIT_SERVICE),
       liveness: r.resolve(t.LIVENESS_SERVICE),
+      // Resolved per call: the desk reads the inbox and the backlog, which are built on projections.
+      desk: {
+        metrics: (workspaceId) => r.resolve(t.DESK_SERVICE).metrics(workspaceId),
+        banners: (workspaceId, metrics) => r.resolve(t.DESK_SERVICE).banners(workspaceId, metrics),
+      },
     }), { source: SOURCE });
 
     // Default: this installation has no workflow files. A composition root that
@@ -582,6 +588,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       reviews: r.resolve(t.REVIEW_PIPELINE),
       planning: r.resolve(t.PLANNING_SERVICE),
       limitRefusal: (missionId) => r.resolve(t.LIMIT_SERVICE).refusal(missionId),
+      criteriaTrace: (missionId) => r.resolve(t.GATE_SERVICE).trace(missionId).trace,
       projections: r.resolve(t.PROJECTION_SERVICE),
       scheduler: r.resolve(t.SCHEDULER),
       feedback: r.resolve(t.FEEDBACK_SERVICE),
@@ -665,6 +672,26 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       quietAfterMs: options.quietAfterMs ?? DEFAULT_QUIET_AFTER_MS,
     }), { source: SOURCE });
 
+    bind(t.DESK_SERVICE, (r) => new DeskService({
+      workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
+      missions: r.resolve(t.MISSION_REPOSITORY),
+      tasks: r.resolve(t.TASK_REPOSITORY),
+      approvals: r.resolve(t.APPROVAL_REPOSITORY),
+      events: r.resolve(t.EVENT_REPOSITORY),
+      members: r.resolve(t.MEMBER_REPOSITORY),
+      artifacts: r.resolve(t.ARTIFACT_REPOSITORY),
+      artifactStore: r.resolve(t.ARTIFACT_STORE),
+      parser: r.resolve(t.ARTIFACT_PARSER),
+      measure: r.resolve(t.ARTIFACT_MEASURE),
+      gates: r.resolve(t.GATE_SERVICE),
+      limits: r.resolve(t.LIMIT_SERVICE),
+      liveness: r.resolve(t.LIVENESS_SERVICE),
+      readiness: r.resolve(t.READINESS_SERVICE),
+      backlog: (workspaceId) => r.resolve(t.BACKLOG_SERVICE).view(workspaceId),
+      recorder: r.resolve(t.EVENT_RECORDER),
+      clock: clock(r),
+    }), { source: SOURCE });
+
     bind(t.CRITERIA_SERVICE, (r) => new CriteriaServiceImpl({
       missions: r.resolve(t.MISSION_REPOSITORY),
       artifacts: r.resolve(t.ARTIFACT_REPOSITORY),
@@ -692,6 +719,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       backlog: r.resolve(t.BACKLOG_SERVICE),
       limits: r.resolve(t.LIMIT_SERVICE),
       liveness: r.resolve(t.LIVENESS_SERVICE),
+      desk: r.resolve(t.DESK_SERVICE),
     }), { source: SOURCE });
   });
 }

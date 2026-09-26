@@ -86,7 +86,11 @@ export class ArtifactServiceImpl implements ArtifactService {
     };
     // The switcher's line is this task's output of this type: another task's
     // version of the same type is a different document, whatever supersedes says.
-    const versions = (row.taskId === null ? [row] : numbered.filter((a) => a.taskId === row.taskId && a.type === row.type))
+    // A status report (P10) has no task: its line is every report of the project.
+    const versionLine = row.taskId === null
+      ? (row.type === 'StatusReport' ? numbered.filter((a) => a.taskId === null && a.type === row.type) : [row])
+      : numbered.filter((a) => a.taskId === row.taskId && a.type === row.type);
+    const versions = versionLine
       .map((a) => ({ artifactId: a.id as string, version: lines.get(a.id)?.version ?? 1, round: a.round ?? null, createdAt: a.createdAt }))
       .sort((a, b) => a.version - b.version || a.createdAt.localeCompare(b.createdAt));
     const notes = row.taskId === null ? [] : this.requests.feedback.listByTask(row.taskId);
