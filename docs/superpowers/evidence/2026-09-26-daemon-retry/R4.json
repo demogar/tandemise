@@ -1,0 +1,22 @@
+{
+  "id": "R4",
+  "title": "TANDEMISE_NODE points nowhere: the message names the setting, not a crash",
+  "checks": [
+    {
+      "label": "names TANDEMISE_NODE and the path",
+      "pass": true,
+      "detail": "The Tandemise daemon is not running\n\nTANDEMISE_NODE is set to /nonexistent/bin/node, but there is no runnable file there. Point it at a Node 22+ binary (run which node in a terminal to find one), or unset it, then press Retry.\n\nLooking for the handshake file at\n/tmp/tdm-retry/home-bad-override/daemon.json\nRetry\n\nTandemise will try to start the daemon for you. If that keeps failing, start it by hand with npm run daemon and press Retry."
+    },
+    {
+      "label": "no stack trace on screen",
+      "pass": true,
+      "detail": "The Tandemise daemon is not running\n\nTANDEMISE_NODE is set to /nonexistent/bin/node, but there is no runnable file there. Point it at a Node 22+ binary (run which node in a terminal to find one), or unset it, then press Retry.\n\nLooking for the handshake file at\n/tmp/tdm-retry/home-bad-override/daemon.json\nRetry\n\nTandemise will try to start the daemon for you. If that keeps failing, start it by hand with npm run daemon and press Retry."
+    },
+    {
+      "label": "no daemon was started",
+      "pass": true
+    }
+  ],
+  "screen": "The Tandemise daemon is not running\n\nTANDEMISE_NODE is set to /nonexistent/bin/node, but there is no runnable file there. Point it at a Node 22+ binary (run which node in a terminal to find one), or unset it, then press Retry.\n\nLooking for the handshake file at\n/tmp/tdm-retry/home-bad-override/daemon.json\nRetry\n\nTandemise will try to start the daemon for you. If that keeps failing, start it by hand with npm run daemon and press Retry.",
+  "pass": true
+}

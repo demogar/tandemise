@@ -1,0 +1,62 @@
+{
+  "id": "R2",
+  "title": "the daemon stops under the window: not-running screen, Retry, Home",
+  "checks": [
+    {
+      "label": "the not-running screen appears",
+      "pass": true,
+      "detail": "The Tandemise daemon is not running\n\nThe daemon stopped. Waiting for it to come back, or press retry to start one.\n\nLooking for the handshake file at\n/tmp/tdm-retry/home/daemon.json\nRetry\n\nTandemise will try to start the daemon for you. If that keeps failing, start it by hand with npm run daemon and"
+    },
+    {
+      "label": "Retry connects and Home renders",
+      "pass": true,
+      "detail": "Tandemise\nRetry check project\nNo repositories\nHome\nMissions\nInbox\nArtifacts\nRETRY CHECK PROJECT\nRepositories\nTeam\nRuntimes\nIntegrations\nAPP\nSettings\nDaemon connected · 49161\nNothing needs you\nRetry ch"
+    },
+    {
+      "label": "a new daemon was started",
+      "pass": true,
+      "detail": {
+        "before": 64285,
+        "after": 64499
+      }
+    },
+    {
+      "label": "/v1/system answers from the new daemon",
+      "pass": true,
+      "detail": {
+        "status": 200,
+        "body": {
+          "daemonVersion": "0.5.0",
+          "apiVersion": "v1",
+          "schemaVersion": 17,
+          "startedAt": "2026-09-26T23:18:53.297Z",
+          "pid": 64499,
+          "home": "/tmp/tdm-retry/home",
+          "platform": "darwin-x64",
+          "nodeVersion": "v22.23.1"
+        }
+      }
+    },
+    {
+      "label": "the retry was logged with its Node path and version",
+      "pass": true,
+      "detail": "[2026-09-26T23:18:52.749Z] desktop: starting ~/projects/tandemise/tandemise-daemon-retry/apps/daemon/dist/main.js with Node 22.23.1 at ~/.nvm/versions/node/v22.23.1/bin/node (from PATH)\n"
+    },
+    {
+      "label": "no database error anywhere in the launch log",
+      "pass": true
+    }
+  ],
+  "system": {
+    "daemonVersion": "0.5.0",
+    "apiVersion": "v1",
+    "schemaVersion": 17,
+    "startedAt": "2026-09-26T23:18:53.297Z",
+    "pid": 64499,
+    "home": "/tmp/tdm-retry/home",
+    "platform": "darwin-x64",
+    "nodeVersion": "v22.23.1"
+  },
+  "launchLog": "[2026-09-26T23:18:52.749Z] desktop: starting ~/projects/tandemise/tandemise-daemon-retry/apps/daemon/dist/main.js with Node 22.23.1 at ~/.nvm/versions/node/v22.23.1/bin/node (from PATH)\n",
+  "pass": true
+}

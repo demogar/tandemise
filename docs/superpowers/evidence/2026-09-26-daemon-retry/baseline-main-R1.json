@@ -1,0 +1,16 @@
+{
+  "id": "R1",
+  "title": "launch with no daemon: the window starts one on a real Node, and it connects",
+  "checks": [
+    {
+      "label": "no daemon was running before launch",
+      "pass": true
+    },
+    {
+      "label": "threw",
+      "pass": false,
+      "detail": "Error: text /Create your first project|Daemon connected/ not found in body; last text:\nThe Tandemise daemon is not running\n\nStarted the daemon but it did not report a connection within 15s. Check its log in ~/.tandemise/logs.\n\nLooking for the handshake file at\n/tmp/tdm-retry/home/daemon.json\nRetry\n\nTandemise will try to start the daemon for you. If that keeps failing, start it by hand with npm run daemon and press Retry.\n    at Object.waitForText (file://~/projects/tandemise/tandemise-daemon-retry/scratch/acceptance/p0/lib/cdp.mjs:63:13)\n    at async file://~/projects/tandemise/tandemise-daemon-retry/scratch/acceptance/daemon-retry/run-all.mjs:112:18\n    at async scenario (file://~/projects/tandemise/tandemise-daemon-retry/scratch/acceptance/daemon-retry/run-all.mjs:86:5)\n    at async file://~/projects/tandemise/tandemise-daemon-retry/scratch/acceptance/daemon-retry/run-all.mjs:110:3"
+    }
+  ],
+  "pass": false
+}

@@ -20,6 +20,23 @@ npm run daemon          # tandemd on 127.0.0.1, ephemeral port
 npm run desktop         # Electron, reads ~/.tandemise/daemon.json
 ```
 
+### When the window says the daemon is not running
+
+If no daemon is answering, the window starts one itself, on launch and again
+each time you press **Retry**. It runs the daemon with a real Node 22 or newer,
+the same kind of Node `npm install` built the database driver for, not with
+Electron's built-in Node, which cannot open the database. It looks, in order:
+
+1. at `TANDEMISE_NODE`, if you set it (a full path to a `node` binary);
+2. for `node` on your login shell's `PATH` (so nvm, Homebrew and volta work
+   even when the app is opened from the Dock), then on its own `PATH`, then in
+   `/opt/homebrew/bin` and `/usr/local/bin`;
+3. at Electron's own Node, only if it is new enough (it is not, today).
+
+If none is usable, the screen says so and what to do: install Node 22+ or set
+`TANDEMISE_NODE`, then press **Retry**. Which Node was used, and anything the
+daemon printed while starting, is in `~/.tandemise/logs/daemon-launch.log`.
+
 ## First mission
 
 1. **Settings → Repositories**: the daemon creates a workspace on first start,
