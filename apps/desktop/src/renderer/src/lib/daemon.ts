@@ -28,6 +28,8 @@ import type {
   CreateIntegrationRequest,
   UpsertRoleRequest,
   UpdateWorkspaceRequest,
+  UpdateMissionRequest,
+  BacklogView,
   AddRepositoryRequest,
   CreateWorkspaceRequest,
   AddMemberRequest,
@@ -212,6 +214,16 @@ export class DaemonClient {
 
   createMission(body: CreateMissionRequest): Promise<MissionDetail> {
     return this.#request('POST', '/missions', body);
+  }
+
+  /** The project's backlog: drafts in the order they are planned, and the work-in-progress limit. */
+  backlog(workspaceId: string): Promise<BacklogView> {
+    return this.#get(`/workspaces/${workspaceId}/backlog`);
+  }
+
+  /** Priority, queue or a move up/down; answered with the backlog. */
+  updateMission(id: string, body: UpdateMissionRequest): Promise<BacklogView> {
+    return this.#request('PATCH', `/missions/${id}`, body);
   }
 
   missionAction(id: string, action: 'plan' | 'start' | 'pause' | 'resume' | 'cancel', body?: unknown): Promise<MissionDetail> {

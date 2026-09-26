@@ -22,6 +22,8 @@ export const keys = {
   home: (ws?: string) => ['home', ws ?? 'all'] as const,
   workspaces: ['workspaces'] as const,
   missions: (filter?: string, ws?: string) => ['missions', filter ?? 'all', ws ?? 'all'] as const,
+  // Under 'missions': every mission change, a pull included, refreshes it.
+  backlog: (ws?: string) => ['missions', 'backlog', ws ?? 'all'] as const,
   mission: (id: string) => ['mission', id] as const,
   // Under 'mission' and scoped by id, so the mission's own invalidations refresh it.
   missionArtifacts: (id: string, all: boolean) => ['mission', id, 'artifacts', all ? 'all' : 'live'] as const,
@@ -62,7 +64,8 @@ const TOPIC_KEYS: Readonly<Record<ProjectionTopic, readonly (readonly string[])[
   checks: [['mission'], ['home']],
   criteria: [['mission']],
   // A refinement decision changes the mission's readiness and the inbox row that asks for it.
-  refinement: [['mission'], ['inbox'], ['home']],
+  // The backlog shows each draft's readiness too.
+  refinement: [['mission'], ['inbox'], ['home'], ['missions']],
 };
 
 export function invalidateTopic(
@@ -100,6 +103,18 @@ export function useMissions(status?: string) {
   return useQuery({
     queryKey: keys.missions(status, workspaceId),
     queryFn: () => daemon.missions({ workspaceId, ...(status ? { status: status as never } : {}) }),
+  });
+}
+
+/** The project's backlog and work-in-progress limit (P7). */
+export function useBacklog() {
+  const daemon = useDaemon();
+  const workspaceId = useWorkspaceId();
+  return useQuery({
+    queryKey: keys.backlog(workspaceId),
+    queryFn: () => daemon.backlog(workspaceId ?? ''),
+    enabled: Boolean(workspaceId),
+    placeholderData: (previous) => previous,
   });
 }
 

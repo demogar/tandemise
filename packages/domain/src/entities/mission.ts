@@ -1,6 +1,7 @@
 import type { MissionId, RepositoryId, TaskId, WorkspaceId, Timestamp } from '@tandemise/shared';
 import type { Capability } from '../capability.js';
 import type { RoleStaffing } from '../staffing.js';
+import type { MissionPriority } from './backlog.js';
 
 /** MVP.md §9.1. Terminal states are RELEASED-adjacent or explicit failures. */
 export const MISSION_STATUSES = [
@@ -84,6 +85,12 @@ export interface Mission {
   readonly createdBy?: string | null;
   /** Per-role staffing for this mission, layered over the workspace's. */
   readonly staffing?: RoleStaffing;
+  /** Orders the backlog and worker slots (P7). */
+  readonly priority: MissionPriority;
+  /** Place inside its priority; lower first. */
+  readonly rank: number;
+  /** Set while a DRAFT is queued to be planned when there is room; null otherwise. */
+  readonly queuedAt: Timestamp | null;
   readonly createdAt: Timestamp;
   readonly updatedAt: Timestamp;
   readonly startedAt: Timestamp | null;
@@ -103,6 +110,12 @@ export interface MissionDraft {
   readonly baseBranch?: string | null;
   readonly createdBy?: string | null;
   readonly staffing?: RoleStaffing;
+  /** Defaults to normal. */
+  readonly priority?: MissionPriority;
+  /** Defaults to last in the project. */
+  readonly rank?: number;
+  /** Queued at creation ("Add to backlog"). */
+  readonly queued?: boolean;
 }
 
 /** Aggregate counters projected for the mission list, computed not stored. */

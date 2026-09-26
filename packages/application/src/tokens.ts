@@ -16,6 +16,7 @@ import type {
 } from './services.js';
 import type { IdentityPort } from './support/identity.js';
 import type { ReadinessService } from './services/readiness.js';
+import type { BacklogService } from './services/backlog-service.js';
 import type { StaffingResolver } from './engine/staffing-resolver.js';
 import type { ReviewPipeline } from './engine/reviews.js';
 import type { ArtifactHarvester } from './engine/harvester.js';
@@ -157,6 +158,7 @@ export const FEEDBACK_SERVICE = token<FeedbackService>('application.FeedbackServ
 export const CRITERIA_SERVICE = token<CriteriaService>('application.CriteriaService');
 export const REFINEMENT_SERVICE = token<RefinementService>('application.RefinementService');
 export const READINESS_SERVICE = token<ReadinessService>('application.ReadinessService');
+export const BACKLOG_SERVICE = token<BacklogService>('application.BacklogService');
 
 export const TANDEMISE_SERVICES = token<TandemiseServices>('application.TandemiseServices');
 

@@ -8,7 +8,7 @@ import {
   claimTaskRequest, completeTaskRequest, createPersonRequest, updatePersonRequest, addMemberRequest,
   updateMemberRequest, roleStaffingPatchRequest, taskStaffingPatchRequest, missionFeedQuery, missionArtifactsQuery, artifactSearchQuery,
   dismissFeedbackRequest, giveFeedbackRequest, startRoundRequest,
-  addCriterionRequest, answerQuestionRequest, criterionVerdictRequest,
+  addCriterionRequest, answerQuestionRequest, criterionVerdictRequest, updateMissionRequest,
 } from '@tandemise/api-contract';
 import type { TandemiseServices } from '@tandemise/application';
 import { Router, formatZodIssues, type RequestContext } from './http/router.js';
@@ -81,6 +81,10 @@ export function buildRouter(services: TandemiseServices): Router {
     return services.projections.missionDetail(mission.id);
   });
   r.get('/v1/missions/:id', (ctx) => services.projections.missionDetail(asId(ctx.params.id!)));
+  // The backlog (P7): priority, rank, queue or a move; answered with the project's backlog.
+  r.patch('/v1/missions/:id', async (ctx) =>
+    services.backlog.update(asId(ctx.params.id!), await ctx.body(updateMissionRequest)));
+  r.get('/v1/workspaces/:id/backlog', (ctx) => services.backlog.view(asId(ctx.params.id!)));
   r.delete('/v1/missions/:id', (ctx) => services.missions.remove(asId(ctx.params.id!)));
 
   r.post('/v1/missions/:id/plan', (ctx) => services.planning.begin(asId(ctx.params.id!)));

@@ -99,6 +99,8 @@ export class WorkspaceServiceImpl implements WorkspaceService {
           : {}),
         ...(patch.autonomy !== undefined ? { autonomy: patch.autonomy } : {}),
         ...(patch.concurrency !== undefined ? { concurrency: patch.concurrency } : {}),
+        // Read by the scheduler's next pass; turning it on can pull at once.
+        ...(patch.maxActiveMissions !== undefined ? { maxActiveMissions: patch.maxActiveMissions } : {}),
         // Kept as a compatibility mirror, merged per role: dispatch routes on the
         // agent members staffing names and reads this only for a role nobody
         // staffed. Staffing below is what the routing now means.

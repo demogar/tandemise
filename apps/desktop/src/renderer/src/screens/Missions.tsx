@@ -7,14 +7,17 @@ import { Empty, ErrorState, IdChip, SkeletonList, StatusBadge, StatusDot } from 
 import { useMissions } from '../lib/queries.js';
 import { useListNavigation } from '../lib/keyboard.js';
 import { missionTone, pluralize, relativeTime } from '../lib/format.js';
+import { Backlog } from './missions/Backlog.js';
 
-type Filter = 'active' | 'blocked' | 'finished' | 'all';
+type Filter = 'backlog' | 'active' | 'blocked' | 'finished' | 'all';
 
-const ACTIVE: readonly MissionStatus[] = ['PLANNING', 'EXECUTING', 'REVIEWING', 'QA', 'READY_TO_SHIP', 'OBSERVING', 'DRAFT'];
+// Drafts live in the Backlog tab: they are waiting to be planned, not being worked on.
+const ACTIVE: readonly MissionStatus[] = ['PLANNING', 'EXECUTING', 'REVIEWING', 'QA', 'READY_TO_SHIP', 'OBSERVING'];
 const BLOCKED: readonly MissionStatus[] = ['BLOCKED', 'AWAITING_PLAN_APPROVAL', 'PAUSED'];
 const FINISHED: readonly MissionStatus[] = ['COMPLETE', 'RELEASED', 'FAILED', 'CANCELLED'];
 
 const FILTERS: readonly { value: Filter; label: string }[] = [
+  { value: 'backlog', label: 'Backlog' },
   { value: 'active', label: 'Active' },
   { value: 'blocked', label: 'Needs attention' },
   { value: 'finished', label: 'Finished' },
@@ -30,6 +33,7 @@ export function Missions(): JSX.Element {
   const counts = useMemo(() => {
     const all = missions.data ?? [];
     return {
+      backlog: all.filter((m) => m.mission.status === 'DRAFT').length,
       active: all.filter((m) => ACTIVE.includes(m.mission.status)).length,
       blocked: all.filter((m) => BLOCKED.includes(m.mission.status)).length,
       finished: all.filter((m) => FINISHED.includes(m.mission.status)).length,
@@ -41,6 +45,7 @@ export function Missions(): JSX.Element {
     const needle = query.trim().toLowerCase();
     return (missions.data ?? [])
       .filter((summary) => {
+        if (filter === 'backlog') return false;
         if (filter === 'active') return ACTIVE.includes(summary.mission.status);
         if (filter === 'blocked') return BLOCKED.includes(summary.mission.status);
         if (filter === 'finished') return FINISHED.includes(summary.mission.status);
@@ -54,7 +59,8 @@ export function Missions(): JSX.Element {
       );
   }, [missions.data, filter, query]);
 
-  const focused = useListNavigation(visible.length, (index) => {
+  // The Backlog tab has its own keys (it moves rows as well as selecting them).
+  const focused = useListNavigation(filter === 'backlog' ? 0 : visible.length, (index) => {
     const target = visible[index];
     if (target) navigate(`/missions/${target.mission.id}`);
   });
@@ -102,7 +108,9 @@ export function Missions(): JSX.Element {
         <div className="page__inner">
           {missions.isError ? <ErrorState error={missions.error} onRetry={() => void missions.refetch()} /> : null}
 
-          {missions.isPending ? (
+          {filter === 'backlog' ? (
+            <Backlog />
+          ) : missions.isPending ? (
             <SkeletonList rows={5} />
           ) : visible.length === 0 ? (
             <div className="card">

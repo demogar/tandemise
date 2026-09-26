@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'wouter';
-import type { AutonomyLevel, RoleTemplate, StaffingPatch } from '@tandemise/domain';
+import type { AutonomyLevel, MissionPriority, RoleTemplate, StaffingPatch } from '@tandemise/domain';
 import type { StaffingPreset } from '@tandemise/domain/staffing-presets';
 import { Drawer } from '../components/Modal.js';
 import { RecordingFor, behalfOf } from '../components/ActorChip.js';
@@ -15,6 +15,8 @@ import { useDaemonMutation, useRoles, useStaffing, useWorkflows } from '../lib/q
 import { useWorkspace } from '../lib/workspace.js';
 import { useHotkey } from '../lib/keyboard.js';
 import { shortenPath, titleCase } from '../lib/format.js';
+import { MISSION_PRIORITIES, priorityLabel } from '../lib/domain.js';
+import { showFlash } from '../lib/notices.js';
 
 const AUTONOMY: readonly { value: AutonomyLevel; label: string; hint: string }[] = [
   { value: 'supervised', label: 'Supervised', hint: 'Approve the plan and every action that leaves this machine.' },
@@ -48,6 +50,7 @@ export function NewMission(): JSX.Element {
   const [criteria, setCriteria] = useState('');
   const [title, setTitle] = useState('');
   const [baseBranch, setBaseBranch] = useState('');
+  const [priority, setPriority] = useState<MissionPriority>('normal');
   const [showMore, setShowMore] = useState(false);
   const [showStaffing, setShowStaffing] = useState(false);
   const [staffing, setStaffing] = useState<Record<string, StaffingPatch>>({});
@@ -80,8 +83,11 @@ export function NewMission(): JSX.Element {
   // agent proposes criteria and asks what it needs (P6).
   const hasCriteria = splitLines(criteria).length > 0;
 
-  const submit = (): void => {
+  // "Add to backlog" queues the mission instead of planning it: it is planned,
+  // in priority order, once it is ready and the project has room (P7).
+  const submit = (mode: 'now' | 'backlog' = 'now'): void => {
     if (!ready || !workspace || create.isPending) return;
+    const toBacklog = mode === 'backlog';
     create.mutate(
       {
         workspaceId: workspace.workspace.id,
@@ -94,17 +100,24 @@ export function NewMission(): JSX.Element {
         workflowPreset: preset,
         workflowInputs,
         baseBranch: baseBranch.trim() || null,
-        planNow: hasCriteria,
+        planNow: hasCriteria && !toBacklog,
+        ...(toBacklog ? { queued: true } : {}),
+        ...(priority === 'normal' ? {} : { priority }),
         ...behalfOf(actors, createdFor),
         ...(Object.keys(staffing).length > 0
           ? { staffing: Object.fromEntries(Object.entries(staffing).map(([role, patch]) => [role, toWire(patch)])) as RoleStaffingPatchRequest }
           : {}),
       },
-      { onSuccess: (detail) => navigate(`/missions/${detail.mission.id}`) },
+      {
+        onSuccess: (detail) => {
+          if (toBacklog) showFlash('Added to the backlog.');
+          navigate(`/missions/${detail.mission.id}`);
+        },
+      },
     );
   };
 
-  useHotkey('mod+enter', submit, { whileTyping: true });
+  useHotkey('mod+enter', () => submit(), { whileTyping: true });
   useHotkey('escape', () => navigate('/missions'), { whileTyping: true });
 
   return (
@@ -119,7 +132,16 @@ export function NewMission(): JSX.Element {
             <button type="button" className="btn btn--ghost" onClick={() => navigate('/missions')}>
               Cancel
             </button>
-            <button type="button" className="btn btn--primary" onClick={submit} disabled={!ready || create.isPending}>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => submit('backlog')}
+              disabled={!ready || create.isPending}
+              title="Queue it: Tandemise plans it when it is ready and there is room under the project's limit."
+            >
+              Add to backlog
+            </button>
+            <button type="button" className="btn btn--primary" onClick={() => submit()} disabled={!ready || create.isPending}>
               {create.isPending ? (hasCriteria ? 'Planning…' : 'Creating…') : hasCriteria ? 'Plan mission' : 'Create and refine'}
               <kbd style={{ marginLeft: 2 }}>⌘↵</kbd>
             </button>
@@ -260,6 +282,13 @@ export function NewMission(): JSX.Element {
                 <div className="disclosure__panel">
                   <Field label="Title" hint="Leave blank and the planner names the mission from your sentence.">
                     <input className="input" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Passkey sign-in" />
+                  </Field>
+                  <Field label="Priority" hint="Orders the backlog and who gets the next free agent. Urgent work is planned first.">
+                    <Segmented
+                      value={priority}
+                      onChange={setPriority}
+                      options={MISSION_PRIORITIES.map((value) => ({ value, label: priorityLabel(value) }))}
+                    />
                   </Field>
                   <Field label="Constraints" hint="One per line. These become hard rules every role must respect.">
                     <textarea

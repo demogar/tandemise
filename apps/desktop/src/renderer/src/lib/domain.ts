@@ -1,4 +1,4 @@
-import type { ArtifactType, CriterionResult, MissionStatus, TandemiseEventBody } from '@tandemise/domain';
+import type { ArtifactType, CriterionResult, MissionPriority, MissionStatus, TandemiseEventBody } from '@tandemise/domain';
 
 /**
  * The handful of *runtime* values the renderer needs from the domain.
@@ -70,6 +70,7 @@ const SEMANTIC: Readonly<Record<TandemiseEventBody['type'], boolean>> = {
   'feedback.addressed': true,
   'feedback.dismissed': true,
   'task.round_started': true,
+  'mission.pulled': true,
   note: true,
 };
 
@@ -118,6 +119,20 @@ export const REQUEST_CHANGES_OPTION = 'request_changes';
 
 /** Mirrors `NEEDS_CHANGES_OPTION` in `@tandemise/domain`: a check's "needs changes", which with a note is feedback. */
 export const NEEDS_CHANGES_OPTION = 'needs_changes';
+
+const PRIORITY_LABELS: Readonly<Record<MissionPriority, string>> = {
+  urgent: 'Urgent',
+  high: 'High',
+  normal: 'Normal',
+  low: 'Low',
+};
+
+/** Mirrors `MISSION_PRIORITIES` in `@tandemise/domain`, most urgent first. */
+export const MISSION_PRIORITIES = Object.keys(PRIORITY_LABELS) as readonly MissionPriority[];
+
+export function priorityLabel(priority: MissionPriority): string {
+  return PRIORITY_LABELS[priority] ?? priority;
+}
 
 /** MVP.md §7.2. Mirrors `@tandemise/api-contract`, for the same reason as above. */
 export const API_VERSION = 'v1';

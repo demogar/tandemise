@@ -130,7 +130,7 @@ try {
   section('migration 012');
   {
     const system = await api('GET', '/v1/system');
-    check('schema version is 12', system.body?.schemaVersion === 12, system.body?.schemaVersion);
+    check('schema version is at least 12', system.body?.schemaVersion >= 12, system.body?.schemaVersion);
     const table = sql("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'artifacts'")[0]?.sql ?? '';
     check('the artifacts CHECK names Refinement and StatusReport', table.includes("'Refinement'") && table.includes("'StatusReport'"), table.slice(0, 600));
     const cols = sql("SELECT name FROM pragma_table_info('mission_criteria')").map((r) => r.name);

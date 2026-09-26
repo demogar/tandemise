@@ -79,6 +79,12 @@ export type OrchestrationEvent =
   | { readonly type: 'feedback.dismissed'; readonly feedbackId: string }
   /** The task's next round began, carrying the feedback it is meant to address. */
   | { readonly type: 'task.round_started'; readonly round: number; readonly feedbackIds: readonly string[]; readonly downstream: 'redo' | 'keep' | 'none'; readonly redone: readonly string[] }
+  /**
+   * A queued draft was taken from the backlog into planning (P7): `position` in
+   * the queue when it was pulled, the project's `limit`, `active` missions in
+   * progress counting it, and `skipped` queued ones ahead of it that were not ready.
+   */
+  | { readonly type: 'mission.pulled'; readonly position: number; readonly limit: number; readonly active: number; readonly skipped?: number }
   | { readonly type: 'note'; readonly text: string; readonly level?: 'info' | 'warn' | 'error' };
 
 export type TandemiseEventBody = AgentEvent | OrchestrationEvent;
@@ -114,7 +120,7 @@ export const SEMANTIC_EVENT_TYPES: ReadonlySet<string> = new Set([
   'check.result', 'gate.evaluated', 'approval.resolved', 'policy.denied', 'note',
   'tool.started', 'approval.escalated', 'review.skipped', 'review.required', 'task.attention',
   'artifact.tighten_requested', 'artifact.over_budget',
-  'feedback.given', 'feedback.addressed', 'feedback.dismissed', 'task.round_started',
+  'feedback.given', 'feedback.addressed', 'feedback.dismissed', 'task.round_started', 'mission.pulled',
 ]);
 
 export function isSemanticEvent(body: TandemiseEventBody): boolean {

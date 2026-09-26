@@ -31,7 +31,8 @@ import type { MissionQuestion, QuestionInput } from '../entities/refinement.js';
  */
 
 export interface WorkspaceRepositoryPort {
-  create(workspace: Omit<Workspace, 'createdAt' | 'updatedAt'>): Workspace;
+  /** The work-in-progress limit starts off unless given. */
+  create(workspace: Omit<Workspace, 'createdAt' | 'updatedAt' | 'maxActiveMissions'> & { maxActiveMissions?: number | null }): Workspace;
   get(id: WorkspaceId): Workspace | undefined;
   list(): readonly Workspace[];
   update(id: WorkspaceId, patch: Partial<Omit<Workspace, 'id' | 'createdAt'>>): Workspace;

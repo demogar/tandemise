@@ -50,12 +50,16 @@ export interface TandemiseServices {
   readonly feedback: FeedbackService;
   readonly criteria: CriteriaService;
   readonly refinement: RefinementService;
+  /** The ranked backlog and the work-in-progress limit (P7). */
+  readonly backlog: import('./services/backlog-service.js').BacklogService;
 }
 
 /** Making a rough request ready to plan (P6). Every write is refused once the mission has left DRAFT. */
 export interface RefinementService {
   /** Starts a refinement pass in the background; answers at once with the view (`running`). */
   begin(caller: Caller, missionId: MissionId): RefinementView;
+  /** A pass is running on the mission right now; the backlog does not pull it meanwhile. */
+  isRunning(missionId: MissionId): boolean;
   /** Resolves once the mission's current pass, if any, has settled. */
   settled(missionId: MissionId): Promise<void>;
   view(missionId: MissionId): RefinementView;
@@ -123,6 +127,11 @@ export interface PlanningService {
   begin(id: MissionId): Promise<MissionDetail>;
   /** Re-plans missions a previous daemon left in PLANNING. */
   resumeInterrupted(): readonly MissionId[];
+  /**
+   * Stops planning a mission that was cancelled: aborts its planner run, and
+   * whatever plan still arrives is discarded rather than written.
+   */
+  abandon(id: MissionId): void;
 }
 
 export interface ApprovalService {

@@ -94,7 +94,14 @@ export interface PlanningDeps {
  * shape rather than one tailored to their goal, and can re-plan if they care.
  */
 export class PlanningServiceImpl implements PlanningService {
+  /** One per mission being planned in this process, so cancelling can stop the planner run. */
+  readonly #planning = new Map<MissionId, AbortController>();
+
   constructor(private readonly deps: PlanningDeps) {}
+
+  abandon(id: MissionId): void {
+    this.#planning.get(id)?.abort();
+  }
 
   async plan(id: MissionId): Promise<MissionDetail> {
     const planning = this.#enterPlanning(id);
@@ -176,6 +183,35 @@ export class PlanningServiceImpl implements PlanningService {
   }
 
   async #planFrom(planning: Mission): Promise<MissionDetail> {
+    const controller = new AbortController();
+    this.#planning.set(planning.id, controller);
+    try {
+      return await this.#planWithin(planning);
+    } finally {
+      if (this.#planning.get(planning.id) === controller) this.#planning.delete(planning.id);
+    }
+  }
+
+  /**
+   * Whether the mission is still being planned, re-read now.
+   *
+   * Planning takes minutes and the person may cancel meanwhile - more so now
+   * that the backlog starts planning on its own. A plan that arrives for a
+   * mission that left PLANNING is discarded: writing its tasks and raising a
+   * plan approval would put a cancelled mission back in front of the person.
+   */
+  #stillPlanning(planning: Mission, scope: EventScope): boolean {
+    const current = this.deps.missions.get(planning.id);
+    if (current?.status === 'PLANNING') return true;
+    this.deps.recorder.note(
+      scope,
+      `Planning finished after the mission was ${current === undefined ? 'deleted' : current.status === 'CANCELLED' ? 'cancelled' : `moved to ${current.status}`}; the plan was discarded.`,
+    );
+    this.deps.log.info('planning.discarded', { missionId: planning.id, status: current?.status ?? null });
+    return false;
+  }
+
+  async #planWithin(planning: Mission): Promise<MissionDetail> {
     const mission = planning;
     const workspace = this.#requireWorkspace(mission);
     const repository = mission.repositoryId === null
@@ -195,6 +231,7 @@ export class PlanningServiceImpl implements PlanningService {
     // faithful than reading the file.
     const authored = await this.#authoredWorkflow(planning, repositories, roles, scope);
     if (authored !== null) {
+      if (!this.#stillPlanning(planning, scope)) return this.deps.projections.missionDetail(mission.id);
       const tasks = materializePlan(authored, mission.id, this.deps.clock, repositories);
       this.deps.tasks.replaceAll(mission.id, tasks);
       await this.#storePlanDocument(planning, authored, workspace);
@@ -209,6 +246,7 @@ export class PlanningServiceImpl implements PlanningService {
       planning, workspace, repository ?? null, roles, preset, scope, repositories,
     );
 
+    if (!this.#stillPlanning(planning, scope)) return this.deps.projections.missionDetail(mission.id);
     // A preset names its inputs, so inferring only fills what a model's plan left out.
     const tasks = materializePlan(outcome.plan, mission.id, this.deps.clock, repositories, { inferInputs: true });
     this.deps.tasks.replaceAll(mission.id, tasks);
@@ -321,7 +359,8 @@ export class PlanningServiceImpl implements PlanningService {
     let announced = false;
     for (;;) {
       const selected = await this.deps.runtimeManager.select(candidates, ['reasoning']);
-      if (selected.ok || !onlyBusy(selected.error) || this.deps.clock.epochMs() >= deadline) return selected;
+      const abandoned = scope.missionId !== undefined && this.#planning.get(scope.missionId)?.signal.aborted === true;
+      if (selected.ok || !onlyBusy(selected.error) || this.deps.clock.epochMs() >= deadline || abandoned) return selected;
       if (!announced) {
         announced = true;
         this.deps.recorder.note(scope, 'Every runtime that can plan is busy. Waiting for one to free up.');
@@ -468,9 +507,10 @@ export class PlanningServiceImpl implements PlanningService {
   ): Promise<{ ok: true; value: string } | { ok: false; error: string }> {
     const runId = ids.run();
     const runScope: EventScope = { ...scope, roleId: PLANNER_ROLE_ID, runtimeProfileId: profile.id };
-    const controller = new AbortController();
     const budget = AbortSignal.timeout(PLANNER_WALL_TIME_MS);
-    const signal = AbortSignal.any([controller.signal, budget]);
+    // Cancelling the mission aborts the run (`abandon`): no model keeps thinking about a plan nobody wants.
+    const abandoned = scope.missionId === undefined ? undefined : this.#planning.get(scope.missionId)?.signal;
+    const signal = AbortSignal.any([budget, ...(abandoned === undefined ? [] : [abandoned])]);
 
     this.deps.recorder.record(runScope, {
       type: 'run.started',
