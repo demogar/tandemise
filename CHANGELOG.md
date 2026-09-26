@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.5.0](https://github.com/demogar/tandemise/compare/v0.4.0...v0.5.0) (2026-09-26)
+
+
+### Features
+
+* an owner's desk and a status report written from facts ([#13](https://github.com/demogar/tandemise/issues/13)) ([034a423](https://github.com/demogar/tandemise/commit/034a4238b3c5d28d59e57143b51fbacaaaf18b44))
+* rank a backlog and pull the next ready mission within a wip limit ([#9](https://github.com/demogar/tandemise/issues/9)) ([76753bc](https://github.com/demogar/tandemise/commit/76753bcaabc4a47458628ec45dd723ea27835b30))
+* routines that queue standing work on a schedule ([#15](https://github.com/demogar/tandemise/issues/15)) ([9879ae4](https://github.com/demogar/tandemise/commit/9879ae4e92c1c4f123c9aed26e698c35ae39322d))
+* stop work at a spend or time limit and ask before going further ([#10](https://github.com/demogar/tandemise/issues/10)) ([9d78d5c](https://github.com/demogar/tandemise/commit/9d78d5cdd8bd4cfd2c51fdf92c00b351076daa39))
+* trace every done-when criterion from request to qa ([#7](https://github.com/demogar/tandemise/issues/7)) ([7a2547b](https://github.com/demogar/tandemise/commit/7a2547bf48e19478d68330cca45d6d48e7fcb1a4))
+
+
+### Bug Fixes
+
+* a release step passes only when it produced its release candidate ([#14](https://github.com/demogar/tandemise/issues/14)) ([0cd45e9](https://github.com/demogar/tandemise/commit/0cd45e93a8f8542d16d087fa8010c7d6a207f180))
+* unmeasured checks never pass a preset gate ([#6](https://github.com/demogar/tandemise/issues/6)) ([f49fd4d](https://github.com/demogar/tandemise/commit/f49fd4d50aca12d3ab0ef0fc86fba9eda4147242))
+
 ## [0.4.0](https://github.com/demogar/tandemise/compare/v0.3.1...v0.4.0) (2026-09-16)
 
 
