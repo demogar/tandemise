@@ -1,6 +1,6 @@
 # P13 acceptance report
 
-Run: 2026-09-26T22:53:39.479Z · build ff2b4b4 · fresh install at /var/folders/dh/glpvvh110393gdzjc_v2x1sr0000gn/T/tdm-p13-run-muizffrp
+Run: 2026-09-26T23:56:48.919Z · build 848c91e · fresh install at /var/folders/dh/glpvvh110393gdzjc_v2x1sr0000gn/T/tdm-p13-run-muj1onke
 Result: **ALL PASS** (4/4 scenarios)
 
 | Scenario | Result | Checks |
@@ -35,11 +35,11 @@ Result: **ALL PASS** (4/4 scenarios)
 - ✅ proof (API): the Developer role pins tdd v1 — `[{"name":"tdd","version":1}]`
 - ✅ the mission completes — `"COMPLETE"`
 - ✅ implement drawer: "Skills: tdd v1 · bad50479a67c, house-style v1 · b204e7f41a08" — `"Skills: tdd v1 · bad50479a67c, house-style v1 · b204e7f41a08"`
-- ✅ its gate read skills.loaded and skills.missing — `"Implement\nRetry with more access\nSucceeded\nDeveloper\nScripted agent\nModel: runtime default\nn2-hello-page-muizgetb-implement\nworktree isolation\n\nSkills: tdd v1 · bad50479a67c, house-style v1 · b204e7f41a08\n\nDo`
+- ✅ its gate read skills.loaded and skills.missing — `"Implement\nRetry with more access\nSucceeded\nDeveloper\nScripted agent\nModel: runtime default\nn2-hello-page-muj1pmrf-implement\nworktree isolation\n\nSkills: tdd v1 · bad50479a67c, house-style v1 · b204e7f41a08\n\nDo`
 - ✅ the review step pins none: no Skills line — `""`
-- ✅ the agent's handoff (feed) says "Skills folder: house-style, tdd" — `"msn_01m3fyk8j7x488h0t19f\nMissions\np13-skills\nN2 hello page muizgetb\nN2 hello page muizgetb\nComplete\nFeed\nPlan\n2\nTimeline\nArtifacts\n3\nChecks & Gates\nMetrics\nDone when\n0 of 1 verified\nU1\nThe acceptance sc`
-- ✅ proof (agent record): it found house-style and tdd in .claude/skills — `{"folder":["house-style","tdd"],"prompt":[],"cwd":"/tmp/tdm-p13/home/workspaces/ws_01m3fyhv2wzszzwbbrqx/missions/msn_01m3fyk8j7x488h0t19f/worktrees/n2-hello-page-muizgetb-implement-mabtrtj2"}`
-- ✅ proof (disk): the worktree holds .claude/skills/tdd/SKILL.md and reference.md — `"/tmp/tdm-p13/home/workspaces/ws_01m3fyhv2wzszzwbbrqx/missions/msn_01m3fyk8j7x488h0t19f/worktrees/n2-hello-page-muizgetb-implement-mabtrtj2"`
+- ✅ the agent's handoff (feed) says "Skills folder: house-style, tdd" — `"msn_01m3g26x63b4yy52xms2\nMissions\np13-skills\nN2 hello page muj1pmrf\nN2 hello page muj1pmrf\nComplete\nFeed\nPlan\n2\nTimeline\nArtifacts\n3\nChecks & Gates\nMetrics\nDone when\n0 of 1 verified\nU1\nThe acceptance sc`
+- ✅ proof (agent record): it found house-style and tdd in .claude/skills — `{"folder":["house-style","tdd"],"prompt":[],"cwd":"/tmp/tdm-p13/home/workspaces/ws_01m3g25fgpyz49y7bc54/missions/msn_01m3g26x63b4yy52xms2/worktrees/n2-hello-page-muj1pmrf-implement-vt07v8s3"}`
+- ✅ proof (disk): the worktree holds .claude/skills/tdd/SKILL.md and reference.md — `"/tmp/tdm-p13/home/workspaces/ws_01m3g25fgpyz49y7bc54/missions/msn_01m3g26x63b4yy52xms2/worktrees/n2-hello-page-muj1pmrf-implement-vt07v8s3"`
 - ✅ proof (git): info/exclude lists /.claude/skills/tdd/ and /.claude/skills/house-style/ — `"# git ls-files --others --exclude-from=.git/info/exclude\n# Lines that start with '#' are comments.\n# For a project mostly in C, the following would be a good set of\n# exclude patterns (uncomment them if you want to u`
 - ✅ proof (git): no commit on the branch contains .claude — `"hello.txt\n.gitignore\n.tandemise/workflows/p0.yaml\n.tandemise/workflows/p10-desk.yaml\n.tandemise/workflows/p12-economy.yaml\n.tandemise/workflows/p12-escalate.yaml\n.tandemise/workflows/p12-models.yaml\n.tandemise/wo`
 - ✅ proof (disk): the project checkout itself got nothing
@@ -58,7 +58,7 @@ Result: **ALL PASS** (4/4 scenarios)
 - ✅ the other skills do not — `[{"name":"house-style","text":"house-style\nHow our copy reads.\nv1 · 1 file · 138 B"},{"name":"lint-rules","text":"lint-rules\nThe lint rules we keep.\nv1 · 1 file · 119 B"},{"name":"tdd","text":"tdd\nWrite the failing `
 - ✅ its Source says the source changed since v1 and roles keep their version — `"Source\n\n/tmp/tdm-p13/claude-skills/tdd\n\nUpdate available The source changed since v1. Update imports it as v2; roles keep their version until you move them.\n\nUpdate\nDelete"`
 - ✅ proof (API): still one version (nothing was updated by itself)
-- ✅ Versions now lists v2 and v1 — `"Versions\nv2 73c86d77ec4e\n2 files · 284 B · imported Sep 26, 2026, 5:51 PM\nv1 bad50479a67c\n2 files · 248 B · imported Sep 26, 2026, 5:49 PM"`
+- ✅ Versions now lists v2 and v1 — `"Versions\nv2 73c86d77ec4e\n2 files · 284 B · imported Sep 26, 2026, 6:54 PM\nv1 bad50479a67c\n2 files · 248 B · imported Sep 26, 2026, 6:52 PM"`
 - ✅ proof (API): v2 has a new hash, v1 keeps its own — `[[2,"73c86d77ec4e"],[1,"bad50479a67c"]]`
 - ✅ Used by: "Developer pins v1 · v2 is available" — `"Used by\nDeveloper pins v1 · v2 is available in Team → Roles"`
 - ✅ Team → Roles → Developer still pins tdd v1 and offers "Use v2" — `"Skills\n\nEvery run of this role gets these skills at the version shown. A step in a workflow file can add its own.\n\ntdd v1\nWrite the failing test first, then the code.\nUse v2\nRemove\nChoose a skill…\nhouse-style (`
@@ -66,9 +66,9 @@ Result: **ALL PASS** (4/4 scenarios)
 - ✅ N2's implement drawer still reads tdd v1 · bad50479a67c — `"Skills: tdd v1 · bad50479a67c, house-style v1 · b204e7f41a08"`
 - ✅ the new mission completes — `"COMPLETE"`
 - ✅ its implement drawer: "Skills: tdd v2 · 73c86d77ec4e (in prompt), house-style v1 · b204e7f41a08 (in prompt)" — `"Skills: tdd v2 · 73c86d77ec4e (in prompt), house-style v1 · b204e7f41a08 (in prompt)"`
-- ✅ the agent's handoff says "Skills in prompt: house-style, tdd" and no folder — `"msn_01m3fymy2z46mjx1tbnb\nMissions\np13-skills\nN3 hello page muizhl3w\nN3 hello page muizhl3w\nComplete\nFeed\nPlan\n2\nTimeline\nArtifacts\n3\nChecks & Gates\nMetrics\nDone when\n0 of 1 verified\nU1\nThe acceptance sc`
+- ✅ the agent's handoff says "Skills in prompt: house-style, tdd" and no folder — `"msn_01m3g28jq86q67cqx2vs\nMissions\np13-skills\nN3 hello page muj1qt2a\nN3 hello page muj1qt2a\nComplete\nFeed\nPlan\n2\nTimeline\nArtifacts\n3\nChecks & Gates\nMetrics\nDone when\n0 of 1 verified\nU1\nThe acceptance sc`
 - ✅ proof (prompt): "## Skills pinned to this step" with the v2 SKILL.md — `"## Skills pinned to this step\n\nThe person pinned these skills to this step. Use them where they apply.\n\n### Skill: tdd (v2)\n\nWrite the failing test first, then the code.\n\n# Test first\n\n1. Write a test that fai`
-- ✅ proof (agent record): prompt [house-style, tdd], folder [] — `{"folder":[],"prompt":["house-style","tdd"],"cwd":"/tmp/tdm-p13/home/workspaces/ws_01m3fyhv2wzszzwbbrqx/missions/msn_01m3fymy2z46mjx1tbnb/worktrees/n3-hello-page-muizhl3w-implement-qc9adr97"}`
+- ✅ proof (agent record): prompt [house-style, tdd], folder [] — `{"folder":[],"prompt":["house-style","tdd"],"cwd":"/tmp/tdm-p13/home/workspaces/ws_01m3g25fgpyz49y7bc54/missions/msn_01m3g28jq86q67cqx2vs/worktrees/n3-hello-page-muj1qt2a-implement-aq2v5mkv"}`
 - ✅ proof (SQL): N2's run still records tdd v1 with its old hash
 - screenshot: `N3-update-available.png`
 - screenshot: `N3-versions.png`
@@ -80,8 +80,8 @@ Result: **ALL PASS** (4/4 scenarios)
 - ✅ lint-rules is gone from the Library
 - ✅ Check lint is BLOCKED with the skill named — `"Skill 'lint-rules' v1 (a8d6b6cfe985) is missing from the skills library. Import it again on the Skills screen, then choose Retry."`
 - ✅ proof (SQL): no run was started for it — `[{"key":"implement","attempt":1,"status":"SUCCEEDED","skills":[{"name":"tdd","version":2,"hash":"73c86d77ec4e37d25dff2bb9934f1e2e0a026cb17143439b0954d7d973f39256","via":"folder"}]}]`
-- ✅ Inbox: "‘Check lint’ needs a skill that is missing" — `"Inbox\nWhat is waiting on a person.\n‘Check lint’ needs a skill that is missing\nFor you·N4 lint muizijqt SCRIPTED_SLOW_20S\nIntervention\njust now\nDecided\n3 decisions\nApprove the plan for N4 lint muizijqt SCRIPTED_S`
-- ✅ the card names lint-rules v1 and says what to do — `"Inbox\nWhat is waiting on a person.\n‘Check lint’ needs a skill that is missing\nFor you·N4 lint muizijqt SCRIPTED_SLOW_20S\nIntervention\njust now\nRead only\n‘Check lint’ needs a skill that is missing\nIntervention\na`
+- ✅ Inbox: "‘Check lint’ needs a skill that is missing" — `"Inbox\nWhat is waiting on a person.\n‘Check lint’ needs a skill that is missing\nFor you·N4 lint muj1rrog SCRIPTED_SLOW_20S\nIntervention\njust now\nDecided\n3 decisions\nApprove the plan for N4 lint muj1rrog SCRIPTED_S`
+- ✅ the card names lint-rules v1 and says what to do — `"Inbox\nWhat is waiting on a person.\n‘Check lint’ needs a skill that is missing\nFor you·N4 lint muj1rrog SCRIPTED_SLOW_20S\nIntervention\njust now\nRead only\n‘Check lint’ needs a skill that is missing\nIntervention\na`
 - ✅ importing the same folder again: "New skill" with the same hash — `"lint-rules\na8d6b6cfe985\n1 file · 119 B\n\nThe lint rules we keep.\n\nFrom /tmp/tdm-p13/more-skills/lint-rules\n\nNew skill\n\nFiles\nSKILL.md (119 B)\nSKILL.md\nLint rules\n\nNo unused imports. No commented-out code."`
 - ✅ after Retry the mission completes — `"COMPLETE"`
 - ✅ Check lint's drawer: "Skills: lint-rules v1 · a8d6b6cfe985 (in prompt)" or as a folder — `"Skills: lint-rules v1 · a8d6b6cfe985"`

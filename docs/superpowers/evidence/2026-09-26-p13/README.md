@@ -1,6 +1,6 @@
 # P13 evidence: skills library
 
-Headline: **4/4 real-app scenarios pass** (N1–N4, 55/55 checks) on a fresh install, built from `feat/p13-skills-library` rebased onto `main` (563f0e6, after #18 merged). Offline: `p13-skills-check` 105/105 (written first and seen failing on the base build: `D.hashSkillFiles is not a function`); `npm run ci` green (37 offline checks).
+Headline: **4/4 real-app scenarios pass** (N1–N4, 55/55 checks) on a fresh install, built from `feat/p13-skills-library` rebased onto `main` (73280cc, after #18 merged); REPORT.md is that run. Offline: `p13-skills-check` 105/105 (written first and seen failing on the base build: `D.hashSkillFiles is not a function`); `npm run ci` green (37 offline checks).
 
 ## How it was run
 
@@ -29,7 +29,7 @@ No real-model scenario: which skills a run gets is decided by the daemon; the sc
 
 Content hashes are deterministic, so the same fixture always shows the same short hashes.
 
-## Regression (same build)
+## Regression (`--skip-claude`, on the branch rebased onto 563f0e6; the later rebase onto 73280cc only brought #23 and #26, re-proven with `npm run ci` and the P13 suite)
 
 | Suite | Result |
 |---|---|

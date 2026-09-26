@@ -38,7 +38,7 @@
     {
       "label": "Versions now lists v2 and v1",
       "ok": true,
-      "observed": "Versions\nv2 73c86d77ec4e\n2 files · 284 B · imported Sep 26, 2026, 5:51 PM\nv1 bad50479a67c\n2 files · 248 B · imported Sep 26, 2026, 5:49 PM"
+      "observed": "Versions\nv2 73c86d77ec4e\n2 files · 284 B · imported Sep 26, 2026, 6:54 PM\nv1 bad50479a67c\n2 files · 248 B · imported Sep 26, 2026, 6:52 PM"
     },
     {
       "label": "proof (API): v2 has a new hash, v1 keeps its own",
@@ -86,7 +86,7 @@
     {
       "label": "the agent's handoff says \"Skills in prompt: house-style, tdd\" and no folder",
       "ok": true,
-      "observed": "msn_01m3fymy2z46mjx1tbnb\nMissions\np13-skills\nN3 hello page muizhl3w\nN3 hello page muizhl3w\nComplete\nFeed\nPlan\n2\nTimeline\nArtifacts\n3\nChecks & Gates\nMetrics\nDone when\n0 of 1 verified\nU1\nThe acceptance scenario finishes its steps\nThe spec will cover this\nNot verified\nDone\n3\nREVIEWER\nReview\nDone\njust now\nby\nRuntime\n·\nresponsible\nYou\nFull doc\nRequest changes\n\nReviewReport ready for the hello page\n\nWritten by the scripted acceptance agent\nSkills folder: none\nSkills in prompt: none\nDEVELOPER\nImplement\nDone\njust now\nby\nRuntime\n·\nresponsible\nYou\nFull doc\nRequest changes\n\nChangeSet ready for the hello page\n\nWritten by the scripted acceptance agent\nSkills folder: none\nSkills in prompt: house-style, tdd\nPlan for N3 hello page muizhl3w\nApproved\njust now\nby\nRuntime\n·\nresponsible\nYou\nFull doc\n\nImplement with the Developer role's skills plus the house style, then a review that pins…\n\n2 tasks: development → review\nFirst gate: implement passes when artifact.ChangeSet.exists && skills.missing == 0 && skills.loaded >= 1"
+      "observed": "msn_01m3g28jq86q67cqx2vs\nMissions\np13-skills\nN3 hello page muj1qt2a\nN3 hello page muj1qt2a\nComplete\nFeed\nPlan\n2\nTimeline\nArtifacts\n3\nChecks & Gates\nMetrics\nDone when\n0 of 1 verified\nU1\nThe acceptance scenario finishes its steps\nThe spec will cover this\nNot verified\nDone\n3\nREVIEWER\nReview\nDone\njust now\nby\nRuntime\n·\nresponsible\nYou\nFull doc\nRequest changes\n\nReviewReport ready for the hello page\n\nWritten by the scripted acceptance agent\nSkills folder: none\nSkills in prompt: none\nDEVELOPER\nImplement\nDone\njust now\nby\nRuntime\n·\nresponsible\nYou\nFull doc\nRequest changes\n\nChangeSet ready for the hello page\n\nWritten by the scripted acceptance agent\nSkills folder: none\nSkills in prompt: house-style, tdd\nPlan for N3 hello page muj1qt2a\nApproved\njust now\nby\nRuntime\n·\nresponsible\nYou\nFull doc\n\nImplement with the Developer role's skills plus the house style, then a review that pins…\n\n2 tasks: development → review\nFirst gate: implement passes when artifact.ChangeSet.exists && skills.missing == 0 && skills.loaded >= 1"
     },
     {
       "label": "proof (prompt): \"## Skills pinned to this step\" with the v2 SKILL.md",
@@ -102,7 +102,7 @@
           "house-style",
           "tdd"
         ],
-        "cwd": "/tmp/tdm-p13/home/workspaces/ws_01m3fyhv2wzszzwbbrqx/missions/msn_01m3fymy2z46mjx1tbnb/worktrees/n3-hello-page-muizhl3w-implement-qc9adr97"
+        "cwd": "/tmp/tdm-p13/home/workspaces/ws_01m3g25fgpyz49y7bc54/missions/msn_01m3g28jq86q67cqx2vs/worktrees/n3-hello-page-muj1qt2a-implement-aq2v5mkv"
       }
     },
     {
