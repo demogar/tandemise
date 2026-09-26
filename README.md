@@ -23,18 +23,68 @@ permissions and history stay intact. Only an adapter changes.
 
 ## How it works
 
-You give Tandemise an outcome in one sentence. It plans a DAG of tasks across
-specialized roles, runs each one in an isolated Git worktree through whichever
-runtime you've routed that role to, collects typed artifacts at every stage,
-measures deterministic gates, escalates to you only for decisions that deserve
-human judgement, and ends at a verified release candidate.
+You give Tandemise an outcome in one sentence and say what "done" means. It
+plans a DAG of tasks across specialized roles, runs each one in an isolated Git
+worktree through whichever runtime you've routed that role to, collects typed
+artifacts at every stage, measures deterministic gates, escalates to you only
+for decisions that deserve human judgement, and ends at a verified release
+candidate.
 
 ```
 Intent → Plan → Approve → Execute → Review → QA → Release candidate → Your call
 ```
 
-Nothing gets copy-pasted between tools. Everything is attributable and
-recoverable.
+![Home: what needs you, what is in progress, criteria verified, this month's spend, what is stuck](apps/desktop/screenshots/01-home.png)
+
+Around that engine sits the loop a product owner runs every day, with you as
+the owner and your agents as the team:
+
+```
+Request → Refine → Done when → Backlog + WIP limit → Run within limits
+        → Verify per criterion → Inbox for anything stuck → Desk + status report
+        → Routines bring the next request
+```
+
+1. **Request.** One sentence on **New mission**.
+2. **Refine.** If you have not said what done means, a product agent proposes
+   criteria and asks only the questions that change the plan. You accept,
+   edit or reject each one. → [Refine a rough request](docs/guides/refine.md)
+3. **Done when.** Every line becomes a numbered criterion (`U1`, `U2`, …). A
+   mission cannot be planned without one. → [Done when](docs/guides/done-when.md)
+4. **Backlog and WIP.** Rank requests by priority, queue them, and set how many
+   missions run at once. When a slot frees up, the next ready one is planned.
+   → [Backlog and work in progress](docs/guides/backlog.md)
+5. **Run within limits.** Agent minutes, tokens or dollars per mission and per
+   month. At the limit work stops and one card asks you to raise it or keep it
+   paused. → [Limits](docs/guides/limits.md)
+6. **Verify per criterion.** The spec must cover every line, QA must verify
+   every criterion by id, and the release gate will not pass while one is
+   unverified. The mission shows it as a checklist.
+7. **Inbox for anything stuck.** A mission nothing moves and nothing asks
+   about gets one **Stalled** row with the one action that moves it; an agent
+   that goes quiet gets a **Quiet** row. → [The Inbox](docs/guides/inbox.md)
+8. **Desk and status report.** Home counts what needs you, what is in
+   progress, what is verified, what it cost and what is stuck. **Status
+   report** writes the same picture from stored facts, no model involved.
+   → [The desk](docs/guides/desk-and-status-report.md)
+9. **Routines.** Standing work (weekly dependency updates, nightly check
+   fixes, a Friday report) is added to the backlog on schedule, ready to plan.
+   → [Routines](docs/guides/routines.md)
+
+Every step is decided by the daemon from stored facts and fixed rules; no model
+output decides whether work is done, planned, stopped or stuck. Nothing gets
+copy-pasted between tools. Everything is attributable and recoverable.
+
+<table>
+  <tr>
+    <td><img src="apps/desktop/screenshots/22-mission-done-when.png" alt="A mission's Done-when checklist"></td>
+    <td><img src="apps/desktop/screenshots/24-backlog.png" alt="The backlog with a work-in-progress limit"></td>
+  </tr>
+  <tr>
+    <td><img src="apps/desktop/screenshots/27-inbox-stalled-quiet.png" alt="The Inbox with a stalled mission and a quiet agent"></td>
+    <td><img src="apps/desktop/screenshots/25-limit-card.png" alt="A mission paused at its limit"></td>
+  </tr>
+</table>
 
 ## Architecture
 
@@ -112,7 +162,23 @@ npm run desktop         # starts the Electron app
 
 Point it at a Git repository, connect a runtime (Claude Code is detected
 automatically; any other CLI can be wired through the generic adapter without
-writing code), and create a mission.
+writing code), and create a mission. [docs/QUICKSTART.md](docs/QUICKSTART.md)
+walks through the first one.
+
+## Guides
+
+Task-oriented, one per concept:
+
+| Guide | How do I… |
+|---|---|
+| [Done when](docs/guides/done-when.md) | say what finished means and see each criterion verified |
+| [Refine a rough request](docs/guides/refine.md) | turn a one-liner into something ready to plan |
+| [Backlog and work in progress](docs/guides/backlog.md) | rank requests and limit how many run at once |
+| [Limits](docs/guides/limits.md) | cap agent minutes, tokens or dollars per mission and per month |
+| [The Inbox](docs/guides/inbox.md) | find stalled missions and quiet agents, and unstick them |
+| [The desk and the status report](docs/guides/desk-and-status-report.md) | read Home at a glance and write a report from facts |
+| [Routines](docs/guides/routines.md) | put standing work on a schedule |
+| [Workflows](docs/WORKFLOWS.md) | write my own process as a file, and see which gate facts exist |
 
 ## Repository layout
 
@@ -133,7 +199,8 @@ writing code), and create a mission.
 | `apps/daemon` | `tandemd` — HTTP/WS API, composition root, lifecycle |
 | `apps/desktop` | Electron main/preload + React renderer |
 | `native/macos-helper` | Swift helper for Accessibility, screen capture, and input |
-| `docs/` | `BUILD_BRIEF.md` (engineering contract), `APPLICATION_DESIGN.md` (mission engine), `DESIGN_SYSTEM.md` (palette, tokens, logo) |
+| `docs/` | `guides/` (how to use each feature), `QUICKSTART.md`, `WORKFLOWS.md` (workflow files and gate facts), `BUILD_BRIEF.md` (engineering contract), `APPLICATION_DESIGN.md` (mission engine), `DESIGN_SYSTEM.md` (palette, tokens, logo) |
+| `apps/desktop/screenshots/` | Screenshots of the desktop app, used by this README and the guides |
 
 `MVP.md` is the full product and architecture specification this implements.
 

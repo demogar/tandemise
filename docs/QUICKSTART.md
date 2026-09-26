@@ -31,8 +31,22 @@ npm run desktop         # Electron, reads ~/.tandemise/daemon.json
    agent CLI can be added here as a `generic-cli` runtime — give it a command,
    an argument template with `{{prompt}}`, and whether the prompt goes as an
    argument or on stdin. No code change is needed to add a worker.
-3. **Missions → New Mission**: describe the outcome in one sentence and press
-   ⌘↵. Inspect the proposed plan, approve it, and watch the DAG execute.
+3. **Missions → New Mission**: describe the outcome in one sentence and write
+   at least one line under **Done when (one per line)**, then press ⌘↵.
+   Inspect the proposed plan, approve it, and watch the DAG execute. The
+   mission's feed shows each Done-when line and whether QA verified it.
+   Leave **Done when** empty and the button reads **Create and refine**
+   instead: a product agent proposes criteria for you to decide first.
+
+## Next
+
+The guides in [`docs/guides/`](guides/) each answer one "how do I…":
+[Done when](guides/done-when.md), [Refine](guides/refine.md),
+[Backlog and work in progress](guides/backlog.md), [Limits](guides/limits.md),
+[The Inbox](guides/inbox.md),
+[The desk and the status report](guides/desk-and-status-report.md) and
+[Routines](guides/routines.md). [WORKFLOWS.md](WORKFLOWS.md) covers workflow
+files and every gate fact.
 
 ## Where things are
 
