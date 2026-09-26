@@ -45,6 +45,8 @@ Content hashes are deterministic, so the same fixture always shows the same shor
 | p11 | ALL PASS 4/4 |
 | p12 | ALL PASS 4/4 |
 
+One harness flake on the way: a run of the suite on the same build lost its window's page connection at N4's last drawer read (after the mission had completed; "unsettled top-level await" in the scenario process). The next run passed unchanged; REPORT.md is that run.
+
 ## Found and fixed while proving it
 
 - The import dialog's button read "Import 0 skills" with nothing ticked; it now says "Tick the skills to import".

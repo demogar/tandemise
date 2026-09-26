@@ -36,7 +36,7 @@
     {
       "label": "its gate read skills.loaded and skills.missing",
       "ok": true,
-      "observed": "Implement\nRetry with more access\nSucceeded\nDeveloper\nScripted agent\nModel: runtime default\nn2-hello-page-muiwt1s6-implement\nworktree isolation\n\nSkills: tdd v1 · bad50479a67c, house-style v1 · b204e7f41a08\n\nDone by\nScripted agent\n·\nResponsible\nYou\nOBJECTIVE\nBuild the hello page.\nSTARTED\nSep 26, 2026, 4:36 PM\nFINISHED\nSep 26, 2026, 4:36 PM · 2s\nCOMPLETION GATE\nAll gate conditions met.\nartifact.ChangeSet.exists && skills.missing == 0 && skills.loaded >= 1\nARTIFACTS PRODUCED\nChangeSet: Scripted work\nDetails\nRequest changes\nClose"
+      "observed": "Implement\nRetry with more access\nSucceeded\nDeveloper\nScripted agent\nModel: runtime default\nn2-hello-page-muiz0kh2-implement\nworktree isolation\n\nSkills: tdd v1 · bad50479a67c, house-style v1 · b204e7f41a08\n\nDone by\nScripted agent\n·\nResponsible\nYou\nOBJECTIVE\nBuild the hello page.\nSTARTED\nSep 26, 2026, 5:38 PM\nFINISHED\nSep 26, 2026, 5:38 PM · 2s\nCOMPLETION GATE\nAll gate conditions met.\nartifact.ChangeSet.exists && skills.missing == 0 && skills.loaded >= 1\nARTIFACTS PRODUCED\nChangeSet: Scripted work\nDetails\nRequest changes\nClose"
     },
     {
       "label": "the review step pins none: no Skills line",
@@ -46,7 +46,7 @@
     {
       "label": "the agent's handoff (feed) says \"Skills folder: house-style, tdd\"",
       "ok": true,
-      "observed": "msn_01m3ftbfmd4hjdves21c\nMissions\np13-skills\nN2 hello page muiwt1s6\nN2 hello page muiwt1s6\nComplete\nFeed\nPlan\n2\nTimeline\nArtifacts\n3\nChecks & Gates\nMetrics\nDone when\n0 of 1 verified\nU1\nThe acceptance scenario finishes its steps\nThe spec will cover this\nNot verified\nDone\n3\nREVIEWER\nReview\nDone\njust now\nby\nRuntime\n·\nresponsible\nYou\nFull doc\nRequest changes\n\nReviewReport ready for the hello page\n\nWritten by the scripted acceptance agent\nSkills folder: none\nSkills in prompt: none\nDEVELOPER\nImplement\nDone\njust now\nby\nRuntime\n·\nresponsible\nYou\nFull doc\nRequest changes\n\nChangeSet ready for the hello page\n\nWritten by the scripted acceptance agent\nSkills folder: house-style, tdd\nSkills in prompt: none\nPlan for N2 hello page muiwt1s6\nApproved\njust now\nby\nRuntime\n·\nresponsible\nYou\nFull doc\n\nImplement with the Developer role's skills plus the house style, then a review that pins…\n\n2 tasks: development → review\nFirst gate: implement passes when artifact.ChangeSet.exists && skills.missing == 0 && skills.loaded >= 1"
+      "observed": "msn_01m3fxwpqg95qqp04mfg\nMissions\np13-skills\nN2 hello page muiz0kh2\nN2 hello page muiz0kh2\nComplete\nFeed\nPlan\n2\nTimeline\nArtifacts\n3\nChecks & Gates\nMetrics\nDone when\n0 of 1 verified\nU1\nThe acceptance scenario finishes its steps\nThe spec will cover this\nNot verified\nDone\n3\nREVIEWER\nReview\nDone\njust now\nby\nRuntime\n·\nresponsible\nYou\nFull doc\nRequest changes\n\nReviewReport ready for the hello page\n\nWritten by the scripted acceptance agent\nSkills folder: none\nSkills in prompt: none\nDEVELOPER\nImplement\nDone\njust now\nby\nRuntime\n·\nresponsible\nYou\nFull doc\nRequest changes\n\nChangeSet ready for the hello page\n\nWritten by the scripted acceptance agent\nSkills folder: house-style, tdd\nSkills in prompt: none\nPlan for N2 hello page muiz0kh2\nApproved\njust now\nby\nRuntime\n·\nresponsible\nYou\nFull doc\n\nImplement with the Developer role's skills plus the house style, then a review that pins…\n\n2 tasks: development → review\nFirst gate: implement passes when artifact.ChangeSet.exists && skills.missing == 0 && skills.loaded >= 1"
     },
     {
       "label": "proof (agent record): it found house-style and tdd in .claude/skills",
@@ -57,13 +57,13 @@
           "tdd"
         ],
         "prompt": [],
-        "cwd": "/tmp/tdm-p13/home/workspaces/ws_01m3fta23r1f0x29apgy/missions/msn_01m3ftbfmd4hjdves21c/worktrees/n2-hello-page-muiwt1s6-implement-kad5pcq9"
+        "cwd": "/tmp/tdm-p13/home/workspaces/ws_01m3fxva4mqmwpx878r0/missions/msn_01m3fxwpqg95qqp04mfg/worktrees/n2-hello-page-muiz0kh2-implement-193m71v0"
       }
     },
     {
       "label": "proof (disk): the worktree holds .claude/skills/tdd/SKILL.md and reference.md",
       "ok": true,
-      "observed": "/tmp/tdm-p13/home/workspaces/ws_01m3fta23r1f0x29apgy/missions/msn_01m3ftbfmd4hjdves21c/worktrees/n2-hello-page-muiwt1s6-implement-kad5pcq9"
+      "observed": "/tmp/tdm-p13/home/workspaces/ws_01m3fxva4mqmwpx878r0/missions/msn_01m3fxwpqg95qqp04mfg/worktrees/n2-hello-page-muiz0kh2-implement-193m71v0"
     },
     {
       "label": "proof (git): info/exclude lists /.claude/skills/tdd/ and /.claude/skills/house-style/",
