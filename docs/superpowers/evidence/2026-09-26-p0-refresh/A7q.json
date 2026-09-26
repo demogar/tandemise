@@ -1,0 +1,24 @@
+{
+  "id": "A7q",
+  "title": "QA runs on the agent staffed first",
+  "ok": true,
+  "checks": [
+    {
+      "label": "qa ran on the QA agent (first in its staffing), responsible you",
+      "ok": true,
+      "observed": {
+        "assignee": "QA agent",
+        "responsible": "Demostenes Garcia G."
+      }
+    },
+    {
+      "label": "QAPlan by the QA agent, you responsible",
+      "ok": true,
+      "observed": {
+        "author": "QA agent"
+      }
+    }
+  ],
+  "notes": [],
+  "shots": []
+}

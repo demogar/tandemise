@@ -1,0 +1,61 @@
+{
+  "id": "A18",
+  "title": "Hand a task that has not started to another agent",
+  "ok": true,
+  "checks": [
+    {
+      "label": "qa has not started and would go to the QA agent",
+      "ok": true,
+      "observed": {
+        "status": "PENDING",
+        "wouldBe": "QA agent"
+      }
+    },
+    {
+      "label": "qa now would go to the Release agent, through an override on this task",
+      "ok": true,
+      "observed": {
+        "assignees": [
+          "mem_01m3fkyxnmm3he2eeg6v"
+        ],
+        "mode": "first_available",
+        "responsible": null,
+        "reviews": []
+      }
+    },
+    {
+      "label": "the drawer marks the task \"override\"",
+      "ok": true
+    },
+    {
+      "label": "the project staffing for QA is unchanged",
+      "ok": true
+    },
+    {
+      "label": "qa ran on the Release agent",
+      "ok": true,
+      "observed": "Release agent"
+    },
+    {
+      "label": "its QAPlan is by the Release agent, you responsible",
+      "ok": true,
+      "observed": {
+        "author": "Release agent"
+      }
+    },
+    {
+      "label": "a task that already ran refuses a staffing change (409)",
+      "ok": true,
+      "observed": 409
+    },
+    {
+      "label": "and its drawer offers no \"Change\"",
+      "ok": true
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p0-refresh/scratch/acceptance/p0/evidence/A18-change.png",
+    "/Users/demogar/projects/tandemise/tandemise-p0-refresh/scratch/acceptance/p0/evidence/A18-override.png"
+  ]
+}

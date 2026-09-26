@@ -1,11 +1,12 @@
-// One mission run by the team: A2, A3, A4, A6, A7, A8, A9 and A13, all decided in the window.
+// One mission run by you and your agents: A2, A3, A8, A9 and A13, all decided in the window.
+// A4, A6 and A7 needed a second person and are retired (see the suite README); A2d and A7q take their place.
 import { context, writeState } from '../lib/ctx.mjs';
 import { Evidence } from '../lib/evidence.mjs';
 
 const c = await context();
 const { page, api, ui, sleep, until } = c;
 const id = {};
-for (const n of ['Maria Lopez', 'Ana Ruiz', 'Bo Chen', 'Figma design agent', 'Coding agent', 'Product agent', 'Architecture agent', 'Finance agent', 'Release agent']) id[n] = await c.id(n);
+for (const n of ['Product agent', 'Design agent', 'Architecture agent', 'Coding agent', 'QA agent', 'Finance agent', 'Release agent']) id[n] = await c.id(n);
 const title = `Team hello ${Date.now().toString(36)}`;
 const missionId = await c.createMission(title);
 writeState({ team: missionId });
@@ -16,8 +17,9 @@ await c.approvePlan(missionId, title);
   const ev = new Evidence('PLAN', 'Before anything runs, the Plan says who will do each task');
   await page.navigate(`#/missions/${missionId}/plan`); await sleep(1500);
   const plan = await page.text('main');
-  ev.check('build: Coding agent, responsible Bo', /Coding agent[\s\S]{0,60}Responsible\s*Bo Chen/.test(plan));
-  ev.check('design: Figma design agent, responsible Ana', /Figma design agent[\s\S]{0,60}Responsible\s*Ana Ruiz/.test(plan));
+  ev.check('build: Coding agent, responsible you', /Coding agent[\s\S]{0,60}Responsible\s*You/.test(plan));
+  ev.check('design: Design agent, responsible you', /Design agent[\s\S]{0,60}Responsible\s*You/.test(plan));
+  ev.check('qa: QA agent, responsible you', /QA agent[\s\S]{0,60}Responsible\s*You/.test(plan));
   await page.screenshot(ev.shot('plan'));
   ev.save();
 }
@@ -43,32 +45,24 @@ await c.approvePlan(missionId, title);
   ev.save();
 }
 
-// ---- A4 + A6: design by Ana's agent goes to Ana; you record her approval.
+// ---- Design by your Design agent is yours to approve too. (A4 and A6 - a teammate's approval, recorded on
+// their behalf - need a second person and were retired with "Add person" in 0.4.0; see the suite README.)
 {
-  const a4 = new Evidence('A4', "Team without accounts: design by Ana's agent is Ana's to approve");
+  const ev = new Evidence('A2d', 'Your agent\'s design is yours to approve');
   const [apr] = await until(async () => { const a = await pendingFor('design'); return a.length && a; }, { label: 'design approval', timeoutMs: 60_000 });
   const design = await c.task(missionId, 'design');
-  a4.check("done by Ana's Figma agent; responsible Ana", design.assignee?.id === id['Figma design agent'] && design.responsible?.id === id['Ana Ruiz']);
-  a4.check('addressed to Ana only; Maria (her lead) not asked', JSON.stringify(apr.addressees) === JSON.stringify([id['Ana Ruiz']]), apr.addressees);
-  a4.check('not in your For me', !(await ui.inbox('For me')).includes('Approve the output of design?'));
-  a4.check('under Everyone as "For Ana Ruiz"', /Approve the output of design\?[^\n]*\n(?:[^\n]*\n)?\s*For Ana Ruiz/.test(await ui.inbox('Everyone')));
-  await page.screenshot(a4.shot('inbox-everyone'));
-  await page.navigate(`#/missions/${missionId}/plan`); await sleep(1500);
-  a4.check('Plan: design is "Waiting for Ana Ruiz"', /Waiting for Ana Ruiz/.test(await page.text('main')));
-  await page.screenshot(a4.shot('plan'));
-  a4.save();
-
-  const a6 = new Evidence('A6', "Record Ana's approval on her behalf");
-  await ui.openItem('Approve the output of design?', 'Everyone');
-  a6.check('card offers "Recording for"', (await page.text('main')).includes('Recording for'));
-  await page.screenshot(a6.shot('recording-for'));
-  await c.decideInInbox('Approve the output of design?', { recordingFor: 'Ana Ruiz' });
+  ev.check('done by your Design agent; responsible you', design.assignee?.id === id['Design agent'] && design.responsible?.id === c.me, { assignee: design.assignee?.name, responsible: design.responsible?.name });
+  ev.check('addressed to you only', JSON.stringify(apr.addressees) === JSON.stringify([c.me]), apr.addressees);
+  ev.check('listed under For me as "For you"', /Approve the output of design\?[^\n]*\n(?:[^\n]*\n)?\s*For you/.test(await ui.inbox('For me')));
+  await ui.openItem('Approve the output of design?', 'For me');
+  const card = await page.text('main');
+  ev.check('no "Recording for" on your own decision', !card.includes('Recording for'));
+  await page.screenshot(ev.shot('card'));
+  await c.decideInInbox('Approve the output of design?', { filter: 'For me' });
   await until(async () => (await c.task(missionId, 'design')).status === 'SUCCEEDED', { label: 'design done' });
   const decided = (await c.approvals(missionId)).find((a) => a.id === apr.id);
-  a6.check('stored: decided by Ana, recorded by you', decided.decidedBy === id['Ana Ruiz'] && decided.recordedBy === c.me);
-  a6.check('history reads "by Ana Ruiz · recorded by You"', /Approve the output of design\?\s*\n\s*Approved[\s·]*by\s*Ana Ruiz[\s·]*recorded by\s*You/.test(await ui.inbox('Everyone')));
-  await page.screenshot(a6.shot('history'));
-  a6.save();
+  ev.check('decided by you, on your own behalf', decided.decidedBy === c.me && (decided.recordedBy ?? c.me) === c.me, { decidedBy: decided.decidedBy, recordedBy: decided.recordedBy });
+  ev.save();
 }
 
 // ---- A8: checked later; nothing waits. "Needs changes" with a note is feedback (P2 spec §10): work that used
@@ -126,27 +120,14 @@ await c.approvePlan(missionId, title);
   a3.save();
 }
 
-// ---- A7: pool claimed as Bo, finished on his behalf.
+// ---- qa runs on your QA agent. (A7 - a pool of people claiming a step - was retired with the people
+// presets in 0.4.0; see the suite README.)
 {
-  const ev = new Evidence('A7', 'Pool and claim');
-  const qa = await until(async () => { const t = await c.task(missionId, 'qa'); return t.status === 'AWAITING_HUMAN' && t; }, { label: 'qa waiting', timeoutMs: 120_000 });
-  ev.check('qa is unassigned and claimable by Ana and Bo; you are responsible until claimed', qa.assignee === null && qa.claimable.length === 2 && qa.responsible?.id === c.me, qa.claimable.map((x) => x.name));
-  await ui.openTask('qa', title);
-  const options = await page.evaluate(`(() => { const s = [...document.querySelectorAll('select')].find(x => x.offsetParent && (x.labels?.[0]?.innerText||'').startsWith('Claim for')); return s ? [...s.options].map(o=>o.text) : null; })()`);
-  ev.check('"Claim for" offers only Ana and Bo', JSON.stringify(options?.slice().sort()) === JSON.stringify(['Ana Ruiz', 'Bo Chen']), options);
-  await page.select('Claim for', 'Bo Chen');
-  await page.screenshot(ev.shot('claim'));
-  await page.click('Claim');
-  const claimed = await until(async () => { const t = await c.task(missionId, 'qa'); return t.assignee && t; }, { label: 'claimed' });
-  ev.check('Bo is the assignee and now responsible', claimed.assignee?.id === id['Bo Chen'] && claimed.responsible?.id === id['Bo Chen']);
-  await ui.openTask('qa', title);
-  const doneBy = await page.evaluate(`(() => { const s = [...document.querySelectorAll('select')].find(x => x.offsetParent && (x.labels?.[0]?.innerText||'').startsWith('Done by')); return s ? [...s.options].map(o=>o.text) : null; })()`);
-  ev.check('"Done by" offers only Bo', JSON.stringify(doneBy) === JSON.stringify(['Bo Chen']), doneBy);
-  await page.fill('Paste what you produced', 'QA plan: load the page, check the greeting, check keyboard focus.');
-  await page.click('Mark done');
-  const done = await until(async () => { const t = await c.task(missionId, 'qa'); return t.status === 'SUCCEEDED' && t; }, { label: 'qa done' });
-  const art = (await api.get(`/v1/missions/${missionId}/artifacts`)).find((a) => a.taskId === done.id);
-  ev.check("QAPlan: by Bo, recorded by you, Bo responsible", art?.author?.id === id['Bo Chen'] && art?.recordedByRef?.id === c.me && art?.responsible?.id === id['Bo Chen'], { author: art?.author?.name, recordedBy: art?.recordedByRef?.name });
+  const ev = new Evidence('A7q', 'QA runs on the agent staffed first');
+  const qa = await until(async () => { const t = await c.task(missionId, 'qa'); return t.status === 'SUCCEEDED' && t; }, { label: 'qa done', timeoutMs: 120_000 });
+  ev.check('qa ran on the QA agent (first in its staffing), responsible you', qa.assignee?.id === id['QA agent'] && qa.responsible?.id === c.me && qa.claimable.length === 0, { assignee: qa.assignee?.name, responsible: qa.responsible?.name });
+  const art = (await api.get(`/v1/missions/${missionId}/artifacts`)).find((a) => a.taskId === qa.id);
+  ev.check('QAPlan by the QA agent, you responsible', art?.author?.id === id['QA agent'] && art?.responsible?.id === c.me, { author: art?.author?.name });
   ev.save();
 }
 
@@ -168,7 +149,7 @@ await c.approvePlan(missionId, title);
   const arts = await api.get(`/v1/missions/${missionId}/artifacts`);
   const change = arts.find((a) => a.type === 'ChangeSet');
   const fin = arts.find((a) => a.type === 'FinanceReport');
-  a13.check("ChangeSet by Bo's Coding agent, Bo responsible", ts.build.assignee?.id === id['Coding agent'] && change?.author?.id === id['Coding agent'] && change?.responsible?.id === id['Bo Chen']);
+  a13.check('ChangeSet by your Coding agent, you responsible', ts.build.assignee?.id === id['Coding agent'] && change?.author?.id === id['Coding agent'] && change?.responsible?.id === c.me);
   a13.check('FinanceReport by your Finance agent, you responsible', fin?.author?.id === id['Finance agent'] && fin?.responsible?.id === c.me);
   a13.check('ReleaseCandidate by your Release agent, you responsible', ts.release.assignee?.id === id['Release agent'] && ts.release.responsible?.id === c.me);
   await page.navigate(`#/missions/${missionId}/plan`); await sleep(1500);

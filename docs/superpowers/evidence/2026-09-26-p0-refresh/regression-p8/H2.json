@@ -1,0 +1,50 @@
+{
+  "id": "H2",
+  "title": "Keep paused leaves the mission stopped",
+  "ok": true,
+  "checks": [
+    {
+      "label": "still \"Paused\"",
+      "ok": true
+    },
+    {
+      "label": "and says how to go on: \"Kept paused at its limit: 15 of 12 agent minutes. Raise the limit to resume.\"",
+      "ok": true,
+      "observed": "Tandemise\nAcceptance\n1 repository\nHome\nMissions\nInbox\nArtifacts\nACCEPTANCE\nRepositories\nTeam\nRuntimes\nIntegrations\nAPP\nSettings\nDaemon connected · 53647\nmsn_01m3fnvexrvh1vh922pv\nMissions\np8-steps\nH1 hello page muitzvtj SCRIPTED_USAGE_MIN=5\nH1 hello page muitzvtj SCRIPTED_USAGE_MIN=5\nPaused\nResume\nCancel\nKept paused at its limit: 15 of 12 agent minutes. Raise the limit to resume.\nFeed\nPlan\n5\nTimeline\nArtifacts\n4\nChecks & Gates\nMetrics\nDone when\n0 of 1 verified\nU1\nThe acceptance scenario finishes "
+    },
+    {
+      "label": "the card is gone from the mission page",
+      "ok": true
+    },
+    {
+      "label": "proof (API): the card was answered \"Keep paused\"",
+      "ok": true,
+      "observed": {
+        "status": "REJECTED",
+        "option": "keep_paused"
+      }
+    },
+    {
+      "label": "proof (SQL): the hard incident is resolved",
+      "ok": true
+    },
+    {
+      "label": "Resume is refused and says why: \"Limit reached: 15 of 12 agent minutes. Raise the limit to resume this mission.\"",
+      "ok": true,
+      "observed": "Tandemise\nAcceptance\n1 repository\nHome\nMissions\nInbox\nArtifacts\nACCEPTANCE\nRepositories\nTeam\nRuntimes\nIntegrations\nAPP\nSettings\nDaemon connected · 53647\nmsn_01m3fnvexrvh1vh922pv\nMissions\np8-steps\nH1 hello page muitzvtj SCRIPTED_USAGE_MIN=5\nH1 hello page muitzvtj SCRIPTED_USAGE_MIN=5\nPaused\nResume\nCancel\nPrecondition failed\n\nLimit reached: 15 of 12 agent minutes. Raise the limit to resume this mission.\n\nKept paused at its limit: 15 of 12 agent minutes. Raise the limit to resume.\nFeed\nPlan\n5\nTimel"
+    },
+    {
+      "label": "proof (SQL): no run after \"Keep paused\"",
+      "ok": true,
+      "observed": {
+        "before": 3,
+        "after": 3
+      }
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p0-refresh/scratch/acceptance/p8/evidence/H2-kept-paused.png",
+    "/Users/demogar/projects/tandemise/tandemise-p0-refresh/scratch/acceptance/p8/evidence/H2-resume-refused.png"
+  ]
+}

@@ -1,0 +1,80 @@
+{
+  "id": "C9",
+  "title": "Decline: \"Declined\" on the card and in the reader, linked to the note",
+  "ok": true,
+  "checks": [
+    {
+      "label": "solo workspace: you are the only person",
+      "ok": true,
+      "observed": [
+        "Demostenes Garcia G."
+      ]
+    },
+    {
+      "label": "no \"Recording for\" on screen (composer)",
+      "ok": true
+    },
+    {
+      "label": "the flash says \"Round 2 started\"",
+      "ok": true,
+      "observed": "Round 2 started"
+    },
+    {
+      "label": "the note is closed in round 2 (declined notes still count as answered)",
+      "ok": true,
+      "observed": [
+        {
+          "id": "fb_01m3fmzss3zhtezp5111",
+          "taskId": "tsk_01m3fmzj919q3qg790t5",
+          "artifactId": null,
+          "author": {
+            "id": "mem_01m3fmhqnxe2mgx86ngz",
+            "name": "Demostenes Garcia G.",
+            "kind": "person"
+          },
+          "recordedBy": null,
+          "text": "Add a dark mode toggle to the hello page",
+          "status": "addressed",
+          "round": 2,
+          "createdAt": "2026-09-26T20:02:30.819Z"
+        }
+      ]
+    },
+    {
+      "label": "the card's What changed shows a Declined chip, the reason without the \"Declined:\" prefix, and the note's author",
+      "ok": true,
+      "observed": "PRODUCT MANAGER\ndoc\nDone\nRound 2\njust now\nby\nRuntime\n·\nresponsible\nYou\nFull doc\nRequest changes\n\nProductSpec ready for the hello page\n\nWHAT CHANGED\nDeclined\nthe scripted agent keeps the page as it is\n· You\nWritten by the scripted acceptance agent\nNo model was called"
+    },
+    {
+      "label": "the Declined chip is its own element",
+      "ok": true,
+      "observed": "Declined"
+    },
+    {
+      "label": "the reader's \"Changes in v2\" marks it Declined and links it to the note text and author",
+      "ok": true,
+      "observed": "doc\nProductSpec: Scripted work\nby\nRuntime\n·\nresponsible\nYou\nRequest changes\n\nProductSpec ready for the hello page\n\nWritten by the scripted acceptance agent\nNo model was called\nCHANGES IN V2\nDeclined\nthe scripted agent keeps the page as it is\nYou\nAdd a dark mode toggle to the hello page\nv1\nv2\nCompare with v1\nProduct Spec\nSep 26, 2026, 3:02 PM\ndoc branch\nDetails\n\nWritten by the scripted acceptance agent.\n\nRound notes:\n\nAdd a dark mode toggle to the hello page"
+    },
+    {
+      "label": "event feedback.addressed carries declined: true",
+      "ok": true,
+      "observed": {
+        "type": "feedback.addressed",
+        "feedbackId": "fb_01m3fmzss3zhtezp5111",
+        "round": 2,
+        "declined": true
+      }
+    },
+    {
+      "label": "the timeline reads \"Round 2 declined a note\"",
+      "ok": true
+    }
+  ],
+  "notes": [
+    "mission msn_01m3fmzj8me2tttcyv6r"
+  ],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p0-refresh/scratch/acceptance/p0/evidence/C9-card-declined.png",
+    "/Users/demogar/projects/tandemise/tandemise-p0-refresh/scratch/acceptance/p0/evidence/C9-reader-declined.png"
+  ]
+}

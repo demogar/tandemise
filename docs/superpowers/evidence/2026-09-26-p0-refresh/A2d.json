@@ -1,0 +1,42 @@
+{
+  "id": "A2d",
+  "title": "Your agent's design is yours to approve",
+  "ok": true,
+  "checks": [
+    {
+      "label": "done by your Design agent; responsible you",
+      "ok": true,
+      "observed": {
+        "assignee": "Design agent",
+        "responsible": "Demostenes Garcia G."
+      }
+    },
+    {
+      "label": "addressed to you only",
+      "ok": true,
+      "observed": [
+        "mem_01m3fkw43thsrsgadg8f"
+      ]
+    },
+    {
+      "label": "listed under For me as \"For you\"",
+      "ok": true
+    },
+    {
+      "label": "no \"Recording for\" on your own decision",
+      "ok": true
+    },
+    {
+      "label": "decided by you, on your own behalf",
+      "ok": true,
+      "observed": {
+        "decidedBy": "mem_01m3fkw43thsrsgadg8f",
+        "recordedBy": "mem_01m3fkw43thsrsgadg8f"
+      }
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p0-refresh/scratch/acceptance/p0/evidence/A2d-card.png"
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "id": "A9a",
+  "title": "Safety net: a low-risk task needs no approval",
+  "ok": true,
+  "checks": [
+    {
+      "label": "finance succeeded with no approval card",
+      "ok": true
+    },
+    {
+      "label": "timeline records the skipped review with task.risk_level below 2",
+      "ok": true,
+      "observed": {
+        "type": "review.skipped",
+        "taskId": "tsk_01m3fm0r2bytya4apggp",
+        "when": "task.risk_level >= 2",
+        "facts": {
+          "task.risk_level": 0
+        }
+      }
+    }
+  ],
+  "notes": [],
+  "shots": []
+}

@@ -1,0 +1,29 @@
+{
+  "id": "B1",
+  "title": "Solo mission opens on a feed of short cards",
+  "ok": true,
+  "checks": [
+    {
+      "label": "the mission opens on the Feed tab",
+      "ok": true
+    },
+    {
+      "label": "mission completes",
+      "ok": true,
+      "observed": "COMPLETE"
+    },
+    {
+      "label": "Done cards show headlines, not YAML or ids",
+      "ok": true
+    },
+    {
+      "label": "cards carry \"by … · responsible You\"",
+      "ok": true
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p0-refresh/scratch/acceptance/p0/evidence/B1-needs-plan.png",
+    "/Users/demogar/projects/tandemise/tandemise-p0-refresh/scratch/acceptance/p0/evidence/B1-done.png"
+  ]
+}

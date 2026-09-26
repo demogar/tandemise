@@ -1,0 +1,80 @@
+{
+  "id": "A12",
+  "title": "Staffing change mid-mission",
+  "ok": true,
+  "checks": [
+    {
+      "label": "finance is READY, snapshotted to the Finance agent with the safety net",
+      "ok": true,
+      "observed": [
+        {
+          "by": "responsible",
+          "mode": "blocking",
+          "when": "task.risk_level >= 2"
+        }
+      ]
+    },
+    {
+      "label": "the project staffing changed: finance always approved, qa on the Architecture agent",
+      "ok": true,
+      "observed": {
+        "finance": [
+          {
+            "by": "responsible",
+            "mode": "blocking",
+            "when": "always"
+          }
+        ],
+        "qa": [
+          "mem_01m3fkydc3g8zm4rwxdr"
+        ]
+      }
+    },
+    {
+      "label": "qa (still PENDING) would now go to the Architecture agent",
+      "ok": true,
+      "observed": {
+        "assignee": {
+          "id": "mem_01m3fkydc3g8zm4rwxdr",
+          "name": "Architecture agent",
+          "kind": "agent"
+        },
+        "responsible": {
+          "id": "mem_01m3fkw43thsrsgadg8f",
+          "name": "Demostenes Garcia G.",
+          "kind": "person"
+        },
+        "claimable": [],
+        "executor": "agent"
+      }
+    },
+    {
+      "label": "finance (already READY) still ran on the Finance agent",
+      "ok": true,
+      "observed": {
+        "status": "SUCCEEDED",
+        "by": "Finance agent"
+      }
+    },
+    {
+      "label": "finance kept its safety net: no approval was asked for it",
+      "ok": true
+    },
+    {
+      "label": "qa resolved with the new staffing: the Architecture agent, not the QA agent",
+      "ok": true,
+      "observed": {
+        "status": "RUNNING",
+        "candidates": [
+          "mem_01m3fkydc3g8zm4rwxdr"
+        ]
+      }
+    }
+  ],
+  "notes": [
+    "spec:SUCCEEDED design:RUNNING architecture:READY build:PENDING docs:READY finance:READY qa:PENDING release:PENDING"
+  ],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p0-refresh/scratch/acceptance/p0/evidence/A12-plan-after-change.png"
+  ]
+}

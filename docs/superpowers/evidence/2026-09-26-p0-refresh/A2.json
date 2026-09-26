@@ -1,0 +1,41 @@
+{
+  "id": "A2",
+  "title": "AI drafts, you approve",
+  "ok": true,
+  "checks": [
+    {
+      "label": "spec approval addressed to you only",
+      "ok": true,
+      "observed": [
+        "mem_01m3fkw43thsrsgadg8f"
+      ]
+    },
+    {
+      "label": "listed under For me as \"For you\"",
+      "ok": true
+    },
+    {
+      "label": "evidence names the artifact by title, not by id",
+      "ok": true
+    },
+    {
+      "label": "decided by you",
+      "ok": true
+    },
+    {
+      "label": "approving released the next tasks",
+      "ok": true,
+      "observed": [
+        "design:RUNNING",
+        "architecture:RUNNING",
+        "finance:RUNNING",
+        "docs:AWAITING_HUMAN"
+      ]
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p0-refresh/scratch/acceptance/p0/evidence/A2-inbox.png",
+    "/Users/demogar/projects/tandemise/tandemise-p0-refresh/scratch/acceptance/p0/evidence/A2-card.png"
+  ]
+}

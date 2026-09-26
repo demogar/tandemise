@@ -1,0 +1,31 @@
+{
+  "id": "F6",
+  "title": "The Inbox asks for refinement decisions until they are made",
+  "ok": true,
+  "checks": [
+    {
+      "label": "the Inbox shows \"Refinement: 4 to decide\" for the mission",
+      "ok": true,
+      "observed": "Refinement: 4 to decide 3 criteria to decide and 1 question to answer before it can be planned·F6 hello page muittuh7 Refinement just now"
+    },
+    {
+      "label": "clicking the row opens the mission on \"Get it ready\"",
+      "ok": true
+    },
+    {
+      "label": "once everything is decided the row is gone",
+      "ok": true,
+      "observed": "gone"
+    },
+    {
+      "label": "proof (API): no refinement row for the mission",
+      "ok": true,
+      "observed": []
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p0-refresh/scratch/acceptance/p6/evidence/F6-inbox-row.png",
+    "/Users/demogar/projects/tandemise/tandemise-p0-refresh/scratch/acceptance/p6/evidence/F6-inbox-cleared.png"
+  ]
+}

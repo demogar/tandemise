@@ -1,0 +1,120 @@
+{
+  "id": "K2",
+  "title": "A status report written from facts, twice, byte for byte",
+  "ok": true,
+  "checks": [
+    {
+      "label": "the report opens in the artifact reader",
+      "ok": true
+    },
+    {
+      "label": "heading \"At a glance\"",
+      "ok": true,
+      "observed": "Status report: Acceptance\nby\nTandemise\n·\nresponsible\nYou\n\n1 needs you · working on 2 of 2 · 4 of 6 criteria verified · 1 stalled\n\nStalled: K1 offline mode muiuacwq SCRIPTED_SPEC_THREE_ACS SCRIPTED_FAIL_RELEASE — Retry release\nWaiting on you: K1 greeting page muiuacwq SCRIPTED_QA_PARTIAL: release exh"
+    },
+    {
+      "label": "heading \"Missions\"",
+      "ok": true,
+      "observed": "Status report: Acceptance\nby\nTandemise\n·\nresponsible\nYou\n\n1 needs you · working on 2 of 2 · 4 of 6 criteria verified · 1 stalled\n\nStalled: K1 offline mode muiuacwq SCRIPTED_SPEC_THREE_ACS SCRIPTED_FAIL_RELEASE — Retry release\nWaiting on you: K1 greeting page muiuacwq SCRIPTED_QA_PARTIAL: release exh"
+    },
+    {
+      "label": "heading \"Backlog\"",
+      "ok": true,
+      "observed": "Status report: Acceptance\nby\nTandemise\n·\nresponsible\nYou\n\n1 needs you · working on 2 of 2 · 4 of 6 criteria verified · 1 stalled\n\nStalled: K1 offline mode muiuacwq SCRIPTED_SPEC_THREE_ACS SCRIPTED_FAIL_RELEASE — Retry release\nWaiting on you: K1 greeting page muiuacwq SCRIPTED_QA_PARTIAL: release exh"
+    },
+    {
+      "label": "heading \"How this report was made\"",
+      "ok": true,
+      "observed": "Status report: Acceptance\nby\nTandemise\n·\nresponsible\nYou\n\n1 needs you · working on 2 of 2 · 4 of 6 criteria verified · 1 stalled\n\nStalled: K1 offline mode muiuacwq SCRIPTED_SPEC_THREE_ACS SCRIPTED_FAIL_RELEASE — Retry release\nWaiting on you: K1 greeting page muiuacwq SCRIPTED_QA_PARTIAL: release exh"
+    },
+    {
+      "label": "at a glance: \"Needs you: 1\", \"Working on: 2 of 2\", \"Criteria verified: 4 of 6\", \"Stalled: 1\"",
+      "ok": true,
+      "observed": "Status report: Acceptance\nby\nTandemise\n·\nresponsible\nYou\n\n1 needs you · working on 2 of 2 · 4 of 6 criteria verified · 1 stalled\n\nStalled: K1 offline mode muiuacwq SCRIPTED_SPEC_THREE_ACS SCRIPTED_FAIL_RELEASE — Retry release\nWaiting on you: K1 greeting page muiuacwq SCRIPTED_QA_PARTIAL: release exhausted its retries\nStatus Report\nSep 26, 2026, 3:27 PM\nDetails\nAt a glance\nNeeds you: 1\nWorking on: 2 of 2 · 0 queued\nCriteria verified: 4 of 6, across 2 missions in progress\nThis month (2026-09): no monthly limit set; 0.2 agent minutes used.\nStalled: 1\n"
+    },
+    {
+      "label": "K1 greeting page muiuacwq SCRIPTED_QA_PARTIAL: \"Criteria: 1 of 3 verified; AC2, AC3 not verified.\"",
+      "ok": true,
+      "observed": "Status: Blocked. Waiting on release: Not met: qa.criteria_unverified is 2, needs 0\nCriteria: 1 of 3 verified; AC2, AC3 not verified.\nLimit: no limit set.\nWaiting on you: release exhausted its retries.\nLast gate failure (release): Not met: qa.criteria_unverified is 2, needs 0"
+    },
+    {
+      "label": "K1 greeting page muiuacwq SCRIPTED_QA_PARTIAL: \"Last gate failure (release): Not met: qa.criteria_unverified is 2, needs 0\"",
+      "ok": true,
+      "observed": "Status: Blocked. Waiting on release: Not met: qa.criteria_unverified is 2, needs 0\nCriteria: 1 of 3 verified; AC2, AC3 not verified.\nLimit: no limit set.\nWaiting on you: release exhausted its retries.\nLast gate failure (release): Not met: qa.criteria_unverified is 2, needs 0"
+    },
+    {
+      "label": "K1 offline mode muiuacwq SCRIPTED_SPEC_THREE_ACS SCRIPTED_FAIL_RELEASE: stalled with its reason and \"Next: Retry release.\"; \"3 of 3 verified\"",
+      "ok": true,
+      "observed": "Status: Blocked. Waiting on release: Not met: artifact.ReleaseCandidate.exists is false Missing expected artifacts: ReleaseCandidate.\nStalled: 'release' is blocked: A human declined to retry this task. Next: Retry release.\nCriteria: 3 of 3 verified.\nLimit: no limit set.\nLast gate failure (release): Not met: artifact.ReleaseCandidate.exists is false"
+    },
+    {
+      "label": "it says how it was made: no model wrote it",
+      "ok": true
+    },
+    {
+      "label": "the Inbox card for A's release says the same words: \"Not met: qa.criteria_unverified is 2, needs 0\"",
+      "ok": true,
+      "observed": "Inbox\nWhat is waiting on a person.\nStalled: K1 offline mode muiuacwq SCRIPTED_SPEC_THREE_ACS SCRIPTED_FAIL_RELEASE\n'release' is blocked: A human declined to retry this task.\nStalled\n1m ago\nRetry release\nrelease exhausted its retries\nReleaseCandidate ready for the hello page\nFor you·K1 greeting page muiuacwq SCRIPTED_QA_PARTIAL\nIntervention\njust now\nRead only\nrelease exhausted its retries\nIntervention\napr_01m3fpbhq41r8dey0qd3\ntask\ntsk_01m3fpb0f23zrndqyag3\nK1 greeting page muiuacwq SCRIPTED_QA_PARTIAL\n·\nrelease\n·\nrequested by Release Manager\n·\njust now\nWHY IS THIS BEING ASKED?\n\n'release' failed its completion gate on every one of its 2 attempts.\n\nWHAT CHANGES IF YOU APPROVE?\n\nRetrying returns the task to the queue for one more attempt. Accepting marks its result good enough and lets dependent work continue. Leaving it blocked stops here.\n\nEVIDENCE\nLast measurement\nThis task failed its comp"
+    },
+    {
+      "label": "a second report is a new artifact",
+      "ok": true,
+      "observed": [
+        "art_01m3fpcqqa2a3grqgvgs",
+        "art_01m3fpcxke8yypeghamx"
+      ]
+    },
+    {
+      "label": "the reader shows v1 and v2, on v2",
+      "ok": true,
+      "observed": [
+        "v1",
+        "v2*"
+      ]
+    },
+    {
+      "label": "\"Compare with v1\" reads \"v1 → v2: 0 lines added, 0 lines removed\"",
+      "ok": true,
+      "observed": "v1 → v2: 0 lines added, 0 lines removed"
+    },
+    {
+      "label": "proof (API): v2 supersedes v1; both StatusReport, by Tandemise",
+      "ok": true,
+      "observed": {
+        "supersedes": "art_01m3fpcqqa2a3grqgvgs",
+        "author": {
+          "id": "system",
+          "name": "Tandemise",
+          "kind": "system"
+        }
+      }
+    },
+    {
+      "label": "proof (API): the two bodies are byte-identical after the front matter",
+      "ok": true,
+      "observed": [
+        1319,
+        1319
+      ]
+    },
+    {
+      "label": "proof (API): only asOf differs in the front matter",
+      "ok": true
+    },
+    {
+      "label": "proof (SQL): the reports belong to the project's \"Status reports\" holder, which no list shows",
+      "ok": true,
+      "observed": {
+        "title": "Status reports",
+        "workflow_preset": "status-reports",
+        "status": "COMPLETE"
+      }
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p0-refresh/scratch/acceptance/p10/evidence/K2-report-v1.png",
+    "/Users/demogar/projects/tandemise/tandemise-p0-refresh/scratch/acceptance/p10/evidence/K2-inbox-card-same-gate-text.png",
+    "/Users/demogar/projects/tandemise/tandemise-p0-refresh/scratch/acceptance/p10/evidence/K2-compare-no-differences.png"
+  ]
+}

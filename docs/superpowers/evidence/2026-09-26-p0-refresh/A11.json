@@ -1,0 +1,81 @@
+{
+  "id": "A11",
+  "title": "Remove an agent",
+  "ok": true,
+  "checks": [
+    {
+      "label": "confirmation names the agent and says its past work keeps its name",
+      "ok": true,
+      "observed": "Remove Design agent? Their past work keeps their name. Can"
+    },
+    {
+      "label": "the agent is removed and no longer active",
+      "ok": true
+    },
+    {
+      "label": "the Team screen hides it and offers \"Show 1 removed member\"",
+      "ok": true
+    },
+    {
+      "label": "shown again, it reads \"Removed\"",
+      "ok": true
+    },
+    {
+      "label": "its past DesignBrief still names it as the author",
+      "ok": true,
+      "observed": {
+        "id": "mem_01m3fky99r99gcw0f5b4",
+        "name": "Design agent",
+        "kind": "agent"
+      }
+    },
+    {
+      "label": "the finished mission's Plan still shows \"Design agent\"",
+      "ok": true
+    },
+    {
+      "label": "design no longer routes to the removed agent, nor silently to any runtime: it waits for you",
+      "ok": true,
+      "observed": {
+        "assignee": null,
+        "responsible": {
+          "id": "mem_01m3fkw43thsrsgadg8f",
+          "name": "Demostenes Garcia G.",
+          "kind": "person"
+        },
+        "claimable": [
+          {
+            "id": "mem_01m3fkw43thsrsgadg8f",
+            "name": "Demostenes Garcia G.",
+            "kind": "person"
+          }
+        ],
+        "executor": "human"
+      }
+    },
+    {
+      "label": "restored in its drawer, the agent takes design again",
+      "ok": true,
+      "observed": {
+        "assignee": {
+          "id": "mem_01m3fky99r99gcw0f5b4",
+          "name": "Design agent",
+          "kind": "agent"
+        },
+        "responsible": {
+          "id": "mem_01m3fkw43thsrsgadg8f",
+          "name": "Demostenes Garcia G.",
+          "kind": "person"
+        },
+        "claimable": [],
+        "executor": "agent"
+      }
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p0-refresh/scratch/acceptance/p0/evidence/A11-confirm.png",
+    "/Users/demogar/projects/tandemise/tandemise-p0-refresh/scratch/acceptance/p0/evidence/A11-tree.png",
+    "/Users/demogar/projects/tandemise/tandemise-p0-refresh/scratch/acceptance/p0/evidence/A11-plan.png"
+  ]
+}

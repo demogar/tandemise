@@ -1,0 +1,185 @@
+{
+  "id": "TEAM",
+  "title": "Build you + your agents and their staffing in the Team screen (with A14)",
+  "ok": true,
+  "checks": [
+    {
+      "label": "the Team screen offers \"Add agent\" and no \"Add person\"",
+      "ok": true,
+      "observed": [
+        "Add agent",
+        "Add agent"
+      ]
+    },
+    {
+      "label": "the first tab reads \"You & agents\"",
+      "ok": true
+    },
+    {
+      "label": "the Owner picker offers only you",
+      "ok": true,
+      "observed": [
+        "You"
+      ]
+    },
+    {
+      "label": "the team is you and seven agents",
+      "ok": true,
+      "observed": [
+        "person:Demostenes Garcia G.",
+        "agent:Product agent",
+        "agent:Design agent",
+        "agent:Architecture agent",
+        "agent:Coding agent",
+        "agent:QA agent",
+        "agent:Finance agent",
+        "agent:Release agent"
+      ]
+    },
+    {
+      "label": "every agent is yours",
+      "ok": true
+    },
+    {
+      "label": "every agent runs on the scripted runtime",
+      "ok": true,
+      "observed": [
+        "Product agent:1",
+        "Design agent:1",
+        "Architecture agent:1",
+        "Coding agent:1",
+        "QA agent:1",
+        "Finance agent:1",
+        "Release agent:1"
+      ]
+    },
+    {
+      "label": "the team has no invariant issues",
+      "ok": true
+    },
+    {
+      "label": "the tree lists every agent as \"Agent · yours\"",
+      "ok": true
+    },
+    {
+      "label": "the staffing picker offers no people presets",
+      "ok": true,
+      "observed": [
+        "AI only",
+        "AI drafts, responsible approves",
+        "AI drafts, responsible checks later",
+        "AI with a safety net",
+        "Custom"
+      ]
+    },
+    {
+      "label": "product and design: their agent drafts, the responsible person approves",
+      "ok": true,
+      "observed": {
+        "product": {
+          "assignees": [
+            "mem_01m3fky57fr5d81r12tc"
+          ],
+          "mode": "first_available",
+          "responsible": null,
+          "reviews": [
+            {
+              "by": "responsible",
+              "mode": "blocking",
+              "when": "always"
+            }
+          ]
+        },
+        "design": {
+          "assignees": [
+            "mem_01m3fky99r99gcw0f5b4"
+          ],
+          "mode": "first_available",
+          "responsible": null,
+          "reviews": [
+            {
+              "by": "responsible",
+              "mode": "blocking",
+              "when": "always"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "label": "architecture: checked later; finance and release: safety net",
+      "ok": true,
+      "observed": {
+        "architecture": {
+          "assignees": [
+            "mem_01m3fkydc3g8zm4rwxdr"
+          ],
+          "mode": "first_available",
+          "responsible": null,
+          "reviews": [
+            {
+              "by": "responsible",
+              "mode": "after",
+              "when": "always"
+            }
+          ]
+        },
+        "finance": {
+          "assignees": [
+            "mem_01m3fkysk8wgbwymb6kg"
+          ],
+          "mode": "first_available",
+          "responsible": null,
+          "reviews": [
+            {
+              "by": "responsible",
+              "mode": "blocking",
+              "when": "task.risk_level >= 2"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "label": "the QA drawer preselects the agent that holds the role and offers only agents",
+      "ok": true,
+      "observed": {
+        "QA agent": "true",
+        "Product agent": "false",
+        "Design agent": "false",
+        "Architecture agent": "false",
+        "Coding agent": "false",
+        "Finance agent": "false",
+        "Release agent": "false"
+      }
+    },
+    {
+      "label": "qa: the QA agent first, then the Coding agent",
+      "ok": true,
+      "observed": {
+        "assignees": [
+          "mem_01m3fkyngtdftwsh3prk",
+          "mem_01m3fkyhefp1f3jh79w1"
+        ]
+      }
+    },
+    {
+      "label": "A14: saving QA left every other role unchanged",
+      "ok": true
+    },
+    {
+      "label": "the agent drawer saved its title",
+      "ok": true
+    },
+    {
+      "label": "A14: editing an agent in its drawer leaves all staffing unchanged",
+      "ok": true
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p0-refresh/scratch/acceptance/p0/evidence/TEAM-tree.png",
+    "/Users/demogar/projects/tandemise/tandemise-p0-refresh/scratch/acceptance/p0/evidence/TEAM-qa-drawer.png",
+    "/Users/demogar/projects/tandemise/tandemise-p0-refresh/scratch/acceptance/p0/evidence/TEAM-staffing.png"
+  ]
+}

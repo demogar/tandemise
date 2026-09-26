@@ -1,0 +1,23 @@
+{
+  "id": "A13",
+  "title": "Beyond design: code, finance and release follow the same rules",
+  "ok": true,
+  "checks": [
+    {
+      "label": "ChangeSet by your Coding agent, you responsible",
+      "ok": true
+    },
+    {
+      "label": "FinanceReport by your Finance agent, you responsible",
+      "ok": true
+    },
+    {
+      "label": "ReleaseCandidate by your Release agent, you responsible",
+      "ok": true
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p0-refresh/scratch/acceptance/p0/evidence/A13-plan-complete.png"
+  ]
+}
