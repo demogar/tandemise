@@ -8,8 +8,9 @@ import {
   claimTaskRequest, completeTaskRequest, createPersonRequest, updatePersonRequest, addMemberRequest,
   updateMemberRequest, roleStaffingPatchRequest, taskStaffingPatchRequest, missionFeedQuery, missionArtifactsQuery, artifactSearchQuery,
   dismissFeedbackRequest, giveFeedbackRequest, startRoundRequest,
-  addCriterionRequest, answerQuestionRequest, criterionVerdictRequest, updateMissionRequest,
+  addCriterionRequest, answerQuestionRequest, criterionVerdictRequest, updateMissionRequest, workspaceUsageQuery,
 } from '@tandemise/api-contract';
+import { normalizeLimits } from '@tandemise/domain';
 import type { TandemiseServices } from '@tandemise/application';
 import { Router, formatZodIssues, type RequestContext } from './http/router.js';
 
@@ -57,8 +58,17 @@ export function buildRouter(services: TandemiseServices): Router {
   r.post('/v1/workspaces', async (ctx) =>
     services.workspaces.create(ctx.caller, await ctx.body(createWorkspaceRequest)));
   r.get('/v1/workspaces/:id', (ctx) => services.workspaces.view(asId(ctx.params.id!)));
-  r.patch('/v1/workspaces/:id', async (ctx) =>
-    services.workspaces.update(asId(ctx.params.id!), await ctx.body(updateWorkspaceRequest)));
+  r.patch('/v1/workspaces/:id', async (ctx) => {
+    const patch = await ctx.body(updateWorkspaceRequest);
+    const view = services.workspaces.update(asId(ctx.params.id!), patch);
+    // A limit changed (P8): a stop it no longer justifies is lifted, and the view is read after.
+    if (patch.defaultMissionLimits === undefined && patch.monthlyLimits === undefined) return view;
+    services.limits.limitsChanged(asId(ctx.params.id!));
+    return services.workspaces.view(asId(ctx.params.id!));
+  });
+  // A month's usage against the monthly limits (P8); the current local month by default.
+  r.get('/v1/workspaces/:id/usage', (ctx) =>
+    services.limits.usage(asId(ctx.params.id!), query(ctx, workspaceUsageQuery).month));
 
   r.get('/v1/workspaces/:id/repositories', (ctx) => services.workspaces.listRepositories(asId(ctx.params.id!)));
   r.post('/v1/workspaces/:id/repositories', async (ctx) =>
@@ -82,8 +92,16 @@ export function buildRouter(services: TandemiseServices): Router {
   });
   r.get('/v1/missions/:id', (ctx) => services.projections.missionDetail(asId(ctx.params.id!)));
   // The backlog (P7): priority, rank, queue or a move; answered with the project's backlog.
-  r.patch('/v1/missions/:id', async (ctx) =>
-    services.backlog.update(asId(ctx.params.id!), await ctx.body(updateMissionRequest)));
+  r.patch('/v1/missions/:id', async (ctx) => {
+    const { limits, ...backlog } = await ctx.body(updateMissionRequest);
+    const id = asId<'MissionId'>(ctx.params.id!);
+    // Limits (P8) answer with the mission; a backlog change answers with the backlog, as before.
+    if (limits !== undefined) {
+      services.limits.setMissionLimits(id, limits === null ? null : normalizeLimits(limits));
+      if (Object.keys(backlog).length === 0) return services.projections.missionDetail(id);
+    }
+    return services.backlog.update(id, backlog);
+  });
   r.get('/v1/workspaces/:id/backlog', (ctx) => services.backlog.view(asId(ctx.params.id!)));
   r.delete('/v1/missions/:id', (ctx) => services.missions.remove(asId(ctx.params.id!)));
 

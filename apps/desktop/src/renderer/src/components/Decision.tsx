@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { ApprovalView } from '@tandemise/api-contract';
 import type { Approval, ApprovalOption, RiskClass } from '@tandemise/domain';
-import { NEEDS_CHANGES_OPTION, REJECT_OPTION, REQUEST_CHANGES_OPTION } from '../lib/domain.js';
+import { NEEDS_CHANGES_OPTION, REJECT_OPTION, REQUEST_CHANGES_OPTION, isLimitCard } from '../lib/domain.js';
 import { ConfirmDialog } from './Modal.js';
 import { ErrorState } from './primitives.js';
 import { RecordingFor, behalfOf } from './ActorChip.js';
@@ -361,6 +361,17 @@ export function copyFor(approval: Approval, selectedId: string | undefined, revi
       notePlaceholder,
       noteShort: notePlaceholder,
       noteRequired: open,
+    };
+  }
+  // A limit card (P8) is answered with a number, not a note: the copy only frames it.
+  if (isLimitCard(approval)) {
+    return {
+      question: false,
+      kindLabel: 'Limit reached',
+      effectQuestion: 'What happens when you decide?',
+      notePlaceholder: '',
+      noteShort: '',
+      noteRequired: false,
     };
   }
   if (approval.kind === 'check') {

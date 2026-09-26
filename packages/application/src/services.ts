@@ -52,6 +52,8 @@ export interface TandemiseServices {
   readonly refinement: RefinementService;
   /** The ranked backlog and the work-in-progress limit (P7). */
   readonly backlog: import('./services/backlog-service.js').BacklogService;
+  /** Hard limits on spend and time (P8). */
+  readonly limits: import('./services/limit-service.js').LimitService;
 }
 
 /** Making a rough request ready to plan (P6). Every write is refused once the mission has left DRAFT. */

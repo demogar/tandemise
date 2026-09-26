@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Link, useLocation } from 'wouter';
 import type { MissionDetail as MissionDetailView } from '@tandemise/api-contract';
 import type { MissionStatus } from '@tandemise/domain';
-import { isTerminalMissionStatus } from '../../lib/domain.js';
+import { isLimitCard, isTerminalMissionStatus } from '../../lib/domain.js';
+import { ApprovalCard } from '../approvals/ApprovalCard.js';
 import { PageHeader } from '../../components/PageHeader.js';
 import { Icon, type IconName } from '../../components/Icon.js';
 import { ConfirmDialog } from '../../components/Modal.js';
@@ -14,7 +15,7 @@ import { ArtifactsPane } from './ArtifactsPane.js';
 import { ChecksPane } from './ChecksPane.js';
 import { MetricsPane } from './MetricsPane.js';
 import { isApprovalForMember, isApprovalWaitingOnMember, isHumanTaskForMember, isPlanUnstarted, planStanding } from '@tandemise/api-contract/for-me';
-import { useDaemonMutation, useMission, useMissionRefinement, useMyMemberId } from '../../lib/queries.js';
+import { useApprovals, useDaemonMutation, useMission, useMissionRefinement, useMyMemberId } from '../../lib/queries.js';
 import { missionTone, pluralize } from '../../lib/format.js';
 import { describeError } from '../../lib/daemon.js';
 import { clearMissionNotice, useMissionNotice } from '../../lib/notices.js';
@@ -62,8 +63,10 @@ export function MissionDetail({ id, tab }: { id: string; tab: MissionTab }): JSX
   const tone = missionTone(status);
   // Only what is addressed to me (or to nobody in particular) is "waiting on you";
   // the rule is the shared one the feed and Inbox use.
+  // A limit card is shown in its own panel on every tab, not in the feed (P8).
   const pendingApprovals = detail.approvals.filter(
-    (approval) => approval.status === 'PENDING' && isApprovalWaitingOnMember({ kind: approval.kind, addresseeIds: approval.addressees ?? [] }, meId),
+    (approval) => approval.status === 'PENDING' && !isLimitCard(approval)
+      && isApprovalWaitingOnMember({ kind: approval.kind, addresseeIds: approval.addressees ?? [] }, meId),
   );
 
   return (
@@ -139,12 +142,14 @@ export function MissionDetail({ id, tab }: { id: string; tab: MissionTab }): JSX
         </div>
       ) : null}
 
-      {status === 'BLOCKED' && detail.mission.statusReason ? (
+      {(status === 'BLOCKED' || status === 'PAUSED') && detail.mission.statusReason ? (
         <div className="banner banner--warn" style={{ margin: 'var(--s3) var(--s7) 0' }}>
           <Icon name="alert" size={15} />
           <span>{detail.mission.statusReason}</span>
         </div>
       ) : null}
+
+      <LimitCardPanel approvalId={detail.limits?.pendingApprovalId ?? null} />
 
       <div className="tabs" style={{ marginTop: 'var(--s3)' }}>
         <TabLink id={id} tab="feed" current={tab} label="Feed" count={needsYouCount(detail, meId)} />
@@ -387,4 +392,16 @@ function needsYouCount(detail: MissionDetailView, meId: string | null): number {
   }, meId);
   if (standing.forMe) cards.add('plan');
   return cards.size;
+}
+
+/** The open "raise or keep paused" card of a mission stopped at its limit, on every tab (P8). */
+function LimitCardPanel({ approvalId }: { approvalId: string | null }): JSX.Element | null {
+  const approvals = useApprovals();
+  const view = approvalId === null ? undefined : approvals.data?.find((a) => a.approval.id === approvalId);
+  if (view === undefined || view.approval.status !== 'PENDING') return null;
+  return (
+    <div style={{ margin: 'var(--s3) var(--s7) 0' }} aria-label="Limit reached">
+      <ApprovalCard view={view} compact />
+    </div>
+  );
 }

@@ -94,6 +94,14 @@ export const ACCEPT_RESULT_OPTION = 'accept_result';
  * so it is recorded as a note and a flag on the task, never a status change.
  */
 export const LOOKS_GOOD_OPTION = 'looks_good';
+
+/**
+ * The two answers to a limit incident (P8): raise the limit to a number the
+ * person gives and resume, or keep the work stopped. Carried on an
+ * `intervention` card, so no new approval kind is needed.
+ */
+export const RAISE_LIMIT_OPTION = 'raise_limit';
+export const KEEP_PAUSED_OPTION = 'keep_paused';
 export const NEEDS_CHANGES_OPTION = 'needs_changes';
 
 /**
@@ -120,7 +128,8 @@ export function isAffirmative(kind: ApprovalKind, optionId: string): boolean {
   if (kind === 'check') return optionId === LOOKS_GOOD_OPTION;
   return kind === 'choice'
     ? optionId !== REJECT_OPTION
-    : optionId === APPROVE_OPTION || optionId === APPROVE_FOR_TASK_OPTION || optionId === ACCEPT_RESULT_OPTION;
+    : optionId === APPROVE_OPTION || optionId === APPROVE_FOR_TASK_OPTION || optionId === ACCEPT_RESULT_OPTION
+      || optionId === RAISE_LIMIT_OPTION;
 }
 
 export const DEFAULT_APPROVAL_OPTIONS: readonly ApprovalOption[] = [

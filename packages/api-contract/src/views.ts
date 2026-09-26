@@ -4,7 +4,7 @@ import type {
   Integration, Mission, MissionProgress, MissionTask, Repository, RoleTemplate, Run,
   RunEventRecord, RuntimeHealth, RuntimeProfile, RuntimeDiscovery, RuntimeSettingField, Workspace,
   MissionPlan, PlanValidationIssue, GateOutcome, AccessLevel, Member, Person, Staffing,
-  ArtifactHandoff, TaskStatus, FeedbackStatus, MissionPriority,
+  ArtifactHandoff, TaskStatus, FeedbackStatus, MissionPriority, Limit, LimitStatus,
 } from '@tandemise/domain';
 
 /**
@@ -425,6 +425,8 @@ export interface MissionDetail {
   readonly checks: readonly CheckResult[];
   readonly evaluations: readonly Evaluation[];
   readonly metrics: MissionMetrics;
+  /** Its limits and how much of each it used (P8). */
+  readonly limits: MissionLimitsView;
   readonly plan: MissionPlan | null;
   readonly planIssues: readonly PlanValidationIssue[];
 }
@@ -567,6 +569,8 @@ export interface BacklogItemView {
   readonly readinessLabel: string;
   /** A refinement pass is running on it, so it is not pulled yet. */
   readonly refining: boolean;
+  /** Why the monthly spend rule holds it back (P8), or null. */
+  readonly held: string | null;
 }
 
 /** The project's backlog and work in progress (P7). */
@@ -598,6 +602,58 @@ export interface HomeView {
   readonly pendingApprovals: readonly ApprovalView[];
   readonly runtimes: readonly RuntimeView[];
   readonly recentEvents: readonly RunEventRecord[];
+  /** Missions and the project at or over a limit's warning level (P8). */
+  readonly limitAlerts: readonly LimitAlertView[];
+}
+
+/** One limit as measured now (P8). */
+export interface LimitStatusView extends LimitStatus {
+  /** "Agent minutes". */
+  readonly label: string;
+  /** "15 / 30 agent min"; "not reported / $5.00" when the metric is not reported. */
+  readonly bar: string;
+  /** What this means for the person, when it means something: a warning, a stop, or why it cannot be measured. */
+  readonly note: string | null;
+}
+
+export interface UsageView {
+  readonly agentMinutes: number;
+  /** Null when no runtime reported tokens. */
+  readonly tokens: number | null;
+  /** Null when no runtime reported a cost: never 0 for "not reported". */
+  readonly costUsd: number | null;
+  readonly runs: number;
+}
+
+export interface MissionLimitsView {
+  /** Where its limits come from: its own, the project's defaults, or none set. */
+  readonly source: 'mission' | 'project' | 'none';
+  readonly limits: readonly LimitStatusView[];
+  readonly usage: UsageView;
+  /** The open "raise or keep paused" card, when work is stopped at a limit. */
+  readonly pendingApprovalId: string | null;
+}
+
+export interface LimitAlertView {
+  readonly scope: 'mission' | 'project';
+  readonly missionId: string | null;
+  readonly missionTitle: string | null;
+  readonly level: 'soft' | 'hard';
+  /** One sentence, numbers included, that says what happens next. */
+  readonly text: string;
+}
+
+/** A project's usage for one local calendar month, against its monthly limits. */
+export interface WorkspaceUsageView {
+  readonly workspaceId: string;
+  /** "2026-09". */
+  readonly month: string;
+  readonly windowStart: string;
+  readonly windowEnd: string;
+  readonly usage: UsageView;
+  readonly limits: readonly LimitStatusView[];
+  readonly defaultMissionLimits: readonly Limit[];
+  readonly missions: readonly { readonly missionId: string; readonly title: string; readonly usage: UsageView }[];
 }
 
 export interface RepositoryProbe {

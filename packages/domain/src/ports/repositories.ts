@@ -20,6 +20,7 @@ import type { CheckResult, Evaluation } from '../entities/evaluation.js';
 import type { FeedbackItem, FeedbackStatus } from '../entities/feedback.js';
 import type { MissionCriterion, SpecCriterionInput } from '../entities/criteria.js';
 import type { MissionQuestion, QuestionInput } from '../entities/refinement.js';
+import type { LimitIncident, LimitIncidentStatus, LimitMetric, LimitThreshold, UsageTotals } from '../entities/limits.js';
 
 /**
  * Persistence ports.
@@ -32,7 +33,8 @@ import type { MissionQuestion, QuestionInput } from '../entities/refinement.js';
 
 export interface WorkspaceRepositoryPort {
   /** The work-in-progress limit starts off unless given. */
-  create(workspace: Omit<Workspace, 'createdAt' | 'updatedAt' | 'maxActiveMissions'> & { maxActiveMissions?: number | null }): Workspace;
+  create(workspace: Omit<Workspace, 'createdAt' | 'updatedAt' | 'maxActiveMissions' | 'defaultMissionLimits' | 'monthlyLimits'>
+    & { maxActiveMissions?: number | null; defaultMissionLimits?: Workspace['defaultMissionLimits']; monthlyLimits?: Workspace['monthlyLimits'] }): Workspace;
   get(id: WorkspaceId): Workspace | undefined;
   list(): readonly Workspace[];
   update(id: WorkspaceId, patch: Partial<Omit<Workspace, 'id' | 'createdAt'>>): Workspace;
@@ -286,4 +288,40 @@ export interface MissionQuestionRepositoryPort {
   /** Marks every open question `stale` and records these as `Q<n>`, numbered on, in one transaction. */
   replaceOpen(missionId: MissionId, refinementArtifactId: ArtifactId, questions: readonly QuestionInput[]): readonly MissionQuestion[];
   answer(id: QuestionId, text: string, answeredBy: string): MissionQuestion;
+}
+
+/**
+ * Limit incidents and the usage they are measured from (P8).
+ *
+ * Usage is summed from `usage_records`, one row per finished run: agent time is
+ * `wall_time_ms`, tokens are input plus output, cost is `cost_usd` where a
+ * runtime reported one. A sum over nothing reported stays null.
+ */
+export interface LimitRepositoryPort {
+  usageForMission(missionId: MissionId): UsageTotals;
+  /** The project's usage between two instants (start inclusive, end exclusive). */
+  usageForWorkspace(workspaceId: WorkspaceId, start: string, end: string): UsageTotals;
+  /** Per mission, the same window: for the usage view. */
+  usageByMission(workspaceId: WorkspaceId, start: string, end: string): readonly { missionId: MissionId; totals: UsageTotals }[];
+  /** The incident for this scope, metric, window, threshold and limit amount, whatever its status. */
+  find(key: LimitIncidentKey): LimitIncident | undefined;
+  get(id: LimitIncident['id']): LimitIncident | undefined;
+  byApproval(approvalId: string): LimitIncident | undefined;
+  create(incident: Omit<LimitIncident, 'id' | 'createdAt' | 'resolvedAt'>): LimitIncident;
+  /**
+   * Moves an incident from `from` to `to`; returns the updated row, or null when
+   * it was not in `from` - which is what makes deciding twice resolve once.
+   */
+  transition(id: LimitIncident['id'], from: LimitIncidentStatus, to: LimitIncidentStatus, patch?: Partial<Pick<LimitIncident, 'approvalId' | 'amountObserved' | 'pausedMissionIds'>>): LimitIncident | null;
+  listOpen(workspaceId: WorkspaceId): readonly LimitIncident[];
+  listByMission(missionId: MissionId): readonly LimitIncident[];
+}
+
+export interface LimitIncidentKey {
+  readonly workspaceId: WorkspaceId;
+  readonly missionId: MissionId | null;
+  readonly metric: LimitMetric;
+  readonly windowStart: string;
+  readonly threshold: LimitThreshold;
+  readonly amountLimit: number;
 }

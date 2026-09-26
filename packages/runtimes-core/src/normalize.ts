@@ -107,6 +107,9 @@ export function normalizeAgentEvent(input: unknown): Result<AgentEvent, Tandemis
         // A subscription runtime reports no trustworthy cost. `null` says
         // "unknown", which is not the same claim as "free" (MVP.md §22.2).
         costUsd: e['costUsd'] === null ? null : num(e['costUsd']),
+        // How long the agent says it worked. When it says nothing the daemon
+        // times the run itself, so agent time is always measured (P8).
+        wallTimeMs: num(e['wallTimeMs']),
       });
 
     case 'checkpoint':

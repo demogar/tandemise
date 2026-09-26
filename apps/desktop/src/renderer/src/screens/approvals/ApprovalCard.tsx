@@ -10,6 +10,8 @@ import { actorsLine, type Actors } from '../../lib/team.js';
 import { relativeTime, titleCase } from '../../lib/format.js';
 import { ArtifactReader } from '../artifacts/ArtifactReader.js';
 import { DecisionForm, copyFor, riskLabel, useApprovalDecision } from '../../components/Decision.js';
+import { LimitDecision } from './LimitDecision.js';
+import { isLimitCard } from '../../lib/domain.js';
 
 /**
  * MVP.md §23.4 is a hard requirement, not a style note: every card must answer
@@ -33,7 +35,7 @@ export function ApprovalCard({ view, compact = false }: { view: ApprovalView; co
 
       <header className="approval__head">
         {/* A question carries no risk of its own; a badge saying so is noise. */}
-        {copy.question ? null : (
+        {copy.question || isLimitCard(approval) ? null : (
           <span className={`badge ${riskBadgeClass(approval.risk)}`} title={`Risk class: ${approval.risk}`}>
             <Icon name={riskIcon(approval.risk)} size={12} />
             {riskLabel(approval.risk)}
@@ -105,7 +107,8 @@ export function ApprovalCard({ view, compact = false }: { view: ApprovalView; co
           <Icon name="approvals" size={12} />
           {copy.question ? 'Your answer' : 'Your options'}
         </div>
-        <DecisionForm decision={decision} />
+        {/* A limit card is answered with a number: raise to it and resume, or keep paused (P8). */}
+        {isLimitCard(approval) ? <LimitDecision view={view} /> : <DecisionForm decision={decision} />}
       </div>
     </article>
   );
@@ -118,10 +121,12 @@ export function ApprovalPreviewCard({ view }: { view: ApprovalView }): JSX.Eleme
     <Link href="/inbox" className="approval" style={{ display: 'block', textDecoration: 'none', color: 'inherit' }} data-risk={approval.risk}>
       <div className="approval__risk" />
       <header className="approval__head" style={{ paddingBottom: 'var(--s2)' }}>
-        <span className={`badge ${riskBadgeClass(approval.risk)}`}>
-          <Icon name={riskIcon(approval.risk)} size={12} />
-          {riskLabel(approval.risk)}
-        </span>
+        {isLimitCard(approval) ? null : (
+          <span className={`badge ${riskBadgeClass(approval.risk)}`}>
+            <Icon name={riskIcon(approval.risk)} size={12} />
+            {riskLabel(approval.risk)}
+          </span>
+        )}
         <div style={{ flex: 1, minWidth: 0 }}>
           <h3 className="approval__title">{approval.title}</h3>
           {view.headline ? <p className="approval__headline truncate">{view.headline}</p> : null}
