@@ -1,0 +1,124 @@
+{
+  "id": "C4",
+  "title": "Note while running: queued, delivered at the end of the pass, same round",
+  "ok": true,
+  "checks": [
+    {
+      "label": "solo workspace: you are the only person",
+      "ok": true,
+      "observed": [
+        "Demostenes Garcia G."
+      ]
+    },
+    {
+      "label": "no \"Recording for\" on screen (composer)",
+      "ok": true
+    },
+    {
+      "label": "the flash says the note waits for the pass",
+      "ok": true,
+      "observed": "Queued: delivered when the current pass ends"
+    },
+    {
+      "label": "sent while the first pass was still running",
+      "ok": true,
+      "observed": {
+        "stillRunning": true,
+        "ms": 4161
+      }
+    },
+    {
+      "label": "right after sending, the card shows \"1 note pending\" with the note, and no Start round",
+      "ok": true,
+      "observed": "PRODUCT MANAGER\ndoc\nRunning\njust now\nresponsible\nYou\nRequest changes\n1 note pending\nMention the pricing page"
+    },
+    {
+      "label": "the item is queued",
+      "ok": true,
+      "observed": [
+        {
+          "id": "fb_01m3fmqfmrz43bw60gke",
+          "taskId": "tsk_01m3fmq9dsx6yp9rpkpv",
+          "artifactId": null,
+          "author": {
+            "id": "mem_01m3fmhqnxe2mgx86ngz",
+            "name": "Demostenes Garcia G.",
+            "kind": "person"
+          },
+          "recordedBy": null,
+          "text": "Mention the pricing page",
+          "status": "queued",
+          "round": 1,
+          "createdAt": "2026-09-26T19:57:58.296Z"
+        }
+      ]
+    },
+    {
+      "label": "attempts unchanged and still round 1",
+      "ok": true,
+      "observed": {
+        "attempts": 1,
+        "round": 1
+      }
+    },
+    {
+      "label": "exactly two runs: the pass, then a feedback pass",
+      "ok": true,
+      "observed": [
+        {
+          "purpose": "round",
+          "round": 1,
+          "status": "SUCCEEDED",
+          "attempt": 1
+        },
+        {
+          "purpose": "feedback",
+          "round": 1,
+          "status": "SUCCEEDED",
+          "attempt": 2
+        }
+      ]
+    },
+    {
+      "label": "the note is addressed in round 1",
+      "ok": true,
+      "observed": [
+        {
+          "id": "fb_01m3fmqfmrz43bw60gke",
+          "taskId": "tsk_01m3fmq9dsx6yp9rpkpv",
+          "artifactId": null,
+          "author": {
+            "id": "mem_01m3fmhqnxe2mgx86ngz",
+            "name": "Demostenes Garcia G.",
+            "kind": "person"
+          },
+          "recordedBy": null,
+          "text": "Mention the pricing page",
+          "status": "addressed",
+          "round": 1,
+          "createdAt": "2026-09-26T19:57:58.296Z"
+        }
+      ]
+    },
+    {
+      "label": "the last prompt the agent got carries the note's id",
+      "ok": true,
+      "observed": {
+        "prompts": 2
+      }
+    },
+    {
+      "label": "the done card has no pending note and no round badge",
+      "ok": true,
+      "observed": "PRODUCT MANAGER\ndoc\nDone\njust now\nby\nRuntime\n·\nresponsible\nYou\nFull doc\nRequest changes\n\nProductSpec ready for the hello page\n\nWHAT CHANGED\nApplied: Mention the pricing page\n· You\nWritten by the scripted acceptance agent\nNo model was called"
+    }
+  ],
+  "notes": [
+    "mission msn_01m3fmq9de4rvcxekwx5"
+  ],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p0-refresh/scratch/acceptance/p0/evidence/C4-composer-running.png",
+    "/Users/demogar/projects/tandemise/tandemise-p0-refresh/scratch/acceptance/p0/evidence/C4-running-card-note-pending.png",
+    "/Users/demogar/projects/tandemise/tandemise-p0-refresh/scratch/acceptance/p0/evidence/C4-done-card.png"
+  ]
+}

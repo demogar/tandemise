@@ -1,0 +1,68 @@
+{
+  "id": "K3",
+  "title": "The month against its limit, on the desk and in the report",
+  "ok": true,
+  "checks": [
+    {
+      "label": "proof (API): 25.5 agent minutes used this month",
+      "ok": true,
+      "observed": 25.52
+    },
+    {
+      "label": "the backlog route opens Missions on its Backlog tab",
+      "ok": true,
+      "observed": "Missions\nEvery outcome the workforce is pursuing, past and present.\nNew mission\nBacklog\n1\nRoutines\n0\nActive\n0\nNeeds attention\n2\nFinished\n1\nAll\n4\nWorking on 2 of 2 · 1 queued\n\nFull: the next queued mission that is ready is planned as soon as one in progress finishes.\n\nWork on at most\nOff\n1\n2\n3\n5\nNorm"
+    },
+    {
+      "label": "banner \"Monthly limit at 85% — only urgent and high work will be pulled\"",
+      "ok": true,
+      "observed": [
+        "Monthly limit at 85% — only urgent and high work will be pulled. This project used 25.5 of 30 agent minutes this month; work stops at 30 agent minutes. See limit",
+        "Working on 2 of 2 — 1 queued mission waits for a free slot. The next ready one is planned as soon as one finishes. See backlog"
+      ]
+    },
+    {
+      "label": "the project warning is said once (no second \"Monthly limit warning\" banner)",
+      "ok": true,
+      "observed": [
+        "Monthly limit at 85% — only urgent and high work will be pulled. This project used 25.5 of 30 agent minutes this month; work stops at 30 agent minutes. See limit",
+        "Working on 2 of 2 — 1 queued mission waits for a free slot. The next ready one is planned as soon as one finishes. See backlog"
+      ]
+    },
+    {
+      "label": "banner \"Working on 2 of 2 — 1 queued mission waits for a free slot.\"",
+      "ok": true,
+      "observed": [
+        "Monthly limit at 85% — only urgent and high work will be pulled. This project used 25.5 of 30 agent minutes this month; work stops at 30 agent minutes. See limit",
+        "Working on 2 of 2 — 1 queued mission waits for a free slot. The next ready one is planned as soon as one finishes. See backlog"
+      ]
+    },
+    {
+      "label": "card \"This month 85%\" with \"25.5 / 30 agent min this month\"",
+      "ok": true,
+      "observed": "This month 85% 25.5 / 30 agent min this month"
+    },
+    {
+      "label": "card \"Working on 2 of 2\" with \"1 queued\"",
+      "ok": true,
+      "observed": "Working on 2 of 2 1 queued"
+    },
+    {
+      "label": "the report: \"This month (YYYY-MM): 25.5 / 30 agent min (85%)\"",
+      "ok": true,
+      "observed": "Status report: Acceptance\nby\nTandemise\n·\nresponsible\nYou\n\n1 needs you · working on 2 of 2 · 4 of 6 criteria verified · 1 stalled\n\nStalled: K1 offline mode muiuacwq SCRIPTED_SPEC_THREE_ACS SCRIPTED_FAIL_RELEASE — Retry release\nThis month: 25.5 / 30 agent min (85%)\nWaiting on you: K1 greeting page muiuacwq SCRIPTED_QA_PARTIAL: release exhausted its retries\nv1\nv2\nv3\nCompare with v2\nStatus Report\nSep 26, 2026, 3:28 PM\nDetails\nAt a glance\nNeeds you: 1\nWorking on: 2 of 2 · 1 queued\nCriteria verified: 4 of 6, across 2 missions in progress\nThis month (2026-09): 25.5 / 30 agent min (85%)\nStalled: 1\n"
+    },
+    {
+      "label": "the report: the queued mission in the backlog, held by the monthly rule",
+      "ok": true,
+      "observed": "\nK3 queued: tidy the footer muiucwo4 · Normal · Ready to plan · Held: this project is over 80% of its monthly limit (25.5 of 30 agent minutes). Only urgent and high missions are pulled.\nHow this report was made\n\nRendered by Tandemise from stored facts: mission and step rows, the Done-when ledger and the newest QA report, usage records, open cards and the event log. No model wrote it. The same fact"
+    }
+  ],
+  "notes": [
+    "this month so far: 0.16 agent minutes; one run reports 25.36 more"
+  ],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p0-refresh/scratch/acceptance/p10/evidence/K3-month-banner.png",
+    "/Users/demogar/projects/tandemise/tandemise-p0-refresh/scratch/acceptance/p10/evidence/K3-report-month.png"
+  ]
+}

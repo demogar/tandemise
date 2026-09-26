@@ -1,0 +1,23 @@
+{
+  "id": "B3",
+  "title": "Full doc: no front matter, handoff first, appendix collapsed",
+  "ok": true,
+  "checks": [
+    {
+      "label": "reader shows the headline and points",
+      "ok": true
+    },
+    {
+      "label": "no YAML front matter in the reader",
+      "ok": true
+    },
+    {
+      "label": "ids live behind Details, not in the header text",
+      "ok": true
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p0-refresh/scratch/acceptance/p0/evidence/B3-reader.png"
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "id": "PLAN",
+  "title": "Before anything runs, the Plan says who will do each task",
+  "ok": true,
+  "checks": [
+    {
+      "label": "build: Coding agent, responsible you",
+      "ok": true
+    },
+    {
+      "label": "design: Design agent, responsible you",
+      "ok": true
+    },
+    {
+      "label": "qa: QA agent, responsible you",
+      "ok": true
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p0-refresh/scratch/acceptance/p0/evidence/PLAN-plan.png"
+  ]
+}

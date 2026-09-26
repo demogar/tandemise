@@ -1,0 +1,47 @@
+{
+  "id": "L4",
+  "title": "A routine that is off never fires, and turning it on catches nothing up",
+  "ok": true,
+  "checks": [
+    {
+      "label": "the switch turns it off: the row reads \"Off\" and \"Paused\"",
+      "ok": true,
+      "observed": "Weekly dependency updates Every day at 16:28 · Paused Last: Created “Weekly dependency updates · Sun 27 Sep” Earlier: Skipped: previous run still active Earlier: Created “Weekly dependency updates · Sat 26 Sep” Normal mission Off Run now Edit"
+    },
+    {
+      "label": "proof (API): no next run while off",
+      "ok": true
+    },
+    {
+      "label": "two days later it still reads \"Paused\"",
+      "ok": true,
+      "observed": "Weekly dependency updates Every day at 16:28 · Paused Last: Created “Weekly dependency updates · Sun 27 Sep” Earlier: Skipped: previous run still active Earlier: Created “Weekly dependency updates · Sat 26 Sep” Normal mission Off Run now Edit"
+    },
+    {
+      "label": "proof (SQL): no mission and no run while it was off",
+      "ok": true
+    },
+    {
+      "label": "turned on: the row reads \"On\" and \"Next: …\"",
+      "ok": true,
+      "observed": "Weekly dependency updates Every day at 16:28 · Next: Wed 16:28 Last: Created “Weekly dependency updates · Sun 27 Sep” Earlier: Skipped: previous run still active Earlier: Created “Weekly dependency updates · Sat 26 Sep” Normal mission On Run now Edit"
+    },
+    {
+      "label": "proof (API): the next run is after now, within a day",
+      "ok": true,
+      "observed": {
+        "now": "2026-09-29T22:30:56.868Z",
+        "next": "2026-09-30T21:28:00.000Z"
+      }
+    },
+    {
+      "label": "proof (SQL): turning it on caught nothing up",
+      "ok": true
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p0-refresh/scratch/acceptance/p11/evidence/L4-paused-two-days.png",
+    "/Users/demogar/projects/tandemise/tandemise-p0-refresh/scratch/acceptance/p11/evidence/L4-turned-on.png"
+  ]
+}

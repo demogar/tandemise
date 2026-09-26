@@ -1,0 +1,13 @@
+{
+  "id": "B9",
+  "title": "A preview link renders on the card",
+  "ok": true,
+  "checks": [
+    {
+      "label": "design card shows \"Open preview ↗\"",
+      "ok": true
+    }
+  ],
+  "notes": [],
+  "shots": []
+}

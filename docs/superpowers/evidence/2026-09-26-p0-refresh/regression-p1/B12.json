@@ -1,0 +1,41 @@
+{
+  "id": "B12",
+  "title": "Readability audit of done cards (DOM)",
+  "ok": true,
+  "checks": [
+    {
+      "label": "every done card fits in ≤ 8 visible lines",
+      "ok": true,
+      "observed": [
+        7,
+        7,
+        7,
+        5,
+        6,
+        6,
+        6,
+        7,
+        6
+      ]
+    },
+    {
+      "label": "headline + points ≤ the contract maximum (510 chars)",
+      "ok": true,
+      "observed": [
+        100,
+        90,
+        93,
+        43,
+        100,
+        97,
+        95,
+        95,
+        164
+      ]
+    }
+  ],
+  "notes": [
+    "[{\"lines\":7,\"chars\":100,\"text\":\"RELEASE MANAGER\"},{\"lines\":7,\"chars\":90,\"text\":\"QA ENGINEER\"},{\"lines\":7,\"chars\":93,\"text\":\"DEVELOPER\"},{\"lines\":5,\"chars\":43,\"text\":\"PRODUCT MANAGER\"},{\"lines\":6,\"chars\":100,\"text\":\"ARCHITECT\"},{\"lines\":6,\"chars\":97,\"text\":\"FINANCE ANALYST\"},{\"lines\":6,\"chars\":95,\"text\":\"PRODUCT DESIGNER\"},{\"lines\":7,\"chars\":95,\"text\":\"PRODUCT MANAGER\"},{\"lines\":6,\"chars\":164,\"text\":\"Plan for B solo muit1pxu\"}]"
+  ],
+  "shots": []
+}

@@ -1,0 +1,60 @@
+{
+  "id": "L2",
+  "title": "A run is skipped while the previous mission from the routine is unfinished",
+  "ok": true,
+  "checks": [
+    {
+      "label": "before: L1's mission is still a queued draft",
+      "ok": true
+    },
+    {
+      "label": "the row reads \"Skipped: previous run still active\"",
+      "ok": true,
+      "observed": "Weekly dependency updates Every day at 16:28 · Next: Mon 16:28 Skipped: previous run still active Earlier: Created “Weekly dependency updates · Sat 26 Sep” Normal mission On Run now Edit"
+    },
+    {
+      "label": "the run before it is still listed (\"Earlier: Created …\")",
+      "ok": true,
+      "observed": "Weekly dependency updates Every day at 16:28 · Next: Mon 16:28 Skipped: previous run still active Earlier: Created “Weekly dependency updates · Sat 26 Sep” Normal mission On Run now Edit"
+    },
+    {
+      "label": "proof (SQL): still one mission from the routine",
+      "ok": true,
+      "observed": [
+        {
+          "id": "msn_01m3fpfz0tcjen9x4nsh",
+          "title": "Weekly dependency updates · Sat 26 Sep",
+          "status": "DRAFT",
+          "queued_at": "2026-09-26T22:28:49.051Z",
+          "priority": "normal"
+        }
+      ]
+    },
+    {
+      "label": "proof (SQL): the skip is a routine_runs row pointing at the unfinished mission",
+      "ok": true,
+      "observed": [
+        {
+          "outcome": "skipped_active",
+          "trigger": "schedule",
+          "mission_id": "msn_01m3fpfz0tcjen9x4nsh"
+        },
+        {
+          "outcome": "created",
+          "trigger": "schedule",
+          "mission_id": "msn_01m3fpfz0tcjen9x4nsh"
+        }
+      ]
+    },
+    {
+      "label": "the unfinished mission's timeline says the routine skipped a run",
+      "ok": true,
+      "observed": "Tandemise\nAcceptance\n1 repository\nHome\nMissions\nInbox\nArtifacts\nACCEPTANCE\nRepositories\nTeam\nRuntimes\nIntegrations\nAPP\nSettings\nDaemon connected · 54211\nmsn_01m3fpfz0tcjen9x4nsh\nFrom routine: Weekly dependency updates\nMissions\nfeature-delivery\nWeekly dependency updates · Sat 26 Sep\nUpdate the project's dependencies to their latest compatible versions, run the tests, and fix anything the updates break.\nDraft\nPlan\nFeed\nPlan\nTimeline\nArtifacts\nChecks & Gates\nMetrics\n3 events · latest tomorrow\nFollowing\nRaw log\nMission created: Update the project's dependencies to their latest compatible versions, run the tests, and fix anything the updates break.\n05:28:49 PM\n·\nYou\nCreated by the routine “Weekly dependency updates” (Sat 16:28 run).\n05:28:49 PM\n·\nTandemise\nThe routine “Weekly dependency updates” skipped its Sun 16:28 run: this mission is not finished yet.\n05:29:26 PM\n·\nTandemise"
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p0-refresh/scratch/acceptance/p11/evidence/L2-skipped-previous-active.png",
+    "/Users/demogar/projects/tandemise/tandemise-p0-refresh/scratch/acceptance/p11/evidence/L2-timeline-skip-note.png"
+  ]
+}
