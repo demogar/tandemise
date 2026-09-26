@@ -2,7 +2,6 @@ import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, sh
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DaemonConnector } from './daemon-connection.js';
-import { runScreenshotPass } from './screenshots.js';
 import { IPC } from '../shared/bridge.js';
 import { WINDOW_BACKGROUND } from '../shared/brand.js';
 
@@ -188,7 +187,7 @@ connector.on('status', (status) => {
   }
 });
 
-app.whenReady().then(async () => {
+app.whenReady().then(() => {
   applyContentSecurityPolicy();
   registerIpc();
   createTray();
@@ -197,9 +196,6 @@ app.whenReady().then(async () => {
   void connector.refresh().finally(() => connector.watch());
 
   app.on('activate', showWindow);
-
-  const shotDir = process.env['TANDEMISE_SCREENSHOT_DIR'];
-  if (shotDir) await runScreenshotPass(mainWindow, shotDir);
 });
 
 app.on('window-all-closed', () => {

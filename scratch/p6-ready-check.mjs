@@ -205,6 +205,11 @@ try {
     check('one open question Q1 with options and a why', questions.length === 1 && question.key === 'Q1' && question.options.length >= 2 && question.why.length > 0, questions);
     check('F1: the button reads "Answer 1 question and decide 3 criteria to plan"', done?.readiness?.label === 'Answer 1 question and decide 3 criteria to plan', done?.readiness);
     check('the Refinement artifact is stored', typeof done?.artifactId === 'string' && sql('SELECT type FROM artifacts WHERE id = ?', done.artifactId)[0]?.type === 'Refinement', done?.artifactId);
+    // The daemon names the note after its mission, whatever title the agent wrote.
+    const missionTitle = sql('SELECT title FROM missions WHERE id = ?', goalOnly)[0]?.title;
+    const noteTitle = sql('SELECT title FROM artifacts WHERE id = ?', done?.artifactId)[0]?.title;
+    check('the Refinement is titled "Refinement: <mission title>"', typeof missionTitle === 'string' && noteTitle === app.refinementTitle?.(missionTitle) && noteTitle === `Refinement: ${missionTitle}`.slice(0, 60), { missionTitle, noteTitle });
+    check('a long mission title is clipped to the 60-character title limit', app.refinementTitle?.('x'.repeat(80))?.length === 60 && app.refinementTitle('x'.repeat(80)).endsWith('…'));
     check('proposals are not on the ledger: the Done-when checklist is still empty', (await api('GET', `/v1/missions/${goalOnly}/criteria`)).body.length === 0);
     const inbox = (await api('GET', `/v1/inbox?workspaceId=${ws}`)).body;
     const row = inbox.refinements?.find((r) => r.missionId === goalOnly);

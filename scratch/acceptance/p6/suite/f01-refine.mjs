@@ -35,5 +35,15 @@ const view = await api.get(`/v1/missions/${missionId}/refinement`);
 ev.check('proof (API): 3 proposed, 1 open question, a Refinement artifact', view.criteria.filter((x) => x.status === 'proposed').length === 3 && view.questions.filter((q) => q.status === 'open').length === 1 && typeof view.artifactId === 'string', { criteria: view.criteria.map((x) => [x.key, x.status]), q: view.questions.map((q) => [q.key, q.status]), artifactId: view.artifactId });
 ev.check('proof (SQL): proposals are not on the ledger yet', c.sql("SELECT count(*) AS n FROM mission_criteria WHERE mission_id = ? AND status = 'accepted'", missionId)[0].n === 0);
 
+// The note is named after its mission by the daemon, not by the agent's title line.
+const noteTitle = `Refinement: ${mission.title}`.slice(0, 60);
+const paneText = () => page.evaluate(`document.querySelector('.reader__pane')?.innerText ?? ''`);
+await page.navigate(`#/artifacts/${view.artifactId}`);
+const reader = await c.until(async () => { const t = await paneText(); return t.includes(noteTitle) && t; }, { label: 'refinement note in the reader', timeoutMs: 20_000 }).catch(paneText);
+const listed = await page.evaluate(`document.querySelector('.reader__list')?.innerText ?? ''`);
+ev.check(`the Refinement note reads "${noteTitle}" in the Artifacts list and the reader`, reader.includes(noteTitle) && listed.includes(noteTitle), { noteTitle, reader: reader.slice(0, 300) });
+ev.check('proof (SQL): the stored title is the mission\'s, not the agent\'s', c.sql('SELECT title FROM artifacts WHERE id = ?', view.artifactId)[0]?.title === noteTitle);
+await page.screenshot(ev.shot('refinement-note-title'));
+
 await cancel(c, missionId, 'F1');
 c.close(); ev.save();

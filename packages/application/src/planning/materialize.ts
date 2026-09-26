@@ -115,6 +115,15 @@ export function planTitle(missionTitle: string): string {
   return clip(`Plan for ${missionTitle}`, 60);
 }
 
+/**
+ * The Refinement's title. The daemon names the note after its mission rather
+ * than trusting the title line the agent wrote, so every refinement reads the
+ * same way in the Artifacts list and the reader.
+ */
+export function refinementTitle(missionTitle: string): string {
+  return clip(`Refinement: ${missionTitle}`, 60);
+}
+
 /** Cuts text to `max` characters, marking the cut. */
 export function clip(text: string, max: number): string {
   const flat = text.replace(/\s+/g, ' ').trim();

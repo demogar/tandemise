@@ -1,0 +1,117 @@
+{
+  "id": "F1",
+  "title": "A rough request is refined into proposals and a question",
+  "ok": true,
+  "checks": [
+    {
+      "label": "with no Done-when line New mission offers \"Create and refine\", not \"Plan mission\"",
+      "ok": true,
+      "observed": "Create and refine\n⌘↵"
+    },
+    {
+      "label": "the mission is created as a draft, not planned",
+      "ok": true,
+      "observed": "DRAFT"
+    },
+    {
+      "label": "the draft opens on \"Get it ready\", explaining what Refine does",
+      "ok": true,
+      "observed": "Get it ready\nNeeds a Done-when criterion\n\nBefore anything is planned, say what done means. Refine asks the product agent to read your request, propose criteria you can check, and ask only what would change the plan. You decide each one.\n\nRefine\nAdd at least one Done-when criterion to plan."
+    },
+    {
+      "label": "the Plan button is disabled and asks for a criterion",
+      "ok": true,
+      "observed": {
+        "text": "Add at least one Done-when criterion to plan",
+        "disabled": true
+      }
+    },
+    {
+      "label": "three proposed criteria, each with Accept and Reject",
+      "ok": true,
+      "observed": [
+        "P1 Visiting the home page shows \"Hello, <name>\" for a signed-in visitor Proposed by the product agent. Accept it to make it part of what done means. Accept Reject Edit",
+        "P2 A visitor who is not signed in sees \"Hello, friend\" instead of an empty name Proposed by the product agent. Accept it to make it part of what done means. Accept Reject Edit",
+        "P3 The greeting is readable on a 375px wide phone screen without scrolling sideways Proposed by the product agent. Accept it to make it part of what done means. Accept Reject Edit"
+      ]
+    },
+    {
+      "label": "numbered P1, P2, P3 by the daemon",
+      "ok": true,
+      "observed": [
+        "P1 Visiting the home page shows \"Hello, <name>\" for a signed-in visitor Proposed by the product agent. Accept it to make it part of what done means. Accept Reject Edit",
+        "P2 A visitor who is not signed in sees \"Hello, friend\" instead of an empty name Proposed by the product agent. Accept it to make it part of what done means. Accept Reject Edit",
+        "P3 The greeting is readable on a 375px wide phone screen without scrolling sideways Proposed by the product agent. Accept it to make it part of what done means. Accept Reject Edit"
+      ]
+    },
+    {
+      "label": "one question, Q1, with its reason and one-click options",
+      "ok": true,
+      "observed": "Questions\n1 to answer\nQ1\nWhich pages should greet the visitor by name?\nWhy it matters: It decides how many pages the plan touches and what QA checks\nOnly the home page\nEvery page\nAnswer"
+    },
+    {
+      "label": "the Plan button reads \"Answer 1 question and decide 3 criteria to plan\", disabled",
+      "ok": true,
+      "observed": {
+        "text": "Answer 1 question and decide 3 criteria to plan",
+        "disabled": true
+      }
+    },
+    {
+      "label": "the panel says 4 to decide and offers Refine again",
+      "ok": true,
+      "observed": "Get it ready\n4 to decide\n\nRefinement ready for the hello page\n\nRefine again\nRead the refinement\nAnswer 1 question and decide 3 criteria to plan."
+    },
+    {
+      "label": "proof (API): 3 proposed, 1 open question, a Refinement artifact",
+      "ok": true,
+      "observed": {
+        "criteria": [
+          [
+            "P1",
+            "proposed"
+          ],
+          [
+            "P2",
+            "proposed"
+          ],
+          [
+            "P3",
+            "proposed"
+          ]
+        ],
+        "q": [
+          [
+            "Q1",
+            "open"
+          ]
+        ],
+        "artifactId": "art_01m3ft6wvsf3xe11zwm2"
+      }
+    },
+    {
+      "label": "proof (SQL): proposals are not on the ledger yet",
+      "ok": true
+    },
+    {
+      "label": "the Refinement note reads \"Refinement: F1 a friendlier hello page muiwpsjy\" in the Artifacts list and the reader",
+      "ok": true,
+      "observed": {
+        "noteTitle": "Refinement: F1 a friendlier hello page muiwpsjy",
+        "reader": "Refinement: F1 a friendlier hello page muiwpsjy\nby\nRuntime\n·\nresponsible\nYou\n\nRefinement ready for the hello page\n\nWritten by the scripted acceptance agent\nNo model was called\nRefinement\nSep 26, 2026, 4:33 PM\nDetails\nRefinement: Scripted work\n\nWritten by the scripted acceptance agent."
+      }
+    },
+    {
+      "label": "proof (SQL): the stored title is the mission's, not the agent's",
+      "ok": true
+    }
+  ],
+  "notes": [
+    "mission msn_01m3ft6tqb2m54gqrzy9"
+  ],
+  "shots": [
+    "F1-draft-before-refine.png",
+    "F1-proposals-and-question.png",
+    "F1-refinement-note-title.png"
+  ]
+}
