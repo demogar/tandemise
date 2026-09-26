@@ -219,28 +219,42 @@ agents, tools, and machines.
 ## Inspiration
 
 Tandemise is heavily inspired by a handful of projects that are working out how
-people and agents get real work done together. Each one shaped a part of it:
+people and agents get real work done together, and most of its shape is
+borrowed from them rather than invented here:
+
+- **The phases.** The names and order of the stages a mission moves through
+  (Intent → Plan → Approve → Execute → Review → QA → Release candidate → Your
+  call) and of the owner's loop around it (request, refine, done when, backlog,
+  limits, verify, inbox, desk, routines).
+- **The distribution of work.** How work is split across specialized roles
+  (product, design, architecture, developer, reviewer, QA, release), how it is
+  shared between people and agents, and who is responsible for what.
+- **The operating model.** Budgets and limits, approvals that only ask for real
+  decisions, standing work on a schedule, and agents as members of a team
+  rather than tools you chat with.
+
+What Tandemise adds is mostly the assembly: putting these ideas together in one
+local-first place, with typed artifacts and gates measured from facts.
 
 - **[Grok Bot](https://x.ai/bot)** treats agents as persistent teammates that
   keep working on their own and come back only when something needs your
-  approval. Tandemise follows the same idea: work runs in the background, and
-  you are asked only for decisions that need human judgement, with the evidence
-  in front of you. Routines that queue standing work on a schedule come from
-  the same place.
+  approval. Tandemise's approvals, its inbox, and its routines that queue
+  standing work on a schedule follow that model.
 - **[Paperclip](https://github.com/paperclipai/paperclip)** showed that the
   interesting layer sits above the agents: an organization with roles, goals,
-  budgets, and governance that runs whatever agents you already have. Tandemise
-  takes that layer and makes it local-first, with typed artifacts and gates
-  measured from facts instead of an agent's word, and hard limits on spend and
-  time.
+  budgets, and governance that runs whatever agents you already have. The
+  organization layer, the roles, and the spend and time limits come from there.
 - **[Buzz](https://buzz.xyz)** puts people and agents in the same workspace as
-  equals, next to the code, without locking you into one vendor's models. That
-  shaped Tandemise's human steps in workflows, its handoff feed, and its rule
-  that every runtime is a replaceable adapter.
+  equals, next to the code, without locking you into one vendor's models.
+  Tandemise borrows its owned-agent model (every agent has a person who owns it
+  and answers for its work) and owner-reviewed drafts, along with human steps in
+  workflows and runtimes as replaceable adapters.
 - **[Hermes Agent](https://github.com/NousResearch/hermes-agent)** is an agent
   that grows with you: it builds skills from experience and remembers what it
-  has done. Tandemise pushes that memory up to the organization, so missions,
-  decisions, and history outlive any single agent or session.
+  has done. The idea that missions, decisions, and history should outlive any
+  single agent or session comes from there.
+
+Thank you to the people behind each of them.
 
 ## Contributing
 
