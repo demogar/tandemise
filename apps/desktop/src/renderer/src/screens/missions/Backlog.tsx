@@ -168,7 +168,8 @@ function BacklogRow({
   onChange: (body: UpdateMissionRequest) => void;
 }): JSX.Element {
   const { mission } = item.summary;
-  const readiness = item.refining ? 'Refining…' : item.ready ? mission.goal : item.readinessLabel;
+  // Held by the monthly spend rule (P8) says why before anything else: it is why a ready mission waits.
+  const readiness = item.held ?? (item.refining ? 'Refining…' : item.ready ? mission.goal : item.readinessLabel);
   return (
     <div className="list__row" data-active={active} aria-label={mission.title} onClick={onSelect}>
       <PriorityChip priority={item.priority} />

@@ -188,7 +188,7 @@ try {
   section('migration 013');
   {
     const system = await api('GET', '/v1/system');
-    check('schema version is 13', system.body?.schemaVersion === 13, system.body?.schemaVersion);
+    check('schema version is at least 13', system.body?.schemaVersion >= 13, system.body?.schemaVersion);
     const cols = sql("SELECT name, dflt_value, \"notnull\" AS nn FROM pragma_table_info('missions')");
     const col = (n) => cols.find((c) => c.name === n);
     check('missions.priority defaults to normal', col('priority')?.dflt_value === "'normal'" && col('priority')?.nn === 1, col('priority'));

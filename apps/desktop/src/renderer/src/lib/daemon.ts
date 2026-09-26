@@ -2,6 +2,7 @@ import type {
   ApiErrorBody,
   ApprovalView,
   HomeView,
+  WorkspaceUsageView,
   InboxView,
   ConnectIntegrationRequest,
   ConnectionAttemptView,
@@ -222,8 +223,18 @@ export class DaemonClient {
   }
 
   /** Priority, queue or a move up/down; answered with the backlog. */
-  updateMission(id: string, body: UpdateMissionRequest): Promise<BacklogView> {
+  updateMission(id: string, body: Omit<UpdateMissionRequest, 'limits'>): Promise<BacklogView> {
     return this.#request('PATCH', `/missions/${id}`, body);
+  }
+
+  /** The mission's own limits (P8), or null for the project's defaults; answered with the mission. */
+  setMissionLimits(id: string, limits: UpdateMissionRequest['limits']): Promise<MissionDetail> {
+    return this.#request('PATCH', `/missions/${id}`, { limits });
+  }
+
+  /** A month's usage against the project's monthly limits (P8). */
+  workspaceUsage(workspaceId: string, month?: string): Promise<WorkspaceUsageView> {
+    return this.#get(`/workspaces/${workspaceId}/usage${month === undefined ? '' : `?month=${encodeURIComponent(month)}`}`);
   }
 
   missionAction(id: string, action: 'plan' | 'start' | 'pause' | 'resume' | 'cancel', body?: unknown): Promise<MissionDetail> {

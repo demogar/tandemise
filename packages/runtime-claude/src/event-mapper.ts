@@ -147,6 +147,8 @@ export class ClaudeEventMapper {
         cacheReadTokens: asNumber(usage?.['cache_read_input_tokens']),
         cacheWriteTokens: asNumber(usage?.['cache_creation_input_tokens']),
         costUsd: typeof cost === 'number' ? cost : null,
+        // The result line's own duration: the time Claude Code spent on the run.
+        wallTimeMs: asNumber(line['duration_ms']),
       });
     }
 

@@ -39,6 +39,28 @@ export function Home(): JSX.Element {
         <div className="page__inner">
           {home.isError ? <ErrorState error={home.error} onRetry={() => void home.refetch()} /> : null}
 
+          {/* At or over a limit's warning level (P8): said with its numbers, above everything else. */}
+          {(data?.limitAlerts ?? []).length > 0 ? (
+            <section className="section" aria-label="Limits">
+              <div className="stack">
+                {(data?.limitAlerts ?? []).map((alert) => (
+                  <Link
+                    key={`${alert.scope}-${alert.missionId ?? 'project'}`}
+                    href={alert.missionId === null ? (alert.level === 'hard' ? '/inbox' : '/project') : `/missions/${alert.missionId}/metrics`}
+                    className="banner banner--warn"
+                    style={{ textDecoration: 'none', color: 'inherit' }}
+                  >
+                    <Icon name="alert" size={15} />
+                    <span style={{ flex: 1 }}>
+                      <strong>{alert.missionTitle ?? 'This project'}:</strong> {alert.text}
+                    </span>
+                    <span className="btn">{alert.level === 'hard' ? 'Decide' : 'See limit'}</span>
+                  </Link>
+                ))}
+              </div>
+            </section>
+          ) : null}
+
           <section className="section">
             <SectionHead
               title="Needs you now"

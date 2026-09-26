@@ -1,6 +1,7 @@
 import type { RepositoryId, Timestamp, WorkspaceId } from '@tandemise/shared';
 import type { AutonomyLevel } from './mission.js';
 import type { RoleStaffing } from '../staffing.js';
+import type { Limit } from './limits.js';
 
 /**
  * Autonomy is expressed per action class rather than as one global dial, so a
@@ -59,6 +60,10 @@ export interface Workspace {
    * Null is off: nothing is pulled from the backlog automatically.
    */
   readonly maxActiveMissions: number | null;
+  /** Limits every mission gets unless it sets its own (P8). Empty: none. */
+  readonly defaultMissionLimits: readonly Limit[];
+  /** Limits on the whole project per local calendar month (P8). Empty: none. */
+  readonly monthlyLimits: readonly Limit[];
   readonly createdAt: Timestamp;
   readonly updatedAt: Timestamp;
 }

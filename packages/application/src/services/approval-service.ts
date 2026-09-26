@@ -16,6 +16,7 @@ import { actorFor, type Caller } from '../support/identity.js';
 import { isStartApproval, toApprovalView, toApprovalViews } from '../support/approval-view.js';
 import { feedbackEffectFor } from '../support/feedback-rules.js';
 import { materializePlan } from '../planning/materialize.js';
+import type { LimitService } from './limit-service.js';
 import { parsePlanResponse } from '../planning/parse.js';
 
 export interface ApprovalDeps {
@@ -37,6 +38,12 @@ export interface ApprovalDeps {
   readonly members: MemberRepositoryPort;
   /** Gives a card the headline of the artifact it cites. */
   readonly artifacts: ArtifactRepositoryPort;
+  /**
+   * Limit cards (P8): validates a raise before anything is written, and applies
+   * the decision inside the same transaction. Optional so harnesses built
+   * before limits still compose.
+   */
+  readonly limits?: Pick<LimitService, 'incidentFor' | 'validateDecision' | 'decide'>;
   readonly clock: Clock;
   readonly log: Logger;
 }
@@ -94,6 +101,9 @@ export class ApprovalServiceImpl implements ApprovalService {
       throw TandemiseError.validation('Say what should change: the note is the brief for the next round.', { optionId: option.id });
     }
 
+    // A raise that would stop the work again at once is refused before the card is answered.
+    this.deps.limits?.validateDecision(approval, option.id, request.raiseTo);
+
     // Resolved before anything is written: someone who is not on the team, or
     // who names a non-person to decide for, changes nothing.
     const { actorId, recordedBy } = actorFor(this.deps, approval.workspaceId, caller, request.onBehalfOf);
@@ -127,6 +137,7 @@ export class ApprovalServiceImpl implements ApprovalService {
       let round: RoundBegun | null = null;
       if (written.kind === 'plan') this.#resumePlan(written, approved, request);
       else if (written.taskId !== null) round = this.#resumeTask(written, approved, actorId, recordedBy);
+      else if (this.deps.limits?.incidentFor(written) !== undefined) this.deps.limits.decide(written, option.id, request.raiseTo, actorId);
       return { decided: written, begun: round };
     }));
 

@@ -1,4 +1,4 @@
-import type { ArtifactType, CriterionResult, MissionPriority, MissionStatus, TandemiseEventBody } from '@tandemise/domain';
+import type { Approval, ArtifactType, CriterionResult, LimitMetric, MissionPriority, MissionStatus, TandemiseEventBody } from '@tandemise/domain';
 
 /**
  * The handful of *runtime* values the renderer needs from the domain.
@@ -132,6 +132,33 @@ export const MISSION_PRIORITIES = Object.keys(PRIORITY_LABELS) as readonly Missi
 
 export function priorityLabel(priority: MissionPriority): string {
   return PRIORITY_LABELS[priority] ?? priority;
+}
+
+const LIMIT_METRIC_LABELS: Readonly<Record<LimitMetric, { label: string; unit: string }>> = {
+  agent_minutes: { label: 'Agent minutes', unit: 'agent minutes' },
+  tokens: { label: 'Tokens', unit: 'tokens' },
+  usd: { label: 'Cost (USD)', unit: 'USD' },
+};
+
+/** Mirrors `LIMIT_METRICS` in `@tandemise/domain` (P8). */
+export const LIMIT_METRICS = Object.keys(LIMIT_METRIC_LABELS) as readonly LimitMetric[];
+/** Mirrors `DEFAULT_WARN_PERCENT`. */
+export const DEFAULT_WARN_PERCENT = 80;
+/** Mirrors the two answers to a limit card in `@tandemise/domain`. */
+export const RAISE_LIMIT_OPTION = 'raise_limit';
+export const KEEP_PAUSED_OPTION = 'keep_paused';
+
+export function limitMetricLabel(metric: LimitMetric): string {
+  return LIMIT_METRIC_LABELS[metric]?.label ?? metric;
+}
+
+export function limitUnit(metric: LimitMetric): string {
+  return LIMIT_METRIC_LABELS[metric]?.unit ?? metric;
+}
+
+/** A limit card: an intervention with no task that offers "Raise limit and resume". */
+export function isLimitCard(approval: Approval): boolean {
+  return approval.kind === 'intervention' && approval.taskId === null && approval.options.some((o) => o.id === RAISE_LIMIT_OPTION);
 }
 
 /** MVP.md §7.2. Mirrors `@tandemise/api-contract`, for the same reason as above. */

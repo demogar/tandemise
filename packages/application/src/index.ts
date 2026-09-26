@@ -79,6 +79,8 @@ export { ReadinessService, assertReadiness } from './services/readiness.js';
 export type { ReadinessDeps } from './services/readiness.js';
 export { BacklogService, describePull } from './services/backlog-service.js';
 export type { BacklogDeps } from './services/backlog-service.js';
+export { LimitService } from './services/limit-service.js';
+export type { LimitDeps } from './services/limit-service.js';
 export { RefinementServiceImpl } from './services/refinement-service.js';
 export type { RefinementDeps } from './services/refinement-service.js';
 export type { CriteriaServiceDeps } from './services/criteria-service.js';

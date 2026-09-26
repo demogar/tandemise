@@ -1,4 +1,4 @@
-import type { Mission, MissionRepositoryPort, UnitOfWork, WorkspaceRepositoryPort, Workspace } from '@tandemise/domain';
+import type { Mission, MissionPriority, MissionRepositoryPort, UnitOfWork, WorkspaceRepositoryPort, Workspace } from '@tandemise/domain';
 import {
   backlogOrder, choosePulls, describeWip, isInProgress, isTerminalMissionStatus, moveInBacklog, pulledDetail, pulledTitle,
 } from '@tandemise/domain';
@@ -18,6 +18,12 @@ export interface BacklogDeps {
   readonly planning: Pick<PlanningService, 'begin'>;
   /** True while a refinement pass is running on the mission. */
   readonly refining: (missionId: MissionId) => boolean;
+  /**
+   * The monthly spend rule (P8): null when a mission of this priority may be
+   * pulled, else the "Held: …" label. Optional so harnesses built before
+   * limits still compose; the module always passes it.
+   */
+  readonly heldBySpend?: (workspaceId: WorkspaceId, priority: MissionPriority) => string | null;
   /** The list row a mission shows everywhere else, for the view. */
   readonly summaries: (workspaceId: WorkspaceId) => readonly MissionSummary[];
   readonly unitOfWork: UnitOfWork;
@@ -54,6 +60,7 @@ export class BacklogService {
         ready: readiness.ready,
         readinessLabel: readiness.label,
         refining: this.deps.refining(mission.id),
+        held: mission.queuedAt === null ? null : this.deps.heldBySpend?.(workspaceId, mission.priority) ?? null,
       };
     });
     const active = all.filter((m) => isInProgress(m.status)).length;
@@ -128,7 +135,11 @@ export class BacklogService {
   async #pullFor(workspace: Workspace): Promise<readonly MissionId[]> {
     const all = this.deps.missions.list({ workspaceId: workspace.id });
     const active = all.filter((m) => isInProgress(m.status)).length;
-    const queued = all.filter((m) => m.status === 'DRAFT' && m.queuedAt !== null);
+    // The monthly spend rule (P8): over the warning level only urgent and high
+    // missions are candidates; at the limit, none. A held mission stays queued
+    // and is pulled once the month turns or the limit is raised.
+    const queued = all.filter((m) => m.status === 'DRAFT' && m.queuedAt !== null)
+      .filter((m) => (this.deps.heldBySpend?.(workspace.id, m.priority) ?? null) === null);
     if (queued.length === 0 || active >= (workspace.maxActiveMissions ?? 0)) return [];
     const candidates = queued.map((m) => ({
       id: m.id, priority: m.priority, rank: m.rank, createdAt: m.createdAt, queued: true,

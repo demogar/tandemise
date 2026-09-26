@@ -7,7 +7,7 @@ import type {
 } from '@tandemise/domain';
 import { PENDING_FEEDBACK_STATUSES, planLevels } from '@tandemise/domain';
 import type {
-  ActorRef, FeedCard, HomeView, InboxView, MissionDetail, MissionFeedView, MissionSummary, RuntimeView, TaskView,
+  ActorRef, FeedCard, HomeView, InboxView, MissionDetail, MissionFeedView, MissionLimitsView, MissionSummary, RuntimeView, TaskView,
 } from '@tandemise/api-contract';
 import { humanActionForMember, isApprovalForMember, planStanding } from '@tandemise/api-contract';
 import type { MissionId, TaskId, WorkspaceId } from '@tandemise/shared';
@@ -15,6 +15,7 @@ import { TandemiseError, asId } from '@tandemise/shared';
 import type { ProjectionService, RuntimeService } from '../services.js';
 import type { GateService } from '../engine/gates.js';
 import type { ReadinessService } from './readiness.js';
+import type { LimitService } from './limit-service.js';
 import type { MetricsService } from '../engine/metrics.js';
 import { asPlannedTasks, validateTaskGraph } from '../support/dag.js';
 import { toApprovalView, toApprovalViews } from '../support/approval-view.js';
@@ -43,6 +44,8 @@ const DEFAULT_FEED_DONE_LIMIT = 5;
 /** Finished for good: these cards are history, not work in flight. */
 const FEED_DONE_STATUSES: readonly TaskStatus[] = ['SUCCEEDED', 'FAILED', 'SKIPPED', 'CANCELLED'];
 
+const NO_LIMITS: MissionLimitsView = { source: 'none', limits: [], usage: { agentMinutes: 0, tokens: null, costUsd: null, runs: 0 }, pendingApprovalId: null };
+
 export interface ProjectionDeps {
   readonly workspaces: WorkspaceRepositoryPort;
   readonly repositories: RepoRepositoryPort;
@@ -65,6 +68,8 @@ export interface ProjectionDeps {
   readonly feedback: FeedbackRepositoryPort;
   /** DRAFT missions waiting on a refinement decision (P6); optional for harnesses built before it. */
   readonly readiness?: ReadinessService;
+  /** Limits and usage (P8); optional for harnesses built before it. */
+  readonly limits?: Pick<LimitService, 'missionView' | 'alerts'>;
 }
 
 /**
@@ -100,6 +105,7 @@ export class ProjectionServiceImpl implements ProjectionService {
       pendingApprovals: toApprovalViews(this.deps, this.deps.approvals.list({ ...scope, statuses: ['PENDING'] })),
       runtimes: await this.#runtimeViews(workspace?.id),
       recentEvents: this.#recentEvents(missions),
+      limitAlerts: workspace === null || this.deps.limits === undefined ? [] : this.deps.limits.alerts(workspace.id),
     };
   }
 
@@ -374,6 +380,7 @@ export class ProjectionServiceImpl implements ProjectionService {
       checks: tasks.flatMap((t) => this.deps.evaluations.listChecks(t.id)),
       evaluations: tasks.flatMap((t) => this.deps.evaluations.listEvaluations(t.id)),
       metrics: this.deps.metrics.compute(mission, workspace),
+      limits: this.deps.limits?.missionView(mission) ?? NO_LIMITS,
       plan: tasks.length === 0
         ? null
         : { summary: this.#planSummary(mission, tasks), tasks: asPlannedTasks(tasks) },

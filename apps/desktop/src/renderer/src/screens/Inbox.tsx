@@ -13,7 +13,7 @@ import { useInbox, type InboxItem } from '../lib/inbox.js';
 import { useApprovals, useMission } from '../lib/queries.js';
 import { actorsLine, useActors, type Actors } from '../lib/team.js';
 import { pluralize, relativeTime, titleCase } from '../lib/format.js';
-import { REQUEST_CHANGES_OPTION } from '../lib/domain.js';
+import { REQUEST_CHANGES_OPTION, isLimitCard } from '../lib/domain.js';
 
 type Filter = 'me' | 'everyone';
 
@@ -225,6 +225,7 @@ function kindLabel(approval: Approval): string {
   const position = pipelinePosition(approval);
   if (position) return position;
   if (approval.kind === 'choice') return 'Question';
+  if (isLimitCard(approval)) return 'Limit reached';
   return titleCase(approval.kind);
 }
 

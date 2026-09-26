@@ -3,7 +3,7 @@ import type {
   RoleStaffing, RuntimeProfileRepositoryPort, StaffingPatch, UnitOfWork, Workspace, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
 import {
-  DEFAULT_AUTONOMY, DEFAULT_CONCURRENCY, EMPTY_KNOWLEDGE, NO_CHECKS, indexTeam, isActiveMember,
+  DEFAULT_AUTONOMY, DEFAULT_CONCURRENCY, EMPTY_KNOWLEDGE, NO_CHECKS, indexTeam, isActiveMember, normalizeLimits,
 } from '@tandemise/domain';
 import type {
   AddRepositoryRequest, CreateWorkspaceRequest, RepositoryProbe, UpdateWorkspaceRequest,
@@ -101,6 +101,9 @@ export class WorkspaceServiceImpl implements WorkspaceService {
         ...(patch.concurrency !== undefined ? { concurrency: patch.concurrency } : {}),
         // Read by the scheduler's next pass; turning it on can pull at once.
         ...(patch.maxActiveMissions !== undefined ? { maxActiveMissions: patch.maxActiveMissions } : {}),
+        // Limits (P8): read on the next run and the next dispatch.
+        ...(patch.defaultMissionLimits !== undefined ? { defaultMissionLimits: normalizeLimits(patch.defaultMissionLimits) } : {}),
+        ...(patch.monthlyLimits !== undefined ? { monthlyLimits: normalizeLimits(patch.monthlyLimits) } : {}),
         // Kept as a compatibility mirror, merged per role: dispatch routes on the
         // agent members staffing names and reads this only for a role nobody
         // staffed. Staffing below is what the routing now means.

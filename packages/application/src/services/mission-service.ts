@@ -3,7 +3,7 @@ import type {
   MissionTask, RepoRepositoryPort, RoleRepositoryPort, RunRepositoryPort, TaskRepositoryPort, UnitOfWork, WorkspaceRepositoryPort,
   ArtifactStorePort,
 } from '@tandemise/domain';
-import { canTransition, evaluateReadiness, indexTeam, isTaskFinished, isTerminalMissionStatus, responsibleFor } from '@tandemise/domain';
+import { canTransition, evaluateReadiness, indexTeam, isTaskFinished, isTerminalMissionStatus, normalizeLimits, responsibleFor } from '@tandemise/domain';
 import type {
   ClaimTaskRequest, CompleteTaskRequest, CreateMissionRequest, MissionSummary, TaskView,
 } from '@tandemise/api-contract';
@@ -49,6 +49,8 @@ export interface MissionDeps {
   /** A person's finished step is reviewed exactly as an agent's round is. */
   readonly reviews: ReviewPipeline;
   readonly planning: PlanningService;
+  /** Why a mission may not resume: it is at a limit (P8). Null when it may. */
+  readonly limitRefusal?: (missionId: MissionId) => string | null;
   readonly projections: ProjectionService;
   readonly scheduler: SchedulerService;
   /** A retry with a note is the next round, started the way any note starts one. */
@@ -143,6 +145,8 @@ export class MissionServiceImpl implements MissionService {
         ...(request.priority === undefined ? {} : { priority: request.priority }),
         // Queued only while it is a draft: a mission planned now is not waiting for anything.
         queued: request.queued === true && request.planNow !== true,
+        // Its own limits (P8); absent, the project's default mission limits apply.
+        ...(request.limits === undefined ? {} : { limits: normalizeLimits(request.limits) }),
       });
       // Numbered in the same transaction as the mission: the ledger is the
       // contract every later role is measured against, so a mission never
@@ -213,6 +217,14 @@ export class MissionServiceImpl implements MissionService {
     if (mission.status !== 'PAUSED' && mission.status !== 'BLOCKED') {
       throw new TandemiseError('PRECONDITION_FAILED', `A mission in ${mission.status} is not paused.`, {
         details: { missionId: id, status: mission.status },
+      });
+    }
+    // Resuming at a limit would start work the limit exists to stop; the
+    // limit card, or a higher limit, is the way on (P8).
+    const refusal = this.deps.limitRefusal?.(id) ?? null;
+    if (refusal !== null) {
+      throw new TandemiseError('PRECONDITION_FAILED', `${refusal}. Raise the limit to resume this mission.`, {
+        details: { missionId: id, reason: refusal },
       });
     }
     const resumed = this.#transition(mission, 'EXECUTING', 'Resumed by the user.');
