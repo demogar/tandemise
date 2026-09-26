@@ -1,0 +1,33 @@
+{
+  "id": "B14",
+  "title": "A check for me: Needs you, decided on the card, then gone",
+  "ok": true,
+  "checks": [
+    {
+      "label": "the architecture check is under Needs you",
+      "ok": true,
+      "observed": "msn_01m3e7ja2srp1k9vs6k2\nMissions\np0\nB check mui13n6c\nB check mui13n6c\nExecuting\nPause\nCancel\nFeed\n2\nPlan\n8\nTimeline\nArtifacts\n6\nChecks & Gates\nMetrics\nDone when\n0 of 1 verified\nAC1\nScripted criterion 1: the hello page greets the visitor by name.\nFrom the spec · Waiting for QA\nNot verified\nNeeds you\n2 items\nPRODUCT MANAGER\ndocs\nPerson step\njust now\nby\nYou\n\nWrite the README paragraph for the hello "
+    },
+    {
+      "label": "it reads as non-blocking (\"Check when you can\")",
+      "ok": true,
+      "observed": "ARCHITECT\narchitecture\nDone\njust now\nby\nRuntime\n·\nresponsible\nYou\nFull doc\nRequest changes\n\nArchitecturePlan ready for the hello page\n\nWritten by the scripted acceptance agent\nNo model was called\nCheck when you can Check architecture when you can\nRecording for\nDemostenes Garcia G. (you)\nAna Ruiz\nMaria Lopez\nNothing is waiting on this; your note is kept with the work.\nNeeds changes\nLooks good"
+    },
+    {
+      "label": "decided \"Looks good\" on the card",
+      "ok": true
+    },
+    {
+      "label": "the check left Needs you",
+      "ok": true,
+      "observed": "msn_01m3e7ja2srp1k9vs6k2\nMissions\np0\nB check mui13n6c\nB check mui13n6c\nExecuting\nPause\nCancel\nFeed\n1\nPlan\n8\nTimeline\nArtifacts\n7\nChecks & Gates\nMetrics\nDone when\n0 of 1 verified\nAC1\nScripted criterion 1: the hello page greets the visitor by name.\nFrom the spec · Waiting for QA\nNot verified\nNeeds you"
+    }
+  ],
+  "notes": [
+    "check \"Check architecture when you can\" options: Looks good, Needs changes"
+  ],
+  "shots": [
+    "scratch/acceptance/p0/evidence/B14-check-needs-you.png",
+    "scratch/acceptance/p0/evidence/B14-check-decided.png"
+  ]
+}

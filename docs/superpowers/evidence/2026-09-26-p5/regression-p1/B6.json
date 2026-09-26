@@ -1,0 +1,21 @@
+{
+  "id": "B6",
+  "title": "A missing handoff is named in the retry and then fixed",
+  "ok": true,
+  "checks": [
+    {
+      "label": "the retry named handoff.headline",
+      "ok": true
+    },
+    {
+      "label": "the next attempt succeeded",
+      "ok": true,
+      "observed": {
+        "status": "SUCCEEDED",
+        "attempts": 2
+      }
+    }
+  ],
+  "notes": [],
+  "shots": []
+}

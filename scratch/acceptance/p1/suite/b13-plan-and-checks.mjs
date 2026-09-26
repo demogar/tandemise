@@ -7,7 +7,7 @@ const c = await context();
 const { page, api, env, sleep, until } = c;
 const cardText = (key) => page.evaluate(`(() => [...document.querySelectorAll('[class*=feedcard]')].filter(e => e.offsetParent && !e.parentElement.closest('[class*=feedcard]')).map(e => e.innerText).find(t => t.includes(${JSON.stringify(key)})) ?? '')()`);
 const cardButton = (key, label) => page.evaluate(`(() => { const card = [...document.querySelectorAll('[class*=feedcard]')].find(e => e.offsetParent && e.innerText.includes(${JSON.stringify(key)}) && [...e.querySelectorAll('button')].some(b => b.innerText.trim() === ${JSON.stringify(label)})); const b = card && [...card.querySelectorAll('button')].filter(b => b.innerText.trim() === ${JSON.stringify(label)}).pop(); if (!b) return false; b.click(); return true; })()`);
-const needsSection = async () => (await page.text('main')).split(/\nIn progress|\nDone/)[0];
+const needsSection = async () => (await page.text('main')).split(/\nIn progress\n|\nDone\n/)[0];
 
 {
   const ev = new Evidence('B13', 'Rejected plan: Needs you, "Rejected", Re-plan asks again');
