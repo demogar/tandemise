@@ -1,0 +1,13 @@
+{
+  "id": "B8",
+  "title": "A person's output gets a headline from their own first sentence",
+  "ok": true,
+  "checks": [
+    {
+      "label": "docs card headline is the first sentence of the text",
+      "ok": true
+    }
+  ],
+  "notes": [],
+  "shots": []
+}

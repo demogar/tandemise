@@ -1,0 +1,93 @@
+{
+  "id": "C3",
+  "title": "Review → Request changes: same task, round 2, no revision task",
+  "ok": true,
+  "checks": [
+    {
+      "label": "solo workspace: you are the only person",
+      "ok": true,
+      "observed": [
+        "Demostenes Garcia G."
+      ]
+    },
+    {
+      "label": "a review card is open on doc for you",
+      "ok": true,
+      "observed": [
+        "mem_01m3e6snwkzmqkmwrfdq"
+      ]
+    },
+    {
+      "label": "the card offers Approve, Request changes, Reject without changes",
+      "ok": true,
+      "observed": [
+        "Approve",
+        "Request changes",
+        "Reject without changes"
+      ]
+    },
+    {
+      "label": "the Inbox card shows the three options",
+      "ok": true,
+      "observed": "Inbox\nWhat is waiting on a person.\nApprove the output of doc?\nProductSpec ready for the hello page\nFor you·C3 review mui0p41l\nAction\njust now\nReversible\nApprove the output of doc?\nAction\napr_01m3e6xrmtp293892jq1\ntask\ntsk_01m3e6xm09q4dmp2b2bd\nC3 review mui0p41l\n·\ndoc\n·\nrequested by Product Manager\n·\njust now\nWHY IS THIS BEING ASKED?\n\nProduct Manager finished 'doc' and its output authorizes the work that follows.\n\nWHAT CHANGES IF YOU APPROVE?\n\nApproving releases every task that depends on this one. Request changes sends it back to Product Manager as its next round, with your note as the brief. Reject without changes leaves it blocked.\n\nEVIDENCE\nGate\nThis task declares no completion gate.\nProduct Spec\nProductSpec: Scripted work\nProductSpec ready for the hello page\nYOUR OPTIONS\nApproveRecommen"
+    },
+    {
+      "label": "no \"Recording for\" on screen (Inbox card)",
+      "ok": true
+    },
+    {
+      "label": "the card is decided as Request changes (REJECTED, request_changes), by you, with the note",
+      "ok": true,
+      "observed": {
+        "status": "REJECTED",
+        "option": "request_changes",
+        "note": "Name the page title in the first sentence."
+      }
+    },
+    {
+      "label": "same task id, now in round 2",
+      "ok": true,
+      "observed": {
+        "id": "tsk_01m3e6xm09q4dmp2b2bd",
+        "round": 2,
+        "status": "AWAITING_APPROVAL"
+      }
+    },
+    {
+      "label": "the plan has no _revision_ task",
+      "ok": true,
+      "observed": [
+        "doc"
+      ]
+    },
+    {
+      "label": "a second review card opens for round 2",
+      "ok": true,
+      "observed": "Approve the output of doc?"
+    },
+    {
+      "label": "the note is on the thread, addressed in round 2",
+      "ok": true,
+      "observed": [
+        {
+          "status": "addressed",
+          "round": 2,
+          "text": "Name the page title in the first sentence."
+        }
+      ]
+    },
+    {
+      "label": "the feed card is back In review as Round 2 with What changed",
+      "ok": true,
+      "observed": "PRODUCT MANAGER\ndoc\nIn review\nRound 2\njust now\nby\nRuntime\n·\nresponsible\nYou\nFull doc\n\nProductSpec ready for the hello page\n\nWHAT CHANGED\nApplied: Name the page title in the first sentence.\n· You\nWritten by the scripted acceptance agent\nNo model was called\nNeeds Approve the output of doc?\nApplies immediately.\nReject without changes\nRequest changes\nApprove"
+    }
+  ],
+  "notes": [
+    "mission msn_01m3e6xm01gj423540k7"
+  ],
+  "shots": [
+    "scratch/acceptance/p0/evidence/C3-inbox-three-options.png",
+    "scratch/acceptance/p0/evidence/C3-round-2-in-review.png",
+    "scratch/acceptance/p0/evidence/C3-inbox-after.png"
+  ]
+}

@@ -1,0 +1,117 @@
+{
+  "id": "E1",
+  "title": "Done-when lines trace from the request to QA",
+  "ok": true,
+  "checks": [
+    {
+      "label": "the feed opens with \"Done when\" listing U1 and U2 in the person's words",
+      "ok": true,
+      "observed": "Done when\n0 of 2 verified\nU1\nThe page greets the visitor by name\nThe spec will cover this\nNot verified\nU2\nThe page works offline\nThe spec will cover this\nNot verified"
+    },
+    {
+      "label": "before a spec both lines count: \"0 of 2 verified\"",
+      "ok": true,
+      "observed": "Done when\n0 of 2 verified\nU1\nThe page greets the visitor by name\nThe spec will cover this\nNot verified\nU2\nThe page works offline\nThe spec will cover this\nNot verified"
+    },
+    {
+      "label": "each reads \"Not verified\" and \"The spec will cover this\"",
+      "ok": true,
+      "observed": "U2 The page works offline The spec will cover this Not verified"
+    },
+    {
+      "label": "after the spec the header reads \"0 of 1 verified\"",
+      "ok": true,
+      "observed": "Done when\n0 of 1 verified\nU1\nThe page greets the visitor by name\nCovered by AC1\nNot verified\nU2\nThe page works offline\nCovered by AC1\nNot verified\nAC1\nScripted criterion 1: the hello page greets the visitor by name.\nCovers U1, U2 · Waiting for QA\nNot verified"
+    },
+    {
+      "label": "AC1 \"Covers U1, U2\" and is \"Not verified\", waiting for QA",
+      "ok": true,
+      "observed": "AC1 Scripted criterion 1: the hello page greets the visitor by name. Covers U1, U2 · Waiting for QA Not verified"
+    },
+    {
+      "label": "U1 and U2 each say \"Covered by AC1\"",
+      "ok": true,
+      "observed": [
+        "U1 The page greets the visitor by name Covered by AC1 Not verified",
+        "U2 The page works offline Covered by AC1 Not verified"
+      ]
+    },
+    {
+      "label": "after QA the header reads \"1 of 1 verified\"",
+      "ok": true,
+      "observed": "Done when\n1 of 1 verified\nU1\nThe page greets the visitor by name\nCovered by AC1\nVerified\nU2\nThe page works offline\nCovered by AC1\nVerified\nAC1\nScripted criterion 1: the hello page greets the visitor by name.\nCovers U1, U2 · Scripted check for AC1 passed\nVerified"
+    },
+    {
+      "label": "every row reads \"Verified\"",
+      "ok": true,
+      "observed": [
+        "U1 The page greets the visitor by name Covered by AC1 Verified",
+        "U2 The page works offline Covered by AC1 Verified",
+        "AC1 Scripted criterion 1: the hello page greets the visitor by name. Covers U1, U2 · Scripted check for AC1 passed Verified"
+      ]
+    },
+    {
+      "label": "AC1 shows QA's evidence",
+      "ok": true,
+      "observed": "AC1 Scripted criterion 1: the hello page greets the visitor by name. Covers U1, U2 · Scripted check for AC1 passed Verified"
+    },
+    {
+      "label": "clicking AC1 opens the QA report that verified it",
+      "ok": true,
+      "observed": "QA report\nQAReport: Scripted work\nby\nRuntime\n·\nresponsible\nYou\nRequest changes\n\nQAReport ready for the hello page\n\nWritten by the scripted acceptance agent\nNo model was called\nQAReport\nSep 26, 2026, 1:49 AM\nqa branch\nDetails\n\nWritten by the scripted acceptance agent.\n\nResults\nAC1: PASS — Scripted check for AC1 passed"
+    },
+    {
+      "label": "proof (API): U1, U2, AC1 all PASS; AC1 carries the QA report id",
+      "ok": true,
+      "observed": [
+        {
+          "key": "U1",
+          "result": "PASS",
+          "covers": [],
+          "coveredBy": [
+            "AC1"
+          ]
+        },
+        {
+          "key": "U2",
+          "result": "PASS",
+          "covers": [],
+          "coveredBy": [
+            "AC1"
+          ]
+        },
+        {
+          "key": "AC1",
+          "result": "PASS",
+          "covers": [
+            "U1",
+            "U2"
+          ],
+          "coveredBy": []
+        }
+      ]
+    },
+    {
+      "label": "the mission completes",
+      "ok": true,
+      "observed": "COMPLETE"
+    },
+    {
+      "label": "proof: the release gate read qa.criteria_unverified 0",
+      "ok": true,
+      "observed": {
+        "status": "SUCCEEDED",
+        "reason": null
+      }
+    }
+  ],
+  "notes": [
+    "mission msn_01m3e7m0165yysc1hnh8"
+  ],
+  "shots": [
+    "scratch/acceptance/p5/evidence/E1-ledger-at-creation.png",
+    "scratch/acceptance/p5/evidence/E1-spec-covers-both.png",
+    "scratch/acceptance/p5/evidence/E1-all-verified.png",
+    "scratch/acceptance/p5/evidence/E1-qa-report-from-row.png"
+  ]
+}
