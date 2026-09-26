@@ -1,0 +1,41 @@
+{
+  "id": "J4",
+  "title": "Paused, and paused at a limit, are not stalled",
+  "ok": true,
+  "checks": [
+    {
+      "label": "the Inbox has nothing for \"J4 paused muifxiba\"",
+      "ok": true,
+      "observed": "Inbox\nWhat is waiting on a person.\nNothing is waiting on you\n\nApprovals, questions, tasks for a person, stalled missions and quiet agents land here, one line each.\n"
+    },
+    {
+      "label": "proof (API): no Stalled row, card or quiet row for the paused mission",
+      "ok": true,
+      "observed": []
+    },
+    {
+      "label": "the limit-paused mission shows its \"Limit reached\" card",
+      "ok": true,
+      "observed": "Inbox\nWhat is waiting on a person.\n“J4 limit muifxiba SCRIPTED_USAGE_MIN=5” reached its limit: 5 of 4 agent minutes\nFor you·J4 limit muifxiba SCRIPTED_USAGE_MIN=5\nLimit reached\njust now"
+    },
+    {
+      "label": "and no \"Stalled:\" row",
+      "ok": true
+    },
+    {
+      "label": "proof (API): its card is its only item, and nothing in the project is stalled",
+      "ok": true,
+      "observed": {
+        "stalled": [],
+        "cards": [
+          "“J4 limit muifxiba SCRIPTED_USAGE_MIN=5” reached its limit: 5 of 4 agent minutes"
+        ]
+      }
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p10-desk/scratch/acceptance/p9/evidence/J4-paused-no-row.png",
+    "/Users/demogar/projects/tandemise/tandemise-p10-desk/scratch/acceptance/p9/evidence/J4-limit-card-only.png"
+  ]
+}

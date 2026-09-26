@@ -17,11 +17,14 @@ for (const heading of ['At a glance', 'Missions', 'Backlog', 'How this report wa
   ev.check(`heading "${heading}"`, text.split('\n').some((l) => l.trim() === heading), text.slice(0, 300));
 }
 ev.check('at a glance: "Needs you: 1", "Working on: 2 of 2", "Criteria verified: 4 of 6", "Stalled: 1"', ['Needs you: 1', 'Working on: 2 of 2 · 0 queued', 'Criteria verified: 4 of 6, across 2 missions in progress', 'Stalled: 1'].every((l) => text.includes(l)), text.split('Missions')[0]);
-const aPart = text.split(k1.aTitle)[1]?.split(k1.bTitle)[0] ?? text.split(k1.aTitle)[1] ?? '';
+// The mission sections, below the handoff (whose points name the same missions).
+const missionsPart = text.slice(text.indexOf('\nMissions\n'));
+const section = (title) => { const rest = missionsPart.split(`\n${title}\n`)[1] ?? ''; return rest.split(/\n(?=K1 |Backlog\n)/)[0]; };
+const aPart = section(k1.aTitle);
 ev.check(`${k1.aTitle}: "Criteria: 1 of 3 verified; AC2, AC3 not verified."`, aPart.includes('Criteria: 1 of 3 verified; AC2, AC3 not verified.'), aPart.slice(0, 700));
 const gateLine = 'Not met: qa.criteria_unverified is 2, needs 0';
 ev.check(`${k1.aTitle}: "Last gate failure (release): ${gateLine}"`, aPart.includes(`Last gate failure (release): ${gateLine}`), aPart.slice(0, 700));
-const bPart = text.split(k1.bTitle)[1] ?? '';
+const bPart = section(k1.bTitle);
 ev.check(`${k1.bTitle}: stalled with its reason and "Next: Retry release."; "3 of 3 verified"`, bPart.includes("Stalled: 'release' is blocked: A human declined to retry this task. Next: Retry release.") && bPart.includes('Criteria: 3 of 3 verified.'), bPart.slice(0, 700));
 ev.check('it says how it was made: no model wrote it', text.includes('No model wrote it. The same facts always render the same report.'));
 await page.screenshot(ev.shot('report-v1'));
