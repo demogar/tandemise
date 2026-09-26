@@ -199,5 +199,6 @@ Status always maps through `Tone` (`lib/format.ts`):
 - **New brand anchor:** update this document, `palette.css`, the logo roles and
   the identity tints in one change.
 - **Verify in the real app.** Walk every screen in both themes with a real
-  mission, not only the mock, and regenerate `apps/desktop/screenshots/` with
-  the screenshot pass (`TANDEMISE_SCREENSHOT_DIR`).
+  mission, not only the mock, and regenerate `apps/desktop/screenshots/` from
+  the real app with the scripts in `scratch/docs-screenshots/` (its README has
+  the steps).
