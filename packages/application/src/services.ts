@@ -216,6 +216,8 @@ export interface ArtifactService {
   read(id: ArtifactId): Promise<ArtifactReadView>;
   /** Omit the workspace to search the whole install. Current versions only unless `includeSuperseded`. */
   search(workspaceId: WorkspaceId | undefined, query: string, options?: { includeSuperseded?: boolean }): readonly ArtifactView[];
+  /** Absolute path to the artifact's body on disk, for "reveal" and attaching an Evidence file to a runtime. */
+  path(id: ArtifactId): string;
 }
 
 export interface RuntimeService {

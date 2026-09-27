@@ -450,6 +450,13 @@ export const handBackRequest = z.object({
 });
 export type HandBackRequest = z.infer<typeof handBackRequest>;
 
+/** A workspace link inside a note or a hand-back (spec A4): resolved to an absolute path. */
+export const resolveWorkspaceLinkRequest = z.object({
+  workspaceId: z.string().min(1),
+  path: z.string().min(1),
+});
+export type ResolveWorkspaceLinkRequest = z.infer<typeof resolveWorkspaceLinkRequest>;
+
 /** Confirms a round that waited on the downstream choice (spec §3). */
 export const startRoundRequest = z.object({
   feedbackIds: z.array(z.string().min(1)).min(1).max(50),

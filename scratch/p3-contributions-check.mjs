@@ -776,6 +776,155 @@ section('daemon: park and hand back');
   }
 }
 
+// ------------------------------------------------------- http: contributions
+// Task 5: the daemon routes for uploads, park, hand-back, artifact paths and
+// workspace links, and the per-route body cap that lets a 24 MB file through
+// while every other route keeps the global 8 MiB ceiling. Real HTTP, over the
+// real router and a real HttpServer wrapping engineHarness's services - the
+// same composition scratch/p14-issues-check.mjs and friends drive through
+// `startDaemon`, but built directly here so a task can be seeded straight
+// into the repository (as the pure "park and hand back" section above does)
+// without first running it through the scheduler.
+section('http: contributions');
+{
+  const { execFileSync } = await import('node:child_process');
+  const { existsSync } = await import('node:fs');
+  const { createLogger, systemClock, ids } = await import('@tandemise/shared');
+  const { buildRouter } = await import('../apps/daemon/dist/routes.js');
+  const { HttpServer } = await import('../apps/daemon/dist/http/server.js');
+
+  const HOME = mkdtempSync(join(tmpdir(), 'tdm-p3-http-'));
+  const checkout = join(HOME, 'checkout');
+  mkdirSync(checkout, { recursive: true });
+  writeFileSync(join(checkout, 'README.md'), '# http check\n');
+  execFileSync('git', ['-c', 'user.name=P3', '-c', 'user.email=p3@example.com', 'init', '-q', '-b', 'main', checkout], { stdio: 'ignore' });
+  execFileSync('git', ['-C', checkout, '-c', 'user.name=P3', '-c', 'user.email=p3@example.com', 'add', '.'], { stdio: 'ignore' });
+  execFileSync('git', ['-C', checkout, '-c', 'user.name=P3', '-c', 'user.email=p3@example.com', 'commit', '-q', '-m', 'init'], { stdio: 'ignore' });
+
+  const h = await engineHarness(HOME, { read: async () => null });
+  const token = 'p3-http-check-token';
+  const log = createLogger({ level: 'error', base: { component: 'p3-http-check' } });
+  const router = buildRouter(h.services);
+  const http = new HttpServer({
+    token, router, log,
+    identityResolver: () => ({ personId: h.services.identity.localPerson().id }),
+    onUpgrade: () => {},
+    port: 0,
+  });
+  const url = await http.listen();
+  const { request: httpRequest } = await import('node:http');
+  /**
+   * Plain `node:http`, not `fetch`: the router aborts reading an over-cap
+   * body mid-stream (the two checks below), and on a fast loopback link the
+   * server can close the socket before this side has finished writing a 9-25
+   * MB request - a real, observed race, not a hypothetical one. `fetch`
+   * (undici) surfaces that as an uncaught `TypeError: fetch failed` that
+   * crashes the process rather than a rejected promise a `try/catch` can
+   * reach; `agent: false` (a fresh connection per call, never pooled) plus an
+   * explicit `error` handler on the request turns the same event into an
+   * ordinary result. A socket closing before the whole body lands is itself
+   * proof the server did not hang waiting for it - that counts as a refusal
+   * too, just one with no parseable response to inspect.
+   */
+  const api = (method, path, body) => new Promise((resolve, reject) => {
+    const started = Date.now();
+    const payload = body === undefined ? undefined : JSON.stringify(body);
+    const target = new URL(`${url}${path}`);
+    let settled = false;
+    const settle = (value) => { if (!settled) { settled = true; resolve(value); } };
+    const req = httpRequest(target, {
+      method, agent: false,
+      headers: {
+        authorization: `Bearer ${token}`, 'x-tandemise-api-version': 'v1',
+        ...(payload === undefined ? {} : { 'content-type': 'application/json' }),
+      },
+    }, (res) => {
+      const chunks = [];
+      res.on('data', (c) => chunks.push(c));
+      res.on('end', () => {
+        const text = Buffer.concat(chunks).toString('utf8');
+        settle({ status: res.statusCode, body: text ? JSON.parse(text) : undefined, ms: Date.now() - started, reset: false });
+      });
+    });
+    req.on('error', (err) => {
+      if (settled) return;
+      if (err.code === 'EPIPE' || err.code === 'ECONNRESET') { settle({ status: 0, body: undefined, ms: Date.now() - started, reset: true }); return; }
+      reject(err);
+    });
+    if (payload === undefined) req.end(); else req.end(payload);
+  });
+  const missions = h.container.resolve(h.app.MISSION_REPOSITORY);
+  const tasks = h.container.resolve(h.app.TASK_REPOSITORY);
+  const b64Of = (bytes) => Buffer.alloc(bytes).toString('base64');
+
+  try {
+    const created = await api('POST', '/v1/workspaces', { name: 'HTTP contributions', repositoryPath: checkout });
+    const ws = created.body?.workspace?.id;
+    check('the workspace is created with its repository', created.status === 200 && typeof ws === 'string', created.body);
+
+    // ---- the per-route body cap: bigger on the three contribution routes, unchanged everywhere else
+    const tenMb = await api('POST', '/v1/missions', {
+      workspaceId: ws, goal: 'Ship the greeting', uploads: [{ kind: 'file', filename: 'big.bin', mediaType: 'application/octet-stream', dataBase64: b64Of(10 * 1024 * 1024) }],
+    });
+    check('a 10 MB upload succeeds (over the global 8 MiB cap, under the contribution cap)', tenMb.status === 200 && tenMb.body?.mission?.id !== undefined, { status: tenMb.status, error: tenMb.body?.error });
+    check('the 10 MB upload is pinned as Evidence', tenMb.status === 200 && h.artifacts.listByMission(tenMb.body.mission.id, 'Evidence').length === 1);
+
+    const missionsBeforeRefusal = missions.list({ workspaceId: ws }).length;
+    const twentyFiveMb = await api('POST', '/v1/missions', {
+      workspaceId: ws, goal: 'Ship another greeting', uploads: [{ kind: 'file', filename: 'huge.bin', mediaType: 'application/octet-stream', dataBase64: b64Of(25 * 1024 * 1024) }],
+    });
+    // A clean 400 is the common case; a reset connection (the socket closing
+    // before every byte of a 25 MB body lands) is the same refusal racing the
+    // client's own write, so either counts, but only a clean response has a
+    // message to check.
+    check('a 25 MB upload is refused, not a timeout', (twentyFiveMb.status === 400 || twentyFiveMb.reset) && twentyFiveMb.ms < 10_000, { status: twentyFiveMb.status, reset: twentyFiveMb.reset, ms: twentyFiveMb.ms });
+    check('the refusal names the 24 MB limit', twentyFiveMb.reset || twentyFiveMb.body?.error?.message?.includes('That file is larger than 24 MB.'), twentyFiveMb.body?.error);
+    check('no mission and no Evidence is left behind by the refused upload', missions.list({ workspaceId: ws }).length === missionsBeforeRefusal, { before: missionsBeforeRefusal, after: missions.list({ workspaceId: ws }).length });
+
+    const nineMbElsewhere = await api('POST', '/v1/workspaces', { name: 'x'.repeat(9 * 1024 * 1024) });
+    check('a 9 MiB body to an unrelated route is still refused (global 8 MiB cap)', nineMbElsewhere.status === 400 || nineMbElsewhere.reset, nineMbElsewhere.body?.error);
+
+    // ---- park and hand back, over HTTP
+    const missionRes = await api('POST', '/v1/missions', { workspaceId: ws, goal: 'Design the greeting' });
+    const missionId = missionRes.body.mission.id;
+    missions.update(missionId, { status: 'EXECUTING' });
+    const taskId = tasks.add({
+      id: ids.task(), missionId, key: 'design', title: 'Design the greeting', objective: 'o', roleId: 'design',
+      dependsOn: [], requiredCapabilities: [], inputArtifacts: [], expectedOutputs: ['DesignBrief'],
+      executionPolicy: { isolation: 'none', maxWallTimeMs: 60000, capabilities: [] }, approvalPolicy: { beforeStart: false, onCompletion: false },
+      retryPolicy: { maxAttempts: 1, backoffMs: 0, onExhausted: 'block' }, completionGate: null,
+      status: 'READY', statusReason: null, attempts: 0, remediatesTaskId: null, repositoryId: null,
+      executor: 'agent', waitPolicy: null, orderHint: 0, staffingOverride: null,
+      createdAt: systemClock.now(), updatedAt: systemClock.now(), startedAt: null, finishedAt: null,
+    }).id;
+
+    const parked = await api('POST', `/v1/tasks/${taskId}/park`, { tool: 'Figma' });
+    check('POST park answers with the parked TaskView', parked.status === 200 && parked.body?.status === 'AWAITING_EXTERNAL' && parked.body?.parkedExternal?.tool === 'Figma', parked.body);
+
+    const file = { kind: 'file', filename: 'frames.md', mediaType: 'text/markdown', dataBase64: Buffer.from('# Frames\n\nThe greeting, drawn in Figma.\n').toString('base64') };
+    const handed = await api('POST', `/v1/tasks/${taskId}/hand-back`, { note: 'Designed in Figma. The frames are attached.', contribution: file });
+    check('POST hand-back answers with {task, artifacts}', handed.status === 200 && handed.body?.task?.status === 'SUCCEEDED' && handed.body?.artifacts?.length === 1 && handed.body.artifacts[0].round === 2, handed.body);
+
+    // ---- GET /v1/artifacts/:id/path
+    const evidence = h.artifacts.listByTask(taskId).find((a) => a.type === 'Evidence');
+    const pathRes = await api('GET', `/v1/artifacts/${evidence?.id}/path`);
+    check('GET artifact path is absolute and exists', pathRes.status === 200 && pathRes.body?.path?.startsWith('/') && existsSync(pathRes.body.path), pathRes.body);
+
+    // ---- POST /v1/workspace-links/resolve
+    // `.endsWith`, not equality: macOS resolves the check's tmpdir through a
+    // symlink (/var -> /private/var), so `realpath` disagrees with `checkout`
+    // on the prefix alone, exactly as the pure pinning section above notes.
+    const insideLink = await api('POST', '/v1/workspace-links/resolve', { workspaceId: ws, path: 'README.md' });
+    check('a workspace link inside the repository resolves', insideLink.status === 200 && insideLink.body?.path?.endsWith('/checkout/README.md'), insideLink.body);
+    const outsideLink = await api('POST', '/v1/workspace-links/resolve', { workspaceId: ws, path: '../escape' });
+    check('a workspace link outside every root is refused 400', outsideLink.status === 400 && outsideLink.body?.error?.details?.code === 'outside_workspace', outsideLink.body?.error);
+  } finally {
+    await http.close();
+    await h.container.dispose?.();
+    rmSync(HOME, { recursive: true, force: true });
+  }
+}
+
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) { for (const f of failures) console.log(`  - ${f}`); process.exit(1); }
 console.log('ALL P3 CONTRIBUTIONS CHECKS PASSED');

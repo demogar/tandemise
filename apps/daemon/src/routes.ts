@@ -13,11 +13,13 @@ import {
   takeNotificationsRequest, updateNotificationPreferencesRequest,
   updateIssueSettingsRequest,
   applySetupRequest, exportSetupRequest, previewSetupRequest,
+  parkTaskRequest, handBackRequest, resolveWorkspaceLinkRequest,
 } from '@tandemise/api-contract';
 import { normalizeLimits } from '@tandemise/domain';
+import { ContributionError } from '@tandemise/application';
 import type { TandemiseServices } from '@tandemise/application';
 import type { AdjustableClock } from '@tandemise/shared';
-import { Router, formatZodIssues, type RequestContext } from './http/router.js';
+import { CONTRIBUTION_BODY, Router, formatZodIssues, type RequestContext } from './http/router.js';
 
 /**
  * The daemon's HTTP surface.
@@ -101,7 +103,7 @@ export function buildRouter(services: TandemiseServices, options: { readonly tes
   r.post('/v1/missions', async (ctx) => {
     const mission = await services.missions.create(ctx.caller, await ctx.body(createMissionRequest));
     return services.projections.missionDetail(mission.id);
-  });
+  }, CONTRIBUTION_BODY);
   r.get('/v1/missions/:id', (ctx) => services.projections.missionDetail(asId(ctx.params.id!)));
   // The backlog (P7): priority, rank, queue or a move; answered with the project's backlog.
   r.patch('/v1/missions/:id', async (ctx) => {
@@ -205,9 +207,19 @@ export function buildRouter(services: TandemiseServices, options: { readonly tes
   r.post('/v1/tasks/:id/claim', async (ctx) =>
     services.missions.claimTask(ctx.caller, asId(ctx.params.id!), await ctx.body(claimTaskRequest)));
 
+  // "Continue elsewhere" and "hand back" (spec A4): an agent step's output moves
+  // to another tool and comes back as a person's round.
+  r.post('/v1/tasks/:id/park', async (ctx) =>
+    services.missions.parkTask(asId(ctx.params.id!), ctx.caller, await ctx.body(parkTaskRequest)));
+  r.post('/v1/tasks/:id/hand-back', async (ctx) =>
+    services.missions.handBack(asId(ctx.params.id!), ctx.caller, await ctx.body(handBackRequest)), CONTRIBUTION_BODY);
+
   // ------------------------------------------------------- feedback and rounds
+  // Attachments (spec A3) are pinned before the note lands, which `give` cannot
+  // do synchronously; the route always takes the async path so a note without
+  // a file costs nothing extra, and one carrying files still lands correctly.
   r.post('/v1/tasks/:id/feedback', async (ctx) =>
-    services.feedback.give(ctx.caller, asId(ctx.params.id!), await ctx.body(giveFeedbackRequest)));
+    services.feedback.giveWithAttachments(ctx.caller, asId(ctx.params.id!), await ctx.body(giveFeedbackRequest)), CONTRIBUTION_BODY);
   r.get('/v1/tasks/:id/feedback', (ctx) => services.feedback.list(asId(ctx.params.id!)));
   r.post('/v1/tasks/:id/rounds', async (ctx) =>
     services.feedback.startRound(ctx.caller, asId(ctx.params.id!), await ctx.body(startRoundRequest)));
@@ -250,6 +262,24 @@ export function buildRouter(services: TandemiseServices, options: { readonly tes
     return services.artifacts.search(workspaceId === undefined ? undefined : asId(workspaceId), q ?? '', { includeSuperseded });
   });
   r.get('/v1/artifacts/:id', (ctx) => services.artifacts.read(asId(ctx.params.id!)));
+  // The blob's absolute path (spec A4/A5): "reveal in Finder" and attaching an
+  // Evidence file to the runtime a hand-back was continued in.
+  r.get('/v1/artifacts/:id/path', (ctx) => ({ path: services.artifacts.path(asId(ctx.params.id!)) }));
+
+  // A workspace link inside a note or a hand-back (spec A4): resolved against
+  // the workspace's repositories and artifact root, never against the daemon's
+  // own filesystem. ContributionError('outside_workspace') is the only way
+  // this throws, mapped the same way mission-service and feedback-service
+  // already map every other contribution refusal.
+  r.post('/v1/workspace-links/resolve', async (ctx) => {
+    const { workspaceId, path } = await ctx.body(resolveWorkspaceLinkRequest);
+    try {
+      return { path: await services.contributions.resolveWorkspacePath(asId(workspaceId), path) };
+    } catch (e) {
+      if (e instanceof ContributionError) throw TandemiseError.validation(e.message, { code: e.code });
+      throw e;
+    }
+  });
 
   // -------------------------------------------------------------- approvals
   r.get('/v1/approvals', (ctx) => services.approvals.list({
