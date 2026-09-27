@@ -277,6 +277,30 @@ export function skillsLine(task: {
   return `Skills (pinned): ${pinned.map(skillPinLabel).join(', ')}`;
 }
 
+/**
+ * P3 outside contributions. Mirrors `CONTRIBUTION_MAX_BYTES` (entities/contribution.ts)
+ * and the request schema's two refusals word for word, so a file the daemon would
+ * refuse is refused in the picker first, in the same words.
+ */
+export const CONTRIBUTION_MAX_BYTES = 24 * 1024 * 1024;
+export const CONTRIBUTION_FILE_MESSAGE = 'That file is larger than 24 MB.';
+export const CONTRIBUTION_TOTAL_MESSAGE = 'These files add up to more than 24 MB. Add the rest later as feedback.';
+
+/**
+ * What "Continue elsewhere" may take (spec A4). Mirrors `LINKABLE_OUTPUT_TYPES`
+ * and the park rule's statuses in the application layer; the daemon still
+ * decides, and says why when it refuses.
+ */
+export const LINKABLE_OUTPUT_TYPES: readonly ArtifactType[] = ['DesignBrief', 'ChangeSet', 'ImplementationPlan', 'ProductSpec'];
+export const PARKABLE_TASK_STATUSES: readonly string[] = ['READY', 'RUNNING', 'SUCCEEDED'];
+
+/** Where the work most likely goes next, prefilled in "Continue elsewhere": a design in Figma, code in an editor. */
+export function defaultElsewhereTool(outputs: readonly ArtifactType[]): string {
+  if (outputs.includes('DesignBrief')) return 'Figma';
+  if (outputs.includes('ChangeSet') || outputs.includes('ImplementationPlan')) return 'your editor';
+  return 'your doc';
+}
+
 export const API_VERSION = 'v1';
 export const API_VERSION_HEADER = 'x-tandemise-api-version';
 export const STREAM_PATH = '/v1/stream';

@@ -3,6 +3,7 @@ import { Link } from 'wouter';
 import type { FeedCard, MissionDetail } from '@tandemise/api-contract';
 import { Drawer } from '../../components/Modal.js';
 import { HandoffCard } from '../../components/HandoffCard.js';
+import { usedBy } from '../../components/HandBackDialog.js';
 import { Empty, ErrorState, SkeletonList } from '../../components/primitives.js';
 import { useDaemonMutation, useMissionFeed } from '../../lib/queries.js';
 import { useActors, type Actors } from '../../lib/team.js';
@@ -45,6 +46,7 @@ export function FeedPane({ detail, focusNeeds, onFocused }: { detail: MissionDet
   }, [focusNeeds, hasNeeds, onFocused]);
 
   const objectives = new Map(detail.tasks.map((t) => [t.id as string, t.objective]));
+  const tasksById = new Map(detail.tasks.map((t) => [t.id as string, t]));
   // Looked up live, so the drawer follows the task when someone claims or completes it.
   const doingTask = doing === null ? undefined : detail.tasks.find((t) => t.id === doing);
 
@@ -82,6 +84,8 @@ export function FeedPane({ detail, focusNeeds, onFocused }: { detail: MissionDet
         replanning={replan.isPending}
         objective={c.taskId === null ? undefined : objectives.get(c.taskId)}
         waitingFor={c.section === 'in_progress' ? waitingFor(c, detail, actors) : undefined}
+        task={c.taskId === null ? undefined : tasksById.get(c.taskId)}
+        usedDownstream={c.taskId !== null && usedBy(c.taskId, detail.tasks).length > 0}
       />
     );
 
@@ -142,7 +146,7 @@ export function FeedPane({ detail, focusNeeds, onFocused }: { detail: MissionDet
         <div className="feed">
           {detail.mission.status === 'DRAFT' ? (
             // Nothing runs before a plan, and nothing is planned before the request is ready: a draft's feed is getting it ready.
-            <GetReady missionId={missionId} />
+            <GetReady missionId={missionId} uploads={detail.uploads ?? []} />
           ) : (
             <>
               {/* Above "Needs you": what the mission has to prove comes before what it is doing. */}

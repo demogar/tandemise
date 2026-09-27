@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import type { ApprovalView, InboxRefinementView, InboxSilentRunView, InboxStalledView, InboxTaskView } from '@tandemise/api-contract';
+import type { ApprovalView, InboxParkedView, InboxRefinementView, InboxSilentRunView, InboxStalledView, InboxTaskView } from '@tandemise/api-contract';
 import { isApprovalForMember, isHumanTaskForMember } from '@tandemise/api-contract/for-me';
 import { useInboxView, useMyMemberId } from './queries.js';
 
@@ -8,7 +8,8 @@ export type InboxItem =
   | { readonly kind: 'task'; readonly id: string; readonly task: InboxTaskView; readonly forMe: boolean; readonly escalated: boolean; readonly at: string }
   | { readonly kind: 'refinement'; readonly id: string; readonly refinement: InboxRefinementView; readonly forMe: boolean; readonly escalated: boolean; readonly at: string }
   | { readonly kind: 'stalled'; readonly id: string; readonly stalled: InboxStalledView; readonly forMe: boolean; readonly escalated: boolean; readonly at: string }
-  | { readonly kind: 'quiet'; readonly id: string; readonly run: InboxSilentRunView; readonly forMe: boolean; readonly escalated: boolean; readonly at: string };
+  | { readonly kind: 'quiet'; readonly id: string; readonly run: InboxSilentRunView; readonly forMe: boolean; readonly escalated: boolean; readonly at: string }
+  | { readonly kind: 'parked'; readonly id: string; readonly parked: InboxParkedView; readonly forMe: boolean; readonly escalated: boolean; readonly at: string };
 
 /** The mission an item is about, so one mission is never shown twice for one cause. */
 export function missionOfItem(item: InboxItem): string | null {
@@ -18,6 +19,7 @@ export function missionOfItem(item: InboxItem): string | null {
     case 'refinement': return item.refinement.missionId;
     case 'stalled': return item.stalled.missionId;
     case 'quiet': return item.run.missionId;
+    case 'parked': return item.parked.missionId;
   }
 }
 
@@ -105,6 +107,17 @@ export function useInbox(): {
         forMe: run.forIds.length === 0 || (meId !== null && run.forIds.includes(meId)),
         escalated: false,
         at: run.lastEventAt,
+      });
+    }
+    // A step taken to another tool waits for its hand-back (spec A4): for whoever took it, or anyone when the log does not say.
+    for (const parked of inbox.data?.parked ?? []) {
+      items.push({
+        kind: 'parked',
+        id: `parked:${parked.taskId}`,
+        parked,
+        forMe: parked.forIds.length === 0 || (meId !== null && parked.forIds.includes(meId)),
+        escalated: false,
+        at: parked.since,
       });
     }
     // Escalated first: someone already missed it. Then oldest, because it has waited longest.

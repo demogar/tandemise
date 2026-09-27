@@ -28,7 +28,8 @@ export function TaskDetail({ task, detail, onClose }: { task: TaskView; detail: 
   );
   const canRetry = task.status === 'FAILED' || task.status === 'BLOCKED';
   // A wait step reads nothing, so there is nobody to send a note to; a cancelled mission takes no more rounds.
-  const canRequestChanges = task.executor !== 'wait' && detail.mission.status !== 'CANCELLED';
+  // A stage your upload covers refuses rounds until a replan (spec A2), so it offers none.
+  const canRequestChanges = task.executor !== 'wait' && detail.mission.status !== 'CANCELLED' && !task.coveredBy;
 
   // What the role allows that this task was not planned with. A worker that
   // stops because its grants are too narrow is asking for exactly this.

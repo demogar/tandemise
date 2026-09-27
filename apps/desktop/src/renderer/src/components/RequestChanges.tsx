@@ -8,9 +8,13 @@ import { useDaemonMutation } from '../lib/queries.js';
 import { useActors } from '../lib/team.js';
 import { draftFor, openComposer, openImpact, saveDraft, showFlash, useComposerRequest } from '../lib/notices.js';
 import { roundStartedLine } from './ImpactDialog.js';
+import { ContributionPicker, type Contribution } from './ContributionPicker.js';
 
 /** The daemon's limit on a note, said before sending rather than as a refusal after. */
 const MAX_NOTE_CHARS = 4000;
+
+/** The daemon's limit on files and links attached to one note (spec A3). */
+const MAX_ATTACHMENTS = 5;
 
 type Output = { readonly id: string; readonly label: string };
 
@@ -97,8 +101,16 @@ export function RequestChangesComposer({
   };
   const [about, setAbout] = useState<string>(preset ?? '');
   const [recordFor, setRecordFor] = useState<string | null>(defaultRecordFor(actors, null));
+  // Not kept with the draft text: a file's bytes are too big to park in storage, and picking it again is one click.
+  const [attachments, setAttachments] = useState<Contribution[]>([]);
   const give = useDaemonMutation(
-    (daemon) => daemon.giveFeedback(taskId, { text: text.trim(), ...(about ? { artifactId: about } : {}), ...behalfOf(actors, recordFor) }),
+    (daemon) =>
+      daemon.giveFeedback(taskId, {
+        text: text.trim(),
+        ...(about ? { artifactId: about } : {}),
+        ...(attachments.length === 0 ? {} : { attachments }),
+        ...behalfOf(actors, recordFor),
+      }),
     ['tasks', 'missions', 'approvals', 'artifacts'],
     missionId,
   );
@@ -154,6 +166,7 @@ export function RequestChangesComposer({
           />
           {tooLong ? <span className="field__error">At most {MAX_NOTE_CHARS} characters.</span> : null}
         </label>
+        <ContributionPicker value={attachments} onChange={setAttachments} max={MAX_ATTACHMENTS} label="Attach" />
         {showAbout ? (
           <label className="field">
             <span className="field__label">About</span>
