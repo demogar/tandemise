@@ -2,6 +2,7 @@
 // the upload into a ProductSpec before planning; the (scripted) planner, told the upload covers the spec
 // stage, leaves it out and names it under `skipped`; the Plan tab shows "Spec · covered by your upload"
 // and no product task. The plan is the planner's own (not the preset fallback), and nothing is staged in SQLite.
+// Once the plan is approved, the first stage after the skipped one runs with the intake spec among its inputs.
 import { context } from '../../p0/lib/ctx.mjs';
 import { Evidence } from '../../p0/lib/evidence.mjs';
 import { docsSize, ensureTeam, writeState } from '../common.mjs';
@@ -73,6 +74,16 @@ const cards = await page.evaluate(`[...document.querySelectorAll('button.taskcar
 ev.check('the Plan tab lists no other spec or product card', cards.filter((t) => /spec|product|problem/i.test(t ?? '') && !/covered by your upload/.test(t ?? '')).length === 0, cards);
 await page.screenshot(ev.shot('plan-covered-row'));
 ev.note(`plan cards: ${JSON.stringify(cards)}`);
+
+// The next stage reads the upload: approved in the window, the first stage waiting on the placeholder runs,
+// and its run's inputs (run_inputs, read from the database as proof) include the intake ProductSpec.
+await c.approvePlan(missionId, goal);
+const nextStages = detail.tasks.filter((t) => t.dependsOn.includes(covered[0]?.key)).map((t) => t.id);
+const started = await until(() => nextStages.map((id) => ({ id, run: c.runs(id)[0] })).find((x) => x.run !== undefined) ?? false, { label: 'next stage run', timeoutMs: 120_000 }).catch(() => null);
+const nextTask = detail.tasks.find((t) => t.id === started?.id);
+const read = started ? c.sql('SELECT artifact_id AS id FROM run_inputs WHERE run_id = ?', started.run.id).map((r) => r.id) : [];
+ev.check('the stage after the skipped one ran with the intake spec as an input (run_inputs)', started !== null && intake !== null && read.includes(intake.id),
+  { task: nextTask?.key, run: started?.run.id, inputs: read, intake: intake?.id, waitingOnPlaceholder: detail.tasks.filter((t) => nextStages.includes(t.id)).map((t) => t.key) });
 
 await api.post(`/v1/missions/${missionId}/cancel`, { reason: 'acceptance: D1 proven' }).catch(() => undefined);
 c.close(); ev.save();

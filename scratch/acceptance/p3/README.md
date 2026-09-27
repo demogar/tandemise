@@ -17,9 +17,9 @@ The model is the scripted agent (`p0/scripted-agent.mjs`); everything else is th
 
 | File | ID | What it proves |
 |---|---|---|
-| `d1-upload-covers-spec.mjs` | D1 | A spec uploaded on New Mission (plan now, with Done-when) goes through intake before planning; the planner leaves the spec stage out, and the Plan tab shows it covered by the upload. |
-| `d2-continue-elsewhere.mjs` | D2 | Continue elsewhere on a running design: "Waiting for your work in Figma", `task.parked_external` on the timeline, one more on the Desk, a row in the Inbox. |
-| `d3-hand-back-pr.mjs` | D3 | Hand back a GitHub pull request link: a human round-2 ChangeSet on that commit, Evidence with `github.pr` and `git.commit`, and the review downstream cut from that branch. |
+| `d1-upload-covers-spec.mjs` | D1 | A spec uploaded on New Mission (plan now, with Done-when) goes through intake before planning; the planner leaves the spec stage out, and the Plan tab shows it covered by the upload. Approved, the next stage's run reads the intake spec. |
+| `d2-continue-elsewhere.mjs` | D2 | Continue elsewhere on a running design: "Waiting for your work in Figma", `task.parked_external` on the timeline, one more on the Desk, a row in the Inbox. On a second mission, Take it back returns the design to the agent. |
+| `d3-hand-back-pr.mjs` | D3 | Hand back a GitHub pull request link whose head is only on the remote: fetched into `tandemise/pr-7`, a human round-2 ChangeSet on that commit, Evidence with `github.pr`, `git.commit` and that branch, the build's worktree retired, and the review downstream cut from that branch. |
 | `d4-unreadable-link.mjs` | D4 | A bare Figma link is refused ("Nothing here can read that link. Attach an export of it."); with an export attached, the export becomes the Evidence. |
 | `d5-held-until-hand-back.mjs` | D5 | Parking a finished design holds the build waiting to start ("Waiting for 'design' from Figma."); after the hand-back the build runs on the handed-back version. |
 | `d6-workspace-link.mjs` | D6 | "Open workspace ↗" on a hand-back and on an agent's handoff resolves through the daemon to the local file; a path out of the project is refused. |
@@ -48,8 +48,10 @@ The daemon reads a handed-back pull request with `gh pr view <url> --json …` a
 The run writes `/tmp/tdm-p3/bin/gh`, a shell wrapper around `fake-gh.mjs`, and puts that folder
 first on the daemon's `PATH` (the daemon runs tools with an allowlisted environment that keeps
 `PATH`, so the wrapper names its own state file). It knows one pull request: the one D3 writes to
-`/tmp/tdm-p3/gh-pr.json` (`https://github.com/acme/app/pull/7`, whose head is a real branch and
-commit D3 makes in the acceptance repository). For anything else it prints real gh's
+`/tmp/tdm-p3/gh-pr.json` (`https://github.com/acme/app/pull/7`, whose head is a real commit D3 pushes
+only to a bare "GitHub" remote as `refs/pull/7/head`; the project reaches it as
+`https://github.com/acme/app.git` through an `insteadOf` rewrite, and the daemon fetches it into
+`tandemise/pr-7`). For anything else it prints real gh's
 "GraphQL: Could not resolve to a PullRequest with the number of N. (repository.pullRequest)" and
 exits 1. Every call is appended to `/tmp/tdm-p3/gh-pr.json.calls`. The real `gh` is covered by the
 offline stub-port test and by hand.
