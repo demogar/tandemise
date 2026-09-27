@@ -42,14 +42,15 @@ const OUTPUT_TYPE_LABELS: Partial<Record<ArtifactType, string>> = {
  * A short, human name for an artifact type, for a place with room for a word
  * or two: a spec covered by an upload is "Spec", not "ProductSpec". A type
  * without a name of its own is its CamelCase split into words, capitalised
- * only at the start ("ReviewReport" reads "Review report").
+ * only at the start ("ReviewReport" reads "Review report", "QAPlan" "QA plan").
  */
 export function outputTypeLabel(type: ArtifactType): string {
   const named = OUTPUT_TYPE_LABELS[type];
   if (named !== undefined) return named;
-  const words = type.match(/[A-Z][a-z0-9]*/g);
+  // An acronym stays one word in capitals: "QAPlan" reads "QA plan".
+  const words = type.match(/[A-Z]{2,}(?![a-z])|[A-Z][a-z0-9]*/g);
   if (words === null || words.length === 0) return type;
-  return [words[0] as string, ...words.slice(1).map((w) => w.toLowerCase())].join(' ');
+  return [words[0] as string, ...words.slice(1).map((w) => (/^[A-Z]{2,}$/.test(w) ? w : w.toLowerCase()))].join(' ');
 }
 
 /** Where a handoff link points, so a card can say "open preview" rather than a bare URL. */
