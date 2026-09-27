@@ -1,0 +1,98 @@
+{
+  "id": "O4",
+  "title": "A repeat check creates nothing; an issue closed upstream takes its draft off the queue",
+  "ok": true,
+  "checks": [
+    {
+      "label": "a repeat check read GitHub again",
+      "ok": true
+    },
+    {
+      "label": "…and created no mission",
+      "ok": true,
+      "observed": {
+        "before": 2,
+        "after": 2
+      }
+    },
+    {
+      "label": "#13 checked in: \"… · 3 linked\"",
+      "ok": true,
+      "observed": "Last checked just now · 3 linked"
+    },
+    {
+      "label": "#13 is queued",
+      "ok": true,
+      "observed": {
+        "title": "Add a dark theme",
+        "priority": "Normal",
+        "chip": "Normal",
+        "readiness": "Ready",
+        "queue": "Queued · 1/1",
+        "subtitle": "GitHub issue #13 in example/hello-site, opened by @sam: https://github.com/example/hello-site/issues/13 The request as the issue's author wrote it: Add a dark theme ### Acceptance criteria - [ ] Colours follow the system setting",
+        "selected": false
+      }
+    },
+    {
+      "label": "closed upstream: its draft reads \"Not queued\"",
+      "ok": true,
+      "observed": {
+        "title": "Add a dark theme",
+        "priority": "Normal",
+        "chip": "Normal",
+        "readiness": "Ready",
+        "queue": "Not queued",
+        "subtitle": "GitHub issue #13 in example/hello-site, opened by @sam: https://github.com/example/hello-site/issues/13 The request as the issue's author wrote it: Add a dark theme ### Acceptance criteria - [ ] Colours follow the system setting",
+        "selected": false
+      }
+    },
+    {
+      "label": "timeline: \"Issue #13 was closed upstream, so this draft was taken off the queue.\"",
+      "ok": true,
+      "observed": "Tandemise\nAcceptance\n1 repository\nHome\nMissions\nInbox\nArtifacts\nACCEPTANCE\nRepositories\nTeam\nSkills\nRuntimes\nIntegrations\nAPP\nSettings\nDaemon connected · 52817\nmsn_01m3g55z6qpgdyh9xrq5\nFrom issue #13\nMissions\np10-desk\nAdd a dark theme\nGitHub issue #13 in example/hello-site, opened by @sam: https://github.com/example/hello-site/issues/13 The request as the issue's author wrote it: Add a dark theme ### Acceptance criteria - [ ] Colours follow the system setting\nDraft\nPlan\nFeed\nPlan\nTimeline\nArtifacts\nChecks & Gates\nMetrics\n3 events · latest just now\nFollowing\nRaw log\nMission created: GitHub issue #13 in example/hello-site, opened by @sam: https://github.com/example/hello-site/issues/13 The request as the issue's author wrote it: Add a dark theme ### Acceptance criteria - [ ] Colours follow the system setting\n07:45:30 PM\n·\nYou\nCreated from GitHub issue #13 by @sam: https://github.com/example/hello-site/issues/13. Its Done-when list gave 1 criterion, so it is queued.\n07:45:30 PM\n·\nTandemise\nIssue #13 was closed upstream, so this draft was taken off the queue.\n07:45:32 PM\n·\nTandemise"
+    },
+    {
+      "label": "proof (API): still a DRAFT (not deleted), queuedAt cleared",
+      "ok": true,
+      "observed": {
+        "id": "msn_01m3g55z6qpgdyh9xrq5",
+        "workspaceId": "ws_01m3g521jkk7r1rw0cgs",
+        "repositoryId": "repo_01m3g521n1c7zvsn0bpq",
+        "title": "Add a dark theme",
+        "goal": "GitHub issue #13 in example/hello-site, opened by @sam: https://github.com/example/hello-site/issues/13\n\nThe request as the issue's author wrote it:\n\nAdd a dark theme\n\n### Acceptance criteria\n- [ ] Colours follow the system setting",
+        "constraints": [],
+        "successCriteria": [
+          "Colours follow the system setting"
+        ],
+        "status": "DRAFT",
+        "autonomy": "balanced",
+        "workflowPreset": "p10-desk",
+        "workflowInputs": {},
+        "integrationBranch": "tandemise/add-a-dark-theme/integration",
+        "baseBranch": "main",
+        "statusReason": null,
+        "createdBy": "mem_01m3g521jmhc7bv1xzb3",
+        "staffing": {},
+        "priority": "normal",
+        "rank": 3,
+        "queuedAt": null,
+        "limits": null,
+        "routineId": null,
+        "issueLinkId": "isl_01m3g55z6p12rz8a2vwa",
+        "createdAt": "2026-09-27T00:45:30.199Z",
+        "updatedAt": "2026-09-27T00:45:32.987Z",
+        "startedAt": null,
+        "completedAt": null
+      }
+    },
+    {
+      "label": "proof (API): the link says closed",
+      "ok": true
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "O4-dequeued.png",
+    "O4-timeline-closed-upstream.png"
+  ]
+}

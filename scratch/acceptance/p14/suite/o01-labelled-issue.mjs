@@ -25,6 +25,7 @@ ev.check('switched on: the status line counts linked issues', /· \d+ linked$/.t
 const checked = await checkNow(c, (t) => t.endsWith('· 1 linked'), '1 linked');
 ev.check('Check now → "Last checked just now · 1 linked"', checked === 'Last checked just now · 1 linked', checked);
 await page.screenshot(ev.shot('issues-settings'));
+await page.evaluate(`(() => { const s = document.querySelector('section[aria-label="Issues"]'); s.scrollIntoView({ block: 'start' }); let p = s.parentElement; while (p && p.scrollHeight <= p.clientHeight) p = p.parentElement; if (p) p.scrollTop -= 110; })()`);
 await docShot(c, 'github-issues-settings');
 
 const settings = (await c.api.get(`/v1/workspaces/${c.env.workspaceId}/issues`)).repositories[0].settings;
@@ -46,6 +47,7 @@ const header = await page.text('.topbar, header, main');
 ev.check('mission header: "From issue #11"', header.includes('From issue #11'), header.slice(0, 400));
 const doneWhen = await page.evaluate(`document.querySelector('[aria-label="Done when"]')?.innerText ?? ''`);
 ev.check('Done when lists U1–U3 from the checklist', ['U1', 'The page loads with no network', 'U2', 'It says hello to the visitor', 'U3', 'It shows when it was last updated'].every((s) => doneWhen.includes(s)), doneWhen);
+ev.check('each line says it came from the GitHub issue', (doneWhen.match(/From the GitHub issue/g) ?? []).length === 3 && !doneWhen.includes('Added by you'), doneWhen);
 const body = await page.text('main');
 ev.check('the goal names the issue and its author', body.includes('GitHub issue #11 in example/hello-site, opened by @sam'), body.slice(0, 600));
 await page.screenshot(ev.shot('mission'));

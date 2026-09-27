@@ -309,5 +309,6 @@ function acceptedBadge(c: RefinementCriterionView): { label: string; tone: Tone 
 function originLine(c: RefinementCriterionView): string {
   if (c.origin === 'request') return 'From your request';
   if (c.origin === 'added') return 'Added by you';
+  if (c.origin === 'issue') return 'From the GitHub issue';
   return c.decidedBy === 'autonomy' ? 'Proposed by the product agent; accepted because this mission runs autonomously' : 'Proposed by the product agent; accepted by you';
 }

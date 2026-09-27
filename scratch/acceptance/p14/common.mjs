@@ -25,7 +25,7 @@ export async function openIssues(c) {
   const { page, until, sleep } = c;
   await page.navigate('#/project');
   await until(() => page.evaluate(`Boolean(document.querySelector('section[aria-label="Issues"]'))`), { label: 'Issues section', timeoutMs: 20_000 });
-  await page.evaluate(`document.querySelector('section[aria-label="Issues"]').scrollIntoView({ block: 'start' })`);
+  await page.evaluate(`document.querySelector('section[aria-label="Issues"]').scrollIntoView({ block: 'center' })`);
   await sleep(500);
   return issuesText(c);
 }
