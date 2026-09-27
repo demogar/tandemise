@@ -77,6 +77,12 @@ check('outputTypeLabel names the linkable and skippable types one by one',
   eq(['ProductSpec', 'ProblemBrief', 'DesignBrief', 'ImplementationPlan', 'ChangeSet'].map(D.outputTypeLabel), ['Spec', 'Brief', 'Design', 'Implementation plan', 'Change']),
   ['ProductSpec', 'ProblemBrief', 'DesignBrief', 'ImplementationPlan', 'ChangeSet'].map(D.outputTypeLabel));
 check('any other type is split into words', D.outputTypeLabel('ReviewReport') === 'Review report' && D.outputTypeLabel('Evidence') === 'Evidence', [D.outputTypeLabel('ReviewReport'), D.outputTypeLabel('Evidence')]);
+check('an acronym stays together', D.outputTypeLabel('QAPlan') === 'QA plan' && D.outputTypeLabel('QAReport') === 'QA report', [D.outputTypeLabel('QAPlan'), D.outputTypeLabel('QAReport')]);
+{
+  const { pickGitCredentialEnv } = await import('@tandemise/application');
+  const picked = pickGitCredentialEnv({ SSH_AUTH_SOCK: '/tmp/agent.sock', GIT_ASKPASS: '/bin/askpass', SSH_ASKPASS: '', GITHUB_TOKEN: 'secret', PATH: '/bin' });
+  check('only the git credential variables that are set are passed to a PR fetch', eq(picked, { SSH_AUTH_SOCK: '/tmp/agent.sock', GIT_ASKPASS: '/bin/askpass' }), picked);
+}
 
 check('P3a adds no migration: SCHEMA_VERSION is still 19', SCHEMA_VERSION === 19, SCHEMA_VERSION);
 
@@ -584,8 +590,10 @@ section('daemon: park and hand back');
     commitFile(file);
     gitc('checkout', '-q', 'main');
   }
+  // More pull requests, each set up by the scenario that hands it back.
+  const extraPrs = new Map();
   const stub = {
-    read: async (url) => (url === PR
+    read: async (url) => (extraPrs.has(url) ? extraPrs.get(url) : url === PR
       ? { url: PR, number: 7, repo: 'acme/app', headRefName: 'feat/greet', headRefOid: prSha, title: 'Add greeting', body: 'Greets people.', diff: 'diff --git a/x b/x\n+hi\n' }
       : url === PR_UNFETCHABLE
         ? { url, number: 8, repo: 'acme/app', headRefName: 'feat/elsewhere', headRefOid: 'feedface', title: 'From a fork', body: '', diff: '+fork\n' }
@@ -595,9 +603,11 @@ section('daemon: park and hand back');
   // exercised end to end; anything else keeps the harness's refusal.
   const { COMMAND_EXECUTOR } = await import('@tandemise/integrations-core');
   const { execFile } = await import('node:child_process');
+  const gitCalls = [];
   const gitOnly = {
     run: (req) => new Promise((resolve, reject) => {
       if (req.command !== 'git') { reject(new Error('unused')); return; }
+      gitCalls.push({ args: [...(req.args ?? [])], env: { ...(req.env ?? {}) }, cwd: req.cwd });
       const started = Date.now();
       execFile('git', [...(req.args ?? [])], { cwd: req.cwd, env: { ...process.env, ...(req.env ?? {}) }, timeout: req.timeoutMs }, (error, stdout, stderr) => resolve({
         exitCode: error ? (typeof error.code === 'number' ? error.code : 1) : 0, stdout, stderr, timedOut: false,
@@ -605,7 +615,12 @@ section('daemon: park and hand back');
       }));
     }),
   };
-  const h = await engineHarness(HOME, stub, (container) => container.rebind(COMMAND_EXECUTOR, () => gitOnly, { source: 'check' }));
+  // The daemon binds this to its own ssh-agent socket and askpass helpers; a
+  // fake one proves they reach the fetch.
+  const h = await engineHarness(HOME, stub, (container, app) => {
+    container.rebind(COMMAND_EXECUTOR, () => gitOnly, { source: 'check' });
+    container.bind(app.GIT_CREDENTIAL_ENV, () => () => ({ SSH_AUTH_SOCK: '/tmp/fake-agent.sock' }), { source: 'check' });
+  });
   const scheduler = h.container.resolve(h.app.SCHEDULER);
   const repo = {
     tasks: h.container.resolve(h.app.TASK_REPOSITORY),
@@ -670,7 +685,7 @@ section('daemon: park and hand back');
         t[d.key] = repo.tasks.add({
           id: ids.task(), missionId: mission.id, key: d.key, title: d.key, objective: 'o', roleId: 'design',
           dependsOn: d.dependsOn ?? [], requiredCapabilities: [], inputArtifacts: d.inputArtifacts ?? [], expectedOutputs: d.expectedOutputs ?? ['DesignBrief'],
-          executionPolicy: { isolation: 'none', maxWallTimeMs: 60000, capabilities: [] }, approvalPolicy: { beforeStart: false, onCompletion: false },
+          executionPolicy: { isolation: d.isolation ?? 'none', maxWallTimeMs: 60000, capabilities: [] }, approvalPolicy: { beforeStart: false, onCompletion: false },
           retryPolicy: { maxAttempts: 2, backoffMs: 0, onExhausted: 'block' }, completionGate: null,
           status: d.status ?? (d.dependsOn ? 'PENDING' : 'READY'), statusReason: d.statusReason ?? null, attempts: 0, remediatesTaskId: null, repositoryId: null,
           executor: d.executor ?? 'agent', waitPolicy: d.waitPolicy ?? null, orderHint: d.orderHint ?? 0, staffingOverride: d.agent ? { assignees: [d.agent] } : null,
@@ -790,6 +805,149 @@ section('daemon: park and hand back');
       const [design] = live(m.t.design, 'DesignBrief');
       check('a design from an unfetchable pull request is handed back without a branch', handed === null && design !== undefined
         && design.sourceRefs.some((r) => r.kind === 'git.commit' && r.value === 'feedface') && !design.sourceRefs.some((r) => r.kind === 'git.branch'), handed?.message ?? design?.sourceRefs);
+    }
+
+    // ---- where a pull request's head comes from (re-review: multi-repository, wrong sha, local commit, credentials)
+    {
+      // A contributor's clone of a remote: a commit made there exists only on the remote once pushed.
+      const cloneOf = (remote, name) => { const dir = join(HOME, name); execFileSync('git', ['clone', '-q', remote, dir], { stdio: 'pipe' }); return dir; };
+      const commitOn = (base, file, refspec, cwd = checkout, remoteName = 'acme') => {
+        const g = (...args) => execFileSync('git', ['-c', 'user.name=check', '-c', 'user.email=check@example.com', ...args], { cwd, stdio: 'pipe' }).toString().trim();
+        g('checkout', '-q', '-b', `tmp-${file}`, base);
+        writeFileSync(join(cwd, file), `${file}\n`); g('add', file); g('commit', '-q', '-m', file);
+        const sha = g('rev-parse', 'HEAD');
+        if (refspec) g('push', '-q', remoteName, `HEAD:${refspec}`);
+        g('checkout', '-q', base === 'main' ? 'main' : base);
+        g('branch', '-q', '-D', `tmp-${file}`);
+        return sha;
+      };
+      const pr = (n, headRefOid) => {
+        const url = `https://github.com/acme/app/pull/${n}`;
+        extraPrs.set(url, { url, number: n, repo: 'acme/app', headRefName: `feat/${n}`, headRefOid, title: `PR ${n}`, body: '', diff: `+${n}\n` });
+        return { kind: 'link', url };
+      };
+      const hasRef = (cwd, ref) => { try { execFileSync('git', ['rev-parse', '--verify', '--quiet', ref], { cwd, stdio: 'pipe' }); return true; } catch { return false; } };
+      const refAt = (cwd, ref) => execFileSync('git', ['rev-parse', ref], { cwd, stdio: 'pipe' }).toString().trim();
+      // A second checkout, first for the mission, whose origin is another
+      // repository that has its own pull request 12 and 13.
+      const unrelated = join(HOME, 'unrelated');
+      const unrelatedRemote = join(HOME, 'unrelated.git');
+      mkdirSync(unrelated, { recursive: true });
+      const gu = (...args) => execFileSync('git', ['-c', 'user.name=check', '-c', 'user.email=check@example.com', ...args], { cwd: unrelated, stdio: 'pipe' }).toString().trim();
+      gu('init', '-q', '-b', 'main'); writeFileSync(join(unrelated, 'x.txt'), 'x\n'); gu('add', '.'); gu('commit', '-q', '-m', 'x');
+      execFileSync('git', ['init', '-q', '--bare', unrelatedRemote]);
+      gu('remote', 'add', 'origin', unrelatedRemote); gu('push', '-q', 'origin', 'main');
+      const unrelatedClone = cloneOf(unrelatedRemote, 'unrelated-clone');
+      const otherSha = commitOn('main', 'other-12.txt', 'refs/pull/12/head', unrelatedClone, 'origin');
+      commitOn('main', 'other-13.txt', 'refs/pull/13/head', unrelatedClone, 'origin');
+      h.repositories.create({ id: 'rep_p3_unrelated', workspaceId: p.ws, name: 'unrelated', path: unrelated, defaultBranch: 'main', remoteUrl: null, checks: D.NO_CHECKS });
+      const acmeClone = cloneOf(remoteRepo, 'acme-clone');
+      const sha12 = commitOn('main', 'pr-12.txt', 'refs/pull/12/head', acmeClone, 'origin');
+      const changeMission = async () => {
+        const m = await addMission(p, [{ key: 'build', agent: p.quick, expectedOutputs: ['ChangeSet'] }]);
+        repo.missions.update(m.mission.id, { repositoryId: 'rep_p3_unrelated' });
+        await h.services.missions.parkTask(m.t.build, caller, { tool: 'Cursor' });
+        return m;
+      };
+      const m12 = await changeMission();
+      gitCalls.length = 0;
+      const back12 = await refusal(() => h.services.missions.handBack(m12.t.build, caller, { note: 'PR 12.', contribution: pr(12, sha12) }));
+      check('two repositories: the head is fetched where the remote is the PR\'s repository, not the mission\'s first checkout', back12 === null
+        && hasRef(checkout, 'refs/heads/tandemise/pr-12') && refAt(checkout, 'refs/heads/tandemise/pr-12') === sha12 && !hasRef(unrelated, 'refs/heads/tandemise/pr-12'),
+        { error: back12?.message, unrelated: hasRef(unrelated, 'refs/heads/tandemise/pr-12'), otherSha });
+      const fetch12 = gitCalls.find((c) => c.args[0] === 'fetch');
+      check('the fetch carries the person\'s ssh-agent socket', fetch12?.env.SSH_AUTH_SOCK === '/tmp/fake-agent.sock' && fetch12.env.GIT_TERMINAL_PROMPT === '0', fetch12);
+      check('and never fetches through the other checkout\'s origin', gitCalls.filter((c) => c.args[0] === 'fetch').every((c) => c.cwd === checkout && c.args[1] === '--no-tags' && c.args[2] === 'acme'), gitCalls.filter((c) => c.args[0] === 'fetch'));
+
+      // Only the unrelated origin has pull 13: acme's remote does not, and origin is never tried for it.
+      const m13 = await changeMission();
+      const sha13 = refAt(unrelatedRemote, 'refs/pull/13/head');
+      const refused13 = await refusal(() => h.services.missions.handBack(m13.t.build, caller, { note: 'PR 13.', contribution: pr(13, sha13) }));
+      check('a PR only another repository\'s origin has is refused, and nothing is fetched there', refused13?.message === "Couldn't fetch that pull request into app. Fetch or push its branch, then hand it back again."
+        && !hasRef(unrelated, 'refs/heads/tandemise/pr-13') && task(m13.t.build).status === 'AWAITING_EXTERNAL', refused13?.message);
+
+      // The remote's pull 14 moved since gh read it: the forced ref is taken away again.
+      commitOn('main', 'pr-14.txt', 'refs/pull/14/head', acmeClone, 'origin');
+      const m14 = await changeMission();
+      const refused14 = await refusal(() => h.services.missions.handBack(m14.t.build, caller, { note: 'PR 14.', contribution: pr(14, '1'.repeat(40)) }));
+      check('a fetch that lands on another commit is refused and leaves no tandemise/pr-14', refused14?.code === 'VALIDATION' && !hasRef(checkout, 'refs/heads/tandemise/pr-14'), { error: refused14?.message, ref: hasRef(checkout, 'refs/heads/tandemise/pr-14') });
+
+      // The refusal's advice works: the commit is here now (fetched or pushed by hand), and no fetch is needed.
+      const sha15 = commitOn('main', 'pr-15.txt', null);
+      const m15 = await changeMission();
+      gitCalls.length = 0;
+      const back15 = await refusal(() => h.services.missions.handBack(m15.t.build, caller, { note: 'PR 15, fetched by hand.', contribution: pr(15, sha15) }));
+      check('a head commit already in a checkout is accepted without a fetch', back15 === null && refAt(checkout, 'refs/heads/tandemise/pr-15') === sha15
+        && !gitCalls.some((c) => c.args[0] === 'fetch'), { error: back15?.message, calls: gitCalls.map((c) => c.args.join(' ')) });
+      for (const m of [m12, m13, m14, m15]) repo.missions.update(m.mission.id, { status: 'CANCELLED' });
+
+      // ---- a later agent round builds on the handed-back pull request
+      const changeSet = (headline, changed) => ['---', 'type: ChangeSet', 'title: Build', 'handoff:', `  headline: ${headline}`,
+        ...(changed ? ['  changed:', `    - what: ${JSON.stringify(changed)}`, '      feedback: "{{fb}}"'] : []),
+        'branch: b', 'commits: []', 'filesChanged: 1', 'testsRun: []', 'knownLimitations: []', '---', '', `${headline}.`, ''].join('\n');
+      const coderProfile = profile('coder', [
+        { kind: 'write-file', path: 'code-{{runId}}.txt', content: 'code\n' },
+        { kind: 'write-file', path: '.tandemise/out/ChangeSet.md', content: changeSet('Built') },
+        { kind: 'write-file', path: '.tandemise/out/ChangeSet.md', content: changeSet('Built again', 'Tidied it'), when: IN_ROUND },
+        done,
+      ], { captures: { fb: '^\\d+\\. (fb_[0-9a-z]{20}) \\(' } });
+      const coder = h.services.team.addMember(caller, p.ws, { kind: 'agent', name: 'Coder', reportsTo: p.owner, roleIds: ['design'], runtimeProfileIds: [coderProfile] }).id;
+      const inWorktree = async (extra = []) => {
+        const m = await addMission(p, [{ key: 'build', agent: coder, expectedOutputs: ['ChangeSet'], isolation: 'worktree' }, ...extra]);
+        repo.missions.update(m.mission.id, { repositoryId: 'rep_p3_park', baseBranch: 'main' });
+        // Settled: the run has also let go of its worktree, not only finished the step.
+        await until(() => task(m.t.build).status === 'SUCCEEDED' && !scheduler.activeTaskIds().includes(m.t.build), 30000);
+        return m;
+      };
+      const worktreesOf = (taskId) => targetRepo.listByMission(task(taskId).missionId).filter((t) => t.taskId === taskId && t.kind === 'worktree').sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      const r = await inWorktree();
+      const [first] = worktreesOf(r.t.build);
+      check('the agent\'s first round ran in its own worktree', task(r.t.build).status === 'SUCCEEDED' && first?.branch !== null && existsSync(first.workingDirectory), first);
+      const sha16 = commitOn('main', 'pr-16.txt', 'refs/pull/16/head', acmeClone, 'origin');
+      await h.services.missions.parkTask(r.t.build, caller, { tool: 'Cursor' });
+      const back16 = await h.services.missions.handBack(r.t.build, caller, { note: 'Finished in a PR.', contribution: pr(16, sha16) });
+      check('after a PR hand-back the step\'s worktree is removed and its branch points at the PR head',
+        back16.task.status === 'SUCCEEDED' && !existsSync(first.workingDirectory) && refAt(checkout, `refs/heads/${first.branch}`) === sha16,
+        { exists: existsSync(first.workingDirectory), branch: first.branch, at: hasRef(checkout, first.branch) && refAt(checkout, first.branch), sha16 });
+      await h.services.feedback.giveWithAttachments(caller, r.t.build, { text: 'Tidy it', attachments: [] });
+      await until(() => task(r.t.build).status === 'SUCCEEDED' && runsOf(r.t.build).length === 2, 30000);
+      const latest = worktreesOf(r.t.build).at(-1);
+      let onPr = false;
+      try { execFileSync('git', ['merge-base', '--is-ancestor', sha16, latest.branch], { cwd: checkout }); onPr = true; } catch { /* not built on it */ }
+      const [round] = live(r.t.build, 'ChangeSet');
+      check('the next agent round\'s worktree is built on the PR commit', runsOf(r.t.build).length === 2 && onPr && latest.id !== first.id,
+        { runs: runsOf(r.t.build).length, onPr, latest: latest?.branch, status: task(r.t.build).status });
+      check('its ChangeSet is the live one and names the step\'s branch', round?.createdByRunId !== null && round.sourceRefs.some((x) => x.kind === 'git.branch' && x.value === latest.branch), round?.sourceRefs);
+      const otherTask = repo.tasks.add({ ...task(r.t.build), id: ids.task(), key: 'other', title: 'other', status: 'SUCCEEDED', statusReason: null, round: 1, dependsOn: [] }).id;
+      targetRepo.create({ id: ids.executionTarget(), workspaceId: p.ws, missionId: r.mission.id, taskId: otherTask, kind: 'worktree', name: 'other', workingDirectory: checkout, branch: 'agent/other', baseBranch: 'main', status: 'READY', detail: null, createdAt: now(), releasedAt: null });
+      const merged16 = await h.container.resolve(h.app.BRANCH_INTEGRATION_SERVICE).integrate(repo.missions.get(r.mission.id));
+      const buildMerge = merged16.results.find((x) => x.taskKey === 'build');
+      let integratedPr = false;
+      try { execFileSync('git', ['merge-base', '--is-ancestor', sha16, repo.missions.get(r.mission.id).integrationBranch], { cwd: checkout }); integratedPr = true; } catch { /* dropped */ }
+      check('integration merges the round\'s branch, which contains the PR', buildMerge?.merged === true && buildMerge.branch === latest.branch && integratedPr, merged16);
+      repo.missions.update(r.mission.id, { status: 'CANCELLED' });
+
+      // ---- a change handed back as a file: nothing downstream is cut from the retired agent branch
+      const f = await inWorktree();
+      const [agentTarget] = worktreesOf(f.t.build);
+      await h.services.missions.parkTask(f.t.build, caller, { tool: 'Cursor' });
+      await h.services.missions.handBack(f.t.build, caller, { note: 'The patch is attached.', contribution: { kind: 'file', filename: 'change.patch', mediaType: 'text/plain', dataBase64: b64('+patched\n') } });
+      const next = repo.tasks.add({
+        id: ids.task(), missionId: f.mission.id, key: 'review', title: 'review', objective: 'o', roleId: 'design',
+        dependsOn: ['build'], requiredCapabilities: [], inputArtifacts: [{ type: 'ChangeSet', required: true }], expectedOutputs: ['ProblemBrief'],
+        executionPolicy: { isolation: 'worktree', maxWallTimeMs: 60000, capabilities: [] }, approvalPolicy: { beforeStart: false, onCompletion: false },
+        retryPolicy: { maxAttempts: 2, backoffMs: 0, onExhausted: 'block' }, completionGate: null, status: 'PENDING', statusReason: null, attempts: 0,
+        remediatesTaskId: null, repositoryId: null, executor: 'agent', waitPolicy: null, orderHint: 1, staffingOverride: { assignees: [p.reader] },
+        createdAt: now(), updatedAt: now(), startedAt: null, finishedAt: null,
+      }).id;
+      await until(() => worktreesOf(next).length > 0 && task(next).status === 'SUCCEEDED', 30000);
+      const reviewTarget = worktreesOf(next)[0];
+      check('after a file hand-back, work downstream is cut from the mission base, not the retired agent branch', reviewTarget?.baseBranch === 'main' && agentTarget?.branch !== reviewTarget?.baseBranch,
+        { review: reviewTarget?.baseBranch, agent: agentTarget?.branch });
+      const mergedF = await h.container.resolve(h.app.BRANCH_INTEGRATION_SERVICE).integrate(repo.missions.get(f.mission.id));
+      check('and integration merges nothing for the file-handed change', !mergedF.results.some((x) => x.taskKey === 'build'),
+        { mergedF, targets: worktreesOf(f.t.build).map((t) => [t.branch, t.status]), changes: h.artifacts.listByTask(f.t.build).filter((a) => a.type === 'ChangeSet').map((a) => [a.id, a.supersedes, a.createdByRunId, a.sourceRefs]) });
+      repo.missions.update(f.mission.id, { status: 'CANCELLED' });
     }
 
     // ---- a cancelled mission takes no hand-back
