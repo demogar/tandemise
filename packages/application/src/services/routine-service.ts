@@ -13,6 +13,7 @@ import type { Clock, Logger, MemberId, RoutineId, WorkspaceId } from '@tandemise
 import { TandemiseError, asId, errorMessage } from '@tandemise/shared';
 import type { EventRecorder } from '../support/event-recorder.js';
 import { requireSeat, type Caller } from '../support/identity.js';
+import { IMPORTED_ROUTINE_NOTE } from '../setup/codec.js';
 
 export interface RoutineDeps {
   readonly routines: RoutineRepositoryPort;
@@ -101,8 +102,11 @@ export class RoutineService {
     // Off clears the next run; back on, or a new schedule, starts from now. The
     // slots a routine was off for are not caught up: it was off on purpose.
     const nextRunAt = !enabled ? null : (!current.enabled || rescheduled || current.nextRunAt === null) ? this.#firstRun(fields.schedule) : current.nextRunAt;
+    // An imported routine carries its note until the person turns it on (P15).
+    const imported = current.lastOutcome === null && current.lastDetail === IMPORTED_ROUTINE_NOTE;
     const updated = this.deps.routines.update(id, {
       ...fields,
+      ...(imported && enabled && !current.enabled ? { lastDetail: null } : {}),
       ...(request.priority === undefined ? {} : { priority: request.priority }),
       ...(request.limits === undefined ? {} : { limits: request.limits === null ? null : normalizeLimits(request.limits) }),
       ...(request.workflowPreset === undefined ? {} : { workflowPreset: request.workflowPreset }),
@@ -288,6 +292,16 @@ export class RoutineService {
   }
 
   // ------------------------------------------------------------------ helpers
+
+  /** Why these fields cannot make a routine, in the words `create` would refuse with; null when they can (P15 import preview). */
+  problemWith(fields: { name: string; kind: Routine['kind']; goal: string; successCriteria: readonly string[]; schedule: RoutineSchedule }): string | null {
+    try {
+      this.#validated({ ...fields, name: fields.name.trim(), goal: fields.goal.trim(), successCriteria: lines(fields.successCriteria) });
+      return null;
+    } catch (e) {
+      return errorMessage(e);
+    }
+  }
 
   #validated(fields: { name: string; kind: Routine['kind']; goal: string; successCriteria: readonly string[]; schedule: RoutineSchedule }) {
     if (fields.name.length === 0) throw TandemiseError.validation('A routine needs a name.');

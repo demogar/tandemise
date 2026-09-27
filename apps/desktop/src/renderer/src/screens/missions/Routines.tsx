@@ -153,5 +153,7 @@ function LastOutcome({ view }: { view: RoutineView }): JSX.Element {
   if (routine.lastOutcome === 'reported' && routine.lastArtifactId !== null) {
     return <>Last: <Link href={`/artifacts/${routine.lastArtifactId}`}>{label}</Link></>;
   }
+  // No outcome yet but a note: an imported routine, off until the person turns it on (P15).
+  if (routine.lastOutcome === null) return <span className="badge badge--blocked">{label}</span>;
   return <span className={tone === null ? undefined : `badge badge--${tone}`}>{tone === null ? `Last: ${label}` : label}</span>;
 }

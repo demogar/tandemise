@@ -1,0 +1,10 @@
+file://./apps/daemon/dist/setup-folder.js:5
+import { LEGACY_TANDEMISE_EXCLUDE_ENTRY, LEGACY_TANDEMISE_IGNORE_BODY, TANDEMISE_EXCLUDE_ENTRY, TANDEMISE_IGNORE_BODY, TANDEMISE_IGNORE_FILE, } from '@tandemise/domain';
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+SyntaxError: The requested module '@tandemise/domain' does not provide an export named 'LEGACY_TANDEMISE_EXCLUDE_ENTRY'
+    at ModuleJob._instantiate (node:internal/modules/esm/module_job:226:21)
+    at async ModuleJob.run (node:internal/modules/esm/module_job:335:5)
+    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:681:26)
+    at async file://./scratch/p15-setup-check.mjs:41:29
+
+Node.js v22.23.1

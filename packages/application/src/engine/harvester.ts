@@ -2,7 +2,8 @@ import type {
   ArtifactHandoff, ArtifactManifest, ArtifactRepositoryPort, ArtifactStorePort, ArtifactType, CriterionResult,
   EvaluationRepositoryPort, ExternalRef, Mission, MissionCriteriaRepositoryPort, MissionTask, SpecCriterionInput, TaskRepositoryPort,
 } from '@tandemise/domain';
-import { ARTIFACT_OUT_DIR, RUNTIME_ACTOR, SYSTEM_ACTOR, checkSpecCriteria, isArtifactType, unknownQaKeys } from '@tandemise/domain';
+import { ARTIFACT_OUT_DIR, LEGACY_TANDEMISE_EXCLUDE_ENTRY, RUNTIME_ACTOR, SYSTEM_ACTOR, TANDEMISE_EXCLUDE_ENTRY, checkSpecCriteria, isArtifactType, unknownQaKeys } from '@tandemise/domain';
+import { ensureTandemiseIgnore } from '../support/ignore.js';
 import type { ExecutionTarget } from '@tandemise/execution-core';
 import type { ArtifactId, Clock, RunId } from '@tandemise/shared';
 import { errorMessage, summarize } from '@tandemise/shared';
@@ -39,9 +40,8 @@ export function outDirFor(task: Pick<MissionTask, 'id'>): string {
  * the worktree being re-provisioned, and it is visible to the user in Finder
  * rather than buried in a git internal.
  */
-const IGNORE_FILE = '.tandemise/.gitignore';
-const IGNORE_BODY = '# Written by Tandemise. Agent working files never belong in the diff.\n*\n';
-const EXCLUDE_ENTRY = '.tandemise/';
+const EXCLUDE_ENTRY = TANDEMISE_EXCLUDE_ENTRY;
+const LEGACY_EXCLUDE_ENTRY = LEGACY_TANDEMISE_EXCLUDE_ENTRY;
 
 export interface HarvestRequest {
   readonly mission: Mission;
@@ -157,7 +157,7 @@ export class ArtifactHarvester {
     }
     if (await fs.exists(own)) await fs.remove(own, { recursive: true });
     await fs.mkdir(own);
-    await fs.write(IGNORE_FILE, IGNORE_BODY);
+    await ensureTandemiseIgnore(fs);
     await this.#excludeFromGit(target, scope);
   }
 
@@ -180,8 +180,14 @@ export class ArtifactHarvester {
         command: '/bin/sh',
         args: [
           '-c',
-          `mkdir -p "$1/info" && grep -qxF '${EXCLUDE_ENTRY}' "$1/info/exclude" 2>/dev/null `
-          + `|| printf '%s\\n' '${EXCLUDE_ENTRY}' >> "$1/info/exclude"`,
+          // Tandemise's old line hid all of `.tandemise/`, including the
+          // project's committed setup; it is swapped for the narrow one (P15).
+          `mkdir -p "$1/info" && touch "$1/info/exclude" `
+          + `&& { ! grep -qxF '${LEGACY_EXCLUDE_ENTRY}' "$1/info/exclude" `
+          + `|| { grep -vxF '${LEGACY_EXCLUDE_ENTRY}' "$1/info/exclude" > "$1/info/exclude.tandemise"; `
+          + `mv "$1/info/exclude.tandemise" "$1/info/exclude"; }; } `
+          + `&& { grep -qxF '${EXCLUDE_ENTRY}' "$1/info/exclude" `
+          + `|| printf '%s\\n' '${EXCLUDE_ENTRY}' >> "$1/info/exclude"; }`,
           'sh',
           dir,
         ],

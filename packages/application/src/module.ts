@@ -55,6 +55,7 @@ import { IssueService } from './services/issue-service.js';
 import { SkillService } from './services/skill-service.js';
 import { SkillInstaller } from './engine/skill-installer.js';
 import { DEFAULT_QUIET_AFTER_MS, reachedReason, type IssueTrackerPort } from '@tandemise/domain';
+import { SetupService } from './services/setup-service.js';
 import { RefinementServiceImpl } from './services/refinement-service.js';
 import { PlanningServiceImpl } from './services/planning-service.js';
 import { ProjectionServiceImpl } from './services/projection-service.js';
@@ -782,6 +783,33 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       log: log(r).child({ component: 'issues' }),
     }), { source: SOURCE });
 
+    // Default: no disk. The daemon rebinds it; a harness without one can still
+    // compose, and setup as code answers that there is no folder.
+    bind(t.SETUP_FOLDER, () => ({
+      read: async () => null,
+      stage: async () => ({ commit: async () => {}, discard: async () => {} }),
+      gitWarnings: async () => [],
+    }), { source: SOURCE });
+
+    bind(t.SETUP_SERVICE, (r) => new SetupService({
+      workspaces: r.resolve(t.WORKSPACE_SERVICE),
+      repositories: r.resolve(t.REPO_REPOSITORY),
+      roles: r.resolve(t.ROLE_SERVICE),
+      runtimeProfiles: r.resolve(t.RUNTIME_PROFILE_REPOSITORY),
+      routines: r.resolve(t.ROUTINE_REPOSITORY),
+      routineService: r.resolve(t.ROUTINE_SERVICE),
+      skills: r.resolve(t.SKILL_SERVICE),
+      issueSettings: r.resolve(t.ISSUE_REPOSITORY),
+      issues: r.resolve(t.ISSUE_SERVICE),
+      workflows: r.resolve(t.WORKFLOW_SOURCE),
+      folder: r.resolve(t.SETUP_FOLDER),
+      settings: r.resolve(t.SETTINGS_STORE),
+      unitOfWork: r.resolve(t.UNIT_OF_WORK),
+      recorder: r.resolve(t.EVENT_RECORDER),
+      clock: clock(r),
+      log: log(r).child({ component: 'setup' }),
+    }), { source: SOURCE });
+
     bind(t.CRITERIA_SERVICE, (r) => new CriteriaServiceImpl({
       missions: r.resolve(t.MISSION_REPOSITORY),
       artifacts: r.resolve(t.ARTIFACT_REPOSITORY),
@@ -814,6 +842,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       notifications: r.resolve(t.NOTIFICATION_SERVICE),
       skills: r.resolve(t.SKILL_SERVICE),
       issues: r.resolve(t.ISSUE_SERVICE),
+      setup: r.resolve(t.SETUP_SERVICE),
     }), { source: SOURCE });
   });
 }

@@ -9,7 +9,7 @@ import type {
   Workspace, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
 import {
-  ACCEPT_RESULT_OPTION, CORE_CAPABILITIES, RUNTIME_ACTOR, anyCapabilityMatches, gateDependencies, indexTeam, isActiveMember, missingSkillReason, resolveModel, responsibleFor,
+  ACCEPT_RESULT_OPTION, ARTIFACT_OUT_DIR, CORE_CAPABILITIES, RUNTIME_ACTOR, anyCapabilityMatches, gateDependencies, indexTeam, isActiveMember, missingSkillReason, resolveModel, responsibleFor,
 } from '@tandemise/domain';
 import { isDaemonStopping } from '../support/shutdown.js';
 import { NO_SKILLS, type InstalledSkills, type SkillInstaller } from './skill-installer.js';
@@ -495,7 +495,7 @@ export class TaskExecutor {
       }
 
       // 8/9. Commit first, then harvest, so every artifact carries the commit
-      //      it describes as provenance. `.tandemise/` is git-ignored, so the
+      //      it describes as provenance. `.tandemise/out/` is git-ignored, so the
       //      commit's content is unaffected by the order.
       const refs = await this.#commit(target, running, role, profile, outcome.runId, scope);
       const harvest = await deps.harvester.harvest({
@@ -1651,7 +1651,7 @@ export class TaskExecutor {
       `Write each artifact to its own file under \`${outDirFor(task)}/\` in ${target.workingDirectory}. `
       + `The file name is the artifact type followed by \`.md\` — for example \`${outDirFor(task)}/ProductSpec.md\`. `
       + 'Tandemise reads those files after your run ends; anything you only describe in conversation is discarded.',
-      `\`.tandemise/\` is git-ignored, so writing there never pollutes the diff.`,
+      `\`${ARTIFACT_OUT_DIR}/\` is git-ignored, so writing there never pollutes the diff.`,
     ];
     if (target.kind === 'worktree') {
       const branch = target.describe().branch;

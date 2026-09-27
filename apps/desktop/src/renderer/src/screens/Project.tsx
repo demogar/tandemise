@@ -9,6 +9,7 @@ import { useWorkspace } from '../lib/workspace.js';
 import { shortenPath } from '../lib/format.js';
 import { Limits } from './project/Limits.js';
 import { Issues } from './project/Issues.js';
+import { SetupAsCode } from './project/SetupAsCode.js';
 
 const AUTONOMY_ROWS: readonly { key: keyof AutonomySettings; label: string; hint: string; options: readonly string[] }[] = [
   { key: 'planApproval', label: 'Plan approval', hint: 'Show the proposed task graph before anything runs.', options: ['ask', 'auto'] },
@@ -199,6 +200,13 @@ export function Project(): JSX.Element {
                             </section>
 
               <Limits workspaceId={workspace.id} monthly={workspace.monthlyLimits ?? []} perMission={workspace.defaultMissionLimits ?? []} />
+
+              <SetupAsCode
+                key={workspace.id}
+                workspaceId={workspace.id}
+                repositories={workspaceView.repositories ?? []}
+                defaultRepositoryId={workspace.defaultRepositoryId}
+              />
             </>
           )}
         </div>

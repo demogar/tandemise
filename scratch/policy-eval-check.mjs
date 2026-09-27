@@ -457,7 +457,6 @@ const passingFacts = new GateFactBuilder()
     ],
     blockingDefects: 0,
   })
-  .withSecurityChecks(results, ['checks.tests'])
   .withApprovals([{ kind: 'release', status: 'APPROVED' }])
   .build();
 
@@ -501,21 +500,22 @@ check('the failure names every unmet condition',
   readyFail.detail);
 console.log(`         → ${readyFail.detail}`);
 
-// Same facts, but security checks were never run - the one thing ready_to_ship
-// must not treat as satisfied.
-const { 'security.required_checks': _measured, ...withoutSecurity } = passingFacts;
-const shipUnmeasured = evaluateNamedGate('ready_to_ship', withoutSecurity);
-check('ready_to_ship does not pass on unmeasured security checks', !shipUnmeasured.passed);
+// Same facts, but nobody has decided the release yet - the one thing
+// ready_to_ship must not treat as satisfied. (It used to read
+// `security.required_checks`, which nothing ever measured: P15 removed it.)
+const { 'approval.release_candidate': _decided, ...undecided } = passingFacts;
+const shipUnmeasured = evaluateNamedGate('ready_to_ship', undecided);
+check('ready_to_ship does not pass without a release decision', !shipUnmeasured.passed);
 check('an unmeasured fact is reported as "not measured"',
   shipUnmeasured.detail.includes('not measured'), shipUnmeasured.detail);
 console.log(`         → ${shipUnmeasured.detail}`);
 
 // The fixture leaves one criterion SKIPped, which is now correctly short of
 // 100% coverage - so shipping requires QA to have actually verified it.
-const shipBlockedBySkip = evaluateNamedGate('ready_to_ship', { ...withoutSecurity, 'security.required_checks': 'PASS' });
+const shipBlockedBySkip = evaluateNamedGate('ready_to_ship', passingFacts);
 check('ready_to_ship is blocked while a criterion is unverified', !shipBlockedBySkip.passed, shipBlockedBySkip.detail);
 
-const shipFacts = { ...withoutSecurity, 'security.required_checks': 'PASS', 'qa.acceptance_criteria_coverage': 100 };
+const shipFacts = { ...passingFacts, 'qa.acceptance_criteria_coverage': 100 };
 check('ready_to_ship passes once every condition is measured and met',
   evaluateNamedGate('ready_to_ship', shipFacts).passed);
 

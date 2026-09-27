@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, shell, Tray, session } from 'electron';
+import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DaemonConnector } from './daemon-connection.js';
@@ -174,6 +175,16 @@ function registerIpc(): void {
   ipcMain.handle(IPC.daemonReconnect, () => connector.refresh());
 
   ipcMain.handle(IPC.selectDirectory, async (_event, title: unknown) => {
+    // Acceptance hook: a native folder dialog cannot be driven over CDP, so a
+    // test run names the folder in a file instead (P15). Unset in a normal launch.
+    const picked = process.env.TANDEMISE_TEST_PICK_DIRECTORY;
+    if (picked !== undefined && picked !== '') {
+      try {
+        return readFileSync(picked, 'utf8').trim() || null;
+      } catch {
+        return null;
+      }
+    }
     const result = await dialog.showOpenDialog({
       title: typeof title === 'string' ? title : 'Choose a repository',
       properties: ['openDirectory', 'createDirectory'],

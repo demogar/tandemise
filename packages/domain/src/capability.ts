@@ -96,3 +96,21 @@ export function maxRisk(a: RiskClass, b: RiskClass): RiskClass {
  * scopes file writes scopes `artifact.write` to it.
  */
 export const ARTIFACT_OUT_DIR = '.tandemise/out';
+
+/**
+ * What git must ignore under `.tandemise/`: the agents' working files, and this
+ * ignore file itself - not the project's setup next to them (workflows, roles,
+ * routines), which is meant to be committed (P15).
+ *
+ * The first version ignored everything (`*` here, `.tandemise/` in
+ * `.git/info/exclude`), so a workflow file added after any planning run was
+ * silently ignored by git. The legacy values are kept so the harvester and the
+ * setup export can recognise Tandemise's own old lines, and only those.
+ */
+export const TANDEMISE_IGNORE_FILE = '.tandemise/.gitignore';
+export const TANDEMISE_IGNORE_BODY =
+  '# Written by Tandemise. Agent working files never belong in the diff;\n'
+  + '# your setup next to them (workflows, roles, routines) does.\n/out/\n/.gitignore\n';
+export const LEGACY_TANDEMISE_IGNORE_BODY = '# Written by Tandemise. Agent working files never belong in the diff.\n*\n';
+export const TANDEMISE_EXCLUDE_ENTRY = '.tandemise/out/';
+export const LEGACY_TANDEMISE_EXCLUDE_ENTRY = '.tandemise/';

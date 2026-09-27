@@ -10,6 +10,11 @@ import type {
   SkillPreviewView,
   SkillSourceRequest,
   SkillVersionDetailView,
+  ApplySetupRequest,
+  SetupApplyView,
+  SetupExportView,
+  SetupPreviewView,
+  SetupStatusView,
   CreateRoutineRequest,
   RoutineView,
   UpdateRoutineRequest,
@@ -320,6 +325,23 @@ export class DaemonClient {
   }
 
   /** A month's usage against the project's monthly limits (P8). */
+  /** Setup as code (P15): the last export from this machine. */
+  setupStatus(workspaceId: string): Promise<SetupStatusView> {
+    return this.#get(`/workspaces/${workspaceId}/setup`);
+  }
+
+  exportSetup(workspaceId: string, repositoryId: string): Promise<SetupExportView> {
+    return this.#request('POST', `/workspaces/${workspaceId}/setup/export`, { repositoryId });
+  }
+
+  previewSetup(workspaceId: string, path: string): Promise<SetupPreviewView> {
+    return this.#request('POST', `/workspaces/${workspaceId}/setup/preview`, { path });
+  }
+
+  applySetup(workspaceId: string, body: ApplySetupRequest): Promise<SetupApplyView> {
+    return this.#request('POST', `/workspaces/${workspaceId}/setup/apply`, body);
+  }
+
   workspaceUsage(workspaceId: string, month?: string): Promise<WorkspaceUsageView> {
     return this.#get(`/workspaces/${workspaceId}/usage${month === undefined ? '' : `?month=${encodeURIComponent(month)}`}`);
   }

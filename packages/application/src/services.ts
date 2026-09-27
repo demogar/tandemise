@@ -64,6 +64,8 @@ export interface TandemiseServices {
   readonly skills: import('./services/skill-service.js').SkillService;
   /** GitHub issues in and out (P14). */
   readonly issues: import('./services/issue-service.js').IssueService;
+  /** The project's setup as files in a repository (P15). */
+  readonly setup: import('./services/setup-service.js').SetupService;
 }
 
 /** Making a rough request ready to plan (P6). Every write is refused once the mission has left DRAFT. */

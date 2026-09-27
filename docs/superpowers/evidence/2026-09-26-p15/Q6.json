@@ -1,0 +1,60 @@
+{
+  "id": "Q6",
+  "title": "Imported GitHub issue settings arrive off, marked \"Imported — review and turn on\"",
+  "ok": true,
+  "checks": [
+    {
+      "label": "on disk: issues.yaml has the repository's settings, and no cursor or timestamp",
+      "ok": true,
+      "observed": {
+        "repositories": [
+          {
+            "closeOnComplete": true,
+            "enabled": false,
+            "githubRepo": "example/hello-site",
+            "label": "ready-for-agents",
+            "pollMinutes": 15,
+            "postComments": false,
+            "repository": "acceptance-project",
+            "workflow": null
+          }
+        ]
+      }
+    },
+    {
+      "label": "the status reads \"Imported — review and turn on\"",
+      "ok": true,
+      "observed": "Imported — review and turn on"
+    },
+    {
+      "label": "the \"Turn labelled issues into missions\" switch is off",
+      "ok": true
+    },
+    {
+      "label": "the label and the GitHub repository came across",
+      "ok": true,
+      "observed": "Issues\nTurn labelled GitHub issues into missions\nacceptance-project\nOpen issues with the label become draft missions. An issue that lists “Done when” or “Acceptance criteria” is queued, ready to plan; any other waits for you to refine it.\nGitHub repository\nowner/name, as on github.com.\nLabel\nOnly open issues with this label are read.\nCheck every\n5 minutes\n10 minutes\n15 minutes\n30 minutes\n60 minute"
+    },
+    {
+      "label": "proof (API): off, every 15 minutes, close on complete, no comments, never checked",
+      "ok": true,
+      "observed": {
+        "enabled": false,
+        "githubRepo": "example/hello-site",
+        "label": "ready-for-agents",
+        "pollMinutes": 15,
+        "closeOnComplete": true,
+        "postComments": false,
+        "workflowPreset": null,
+        "lastCheckedAt": null,
+        "lastError": "Imported — review and turn on"
+      }
+    }
+  ],
+  "notes": [
+    "the window is back on the acceptance project"
+  ],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p15-int/scratch/acceptance/p15/evidence/Q6-issues-imported-off.png"
+  ]
+}

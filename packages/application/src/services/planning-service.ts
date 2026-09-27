@@ -22,6 +22,7 @@ import { DEFAULT_PRESET_ID, findPreset, type WorkflowPreset } from '../planning/
 import { buildPlannerPrompt, describePlan, type ConnectedApp } from '../planning/prompt.js';
 import { parsePlanResponse } from '../planning/parse.js';
 import { clip, materializePlan, planTitle, renderPlanDocument } from '../planning/materialize.js';
+import { ensureTandemiseIgnore } from '../support/ignore.js';
 
 /** The role whose runtime routing the planner borrows (MVP.md §9.2). */
 const PLANNER_ROLE_ID = 'architecture';
@@ -569,9 +570,7 @@ export class PlanningServiceImpl implements PlanningService {
     try {
       if (await fs.exists(planDir)) await fs.remove(planDir, { recursive: true });
       await fs.mkdir(planDir);
-      if (!(await fs.exists('.tandemise/.gitignore'))) {
-        await fs.write('.tandemise/.gitignore', '# Written by Tandemise. Agent working files never belong in the diff.\n*\n');
-      }
+      await ensureTandemiseIgnore(fs);
     } catch (e) {
       this.deps.log.warn('planning.plan_file_unavailable', { error: errorMessage(e) });
     }

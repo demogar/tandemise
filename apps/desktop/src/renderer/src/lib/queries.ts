@@ -34,6 +34,8 @@ export const keys = {
   skills: (ws?: string) => ['workspaces', 'skills', ws ?? 'all'] as const,
   skillsFound: (ws?: string) => ['workspaces', 'skills-found', ws ?? 'all'] as const,
   skillVersion: (id: string, version: number) => ['workspaces', 'skill-version', id, String(version)] as const,
+  // Under 'workspaces': an export or an import changes what it says.
+  setup: (ws?: string) => ['workspaces', 'setup', ws ?? 'all'] as const,
   mission: (id: string) => ['mission', id] as const,
   // Under 'mission' and scoped by id, so the mission's own invalidations refresh it.
   missionArtifacts: (id: string, all: boolean) => ['mission', id, 'artifacts', all ? 'all' : 'live'] as const,
@@ -128,6 +130,17 @@ export function useWorkspaceUsage() {
     enabled: Boolean(workspaceId),
     refetchInterval: 5_000,
     placeholderData: (previous) => previous,
+  });
+}
+
+/** Setup as code (P15): the last export of this project from this machine. */
+export function useSetupStatus() {
+  const daemon = useDaemon();
+  const workspaceId = useWorkspaceId();
+  return useQuery({
+    queryKey: keys.setup(workspaceId),
+    queryFn: () => daemon.setupStatus(workspaceId ?? ''),
+    enabled: Boolean(workspaceId),
   });
 }
 

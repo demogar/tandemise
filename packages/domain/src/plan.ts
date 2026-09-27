@@ -5,6 +5,7 @@ import type { ArtifactType } from './entities/artifact.js';
 import { isArtifactType } from './entities/artifact.js';
 import type { ArtifactRequirement, ExecutionPolicy, ApprovalPolicy, RetryPolicy } from './entities/task.js';
 import { validateGate } from './gate.js';
+import { lintGate } from './gate-lint.js';
 import type { ModelPolicy } from './entities/models.js';
 import type { SkillRef } from './entities/skill.js';
 
@@ -89,6 +90,13 @@ export interface PlanValidationContext {
    * change in the wrong codebase, which is worse than refusing the plan.
    */
   readonly knownRepositoryNames?: ReadonlySet<string>;
+  /**
+   * How gates are judged. `lint` (the default) refuses any gate that could
+   * never pass (`lintGate`). `syntax` only parses them: a running mission's
+   * graph, re-validated when the engine splices a task in, was accepted under
+   * the rules of its day and must not start failing mid-mission.
+   */
+  readonly gates?: 'lint' | 'syntax';
 }
 
 export function validateMissionPlan(
@@ -141,8 +149,17 @@ export function validateMissionPlan(
       }
     }
     if (task.completionGate) {
-      const gate = validateGate(task.completionGate);
-      if (!gate.ok) error(task.key, `Invalid completion gate: ${gate.error}`);
+      if (ctx.gates === 'syntax') {
+        const gate = validateGate(task.completionGate);
+        if (!gate.ok) error(task.key, `Invalid completion gate: ${gate.error}`);
+      } else {
+        for (const problem of lintGate(task.completionGate, {
+          stepKey: task.key,
+          outputs: task.expectedOutputs,
+          independentOf: task.modelPolicy?.independentOf !== undefined,
+          isolation: task.executionPolicy.isolation,
+        })) error(task.key, problem.message);
+      }
     }
     if (task.retryPolicy.maxAttempts < 1) error(task.key, 'retryPolicy.maxAttempts must be at least 1.');
     if (task.executionPolicy.maxWallTimeMs <= 0) error(task.key, 'executionPolicy.maxWallTimeMs must be positive.');

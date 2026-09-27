@@ -198,6 +198,39 @@ export class SkillService {
     return this.deps.files.read(hash);
   }
 
+  // ------------------------------------------------------- setup as code (P15)
+
+  /** Every version in the project's library, oldest first per skill, with where it came from. */
+  library(workspaceId: WorkspaceId): readonly { name: string; version: number; hash: string; source: SkillSource }[] {
+    return this.deps.skills.list(workspaceId).flatMap((skill) =>
+      this.deps.skills.versions(skill.id).map((v) => ({ name: skill.name, version: v.version, hash: v.hash, source: v.source })));
+  }
+
+  /** The library's version of `name` holding exactly these files, if any. */
+  versionFor(workspaceId: WorkspaceId, name: string, hash: string): number | undefined {
+    const skill = this.deps.skills.getByName(workspaceId, name);
+    return skill === undefined ? undefined : this.deps.skills.versions(skill.id).find((v) => v.hash === hash)?.version;
+  }
+
+  /**
+   * Adds files already in this machine's store (another project imported
+   * them) to this project's library, recording the source they came from.
+   * Synchronous so it can run inside an import's transaction; the files are
+   * read, and verified against their hash, beforehand with `content`.
+   */
+  adoptStored(workspaceId: WorkspaceId, entry: { name: string; hash: string; source: SkillSource }, files: readonly SkillFile[]): number {
+    if (hashSkillFiles(files) !== entry.hash) throw TandemiseError.validation(`The stored files of ${entry.name} no longer match their hash.`, { hash: entry.hash });
+    const judged = this.#judge(entry.source, {
+      folder: entry.hash,
+      files: [...files],
+      sizeBytes: files.reduce((sum, f) => sum + f.size, 0),
+      problem: null,
+    });
+    if (judged.problem !== null) throw TandemiseError.validation(`${entry.name} cannot be added: ${judged.problem}`, { hash: entry.hash });
+    // The name the files were pinned under wins over the folder the store keeps them in.
+    return this.#record(workspaceId, { ...judged, name: entry.name }).version;
+  }
+
   // ------------------------------------------------------------------ internals
 
   #require(id: SkillId): Skill {
@@ -296,11 +329,21 @@ export class SkillService {
   }
 
   async #commit(workspaceId: WorkspaceId, judged: Judged): Promise<SkillImportView> {
+    // Content first: a version row must never name a hash the store lacks.
+    await this.deps.files.store(judged.hash!, judged.scan.files);
+    const recorded = this.#record(workspaceId, judged);
+    const skill = await this.#view(recorded.skill, this.deps.roles.list(workspaceId), false);
+    if (recorded.created === 'unchanged') {
+      return { skill, version: recorded.version, created: 'unchanged', message: `${recorded.skill.name} v${recorded.version} already has these files.` };
+    }
+    return { skill, version: recorded.version, created: recorded.created, message: `Imported ${recorded.skill.name} v${recorded.version}.` };
+  }
+
+  /** The rows for files already in the store: a new skill, a new version, or nothing new. */
+  #record(workspaceId: WorkspaceId, judged: Judged): { skill: Skill; version: number; created: SkillImportView['created'] } {
     const name = judged.name!;
     const hash = judged.hash!;
     const now = this.deps.clock.now();
-    // Content first: a version row must never name a hash the store lacks.
-    await this.deps.files.store(hash, judged.scan.files);
     let skill = this.deps.skills.getByName(workspaceId, name);
     let created: SkillImportView['created'];
     let version: number;
@@ -316,12 +359,7 @@ export class SkillService {
       if (same !== undefined) {
         // Nothing new, but the place it came from is now this one.
         skill = this.deps.skills.update(skill.id, { source: judged.source, updatedAt: now });
-        return {
-          skill: await this.#view(skill, this.deps.roles.list(workspaceId), false),
-          version: same.version,
-          created: 'unchanged',
-          message: `${skill.name} v${same.version} already has these files.`,
-        };
+        return { skill, version: same.version, created: 'unchanged' };
       }
       version = (versions.at(-1)?.version ?? 0) + 1;
       skill = this.deps.skills.update(skill.id, { description: judged.description, source: judged.source, updatedAt: now });
@@ -339,12 +377,7 @@ export class SkillService {
       createdAt: now,
     });
     this.deps.log.info('skills.imported', { skillId: skill.id, name, version, hash });
-    return {
-      skill: await this.#view(skill, this.deps.roles.list(workspaceId), false),
-      version,
-      created,
-      message: `Imported ${name} v${version}.`,
-    };
+    return { skill, version, created };
   }
 
   async #view(skill: Skill, roles: readonly RoleTemplate[], checkSource: boolean): Promise<SkillView> {

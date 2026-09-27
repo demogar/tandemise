@@ -55,18 +55,24 @@ export class FileWorkflowSource implements WorkflowSourcePort {
 
   async #load(id: string, path: string): Promise<LoadedWorkflow> {
     let raw: unknown;
+    let text: string;
     try {
-      const text = await readFile(path, 'utf8');
-      // YAML is a superset of JSON, so one parser covers both extensions.
-      raw = parseYaml(text);
+      text = await readFile(path, 'utf8');
     } catch (error) {
       this.log.warn('workflow.unreadable', { path, error: errorMessage(error) });
       return { id, path, definition: null, issues: [{ path: '(file)', message: errorMessage(error) }] };
     }
+    try {
+      // YAML is a superset of JSON, so one parser covers both extensions.
+      raw = parseYaml(text);
+    } catch (error) {
+      this.log.warn('workflow.unreadable', { path, error: errorMessage(error) });
+      return { id, path, definition: null, issues: [{ path: '(file)', message: errorMessage(error) }], text };
+    }
 
     const parsed = parseWorkflowDefinition(raw);
     return parsed.ok
-      ? { id, path, definition: parsed.value, issues: [] }
-      : { id, path, definition: null, issues: parsed.error };
+      ? { id, path, definition: parsed.value, issues: [], text }
+      : { id, path, definition: null, issues: parsed.error, text };
   }
 }

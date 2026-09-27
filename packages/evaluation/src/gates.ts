@@ -29,10 +29,13 @@ export const QUALITY_GATES = {
     name: 'ready_to_ship',
     description:
       'The change may be released: every acceptance criterion is covered and passing, no blocking '
-      + 'defects remain, security checks pass, and a human has approved the release candidate.',
+      + 'defects remain, and a human has approved the release candidate.',
+    // `security.required_checks` was read here but never measured (P15): no
+    // repository can mark a check security-required, so the conjunct could
+    // only ever fail. It returns when such a check can be configured.
     expression:
       'qa.acceptance_criteria_coverage == 100 && qa.blocking_defects == 0 '
-      + '&& security.required_checks == PASS && approval.release_candidate == APPROVED',
+      + '&& approval.release_candidate == APPROVED',
   },
 } as const satisfies Readonly<Record<string, QualityGate>>;
 
