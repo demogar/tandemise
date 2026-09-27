@@ -24,6 +24,19 @@ export function isArtifactType(v: string): v is ArtifactType {
   return (ARTIFACT_TYPES as readonly string[]).includes(v);
 }
 
+/**
+ * A short, human word for an artifact type, for a place with room for one -
+ * `ProductSpec` reads as "Spec", `DesignBrief` as "Brief". Each type name is a
+ * stage's noun followed by its kind, so the kind (the last capitalised word)
+ * is what a person calls the thing without the stage that makes it: a spec
+ * covered by an upload is "the spec", not "the ProductSpec". A type with no
+ * second word (`Evidence`) is returned as-is.
+ */
+export function outputTypeLabel(type: ArtifactType): string {
+  const words = type.match(/[A-Z][a-z]*/g);
+  return words === null || words.length === 0 ? type : (words[words.length - 1] as string);
+}
+
 /** Where a handoff link points, so a card can say "open preview" rather than a bare URL. */
 export const HANDOFF_LINK_KINDS = ['workspace', 'preview', 'pr', 'doc', 'other'] as const;
 export type HandoffLinkKind = (typeof HANDOFF_LINK_KINDS)[number];

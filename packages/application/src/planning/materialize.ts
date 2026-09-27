@@ -1,7 +1,7 @@
 import type { MissionId, Clock, RepositoryId } from '@tandemise/shared';
 import { TandemiseError, ids } from '@tandemise/shared';
 import type { ArtifactHandoff, MissionPlan, MissionTask, PlannedTask, Repository, SkillPin } from '@tandemise/domain';
-import { DEFAULT_RETRY_POLICY, NO_APPROVAL, planGateProblems } from '@tandemise/domain';
+import { DEFAULT_RETRY_POLICY, NO_APPROVAL, outputTypeLabel, planGateProblems } from '@tandemise/domain';
 import { COVERED_PREFIX } from '../support/outside-work.js';
 
 /**
@@ -72,7 +72,10 @@ function skippedPlaceholders(
       reason: `${COVERED_PREFIX} ${filename}`,
       task: {
         key,
-        title: `${skip.stage} (covered by your upload)`,
+        // A plain human name for the stage - "Spec", not the planner's raw role
+        // id and not the "(covered by your upload)" phrase the Plan tab's
+        // covered row already adds once on its own (spec A2).
+        title: outputTypeLabel(skip.outputType),
         objective: skip.reason.length > 0 ? skip.reason : `Covered by the upload ${filename}.`,
         roleId: skip.stage,
         dependsOn: [],
