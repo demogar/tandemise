@@ -1,4 +1,4 @@
-import { Err, Ok, type Result } from '@tandemise/shared';
+import { Err, Ok, type ArtifactId, type Result } from '@tandemise/shared';
 import type { Capability } from './capability.js';
 import type { TaskExecutor, WaitPolicy } from './entities/task.js';
 import type { ArtifactType } from './entities/artifact.js';
@@ -21,6 +21,21 @@ import type { SkillRef } from './entities/skill.js';
 export interface MissionPlan {
   readonly summary: string;
   readonly tasks: readonly PlannedTask[];
+  /** Stages the planner omitted because an upload already covers them (spec A2). */
+  readonly skipped?: readonly SkippedStage[];
+}
+
+/**
+ * A stage the planner left out of `tasks` because a preexisting upload
+ * already produced its output type. Materialization turns each of these into
+ * a `SKIPPED` placeholder task instead of a real one, so dependents still
+ * find a producer for `outputType`.
+ */
+export interface SkippedStage {
+  readonly stage: string;
+  readonly outputType: ArtifactType;
+  readonly artifactId: ArtifactId;
+  readonly reason: string;
 }
 
 export interface PlannedTask {
@@ -79,8 +94,13 @@ export interface PlanValidationContext {
    * time, not three tasks into execution.
    */
   readonly satisfiableCapabilities: ReadonlySet<Capability>;
-  /** Artifact types that already exist on the mission (e.g. from a prior run). */
-  readonly preexistingArtifacts?: ReadonlySet<ArtifactType>;
+  /**
+   * Artifacts that already exist on the mission (e.g. an upload pinned before
+   * planning, or an intake artifact from a prior run), by id and type. A
+   * `skipped` stage must name one of these, so a plan cannot claim a stage is
+   * covered by an artifact that does not exist or is of the wrong type.
+   */
+  readonly preexistingArtifacts?: readonly { readonly id: ArtifactId; readonly type: ArtifactType }[];
   /**
    * Repository names available to this mission, lowercased.
    *
@@ -173,7 +193,7 @@ export function validateMissionPlan(
   // can start before it exists.
   if (!cycle) {
     const ancestors = transitiveDependencies(plan.tasks);
-    const preexisting = ctx.preexistingArtifacts ?? new Set<ArtifactType>();
+    const preexisting = new Set((ctx.preexistingArtifacts ?? []).map((a) => a.type));
     for (const task of plan.tasks) {
       for (const req of task.inputArtifacts) {
         if (!req.required || preexisting.has(req.type)) continue;
@@ -190,6 +210,16 @@ export function validateMissionPlan(
             : `Requires '${req.type}', which no task in the plan produces.`,
         );
       }
+    }
+  }
+
+  // A skip is only honest when the artifact it names is real: a stage the
+  // planner claims is covered by an upload that does not exist (or is of the
+  // wrong type) would leave the mission with no producer for that output.
+  for (const skip of plan.skipped ?? []) {
+    const upload = (ctx.preexistingArtifacts ?? []).find((a) => a.id === skip.artifactId);
+    if (upload === undefined || upload.type !== skip.outputType) {
+      error(null, `skipped stage '${skip.stage}' names ${skip.artifactId}, which is not an upload of type ${skip.outputType}.`);
     }
   }
 

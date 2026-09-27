@@ -55,8 +55,19 @@ export const handoffSchema: z.ZodType<ArtifactHandoff, z.ZodTypeDef, unknown> = 
   })).max(HANDOFF_LIMITS.changed, `handoff.changed may have at most ${HANDOFF_LIMITS.changed} items`).default([]),
   links: z.array(z.object({
     label: text('link label', HANDOFF_LIMITS.linkLabel),
-    url: httpUrl,
+    url: httpUrl.optional(),
+    // A path into the repository or artifact root (spec A5), resolved by the
+    // daemon rather than opened in a browser - so it makes sense only for a
+    // workspace link, and only that kind may go without a url.
+    path: z.string().trim().min(1).optional(),
     kind: z.enum(HANDOFF_LINK_KINDS).default('other'),
+  }).superRefine((link, ctx) => {
+    if (link.path !== undefined && link.kind !== 'workspace') {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'only a workspace link may carry a path', path: ['path'] });
+    }
+    if (link.url === undefined && !(link.kind === 'workspace' && link.path !== undefined)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'link url must be a full URL', path: ['url'] });
+    }
   })).max(HANDOFF_LIMITS.links, `handoff.links may have at most ${HANDOFF_LIMITS.links} items`).default([]),
 });
 

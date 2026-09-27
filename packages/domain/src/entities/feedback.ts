@@ -10,8 +10,15 @@ export const FEEDBACK_TEXT_MAX = 4000;
 export const RUN_PURPOSES = ['round', 'tighten', 'feedback', 'retry'] as const;
 export type RunPurpose = (typeof RUN_PURPOSES)[number];
 
-/** Reserved for P3 (uploads, hand-backs); always empty in P2. */
-export type FeedbackAttachment = Readonly<Record<string, unknown>>;
+/**
+ * What a note carries beyond text (spec A3): a file already pinned as an
+ * Evidence artifact, or a link typed straight through. Bytes never live on
+ * the feedback row - a file attachment is a pointer to the artifact it was
+ * pinned as when it arrived.
+ */
+export type FeedbackAttachment =
+  | { readonly kind: 'artifact'; readonly artifactId: ArtifactId }
+  | { readonly kind: 'link'; readonly url: string; readonly label?: string };
 
 export interface FeedbackItem {
   readonly id: FeedbackId;

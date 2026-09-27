@@ -6,8 +6,11 @@ import type {
   MissionPlan, PlanValidationIssue, GateOutcome, AccessLevel, Member, Person, Staffing,
   ArtifactHandoff, TaskStatus, FeedbackStatus, MissionPriority, Limit, LimitStatus,
   MissionStatus, StalledAction, WatchLevel, Routine, RoutineOutcome, RoutineTrigger,
-  SkillFileEntry, SkillSource,
+  SkillFileEntry, SkillSource, ExternalRef,
 } from '@tandemise/domain';
+
+/** A pointer to truth in another system (spec A1), as read on an upload's provenance list. */
+export type ExternalRefView = ExternalRef;
 
 /**
  * Read models the UI consumes.
@@ -457,6 +460,17 @@ export interface TaskView extends MissionTask {
   } | null;
   /** How long its live run has been quiet; null unless the step is running (P9). */
   readonly watch: TaskWatchView | null;
+  /**
+   * Set while "Continue elsewhere" is active (spec A4); null once it is handed
+   * back or was never parked. Optional so a projection built before P3 still
+   * type-checks; a live one always sends it.
+   */
+  readonly parkedExternal?: { readonly tool: string; readonly since: string } | null;
+  /**
+   * For a `SKIPPED` placeholder task, the upload that already covers its stage
+   * (spec A2); null otherwise. Optional for the same reason as `parkedExternal`.
+   */
+  readonly coveredBy?: { readonly artifactId: string; readonly filename: string } | null;
 }
 
 export interface MissionSummary {
@@ -490,6 +504,18 @@ export interface MissionDetail {
   readonly limits: MissionLimitsView;
   readonly plan: MissionPlan | null;
   readonly planIssues: readonly PlanValidationIssue[];
+  /**
+   * Evidence pinned at creation or hand-back, and what intake made of it, if
+   * anything (spec A2, A7). Optional so a `MissionDetail` built before P3
+   * still type-checks; a live one always sends it.
+   */
+  readonly uploads?: readonly {
+    readonly evidenceId: string;
+    readonly filename: string;
+    readonly mediaType: string;
+    readonly refs: readonly ExternalRefView[];
+    readonly intakeArtifactId: string | null;
+  }[];
 }
 
 /** MVP.md §22.2. Values the runtime does not expose stay null, never guessed. */

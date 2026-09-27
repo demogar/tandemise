@@ -29,6 +29,19 @@ export const HANDOFF_LINK_KINDS = ['workspace', 'preview', 'pr', 'doc', 'other']
 export type HandoffLinkKind = (typeof HANDOFF_LINK_KINDS)[number];
 
 /**
+ * One link on a handoff card (spec A5). Every kind but `workspace` must be a
+ * full http(s) URL, so a click always leaves the desktop; only `workspace`
+ * may instead (or also) carry a `path` into the repository or artifact root,
+ * which the daemon resolves rather than opening in a browser.
+ */
+export interface HandoffLink {
+  readonly label: string;
+  readonly url?: string;
+  readonly path?: string;
+  readonly kind: HandoffLinkKind;
+}
+
+/**
  * What a busy owner reads first, and often the only thing they read: a
  * headline, at most three points, what is needed from them, what changed and
  * where the real thing lives. The artifact's zod schema enforces the limits;
@@ -40,7 +53,7 @@ export interface ArtifactHandoff {
   readonly points: readonly string[];
   readonly needs: string | null;
   readonly changed: readonly { readonly what: string; readonly feedback: string | null }[];
-  readonly links: readonly { readonly label: string; readonly url: string; readonly kind: HandoffLinkKind }[];
+  readonly links: readonly HandoffLink[];
 }
 
 /** A pointer to truth that lives in another system (MVP.md §15.3). */

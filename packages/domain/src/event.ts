@@ -2,6 +2,7 @@ import type {
   ApprovalId, ArtifactId, EventId, MissionId, RunId, TaskId, Timestamp, WorkspaceId,
 } from '@tandemise/shared';
 import type { FeedbackStatus } from './entities/feedback.js';
+import type { ArtifactType } from './entities/artifact.js';
 
 /**
  * The canonical event vocabulary (MVP.md §10.4).
@@ -85,6 +86,16 @@ export type OrchestrationEvent =
    * progress counting it, and `skipped` queued ones ahead of it that were not ready.
    */
   | { readonly type: 'mission.pulled'; readonly position: number; readonly limit: number; readonly active: number; readonly skipped?: number }
+  /** "Continue elsewhere": an agent task was parked to work in another tool (spec A4). */
+  | { readonly type: 'task.parked_external'; readonly tool: string }
+  /** A parked task's hand-back landed as a human-authored round; which outputs, and whether the contribution was a file or a link. */
+  | { readonly type: 'task.handed_back'; readonly artifactIds: readonly ArtifactId[]; readonly round: number; readonly contribution: 'file' | 'link' }
+  /** Mission intake (spec A2) ran once over the mission's pinned uploads: what it produced and what it could not convert. */
+  | {
+    readonly type: 'mission.intake_completed'; readonly uploads: number;
+    readonly produced: readonly { readonly artifactId: ArtifactId; readonly type: ArtifactType }[];
+    readonly failed: readonly { readonly evidenceId: ArtifactId; readonly reason: string }[];
+  }
   | { readonly type: 'note'; readonly text: string; readonly level?: 'info' | 'warn' | 'error' };
 
 export type TandemiseEventBody = AgentEvent | OrchestrationEvent;
@@ -121,6 +132,7 @@ export const SEMANTIC_EVENT_TYPES: ReadonlySet<string> = new Set([
   'tool.started', 'approval.escalated', 'review.skipped', 'review.required', 'task.attention',
   'artifact.tighten_requested', 'artifact.over_budget',
   'feedback.given', 'feedback.addressed', 'feedback.dismissed', 'task.round_started', 'mission.pulled',
+  'task.parked_external', 'task.handed_back', 'mission.intake_completed',
 ]);
 
 export function isSemanticEvent(body: TandemiseEventBody): boolean {

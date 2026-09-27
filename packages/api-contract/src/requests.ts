@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import {
-  ACCESS_LEVELS, ARTIFACT_TYPES, skillNameProblem, AUTONOMY_LEVELS, LIMIT_METRICS, MAX_LADDER, MAX_MODEL_NAME, MISSION_PRIORITIES, MISSION_STATUSES, OVERSIGHT_MODES, ROUTINE_HOURS, ROUTINE_KINDS, RUNTIME_CAPABILITIES,
+  ACCESS_LEVELS, ARTIFACT_TYPES, skillNameProblem, AUTONOMY_LEVELS, CONTRIBUTION_MAX_BYTES, LIMIT_METRICS, MAX_LADDER, MAX_MODEL_NAME, MISSION_PRIORITIES, MISSION_STATUSES, OVERSIGHT_MODES, ROUTINE_HOURS, ROUTINE_KINDS, RUNTIME_CAPABILITIES,
   staffingPatchSchema,
 } from '@tandemise/domain';
 
@@ -10,6 +10,32 @@ import {
  * teammate said without the record claiming the lead said it.
  */
 const onBehalfOf = z.string().min(1).optional();
+
+/**
+ * A file or link handed in from outside a mission (spec A1): an upload at
+ * creation, a feedback attachment, or a hand-back's contribution. The base64
+ * length cap is `ceil(bytes/3)*4`, so a payload that decodes over
+ * `CONTRIBUTION_MAX_BYTES` is refused by its encoded length alone, before
+ * anything decodes it.
+ */
+const CONTRIBUTION_BASE64_MAX = Math.ceil(CONTRIBUTION_MAX_BYTES / 3) * 4;
+const contributionFile = z.object({
+  kind: z.literal('file'),
+  filename: z.string().trim().min(1).max(200),
+  mediaType: z.string().trim().min(1).max(200),
+  dataBase64: z.string().max(CONTRIBUTION_BASE64_MAX, `a file may be at most ${CONTRIBUTION_MAX_BYTES} bytes decoded`),
+});
+export const outsideContributionSchema = z.union([
+  contributionFile,
+  z.object({
+    kind: z.literal('link'),
+    url: z.string().trim().url('link url must be a full URL'),
+    label: z.string().trim().min(1).max(200).optional(),
+    /** What a link carries when no resolver on this machine can read the link itself. */
+    export: contributionFile.omit({ kind: true }).optional(),
+  }),
+]);
+export type OutsideContributionInput = z.infer<typeof outsideContributionSchema>;
 
 /**
  * Request schemas.
@@ -119,6 +145,8 @@ export const createMissionRequest = z.object({
   queued: z.boolean().optional(),
   /** The mission's own limits; absent uses the project's default mission limits. */
   limits: limitsSchema.optional(),
+  /** Files or links handed in at creation (spec A2), pinned as Evidence before planning starts. */
+  uploads: z.array(outsideContributionSchema).max(10).optional(),
 });
 export type CreateMissionRequest = z.infer<typeof createMissionRequest>;
 
@@ -399,9 +427,28 @@ export const giveFeedbackRequest = z.object({
   text: z.string().trim().min(1).max(4000),
   /** Feedback about one output of the task; omitted for the whole task. */
   artifactId: z.string().min(1).optional(),
+  /** Files or links attached to the note (spec A3); pinned as Evidence and read by the round that picks it up. */
+  attachments: z.array(outsideContributionSchema).max(5).optional(),
   onBehalfOf,
 });
 export type GiveFeedbackRequest = z.infer<typeof giveFeedbackRequest>;
+
+// ------------------------------------------------------------ outside contributions (P3)
+
+/** "Continue elsewhere": parks an agent task so the work can continue in another tool (spec A4). */
+export const parkTaskRequest = z.object({
+  tool: z.string().trim().min(1).max(40),
+});
+export type ParkTaskRequest = z.infer<typeof parkTaskRequest>;
+
+/** What comes back from a parked task: a note, one contribution, and the downstream choice when it applies (spec A4). */
+export const handBackRequest = z.object({
+  note: z.string().trim().min(1).max(4000),
+  contribution: outsideContributionSchema,
+  downstream: z.enum(['redo', 'keep']).optional(),
+  onBehalfOf,
+});
+export type HandBackRequest = z.infer<typeof handBackRequest>;
 
 /** Confirms a round that waited on the downstream choice (spec §3). */
 export const startRoundRequest = z.object({

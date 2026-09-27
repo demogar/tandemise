@@ -457,6 +457,8 @@ export class IssueService {
     const out: { label: string; url: string }[] = [];
     for (const manifest of this.deps.artifacts.listByMission(missionId)) {
       for (const link of manifest.handoff?.links ?? []) {
+        // A workspace link may carry only a path (spec A5), which is never a delivery link to post.
+        if (link.url === undefined) continue;
         const branch = /\/tree\//.test(link.url);
         if ((link.kind === 'pr' || branch) && /^https?:\/\//.test(link.url) && !out.some((l) => l.url === link.url)) {
           out.push({ label: link.kind === 'pr' ? `Pull request (${link.label})` : `Branch (${link.label})`, url: link.url });
