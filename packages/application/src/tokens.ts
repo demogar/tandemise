@@ -3,7 +3,7 @@ import type {
   ApprovalRepositoryPort, ArtifactRepositoryPort, ArtifactStorePort, AssignmentRepositoryPort,
   CheckpointRepositoryPort, DecisionRepositoryPort, EvaluationRepositoryPort, EventBusPort,
   EventRepositoryPort, ExecutionTargetRepositoryPort, FeedbackRepositoryPort, IntegrationRepositoryPort,
-  LeaseRepositoryPort, MemberRepositoryPort, MissionCriteriaRepositoryPort, MissionQuestionRepositoryPort, MissionRepositoryPort, LimitRepositoryPort, RoutineRepositoryPort, SkillRepositoryPort, PersonRepositoryPort, ProjectionBusPort, RepoRepositoryPort,
+  LeaseRepositoryPort, MemberRepositoryPort, MissionCriteriaRepositoryPort, MissionQuestionRepositoryPort, MissionRepositoryPort, LimitRepositoryPort, RoutineRepositoryPort, SkillRepositoryPort, IssueRepositoryPort, IssueTrackerPort, PersonRepositoryPort, ProjectionBusPort, RepoRepositoryPort,
   RoleRepositoryPort, RunInputRepositoryPort, RunRepositoryPort, RuntimeProfileRepositoryPort, SecretStorePort,
   TaskRepositoryPort, UnitOfWork, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
@@ -23,6 +23,7 @@ import type { DeskService } from './services/desk-service.js';
 import type { NotificationService } from './services/notification-service.js';
 import type { RoutineService } from './services/routine-service.js';
 import type { SkillService } from './services/skill-service.js';
+import type { IssueService } from './services/issue-service.js';
 import type { StaffingResolver } from './engine/staffing-resolver.js';
 import type { ReviewPipeline } from './engine/reviews.js';
 import type { ArtifactHarvester } from './engine/harvester.js';
@@ -92,6 +93,7 @@ export const MISSION_QUESTION_REPOSITORY = token<MissionQuestionRepositoryPort>(
 export const LIMIT_REPOSITORY = token<LimitRepositoryPort>('port.LimitRepository');
 export const ROUTINE_REPOSITORY = token<RoutineRepositoryPort>('port.RoutineRepository');
 export const SKILL_REPOSITORY = token<SkillRepositoryPort>('port.SkillRepository');
+export const ISSUE_REPOSITORY = token<IssueRepositoryPort>('port.IssueRepository');
 
 export const ARTIFACT_STORE = token<ArtifactStorePort>('port.ArtifactStore');
 /** Workflow files, read from the project's repositories. */
@@ -176,6 +178,9 @@ export const NOTIFICATION_SERVICE = token<NotificationService>('application.Noti
 export const SKILL_SERVICE = token<SkillService>('application.SkillService');
 /** Skill folders and the content store (P13); rebound by the daemon. */
 export const SKILL_FILES = token<SkillFilesPort>('port.SkillFiles');
+export const ISSUE_SERVICE = token<IssueService>('application.IssueService');
+/** GitHub issues over `gh` (P14); rebound by the daemon. */
+export const ISSUE_TRACKER = token<IssueTrackerPort>('port.IssueTracker');
 
 export const TANDEMISE_SERVICES = token<TandemiseServices>('application.TandemiseServices');
 

@@ -3,7 +3,7 @@ import type {
   ApprovalRepositoryPort, ArtifactRepositoryPort, AssignmentRepositoryPort,
   CheckpointRepositoryPort, DecisionRepositoryPort, EvaluationRepositoryPort,
   EventRepositoryPort, ExecutionTargetRepositoryPort, FeedbackRepositoryPort, IntegrationRepositoryPort,
-  LeaseRepositoryPort, MemberRepositoryPort, MissionCriteriaRepositoryPort, MissionQuestionRepositoryPort, MissionRepositoryPort, LimitRepositoryPort, PersonRepositoryPort, RoutineRepositoryPort, SkillRepositoryPort,
+  LeaseRepositoryPort, MemberRepositoryPort, MissionCriteriaRepositoryPort, MissionQuestionRepositoryPort, MissionRepositoryPort, LimitRepositoryPort, PersonRepositoryPort, RoutineRepositoryPort, SkillRepositoryPort, IssueRepositoryPort,
   RepoRepositoryPort, RoleRepositoryPort, RunInputRepositoryPort,
   RunRepositoryPort, RuntimeProfileRepositoryPort, TaskRepositoryPort, UnitOfWork,
   WorkspaceRepositoryPort,
@@ -49,3 +49,4 @@ export const MISSION_QUESTION_REPOSITORY = token<MissionQuestionRepositoryPort>(
 export const LIMIT_REPOSITORY = token<LimitRepositoryPort>('persistence.LimitRepository');
 export const ROUTINE_REPOSITORY = token<RoutineRepositoryPort>('persistence.RoutineRepository');
 export const SKILL_REPOSITORY = token<SkillRepositoryPort>('persistence.SkillRepository');
+export const ISSUE_REPOSITORY = token<IssueRepositoryPort>('persistence.IssueRepository');

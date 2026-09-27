@@ -1,5 +1,5 @@
 import type {
-  ApprovalId, ArtifactId, CriterionId, FeedbackId, IntegrationId, QuestionId, MemberId, MissionId, PersonId, RepositoryId, RoutineId, RuntimeProfileId,
+  ApprovalId, ArtifactId, CriterionId, FeedbackId, IntegrationId, IssueLinkId, QuestionId, MemberId, MissionId, PersonId, RepositoryId, RoutineId, RuntimeProfileId,
   TaskId, WorkspaceId,
 } from '@tandemise/shared';
 import type {
@@ -62,6 +62,8 @@ export interface TandemiseServices {
   /** Desktop notifications from the Inbox (P16). */
   readonly notifications: import('./services/notification-service.js').NotificationService;
   readonly skills: import('./services/skill-service.js').SkillService;
+  /** GitHub issues in and out (P14). */
+  readonly issues: import('./services/issue-service.js').IssueService;
 }
 
 /** Making a rough request ready to plan (P6). Every write is refused once the mission has left DRAFT. */
@@ -117,7 +119,7 @@ export interface WorkspaceService {
 export interface MissionService {
   list(filter: { workspaceId?: string; status?: string; limit?: number }): readonly MissionSummary[];
   /** `origin.routineId` marks a mission a routine created (P11). */
-  create(caller: Caller, request: CreateMissionRequest, origin?: { routineId?: RoutineId }): Promise<Mission>;
+  create(caller: Caller, request: CreateMissionRequest, origin?: { routineId?: RoutineId; issueLinkId?: IssueLinkId }): Promise<Mission>;
   start(id: MissionId): Promise<Mission>;
   pause(id: MissionId): Promise<Mission>;
   resume(id: MissionId): Promise<Mission>;

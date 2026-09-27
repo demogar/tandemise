@@ -1,0 +1,131 @@
+{
+  "id": "O1",
+  "title": "A labelled issue with a Done-when checklist becomes a queued, ready draft",
+  "ok": true,
+  "checks": [
+    {
+      "label": "Repositories → Issues shows the repository, off",
+      "ok": true,
+      "observed": "Issues\nTurn labelled GitHub issues into missions\nacceptance-project\nOpen issues with the label become draft missions. An issue that lists “Done when” or “Acceptance criteria” is queued, ready to plan; any other waits for you to refine it.\nGitHub repository\nowner/name, as on github.com.\nLabel\nOnly open issues with this label are read.\nCheck every\n5 minutes\n10 minutes\n15 minutes\n30 minutes\n60 minutes\nTandemise asks GitHub through the gh command line tool; nothing is pushed to it.\nWorkflow\nThe proj"
+    },
+    {
+      "label": "switched on: the status line counts linked issues",
+      "ok": true,
+      "observed": "Not checked yet · 0 linked"
+    },
+    {
+      "label": "Check now → \"Last checked just now · 1 linked\"",
+      "ok": true,
+      "observed": "Last checked just now · 1 linked"
+    },
+    {
+      "label": "proof (API): on, example/hello-site, label tandemise, every 10 minutes, P10 desk",
+      "ok": true,
+      "observed": {
+        "enabled": true,
+        "githubRepo": "example/hello-site",
+        "label": "tandemise",
+        "pollMinutes": 10,
+        "closeOnComplete": false,
+        "postComments": true,
+        "workflowPreset": "p10-desk",
+        "lastCheckedAt": "2026-09-27T00:43:27.159Z",
+        "lastError": null
+      }
+    },
+    {
+      "label": "Backlog: the draft with an \"#11\" chip",
+      "ok": true,
+      "observed": "Normal\n#11Offline mode for the hello page\nGitHub issue #11 in example/hello-site, opened by @sam: https://github.com/example/hello-site/issues/11 The request as the issue's author wrote it: Offline mode for the hello page Visitors on a train lose the page. ## Done when - [ ] The page loads with no network - [ ] It says hello to the visitor - [ ] It shows when it was last updated\nReady\nQueued · 1/1\nUrgent\nHigh\nNormal\nLow\nRemove from queue"
+    },
+    {
+      "label": "…Ready and Queued",
+      "ok": true,
+      "observed": {
+        "title": "Offline mode for the hello page",
+        "priority": "Normal",
+        "chip": "Normal",
+        "readiness": "Ready",
+        "queue": "Queued · 1/1",
+        "subtitle": "GitHub issue #11 in example/hello-site, opened by @sam: https://github.com/example/hello-site/issues/11 The request as the issue's author wrote it: Offline mode for the hello page Visitors on a train lose the page. ## Done when - [ ] The page loads with no network - [ ] It says hello to the visitor - [ ] It shows when it was last updated",
+        "selected": true
+      }
+    },
+    {
+      "label": "mission header: \"From issue #11\"",
+      "ok": true,
+      "observed": "msn_01m3g5271h9v4qsk1h5f\nFrom issue #11\nMissions\np10-desk\nOffline mode for the hello page\nGitHub issue #11 in example/hello-site, opened by @sam: https://github.com/example/hello-site/issues/11 The request as the issue's author wrote it: Offline mode for the hello page Visitors on a train lose the page. ## Done when - [ ] The page loads with no network - [ ] It says hello to the visitor - [ ] It s"
+    },
+    {
+      "label": "Done when lists U1–U3 from the checklist",
+      "ok": true,
+      "observed": "Done when\n3 criteria\nU1\nThe page loads with no network\nFrom the GitHub issue\nAccepted\nU2\nIt says hello to the visitor\nFrom the GitHub issue\nAccepted\nU3\nIt shows when it was last updated\nFrom the GitHub issue\nAccepted\nAdd"
+    },
+    {
+      "label": "each line says it came from the GitHub issue",
+      "ok": true,
+      "observed": "Done when\n3 criteria\nU1\nThe page loads with no network\nFrom the GitHub issue\nAccepted\nU2\nIt says hello to the visitor\nFrom the GitHub issue\nAccepted\nU3\nIt shows when it was last updated\nFrom the GitHub issue\nAccepted\nAdd"
+    },
+    {
+      "label": "the goal names the issue and its author",
+      "ok": true,
+      "observed": "msn_01m3g5271h9v4qsk1h5f\nFrom issue #11\nMissions\np10-desk\nOffline mode for the hello page\nGitHub issue #11 in example/hello-site, opened by @sam: https://github.com/example/hello-site/issues/11 The request as the issue's author wrote it: Offline mode for the hello page Visitors on a train lose the page. ## Done when - [ ] The page loads with no network - [ ] It says hello to the visitor - [ ] It shows when it was last updated\nDraft\nPlan\nFeed\nPlan\nTimeline\nArtifacts\nChecks & Gates\nMetrics\nGet it ready\nReady to plan\n\nThis request already says what done means. Refine it if you want the product ag"
+    },
+    {
+      "label": "proof (fake gh): one comment on #11, \"Queued in Tandemise — 3 criteria.\"",
+      "ok": true,
+      "observed": [
+        {
+          "id": 9001,
+          "body": "<!-- tandemise:queued -->\nQueued in Tandemise — 3 criteria.\n\n| Key | Done when |\n|---|---|\n| U1 | The page loads with no network |\n| U2 | It says hello to the visitor |\n| U3 | It shows when it was last updated |\n\nTandemise plans this when it reaches the front of the backlog, and reports back here when the work is done.",
+          "user": {
+            "login": "hello-site-bot"
+          }
+        }
+      ]
+    },
+    {
+      "label": "proof (fake gh): read with --label tandemise --state open",
+      "ok": true,
+      "observed": [
+        {
+          "args": [
+            "issue",
+            "list",
+            "--repo",
+            "example/hello-site",
+            "--label",
+            "tandemise",
+            "--state",
+            "open",
+            "--limit",
+            "100",
+            "--json",
+            "number,title,body,url,updatedAt,labels,author"
+          ],
+          "at": "2026-09-27T00:43:27.145Z"
+        },
+        {
+          "args": [
+            "api",
+            "user"
+          ],
+          "at": "2026-09-27T00:43:27.217Z"
+        },
+        {
+          "args": [
+            "api",
+            "repos/example/hello-site/issues/11/comments?per_page=100"
+          ],
+          "at": "2026-09-27T00:43:27.281Z"
+        }
+      ]
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "O1-issues-settings.png",
+    "O1-backlog.png",
+    "O1-mission.png"
+  ]
+}

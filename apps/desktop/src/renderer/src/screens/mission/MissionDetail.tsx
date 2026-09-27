@@ -15,7 +15,7 @@ import { ArtifactsPane } from './ArtifactsPane.js';
 import { ChecksPane } from './ChecksPane.js';
 import { MetricsPane } from './MetricsPane.js';
 import { isApprovalForMember, isApprovalWaitingOnMember, isHumanTaskForMember, isPlanUnstarted, planStanding } from '@tandemise/api-contract/for-me';
-import { useApprovals, useDaemonMutation, useMission, useMissionRefinement, useMyMemberId, useRoutines } from '../../lib/queries.js';
+import { useApprovals, useDaemonMutation, useMission, useMissionRefinement, useMyMemberId, useIssues, useRoutines } from '../../lib/queries.js';
 import { missionTone, pluralize } from '../../lib/format.js';
 import { describeError } from '../../lib/daemon.js';
 import { clearMissionNotice, useMissionNotice } from '../../lib/notices.js';
@@ -78,6 +78,7 @@ export function MissionDetail({ id, tab }: { id: string; tab: MissionTab }): JSX
           <>
             <IdChip id={detail.mission.id} />
             <FromRoutine routineId={detail.mission.routineId ?? null} />
+            <FromIssue missionId={detail.mission.id} linkId={detail.mission.issueLinkId ?? null} />
           </>
         }
         subtitle={detail.mission.goal}
@@ -408,6 +409,26 @@ function LimitCardPanel({ approvalId }: { approvalId: string | null }): JSX.Elem
     <div style={{ margin: 'var(--s3) var(--s7) 0' }} aria-label="Limit reached">
       <ApprovalCard view={view} compact />
     </div>
+  );
+}
+
+/** "From issue #12" on a mission a GitHub issue created (P14); opens the issue in the browser. */
+function FromIssue({ missionId, linkId }: { missionId: string; linkId: string | null }): JSX.Element | null {
+  const issues = useIssues();
+  if (linkId === null) return null;
+  const link = issues.data?.links.find((l) => l.id === linkId && l.missionId === missionId);
+  if (link === undefined) return null;
+  return (
+    <button
+      type="button"
+      className="chip chip--muted"
+      aria-label={`From issue #${link.number}`}
+      title={`Open ${link.githubRepo}#${link.number} on GitHub`}
+      onClick={() => void window.tandemise.openExternal(link.url)}
+    >
+      <Icon name="externalLink" size={11} />
+      From issue #{link.number}
+    </button>
   );
 }
 

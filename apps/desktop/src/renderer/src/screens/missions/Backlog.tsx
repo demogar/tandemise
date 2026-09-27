@@ -5,7 +5,7 @@ import type { MissionPriority } from '@tandemise/domain';
 import type { BacklogItemView, BacklogView, UpdateMissionRequest } from '@tandemise/api-contract';
 import { Icon } from '../../components/Icon.js';
 import { Empty, ErrorState, Segmented, SkeletonList } from '../../components/primitives.js';
-import { keys, useBacklog, useDaemonMutation } from '../../lib/queries.js';
+import { keys, useBacklog, useDaemonMutation, useIssues } from '../../lib/queries.js';
 import { useWorkspaceId } from '../../lib/workspace.js';
 import { isTypingTarget, useListCursor } from '../../lib/keyboard.js';
 import { MISSION_PRIORITIES, priorityLabel } from '../../lib/domain.js';
@@ -175,6 +175,7 @@ function BacklogRow({
       <PriorityChip priority={item.priority} />
       <div className="list__main">
         <div className="list__title truncate">
+          <IssueChip missionId={mission.id} linkId={mission.issueLinkId ?? null} />
           <Link href={`/missions/${mission.id}`}>{mission.title}</Link>
         </div>
         <div className="list__subtitle truncate" title={readiness}>{readiness}</div>
@@ -210,6 +211,26 @@ function BacklogRow({
         </button>
       </div>
     </div>
+  );
+}
+
+/** "#12" before a draft that came from a GitHub issue (P14); opens the issue. */
+function IssueChip({ missionId, linkId }: { missionId: string; linkId: string | null }): JSX.Element | null {
+  const issues = useIssues();
+  if (linkId === null) return null;
+  const link = issues.data?.links.find((l) => l.id === linkId && l.missionId === missionId);
+  if (link === undefined) return null;
+  return (
+    <button
+      type="button"
+      className="chip chip--muted"
+      style={{ marginRight: 'var(--s2)' }}
+      aria-label={`Issue #${link.number}`}
+      title={`From ${link.githubRepo}#${link.number}. Open it on GitHub`}
+      onClick={(event) => { event.stopPropagation(); void window.tandemise.openExternal(link.url); }}
+    >
+      #{link.number}
+    </button>
   );
 }
 

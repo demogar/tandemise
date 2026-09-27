@@ -33,6 +33,7 @@ export type RoutineId = Brand<string, 'RoutineId'>;
 export type RoutineRunId = Brand<string, 'RoutineRunId'>;
 export type SkillId = Brand<string, 'SkillId'>;
 export type SkillVersionId = Brand<string, 'SkillVersionId'>;
+export type IssueLinkId = Brand<string, 'IssueLinkId'>;
 
 const ALPHABET = '0123456789abcdefghjkmnpqrstvwxyz';
 
@@ -126,6 +127,7 @@ export const ids = {
   routineRun: () => newId<'RoutineRunId'>('rtr'),
   skill: () => newId<'SkillId'>('skl'),
   skillVersion: () => newId<'SkillVersionId'>('skv'),
+  issueLink: () => newId<'IssueLinkId'>('isl'),
 } as const;
 
 /** Cast a persisted string back to its branded type at a trust boundary. */

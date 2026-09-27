@@ -1,0 +1,68 @@
+{
+  "id": "O2",
+  "title": "A labelled issue without criteria waits as \"Needs refinement\"",
+  "ok": true,
+  "checks": [
+    {
+      "label": "Check now → \"… · 2 linked\"",
+      "ok": true,
+      "observed": "Last checked just now · 2 linked"
+    },
+    {
+      "label": "Backlog: \"#12\", \"Needs refinement\", \"Not queued\"",
+      "ok": true,
+      "observed": {
+        "row": {
+          "title": "Make the footer friendlier",
+          "priority": "Normal",
+          "chip": "Normal",
+          "readiness": "Needs refinement",
+          "queue": "Not queued",
+          "subtitle": "Add at least one Done-when criterion to plan",
+          "selected": false
+        },
+        "rowText": "Normal\n#12Make the footer friendlier\nAdd at least one Done-when criterion to plan\nNeeds refinement\nNot queued\nUrgent\nHigh\nNormal\nLow\nAdd to queue"
+      }
+    },
+    {
+      "label": "proof (API): a DRAFT, not queued, no criteria",
+      "ok": true,
+      "observed": {
+        "id": "msn_01m3g53cn1nvasgr29k1",
+        "workspaceId": "ws_01m3g521jkk7r1rw0cgs",
+        "repositoryId": "repo_01m3g521n1c7zvsn0bpq",
+        "title": "Make the footer friendlier",
+        "goal": "GitHub issue #12 in example/hello-site, opened by @kim: https://github.com/example/hello-site/issues/12\n\nThe request as the issue's author wrote it:\n\nMake the footer friendlier\n\nThe footer reads like a legal notice. Ideas welcome.",
+        "constraints": [],
+        "successCriteria": [],
+        "status": "DRAFT",
+        "autonomy": "balanced",
+        "workflowPreset": "p10-desk",
+        "workflowInputs": {},
+        "integrationBranch": "tandemise/make-the-footer-friendlier/integration",
+        "baseBranch": "main",
+        "statusReason": null,
+        "createdBy": "mem_01m3g521jmhc7bv1xzb3",
+        "staffing": {},
+        "priority": "normal",
+        "rank": 2,
+        "queuedAt": null,
+        "limits": null,
+        "routineId": null,
+        "issueLinkId": "isl_01m3g53cn1nvasgr29k0",
+        "createdAt": "2026-09-27T00:44:05.665Z",
+        "updatedAt": "2026-09-27T00:44:05.665Z",
+        "startedAt": null,
+        "completedAt": null
+      }
+    },
+    {
+      "label": "proof (fake gh): nothing posted on #12",
+      "ok": true
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "O2-needs-refinement.png"
+  ]
+}

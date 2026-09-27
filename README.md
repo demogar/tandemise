@@ -98,6 +98,10 @@ Bring the skills you already use (`~/.claude/skills`, a folder, a git repository
 and pin them to the roles that need them; every run gets exactly the version it
 was pinned to — see [Giving your agents your skills](docs/guides/skills.md).
 
+Label a GitHub issue `tandemise` and it becomes a draft mission (queued when it
+says what "done" means); when the work ships, the issue gets the criteria table
+and, if you want, is closed — see [GitHub issues in and out](docs/guides/github-issues.md).
+
 ## Architecture
 
 ```
@@ -193,6 +197,7 @@ Task-oriented, one per concept:
 | [Notifications](docs/guides/notifications.md) | hear about new Inbox items while the window is in the background |
 | [About and diagnostics](docs/guides/about-and-diagnostics.md) | see which app and daemon build is running, and copy diagnostics for a bug report |
 | [Giving your agents your skills](docs/guides/skills.md) | import the skills I already use and pin them to roles and steps |
+| [GitHub issues in and out](docs/guides/github-issues.md) | turn labelled issues into missions and report back on them |
 | [Workflows](docs/WORKFLOWS.md) | write my own process as a file, and see which gate facts exist |
 
 ## Repository layout

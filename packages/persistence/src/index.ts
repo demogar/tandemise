@@ -47,4 +47,5 @@ export { SqliteMissionQuestionRepository } from './repositories/mission-question
 export { SqliteLimitRepository } from './repositories/limit-repository.js';
 export { SqliteRoutineRepository } from './repositories/routine-repository.js';
 export { SqliteSkillRepository } from './repositories/skill-repository.js';
+export { SqliteIssueRepository } from './repositories/issue-repository.js';
 export { createUnitOfWork } from './repositories/unit-of-work.js';

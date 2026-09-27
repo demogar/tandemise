@@ -1,8 +1,11 @@
 import type {
   ApprovalId, ArtifactId, CriterionId, EventId, QuestionId, FeedbackId, MemberId, MissionId, PersonId, RepositoryId, RunId, RuntimeProfileId,
-  ExecutionTargetId, IntegrationId, RoutineId, SkillId, TaskId, Timestamp, WorkerAssignmentId, WorkspaceId,
+  ExecutionTargetId, IntegrationId, IssueLinkId, RoutineId, SkillId, TaskId, Timestamp, WorkerAssignmentId, WorkspaceId,
 } from '@tandemise/shared';
 import type { Mission, MissionDraft, MissionProgress, MissionStatus } from '../entities/mission.js';
+import type {
+  IssueComment, IssueCommentKind, IssueLink, IssueLinkDraft, IssueLinkPatch, IssueSyncPatch, IssueSyncSettings,
+} from '../entities/issue.js';
 import type { MissionTask, TaskStatus } from '../entities/task.js';
 import type { Run, RunStatus, RunUsage, Checkpoint } from '../entities/run.js';
 import type { ArtifactManifest, ArtifactType } from '../entities/artifact.js';
@@ -284,6 +287,12 @@ export interface MissionCriteriaRepositoryPort {
   propose(missionId: MissionId, refinementArtifactId: ArtifactId, statements: readonly string[]): readonly MissionCriterion[];
   /** Accepts a proposal (it takes the next `U<n>` key, optionally reworded) or rejects it. */
   decide(id: CriterionId, verdict: 'accept' | 'reject', options: { readonly statement?: string; readonly decidedBy: string }): MissionCriterion;
+  /**
+   * Supersedes the live accepted criteria recorded by `decidedBy` and adds
+   * these as the next `U<n>`, in one transaction (P14: an issue edited before
+   * planning replaces only the lines that came from the issue).
+   */
+  replaceUserCriteriaBy(missionId: MissionId, decidedBy: string, statements: readonly string[]): readonly MissionCriterion[];
 }
 
 /** Questions a refinement pass asked, and their answers (P6). */
@@ -369,4 +378,26 @@ export interface SkillRepositoryPort {
   versions(skillId: SkillId): readonly SkillVersion[];
   /** Whether any version, in any project, still names this content hash. */
   hashInUse(hash: string): boolean;
+}
+
+/**
+ * GitHub issue sync (P14): per-repository settings, one link per issue read,
+ * and the comments Tandemise wrote on each (by kind, with the body last written).
+ */
+export interface IssueRepositoryPort {
+  settings(repositoryId: RepositoryId): IssueSyncSettings | undefined;
+  saveSettings(repositoryId: RepositoryId, workspaceId: WorkspaceId, patch: IssueSyncPatch): IssueSyncSettings;
+  listSettings(workspaceId: WorkspaceId): readonly IssueSyncSettings[];
+  /** Every repository with issue sync on, in any project. */
+  listEnabled(): readonly IssueSyncSettings[];
+  getLink(id: IssueLinkId): IssueLink | undefined;
+  findLink(repositoryId: RepositoryId, number: number): IssueLink | undefined;
+  listLinks(filter: { readonly workspaceId?: WorkspaceId; readonly repositoryId?: RepositoryId }): readonly IssueLink[];
+  /** Written before its mission (status `pending`); UNIQUE (repository, number) makes a second one fail. */
+  createLink(draft: IssueLinkDraft): IssueLink;
+  updateLink(id: IssueLinkId, patch: IssueLinkPatch): IssueLink;
+  comments(linkId: IssueLinkId): readonly IssueComment[];
+  saveComment(linkId: IssueLinkId, kind: IssueCommentKind, commentId: string, body: string): IssueComment;
+  /** Forgets a stored comment (tests use it to simulate a crash between posting and storing). */
+  dropComment(linkId: IssueLinkId, kind: IssueCommentKind): void;
 }

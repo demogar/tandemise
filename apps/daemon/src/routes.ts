@@ -11,6 +11,7 @@ import {
   addCriterionRequest, answerQuestionRequest, criterionVerdictRequest, updateMissionRequest, workspaceUsageQuery,
   advanceClockRequest, createRoutineRequest, updateRoutineRequest, importSkillRequest, previewSkillRequest,
   takeNotificationsRequest, updateNotificationPreferencesRequest,
+  updateIssueSettingsRequest,
 } from '@tandemise/api-contract';
 import { normalizeLimits } from '@tandemise/domain';
 import type { TandemiseServices } from '@tandemise/application';
@@ -125,6 +126,12 @@ export function buildRouter(services: TandemiseServices, options: { readonly tes
   r.patch('/v1/routines/:id', async (ctx) => services.routines.update(asId(ctx.params.id!), await ctx.body(updateRoutineRequest)));
   r.delete('/v1/routines/:id', (ctx) => services.routines.remove(asId(ctx.params.id!)));
   r.post('/v1/routines/:id/run-now', (ctx) => services.routines.runNow(ctx.caller, asId(ctx.params.id!)));
+
+  // GitHub issues in and out (P14).
+  r.get('/v1/workspaces/:id/issues', (ctx) => services.issues.overview(asId(ctx.params.id!)));
+  r.patch('/v1/repositories/:id/issues', async (ctx) =>
+    services.issues.configure(ctx.caller, asId(ctx.params.id!), await ctx.body(updateIssueSettingsRequest)));
+  r.post('/v1/repositories/:id/issues/check', (ctx) => services.issues.checkNow(ctx.caller, asId(ctx.params.id!)));
 
   // Skills (P13): the project's library, imported by content hash and pinned per run.
   r.get('/v1/workspaces/:id/skills', (ctx) => services.skills.list(asId(ctx.params.id!)));

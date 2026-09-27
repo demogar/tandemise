@@ -3,7 +3,7 @@ import type {
   MissionCriterion, MissionQuestion, MissionQuestionRepositoryPort, MissionRepositoryPort, RepoRepositoryPort, Repository,
   RuntimeProfile, RuntimeProfileRepositoryPort, UnitOfWork, Workspace, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
-import { ARTIFACT_OUT_DIR, AUTONOMY_DECIDER, CORE_CAPABILITIES, RUNTIME_ACTOR, SYSTEM_ACTOR } from '@tandemise/domain';
+import { ARTIFACT_OUT_DIR, AUTONOMY_DECIDER, ISSUE_CRITERIA_AUTHOR, CORE_CAPABILITIES, RUNTIME_ACTOR, SYSTEM_ACTOR } from '@tandemise/domain';
 import type {
   AddCriterionRequest, AnswerQuestionRequest, CriterionVerdictRequest, RefinementCriterionView, RefinementQuestionView, RefinementView,
 } from '@tandemise/api-contract';
@@ -466,7 +466,7 @@ function count(n: number, one: string, many: string): string {
 function criterionView(c: MissionCriterion): RefinementCriterionView {
   const origin = c.refinementArtifactId !== null || c.status !== 'accepted' || /^P\d+$/.test(c.key)
     ? 'refinement'
-    : c.decidedBy !== null ? 'added' : 'request';
+    : c.decidedBy === ISSUE_CRITERIA_AUTHOR ? 'issue' : c.decidedBy !== null ? 'added' : 'request';
   return {
     id: c.id,
     key: c.key,

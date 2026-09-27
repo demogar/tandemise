@@ -1,4 +1,4 @@
-import type { MissionId, RepositoryId, RoutineId, TaskId, WorkspaceId, Timestamp } from '@tandemise/shared';
+import type { IssueLinkId, MissionId, RepositoryId, RoutineId, TaskId, WorkspaceId, Timestamp } from '@tandemise/shared';
 import type { Capability } from '../capability.js';
 import type { RoleStaffing } from '../staffing.js';
 import type { MissionPriority } from './backlog.js';
@@ -99,6 +99,8 @@ export interface Mission {
   readonly limits: readonly Limit[] | null;
   /** The routine that created it (P11); null for a mission a person created. */
   readonly routineId: RoutineId | null;
+  /** The GitHub issue it was created from (P14); absent or null for any other mission. */
+  readonly issueLinkId?: IssueLinkId | null;
   readonly createdAt: Timestamp;
   readonly updatedAt: Timestamp;
   readonly startedAt: Timestamp | null;
@@ -128,6 +130,8 @@ export interface MissionDraft {
   readonly limits?: readonly Limit[] | null;
   /** Set when a routine creates it (P11). */
   readonly routineId?: RoutineId | null;
+  /** Set when an issue creates it (P14). */
+  readonly issueLinkId?: IssueLinkId | null;
 }
 
 /** Aggregate counters projected for the mission list, computed not stored. */

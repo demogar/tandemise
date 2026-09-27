@@ -144,3 +144,12 @@ Pinned skills reach the steps of a mission, not the planner or the refinement
 run that happen before it: those have no run record to pin a version on. A
 skill that should shape the plan itself has to be said in the mission's request
 for now.
+
+## GitHub issues are polled, and only the newest 100 are read
+
+Issue sync asks GitHub through `gh` on a timer (every 5 to 60 minutes, or
+**Check now**); there is no webhook, so a labelled issue can take up to one
+interval to appear. Each check reads the newest 100 open issues with the label;
+an older one beyond that is picked up only once newer ones are closed or
+unlabelled. An issue whose label is removed is no longer watched, so a later
+close of it is not noticed.

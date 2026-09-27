@@ -1,0 +1,79 @@
+{
+  "id": "O3",
+  "title": "The mission completes: the issue gets the criteria table and is closed",
+  "ok": true,
+  "checks": [
+    {
+      "label": "proof (API): close on completion is on",
+      "ok": true,
+      "observed": {
+        "enabled": true,
+        "githubRepo": "example/hello-site",
+        "label": "tandemise",
+        "pollMinutes": 10,
+        "closeOnComplete": true,
+        "postComments": true,
+        "workflowPreset": "p10-desk",
+        "lastCheckedAt": "2026-09-27T00:44:05.667Z",
+        "lastError": null
+      }
+    },
+    {
+      "label": "the mission completes",
+      "ok": true,
+      "observed": "COMPLETE"
+    },
+    {
+      "label": "one completion comment: \"Done in Tandemise — N of N criteria verified.\"",
+      "ok": true,
+      "observed": "<!-- tandemise:completed -->\nDone in Tandemise — 4 of 4 criteria verified.\n\n| Key | Criterion | Result |\n|---|---|---|\n| U1 | The page loads with no network | Verified |\n| U2 | It says hello to the visitor | Verified |\n| U3 | It shows when it was last updated | Verified |\n| AC1 | Scripted criterion 1: the hello page greets the visitor by name. | Verified |\n\nClosing this issue: every criterion was verified."
+    },
+    {
+      "label": "the table lists U1–U3 as Verified",
+      "ok": true,
+      "observed": "<!-- tandemise:completed -->\nDone in Tandemise — 4 of 4 criteria verified.\n\n| Key | Criterion | Result |\n|---|---|---|\n| U1 | The page loads with no network | Verified |\n| U2 | It says hello to the visitor | Verified |\n| U3 | It shows when it was last updated | Verified |\n| AC1 | Scripted criterion 1: the hello page greets the visitor by name. | Verified |\n\nClosing this issue: every criterion was verified."
+    },
+    {
+      "label": "and says it is closing the issue",
+      "ok": true,
+      "observed": "<!-- tandemise:completed -->\nDone in Tandemise — 4 of 4 criteria verified.\n\n| Key | Criterion | Result |\n|---|---|---|\n| U1 | The page loads with no network | Verified |\n| U2 | It says hello to the visitor | Verified |\n| U3 | It shows when it was last updated | Verified |\n| AC1 | Scripted criterion 1: the hello page greets the visitor by name. | Verified |\n\nClosing this issue: every criterion was verified."
+    },
+    {
+      "label": "proof (fake gh): exactly one `gh issue close 11 --repo example/hello-site`",
+      "ok": true,
+      "observed": [
+        {
+          "args": [
+            "issue",
+            "close",
+            "11",
+            "--repo",
+            "example/hello-site"
+          ],
+          "at": "2026-09-27T00:44:56.145Z"
+        }
+      ]
+    },
+    {
+      "label": "proof (fake gh): two comments on #11 in all (queued, completed)",
+      "ok": true,
+      "observed": [
+        "<!-- tandemise:queued -->",
+        "<!-- tandemise:completed -->"
+      ]
+    },
+    {
+      "label": "timeline: \"Closed GitHub issue #11: every criterion was verified.\"",
+      "ok": true,
+      "observed": "Tandemise\nAcceptance\n1 repository\nHome\nMissions\nInbox\nArtifacts\nACCEPTANCE\nRepositories\nTeam\nSkills\nRuntimes\nIntegrations\nAPP\nSettings\nDaemon connected · 52817\nmsn_01m3g5271h9v4qsk1h5f\nFrom issue #11\nMissions\np10-desk\nOffline mode for the hello page\nGitHub issue #11 in example/hello-site, opened by @sam: https://github.com/example/hello-site/issues/11 The request as the issue's author wrote it: Offline mode for the hello page Visitors on a train lose the page. ## Done when - [ ] The page loads with no network - [ ] It says hello to the visitor - [ ] It shows when it was last updated\nComplete\nFeed\nPlan\n3\nTimeline\nArtifacts\n4\nChecks & Gates\nMetrics\n36 events · latest just now\nFollowing\nRaw log\nMission created: GitHub issue #11 in example/hello-site, opened by @sam: https://github.com/example/hello-site/issues/11 The request as the issue's author wrote it: Offline mode for the hello page Visitors on a train lose the page. ## Done when - [ ] The page loads with no network - [ ] It says hello to the visitor … (+39 chars)\n07:43:27 PM\n·\nYou\nCreated from GitHub issue #11 by @sam: https://github.com/example/hello-site/issues/11. Its Done-when list gave 3 criteria, so it is queued.\n07:43:27 PM\n·\nTandemise\nMission moved to Planning\nPlanning the mission.\n07:44:41 PM\n·\nTandemise\nRunning the project's own \"p10-desk\" workflow, from /tmp/tdm-p14/project/.tandemise/workflows/p10-desk.yaml.\n07:44:41 PM\n·\nTandemise\nWaiting for your approval\nThe mission is paused until you decide.\n07:44:41 PM\n·\n"
+    },
+    {
+      "label": "nothing more is written on later passes",
+      "ok": true
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "O3-timeline-closed.png"
+  ]
+}

@@ -27,12 +27,13 @@ import {
   integrationsCoreModule,
   BACKGROUND_PROCESS_LAUNCHER, COMMAND_EXECUTOR as TOOL_COMMAND_EXECUTOR,
 } from '@tandemise/integrations-core';
-import { githubIntegrationModule } from '@tandemise/integration-github';
+import { GhIssueTracker, githubIntegrationModule } from '@tandemise/integration-github';
 import { mcpIntegrationModule } from '@tandemise/integration-mcp';
 import { browserIntegrationModule } from '@tandemise/browser';
 import { createApplicationModule, createServices, SCHEDULER, type TandemiseServices,
   WORKFLOW_SOURCE,
   SKILL_FILES,
+  ISSUE_TRACKER,
 } from '@tandemise/application';
 import * as applicationTokens from '@tandemise/application';
 
@@ -145,6 +146,10 @@ export function bootstrap(config: DaemonConfig, options: { readonly localPersonN
   // daemon; the application only ever sees bytes and hashes.
   container.rebind(SKILL_FILES, (r) =>
     new DaemonSkillFiles(config.paths.skills, config.skillsDiscoverRoot, r.resolve(LOGGER).child({ component: 'skills' })), { source: 'bootstrap' });
+
+  // GitHub issues (P14) go through the same `gh` and command executor as the
+  // GitHub tools, so `gh` is found on the daemon's own PATH.
+  container.rebind(ISSUE_TRACKER, (r) => new GhIssueTracker(r.resolve(TOOL_COMMAND_EXECUTOR)), { source: 'bootstrap' });
 
   const services = createServices(container);
 

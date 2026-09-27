@@ -1,5 +1,5 @@
 import { TandemiseError } from '@tandemise/shared';
-import type { ToolContext, ToolExecResult } from '@tandemise/integrations-core';
+import type { CommandExecutor, ToolExecResult } from '@tandemise/integrations-core';
 import type { z } from 'zod';
 
 /** `gh` is chatty on slow networks; a tool call should not outlive a human's patience. */
@@ -12,6 +12,16 @@ export interface GhOptions {
 }
 
 /**
+ * What running `gh` needs: a tool call's context satisfies it, and so does
+ * issue sync (P14), which runs outside any agent's tool call.
+ */
+export interface GhContext {
+  readonly exec: CommandExecutor;
+  readonly workingDirectory?: string;
+  readonly signal?: AbortSignal;
+}
+
+/**
  * Runs the `gh` CLI through the injected executor (MVP.md §12.5).
  *
  * Tandemise stores no GitHub credential: `gh` already holds an authenticated
@@ -21,16 +31,16 @@ export interface GhOptions {
  * something a person can act on.
  */
 export async function gh(
-  ctx: ToolContext,
+  ctx: GhContext,
   args: readonly string[],
   options: GhOptions = {},
 ): Promise<ToolExecResult> {
   const result = await ctx.exec.run({
     command: 'gh',
     args,
-    cwd: ctx.workingDirectory,
+    ...(ctx.workingDirectory === undefined ? {} : { cwd: ctx.workingDirectory }),
     timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
-    signal: ctx.signal,
+    ...(ctx.signal === undefined ? {} : { signal: ctx.signal }),
     // `GH_PROMPT_DISABLED` keeps gh from blocking on a TTY it does not have.
     env: { GH_PROMPT_DISABLED: '1', GH_NO_UPDATE_NOTIFIER: '1' },
   });
@@ -41,7 +51,7 @@ export async function gh(
 
 /** Runs `gh ... --json f1,f2` and validates the response against a schema. */
 export async function ghJson<T>(
-  ctx: ToolContext,
+  ctx: GhContext,
   args: readonly string[],
   schema: z.ZodType<T>,
   options: GhOptions = {},
