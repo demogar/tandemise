@@ -29,6 +29,10 @@ import { versionLines } from '../support/artifact-versions.js';
 import { currentHandoff, isPlanAsking, isTaskAsking, primaryArtifact } from '../support/handoff-rules.js';
 import { resolveChanges, toFeedbackView } from '../support/feedback-view.js';
 import { missionTakesRounds } from '../support/feedback-rules.js';
+import { intakeArtifactFor, missionUploads, uploadFilename } from '../planning/intake.js';
+
+/** The reason a SKIPPED placeholder carries (spec A2), which is what marks it as one. */
+const COVERED_PREFIX = 'Covered by your upload:';
 
 /** Where a task that carries an in-round note has not started that round's pass yet. */
 const ROUND_NOT_RUN: readonly MissionTask['status'][] = ['READY', 'PENDING'];
@@ -399,7 +403,34 @@ export class ProjectionServiceImpl implements ProjectionService {
         ? null
         : { summary: this.#planSummary(mission, tasks), tasks: asPlannedTasks(tasks) },
       planIssues: this.#planIssues(mission, tasks),
+      uploads: this.#uploads(id),
     };
+  }
+
+  /** The pinned uploads and what intake made of each, if anything yet (spec A7). */
+  #uploads(id: MissionId): NonNullable<MissionDetail['uploads']> {
+    const artifacts = this.deps.artifacts.listByMission(id);
+    return missionUploads(artifacts).map((evidence) => ({
+      evidenceId: evidence.id,
+      filename: uploadFilename(evidence),
+      mediaType: evidence.mediaType,
+      refs: evidence.sourceRefs,
+      intakeArtifactId: intakeArtifactFor(evidence, artifacts)?.id ?? null,
+    }));
+  }
+
+  /**
+   * The upload that stands in for a SKIPPED placeholder, computed on read
+   * (ruling 3): its reason marks it as one, and the intake artifact of its
+   * output type says which upload. Anything else is covered by nothing.
+   */
+  #coveredBy(task: MissionTask, intake: ReadonlyMap<string, { artifactId: string; filename: string }>): TaskView['coveredBy'] {
+    if (task.status !== 'SKIPPED' || !(task.statusReason ?? '').startsWith(COVERED_PREFIX)) return null;
+    for (const type of task.expectedOutputs) {
+      const found = intake.get(type);
+      if (found !== undefined) return found;
+    }
+    return null;
   }
 
   async missionTasks(id: MissionId): Promise<readonly TaskView[]> {
@@ -443,6 +474,17 @@ export class ProjectionServiceImpl implements ProjectionService {
     const pending = tasks.find((t) => t.status === 'PENDING');
     const context = pending === undefined ? undefined : this.#staffingContext(pending);
     const notesByTask = groupBy(this.deps.feedback.listByMission(mission.id), (i: FeedbackItem) => i.taskId);
+    // What intake made, by type, read only when a placeholder can use it.
+    const intakeByType = new Map<string, { artifactId: string; filename: string }>();
+    if (tasks.some((t) => t.status === 'SKIPPED')) {
+      const artifacts = this.deps.artifacts.listByMission(mission.id);
+      for (const evidence of missionUploads(artifacts)) {
+        const intake = intakeArtifactFor(evidence, artifacts);
+        if (intake !== undefined && !intakeByType.has(intake.type)) {
+          intakeByType.set(intake.type, { artifactId: intake.id, filename: uploadFilename(evidence) });
+        }
+      }
+    }
     // Why each flagged task stands out, read from its latest flag; the log is scanned only when something is flagged.
     const flags = new Map<string, TaskView['attention']>();
     if (tasks.some((t) => t.needsAttention === true)) {
@@ -496,6 +538,7 @@ export class ProjectionServiceImpl implements ProjectionService {
         feedback: (notesByTask.get(task.id) ?? []).map((i) => toFeedbackView(this.deps, i)),
         attention: task.needsAttention === true ? flags.get(task.id) ?? { kind: 'changes_requested', upstream: null, note: '' } : null,
         watch: this.deps.liveness?.watchOf(task, latestRun) ?? null,
+        coveredBy: this.#coveredBy(task, intakeByType),
       };
     });
   }
@@ -586,7 +629,15 @@ export class ProjectionServiceImpl implements ProjectionService {
    */
   #planIssues(mission: Mission, tasks: readonly MissionTask[]): readonly PlanValidationIssue[] {
     if (tasks.length === 0) return [];
-    const validated = validateTaskGraph(tasks, this.deps.roles.list(mission.workspaceId));
+    // An intake artifact is on the mission before any task runs, and a dependent
+    // reads it through the latest-of-type fallback: for "is this input
+    // available", it is a producer (spec A2).
+    const artifacts = this.deps.artifacts.listByMission(mission.id);
+    const preexisting = missionUploads(artifacts).flatMap((evidence) => {
+      const intake = intakeArtifactFor(evidence, artifacts);
+      return intake === undefined ? [] : [{ id: intake.id, type: intake.type }];
+    });
+    const validated = validateTaskGraph(tasks, this.deps.roles.list(mission.workspaceId), preexisting);
     return validated.ok ? [] : validated.error;
   }
 

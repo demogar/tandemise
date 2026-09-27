@@ -10,7 +10,8 @@ import type {
 } from '@tandemise/api-contract';
 import type { Clock, IssueLinkId, Logger, MissionId, RepositoryId, RoutineId, TaskId } from '@tandemise/shared';
 import { TandemiseError, asId, ids, slugify, summarize } from '@tandemise/shared';
-import type { FeedbackService, MissionService, PlanningService, ProjectionService } from '../services.js';
+import type { ContributionService, FeedbackService, MissionService, PlanningService, PinnedContribution, ProjectionService } from '../services.js';
+import { ContributionError } from './contribution-service.js';
 import type { SchedulerService } from '../engine/scheduler.js';
 import type { EventRecorder, EventScope } from '../support/event-recorder.js';
 import type { RuntimeOverrides } from '../support/runtime-overrides.js';
@@ -68,6 +69,8 @@ export interface MissionDeps {
   readonly log: Logger;
   /** The Done-when ledger; the person's lines become U1…Un at creation. Optional for older harnesses. */
   readonly criteria?: MissionCriteriaRepositoryPort;
+  /** Pins uploads at creation (spec A2). Optional for older harnesses, which then refuse a mission with uploads. */
+  readonly contributions?: Pick<ContributionService, 'pin'>;
 }
 
 /**
@@ -169,10 +172,21 @@ export class MissionServiceImpl implements MissionService {
       });
     });
 
+    // Pinned before the mission is announced or planned, and all or nothing: a
+    // refused upload removes the mission it came with rather than leave one
+    // the person did not get back from their request. Pinning writes blobs
+    // and may call `gh`, so it cannot share the creation transaction.
+    const pinned = await this.#pinUploads(caller, id, request);
+
     this.deps.recorder.note(
       { workspaceId, missionId: id, actorId },
       `Mission created: ${summarize(created.goal, 300)}`,
     );
+    for (const upload of pinned) {
+      // Recorded like a person's completed step: what they handed in is on the timeline.
+      this.deps.recorder.record({ workspaceId, missionId: id, actorId }, { type: 'artifact.created', artifactId: upload.evidence.id });
+    }
+    if (pinned.length > 0) this.deps.recorder.invalidate('artifacts', id);
     this.deps.recorder.invalidate('missions', id);
     // A queued draft may be pulled at once if the project has room.
     if (created.queuedAt !== null) this.deps.scheduler.wake();
@@ -184,6 +198,28 @@ export class MissionServiceImpl implements MissionService {
       return this.#require(id);
     }
     return created;
+  }
+
+  /** Every upload pinned as Evidence with no task, or the mission removed and the refusal said. */
+  async #pinUploads(caller: Caller, missionId: MissionId, request: CreateMissionRequest): Promise<readonly PinnedContribution[]> {
+    const uploads = request.uploads ?? [];
+    if (uploads.length === 0) return [];
+    const pinned: PinnedContribution[] = [];
+    try {
+      if (this.deps.contributions === undefined) throw TandemiseError.validation('This build cannot take uploads.');
+      for (const contribution of uploads) {
+        pinned.push(await this.deps.contributions.pin({
+          missionId, taskId: null, caller, onBehalfOf: request.onBehalfOf ?? null, contribution,
+        }));
+      }
+      return pinned;
+    } catch (e) {
+      // The artifact rows go with the mission; a blob already written stays,
+      // content-addressed and harmless, for the next identical upload to reuse.
+      this.deps.missions.remove(missionId);
+      if (e instanceof ContributionError) throw TandemiseError.validation(e.message, { code: e.code });
+      throw e;
+    }
   }
 
   async start(id: MissionId): Promise<Mission> {

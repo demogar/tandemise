@@ -1,8 +1,8 @@
 import type {
-  Capability, MissionTask, PlanValidationIssue, PlannedTask, RoleTemplate,
+  ArtifactType, Capability, MissionTask, PlanValidationIssue, PlannedTask, RoleTemplate,
 } from '@tandemise/domain';
 import { validateMissionPlan } from '@tandemise/domain';
-import { Ok, type Result } from '@tandemise/shared';
+import { Ok, type ArtifactId, type Result } from '@tandemise/shared';
 
 /**
  * A `MissionTask` is a `PlannedTask` that has been given an id and a status, so
@@ -28,17 +28,30 @@ export function asPlannedTasks(tasks: readonly MissionTask[]): readonly PlannedT
 export function validateTaskGraph(
   tasks: readonly MissionTask[],
   roles: readonly RoleTemplate[],
+  /**
+   * What already exists on the mission before any task ran (intake artifacts,
+   * spec A2): a required input of one of these types has a producer even with
+   * no task upstream, exactly as the planner's validation judged it.
+   */
+  preexisting: readonly { readonly id: ArtifactId; readonly type: ArtifactType }[] = [],
 ): Result<readonly PlannedTask[], readonly PlanValidationIssue[]> {
   const satisfiable = new Set<Capability>();
   for (const task of tasks) {
     for (const c of task.requiredCapabilities) satisfiable.add(c);
     for (const c of task.executionPolicy.capabilities) satisfiable.add(c);
   }
+  // A SKIPPED placeholder never runs, so its role is never looked up: it
+  // names the stage the planner left out, which need not be a role this
+  // project has. It is still a producer of its output type.
+  const knownRoleIds = new Set([
+    ...roles.map((r) => r.id),
+    ...tasks.filter((t) => t.status === 'SKIPPED').map((t) => t.roleId),
+  ]);
   const validated = validateMissionPlan(
     { summary: 'mutated mission graph', tasks: asPlannedTasks(tasks) },
     // Syntax only: these tasks were accepted under the gate rules of their day,
     // and the engine's own spliced tasks carry fixed gates the P15 check audits.
-    { knownRoleIds: new Set(roles.map((r) => r.id)), satisfiableCapabilities: satisfiable, gates: 'syntax' },
+    { knownRoleIds, satisfiableCapabilities: satisfiable, gates: 'syntax', preexistingArtifacts: preexisting },
   );
   return validated.ok ? Ok(validated.value.tasks) : validated;
 }

@@ -18,6 +18,8 @@ export interface RefinementPromptInput {
   readonly answered: readonly { readonly text: string; readonly answer: string }[];
   /** Proposals the person rejected: not to be proposed again. */
   readonly rejected: readonly string[];
+  /** What intake made of the person's uploads (spec A2); an uploaded spec is a source of criteria. */
+  readonly uploads?: readonly { readonly type: string; readonly title: string; readonly headline: string }[];
   /** The Refinement template with its guidance, from the artifact contract. */
   readonly template: string;
   readonly workingDirectory: string;
@@ -50,6 +52,13 @@ export function buildRefinementPrompt(input: RefinementPromptInput): string {
   lines.push('');
   if (input.answered.length > 0) {
     lines.push('Already decided by the person (do not ask again; use these answers):', ...input.answered.map((a) => `- ${a.text}\n  Answer: ${a.answer}`), '');
+  }
+  if ((input.uploads ?? []).length > 0) {
+    lines.push(
+      'Handed in with the request (converted from the person\'s uploads; propose criteria they state, do not ask what they answer):',
+      ...(input.uploads ?? []).map((u) => `- ${u.type} "${u.title}": ${u.headline}`),
+      '',
+    );
   }
   if (input.rejected.length > 0) {
     lines.push('Proposed before and rejected by the person (do not propose these again):', ...input.rejected.map((r) => `- ${r}`), '');

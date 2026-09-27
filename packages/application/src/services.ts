@@ -182,6 +182,12 @@ export interface PlanningService {
   abandon(id: MissionId): void;
   /** Whether a planner is running for the mission in this daemon (P9: a PLANNING mission without one is stalled). */
   isPlanning(id: MissionId): boolean;
+  /**
+   * Converts the mission's uploads once (spec A2), at the first refinement or
+   * planning, and returns the intake artifacts a plan may skip a stage for.
+   * Idempotent and never throws.
+   */
+  ensureIntake(id: MissionId): Promise<readonly ArtifactManifest[]>;
 }
 
 export interface ApprovalService {

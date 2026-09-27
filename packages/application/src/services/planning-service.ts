@@ -1,18 +1,19 @@
+import { relative } from 'node:path';
 import type {
-  ApprovalRepositoryPort, ArtifactHandoff, ArtifactRepositoryPort, ArtifactStorePort, Capability, MemberRepositoryPort, Mission,
+  ApprovalRepositoryPort, ArtifactHandoff, ArtifactManifest, ArtifactRepositoryPort, ArtifactStorePort, Capability, MemberRepositoryPort, Mission,
   MissionCriteriaRepositoryPort, MissionPlan, MissionQuestionRepositoryPort, MissionRepositoryPort, MissionTask, PlanValidationIssue, RepoRepositoryPort,
   PlannedTask, Repository, RoleRepositoryPort, RoleTemplate, RuntimeProfile, RuntimeProfileRepositoryPort, SkillPin,
   TaskRepositoryPort, Workspace, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
-import { ARTIFACT_OUT_DIR, CORE_CAPABILITIES, RUNTIME_ACTOR, DEFAULT_ESCALATE_AFTER_MS, canTransition, indexTeam, isActiveMember, compileWorkflow, validateMissionPlan } from '@tandemise/domain';
+import { ARTIFACT_OUT_DIR, CORE_CAPABILITIES, RUNTIME_ACTOR, SYSTEM_ACTOR, DEFAULT_ESCALATE_AFTER_MS, canTransition, indexTeam, isActiveMember, compileWorkflow, validateMissionPlan } from '@tandemise/domain';
 import type { MissionDetail } from '@tandemise/api-contract';
-import type { ArtifactMeasurePort, WorkflowSourcePort } from '../ports.js';
+import type { ArtifactMeasurePort, ArtifactParserPort, ArtifactTemplatePort, WorkflowSourcePort } from '../ports.js';
 import type { ReadinessService } from './readiness.js';
 import type { ApprovalFactory } from '@tandemise/policy';
 import type { ExecutionTarget, ExecutionTargetManager } from '@tandemise/execution-core';
 import { describeRejections, onlyBusy } from '@tandemise/runtimes-core';
 import type { RuntimeManager, RuntimeSelection, SlotReservation } from '@tandemise/runtimes-core';
-import type { Clock, Logger, MissionId, TandemisePaths, WorkspaceId } from '@tandemise/shared';
+import type { ArtifactId, Clock, Logger, MissionId, TandemisePaths, WorkspaceId } from '@tandemise/shared';
 import { TandemiseError, errorMessage, ids, slugify, summarize } from '@tandemise/shared';
 import type { PlanningService, ProjectionService } from '../services.js';
 import type { EventRecorder, EventScope } from '../support/event-recorder.js';
@@ -23,6 +24,11 @@ import { buildPlannerPrompt, describePlan, type ConnectedApp } from '../planning
 import { parsePlanResponse } from '../planning/parse.js';
 import { clip, materializePlan, planTitle, renderPlanDocument } from '../planning/materialize.js';
 import { ensureTandemiseIgnore } from '../support/ignore.js';
+import { checkSpecLedger, readHandoff, readTitle } from '../engine/harvester.js';
+import {
+  buildIntakePrompt, hasAcceptanceCriteria, intakeArtifactFor, intakeTargetFor, missionUploads, uploadFilename,
+  type IntakeTarget,
+} from '../planning/intake.js';
 
 /** The role whose runtime routing the planner borrows (MVP.md §9.2). */
 const PLANNER_ROLE_ID = 'architecture';
@@ -35,6 +41,9 @@ const PLANNER_WALL_TIME_MS = 10 * 60_000;
 /** How long planning waits for a busy runtime before falling back to the preset. */
 const PLANNER_SLOT_WAIT_MS = 30 * 60_000;
 const PLANNER_SLOT_POLL_MS = 3_000;
+
+/** A handoff carries at most this many links (`HANDOFF_LIMITS.links` in @tandemise/artifacts). */
+const HANDOFF_MAX_LINKS = 5;
 
 /** Every capability a plan is allowed to name, before filtering by the machine. */
 const KNOWN_CAPABILITIES: readonly Capability[] = Object.values(CORE_CAPABILITIES);
@@ -71,10 +80,17 @@ export interface PlanningDeps {
    */
   readonly readiness?: ReadinessService;
   /** The accepted ledger and the answers, which the planner is told. */
-  readonly criteria?: Pick<MissionCriteriaRepositoryPort, 'listActive'>;
+  readonly criteria?: Pick<MissionCriteriaRepositoryPort, 'listActive' | 'replaceSpecCriteria'>;
   readonly questions?: Pick<MissionQuestionRepositoryPort, 'listByMission'>;
   /** The skills library (P13): pins resolved when the tasks are created. Optional for older harnesses. */
   readonly skills?: SkillPinning;
+  /**
+   * Reads and shapes what intake writes (spec A2). Optional for older
+   * harnesses; without a parser an upload is not converted, and planning
+   * proceeds as it would with no upload.
+   */
+  readonly parser?: ArtifactParserPort;
+  readonly templates?: ArtifactTemplatePort;
 }
 
 /** What planning asks of the skills library (P13). */
@@ -118,6 +134,8 @@ export function skillPinner(
 export class PlanningServiceImpl implements PlanningService {
   /** One per mission being planned in this process, so cancelling can stop the planner run. */
   readonly #planning = new Map<MissionId, AbortController>();
+  /** One intake pass per mission at a time: refinement and planning may both ask for it at once. */
+  readonly #intakes = new Map<MissionId, Promise<readonly ArtifactManifest[]>>();
 
   constructor(private readonly deps: PlanningDeps) {}
 
@@ -245,6 +263,10 @@ export class PlanningServiceImpl implements PlanningService {
       : this.deps.repositories.get(mission.repositoryId);
     const scope: EventScope = { workspaceId: mission.workspaceId, missionId: mission.id };
 
+    // Before the authored-workflow shortcut, so a project's own workflow reads
+    // the intake artifacts too, through the same latest-of-type fallback.
+    const preexisting = await this.ensureIntake(mission.id);
+
     const roles = this.deps.roles.list(workspace.id);
     // A project's repositories are what its plans may target: a mission in a
     // three-repository project can put one task in each and keep them in one
@@ -269,12 +291,16 @@ export class PlanningServiceImpl implements PlanningService {
 
     const preset = findPreset(mission.workflowPreset || DEFAULT_PRESET_ID);
     const outcome = await this.#producePlan(
-      planning, workspace, repository ?? null, roles, preset, scope, repositories,
+      planning, workspace, repository ?? null, roles, preset, scope, repositories, preexisting,
     );
 
     if (!this.#stillPlanning(planning, scope)) return this.deps.projections.missionDetail(mission.id);
     // A preset names its inputs, so inferring only fills what a model's plan left out.
-    const tasks = materializePlan(outcome.plan, mission.id, this.deps.clock, repositories, { inferInputs: true, ...skillPinner(this.deps.skills, workspace.id, roles) });
+    const tasks = materializePlan(outcome.plan, mission.id, this.deps.clock, repositories, {
+      inferInputs: true,
+      ...skillPinner(this.deps.skills, workspace.id, roles),
+      uploadFilename: (artifactId) => this.#uploadFilename(mission.id, artifactId),
+    });
     this.deps.tasks.replaceAll(mission.id, tasks);
     await this.#storePlanDocument(planning, outcome.plan, workspace);
     this.deps.recorder.invalidate('tasks', mission.id);
@@ -338,6 +364,248 @@ export class PlanningServiceImpl implements PlanningService {
     return compiled.value;
   }
 
+  // ---------------------------------------------------------------- intake
+
+  /**
+   * Converts the mission's uploads, once, and returns the intake artifacts a
+   * plan may skip a stage for (spec A2).
+   *
+   * Lazy on purpose: a mission can sit in DRAFT or the backlog for days, so an
+   * upload is only pinned at creation and converted by the first refinement
+   * or planning. An upload that already has an intake artifact is not
+   * converted again, so the second caller finds nothing to do.
+   *
+   * Never throws. Intake is best effort: whatever fails leaves its Evidence in
+   * place and planning goes on as if it had not been uploaded.
+   */
+  ensureIntake(missionId: MissionId): Promise<readonly ArtifactManifest[]> {
+    const running = this.#intakes.get(missionId);
+    if (running !== undefined) return running;
+    const pass = this.#intake(missionId)
+      .catch((e: unknown): readonly ArtifactManifest[] => {
+        this.deps.log.warn('intake.failed', { missionId, error: errorMessage(e) });
+        const mission = this.deps.missions.get(missionId);
+        if (mission !== undefined) {
+          this.deps.recorder.note({ workspaceId: mission.workspaceId, missionId }, `Your uploads could not be read: ${errorMessage(e)}`, 'warn');
+        }
+        return [];
+      })
+      .finally(() => this.#intakes.delete(missionId));
+    this.#intakes.set(missionId, pass);
+    return pass;
+  }
+
+  async #intake(missionId: MissionId): Promise<readonly ArtifactManifest[]> {
+    const mission = this.#requireMission(missionId);
+    const scope: EventScope = { workspaceId: mission.workspaceId, missionId };
+    const artifacts = this.deps.artifacts.listByMission(missionId);
+    const uploads = missionUploads(artifacts);
+    if (uploads.length === 0) return [];
+
+    const pending = uploads.filter((e) => intakeArtifactFor(e, artifacts) === undefined);
+    // The same bytes pinned twice are one upload, converted once.
+    const unique = pending.filter((e, i) => pending.findIndex((o) => o.sourceRefs[0]?.value === e.sourceRefs[0]?.value) === i);
+    if (unique.length > 0) {
+      const { produced, failed } = await this.#convert(mission, unique, scope);
+      this.deps.recorder.record(scope, {
+        type: 'mission.intake_completed',
+        uploads: unique.length,
+        produced: produced.map((a) => ({ artifactId: a.id, type: a.type })),
+        failed,
+      });
+      this.deps.recorder.invalidate('artifacts', missionId);
+    }
+    return this.#coveringIntake(mission);
+  }
+
+  /**
+   * The intake artifacts that may stand in for a stage, judged now.
+   *
+   * A ProductSpec is held to the Done-when ledger as it stands today, the
+   * same rule a product step's spec meets: one that leaves a line uncovered
+   * is context for the planner but covers nothing (ruling 4). The other types
+   * have no ledger to answer to.
+   */
+  async #coveringIntake(mission: Mission): Promise<readonly ArtifactManifest[]> {
+    const artifacts = this.deps.artifacts.listByMission(mission.id);
+    const made = new Map<string, ArtifactManifest>();
+    for (const evidence of missionUploads(artifacts)) {
+      const intake = intakeArtifactFor(evidence, artifacts);
+      if (intake !== undefined) made.set(intake.id, intake);
+    }
+    const covering: ArtifactManifest[] = [];
+    for (const intake of made.values()) {
+      if (intake.type !== 'ProductSpec') {
+        covering.push(intake);
+        continue;
+      }
+      const parsed = this.deps.parser?.parse('ProductSpec', (await this.deps.artifactStore.read(intake.id)).body);
+      if (parsed === undefined || !parsed.ok) continue;
+      const check = checkSpecLedger(this.#userCriteria(mission.id), parsed.value.frontMatter);
+      if (check.refusal === null && check.advisories.length === 0) covering.push(intake);
+    }
+    return covering;
+  }
+
+  /** One intake run per upload, on the planner's runtime, in one place provisioned for all of them. */
+  async #convert(
+    mission: Mission,
+    uploads: readonly ArtifactManifest[],
+    scope: EventScope,
+  ): Promise<{ produced: readonly ArtifactManifest[]; failed: { evidenceId: ArtifactId; reason: string }[] }> {
+    const failAll = (reason: string) => ({ produced: [], failed: uploads.map((e) => ({ evidenceId: e.id, reason })) });
+    const parser = this.deps.parser;
+    if (parser === undefined) return failAll('this build cannot read uploads.');
+    const workspace = this.#requireWorkspace(mission);
+    const candidates = this.#plannerCandidates(workspace);
+    if (candidates.length === 0) return failAll('no enabled runtime profile is configured.');
+    const selected = await this.#selectPlannerRuntime(candidates, scope);
+    if (!selected.ok) return failAll(`no healthy runtime could be selected (${describeRejections(selected.error.rejections) || 'no candidates'}).`);
+
+    const repository = mission.repositoryId === null ? null : this.deps.repositories.get(mission.repositoryId) ?? null;
+    let target: ExecutionTarget;
+    try {
+      target = await this.deps.targetManager.provision({
+        workspaceId: workspace.id,
+        missionId: mission.id,
+        taskId: null,
+        kind: 'local',
+        name: `${slugify(mission.title)}-intake`,
+        repositoryPath: repository?.path ?? this.deps.paths.root,
+        missionSlug: slugify(mission.title),
+      });
+    } catch (e) {
+      selected.value.reservation.release();
+      return failAll(`no place to read the uploads could be prepared (${errorMessage(e)}).`);
+    }
+
+    const produced: ArtifactManifest[] = [];
+    const failed: { evidenceId: ArtifactId; reason: string }[] = [];
+    try {
+      for (const [index, evidence] of uploads.entries()) {
+        try {
+          produced.push(await this.#convertOne(selected.value, parser, mission, evidence, target, scope, index + 1));
+        } catch (e) {
+          failed.push({ evidenceId: evidence.id, reason: errorMessage(e) });
+          this.deps.recorder.note(scope, `Could not convert the upload "${uploadFilename(evidence)}": ${errorMessage(e)} Planning goes on without it.`, 'warn');
+        }
+      }
+    } finally {
+      selected.value.reservation.release();
+      await this.#releasePlannerTarget(target);
+    }
+    return { produced, failed };
+  }
+
+  async #convertOne(
+    selection: RuntimeSelection,
+    parser: ArtifactParserPort,
+    mission: Mission,
+    evidence: ArtifactManifest,
+    target: ExecutionTarget,
+    scope: EventScope,
+    attempt: number,
+  ): Promise<ArtifactManifest> {
+    const filename = uploadFilename(evidence);
+    const kind = intakeTargetFor({ mediaType: evidence.mediaType, filename, refs: evidence.sourceRefs });
+    const dir = `${ARTIFACT_OUT_DIR}/intake-${evidence.id}`;
+    const input = `${dir}/input/${safeFilename(filename)}`;
+    const destination = `${dir}/intake.md`;
+    const fs = target.filesystem();
+    if (await fs.exists(dir)) await fs.remove(dir, { recursive: true });
+    await fs.mkdir(`${dir}/input`);
+    await ensureTandemiseIgnore(fs);
+    // A copy beside the working directory: the run may read nothing outside it.
+    await fs.write(input, await this.deps.artifactStore.readBinary(evidence.id));
+
+    const types: readonly IntakeTarget[] = kind === 'spec-or-brief' ? ['ProductSpec', 'ProblemBrief'] : [kind];
+    const prompt = buildIntakePrompt({
+      mission,
+      target: kind,
+      filename,
+      mediaType: evidence.mediaType,
+      input,
+      destination,
+      templates: types.map((type) => ({ type, template: this.deps.templates?.render(type) ?? `(write a ${type} document)` })),
+      criteria: this.#userCriteria(mission.id),
+    });
+
+    let source: string;
+    try {
+      const { chunks, failure } = await this.#stream(selection.profile, prompt, target, scope, attempt, selection.reservation);
+      if (failure !== null) throw new Error(`the intake run failed (${failure}).`);
+      source = (await fs.exists(destination)) ? (await fs.read(destination)).trim() : '';
+      if (source.length === 0) source = chunks.join('\n').trim();
+    } finally {
+      await fs.remove(dir, { recursive: true }).catch(() => undefined);
+    }
+    if (source.length === 0) throw new Error('the intake run wrote nothing.');
+
+    const type: IntakeTarget = kind === 'spec-or-brief' ? (hasAcceptanceCriteria(source) ? 'ProductSpec' : 'ProblemBrief') : kind;
+    const parsed = parser.parse(type, source);
+    if (!parsed.ok) {
+      throw new Error(`it did not make a valid ${type} (${parsed.error.map((i) => (i.path ? `${i.path}: ${i.message}` : i.message)).join('; ')}).`);
+    }
+    const front = parsed.value.frontMatter;
+    const handoff = this.#intakeHandoff(readHandoff(front), evidence, parsed.value.body);
+    const manifest = await this.deps.artifactStore.write({
+      workspaceId: mission.workspaceId,
+      missionId: mission.id,
+      taskId: null,
+      createdByRunId: null,
+      type,
+      title: clip(readTitle(front) ?? `${type} from ${filename}`, 60),
+      body: source,
+      // The Evidence's own refs: how this artifact is known to be its intake.
+      sourceRefs: evidence.sourceRefs,
+      supersedes: null,
+      summary: handoff.headline,
+    });
+    // Spec A6: written by the runtime, answered for by whoever asked for the mission.
+    const recorded = this.deps.artifacts.create({
+      ...manifest, authorId: RUNTIME_ACTOR, responsibleId: mission.createdBy ?? null, recordedBy: SYSTEM_ACTOR,
+      handoff, wordCount: this.deps.measure.measure(type, parsed.value.body).mainWords, overBudget: false,
+    });
+    if (type === 'ProductSpec' && this.deps.criteria !== undefined) {
+      // The same ledger path as a product step's spec, but only for a spec that
+      // covers every line: one that does not is context, not the mission's spec.
+      const check = checkSpecLedger(this.#userCriteria(mission.id), front);
+      if (check.refusal === null && check.advisories.length === 0 && check.spec !== null) {
+        this.deps.criteria.replaceSpecCriteria(mission.id, recorded.id, check.spec);
+        this.deps.recorder.invalidate('criteria', mission.id);
+      }
+    }
+    this.deps.recorder.record(scope, { type: 'artifact.created', artifactId: recorded.id });
+    return recorded;
+  }
+
+  /**
+   * The agent's handoff, or one derived from the body, with a workspace link
+   * to the stored upload when it was a local file: the link a reader follows
+   * to see exactly what was handed in (spec A5).
+   */
+  #intakeHandoff(written: ArtifactHandoff | null, evidence: ArtifactManifest, body: string): ArtifactHandoff {
+    const handoff = written ?? this.deps.measure.deriveHandoff(body);
+    if (evidence.sourceRefs[0]?.kind !== 'file') return handoff;
+    const path = relative(this.deps.paths.artifacts(evidence.workspaceId), this.deps.artifactStore.resolvePath(evidence));
+    const link = { label: 'Open the upload', kind: 'workspace' as const, path };
+    return { ...handoff, links: [...handoff.links.slice(0, HANDOFF_MAX_LINKS - 1), link] };
+  }
+
+  #userCriteria(missionId: MissionId): readonly { key: string; statement: string }[] {
+    return (this.deps.criteria?.listActive(missionId) ?? [])
+      .filter((c) => c.source === 'user').map((c) => ({ key: c.key, statement: c.statement }));
+  }
+
+  /** The filename of the upload an intake artifact came from, for its placeholder's reason. */
+  #uploadFilename(missionId: MissionId, artifactId: string): string | undefined {
+    const artifacts = this.deps.artifacts.listByMission(missionId);
+    const intake = artifacts.find((a) => a.id === artifactId);
+    if (intake === undefined) return undefined;
+    const evidence = missionUploads(artifacts).find((e) => intakeArtifactFor(e, [intake]) !== undefined);
+    return evidence === undefined ? undefined : uploadFilename(evidence);
+  }
+
   // -------------------------------------------------------------- the ladder
 
   async #producePlan(
@@ -348,6 +616,7 @@ export class PlanningServiceImpl implements PlanningService {
     preset: WorkflowPreset,
     scope: EventScope,
     repositories: readonly Repository[],
+    preexisting: readonly ArtifactManifest[],
   ): Promise<PlanOutcome> {
     const fallback = (reason: string): PlanOutcome => {
       this.deps.recorder.note(
@@ -373,7 +642,7 @@ export class PlanningServiceImpl implements PlanningService {
       );
     }
     try {
-      return await this.#planWith(selected.value, mission, repository, roles, preset, scope, repositories, workspace, fallback);
+      return await this.#planWith(selected.value, mission, repository, roles, preset, scope, repositories, workspace, fallback, preexisting);
     } finally {
       selected.value.reservation.release();
     }
@@ -416,10 +685,14 @@ export class PlanningServiceImpl implements PlanningService {
     repositories: readonly Repository[],
     workspace: Workspace,
     fallback: (reason: string) => PlanOutcome,
+    preexisting: readonly ArtifactManifest[],
   ): Promise<PlanOutcome> {
     const selected = { value: selection };
 
     const context = {
+      // Intake artifacts that may stand in for a stage: a `skipped` entry must
+      // name one of these, and a required input of their type needs no task.
+      preexistingArtifacts: preexisting.map((a) => ({ id: a.id, type: a.type })),
       knownRoleIds: new Set(roles.map((r) => r.id)),
       satisfiableCapabilities: satisfiableCapabilities(
         this.deps.runtimeManager.capabilities(selected.value.profile),
@@ -445,7 +718,7 @@ export class PlanningServiceImpl implements PlanningService {
     try {
       let issues: readonly PlanValidationIssue[] = [];
       for (let attempt = 1; attempt <= MAX_PLANNER_ATTEMPTS; attempt++) {
-        const prompt = this.#prompt(mission, repository, roles, preset, context, issues, attempt, repositories, apps);
+        const prompt = this.#prompt(mission, repository, roles, preset, context, issues, attempt, repositories, apps, preexisting);
         const response = await this.#runPlanner(
           selected.value.profile, prompt, target, scope, attempt, selected.value.reservation,
         );
@@ -493,6 +766,7 @@ export class PlanningServiceImpl implements PlanningService {
     attempt: number,
     repositories: readonly Repository[],
     connectedApps: readonly ConnectedApp[] = [],
+    preexisting: readonly ArtifactManifest[] = [],
   ): string {
     const answers = (this.deps.questions?.listByMission(mission.id) ?? [])
       .flatMap((q) => (q.status === 'answered' && q.answer !== null ? [{ key: q.key, text: q.text, answer: q.answer }] : []));
@@ -501,6 +775,7 @@ export class PlanningServiceImpl implements PlanningService {
         .filter((c) => c.source === 'user').map((c) => ({ key: c.key, statement: c.statement })),
       answers,
       connectedApps,
+      uploads: preexisting.map((a) => ({ id: a.id, type: a.type, title: a.title })),
       mission,
       repository,
       repositories,
@@ -534,14 +809,21 @@ export class PlanningServiceImpl implements PlanningService {
 
   // ----------------------------------------------------------------- the run
 
-  async #runPlanner(
+  /**
+   * One run on the planner's runtime, streamed onto the mission's record.
+   *
+   * Planning and intake both come through here. Neither has a task, so neither
+   * has a `Run` row (and neither counts toward a mission's limits); what the
+   * run said is still part of the mission's causal record.
+   */
+  async #stream(
     profile: RuntimeProfile,
     prompt: string,
     target: ExecutionTarget,
     scope: EventScope,
     attempt: number,
     reservation: SlotReservation,
-  ): Promise<{ ok: true; value: string } | { ok: false; error: string }> {
+  ): Promise<{ chunks: readonly string[]; failure: string | null }> {
     const runId = ids.run();
     const runScope: EventScope = { ...scope, roleId: PLANNER_ROLE_ID, runtimeProfileId: profile.id };
     const budget = AbortSignal.timeout(PLANNER_WALL_TIME_MS);
@@ -559,7 +841,51 @@ export class PlanningServiceImpl implements PlanningService {
     const chunks: string[] = [];
     let failure: string | null = null;
     const startedAt = this.deps.clock.epochMs();
+    try {
+      for await (const event of this.deps.runtimeManager.start({
+        runId,
+        profile,
+        prompt,
+        workingDirectory: target.workingDirectory,
+        // Planning and intake read; they never write code. Their only write is
+        // their own file, and artifact.write alone scopes file edits to the out directory.
+        grants: [CORE_CAPABILITIES.repositoryRead, CORE_CAPABILITIES.filesystemRead, CORE_CAPABILITIES.artifactWrite],
+        allowedRoots: [],
+        mcpConfigPath: null,
+        maxWallTimeMs: PLANNER_WALL_TIME_MS,
+        // Honoured on the first run only; a later one claims a fresh slot.
+        reservation,
+        signal,
+        log: this.deps.log.child({ runId, missionId: scope.missionId, runtime: profile.adapterId }),
+      })) {
+        // The planner has no task and therefore no `Run` row to hang events off,
+        // but its output is still part of the mission's causal record: a user
+        // whose plan was rejected twice has to be able to read why.
+        this.deps.recorder.record(runScope, event);
+        if (event.type === 'message') chunks.push(event.text);
+        if (event.type === 'completed' && event.summary !== undefined) chunks.push(event.summary);
+        if (event.type === 'failed') failure = `${event.code}: ${event.message}`;
+      }
+    } catch (e) {
+      failure = errorMessage(e);
+    }
 
+    this.deps.recorder.record(runScope, {
+      type: 'run.finished',
+      status: failure === null ? 'SUCCEEDED' : 'FAILED',
+      durationMs: this.deps.clock.epochMs() - startedAt,
+    });
+    return { chunks, failure };
+  }
+
+  async #runPlanner(
+    profile: RuntimeProfile,
+    prompt: string,
+    target: ExecutionTarget,
+    scope: EventScope,
+    attempt: number,
+    reservation: SlotReservation,
+  ): Promise<{ ok: true; value: string } | { ok: false; error: string }> {
     // The plan comes back in a file, not in the chat reply. Streamed messages
     // are clipped for the timeline (16k characters), and a detailed plan for a
     // real mission is longer than that: it arrived truncated, failed to parse
@@ -583,41 +909,7 @@ directory) with your file-writing tool, then reply with only the word DONE. A
 long plan sent as a chat reply can be cut off; the file cannot. If you have no
 way to write that file, reply with the JSON object instead.`;
 
-    try {
-      for await (const event of this.deps.runtimeManager.start({
-        runId,
-        profile,
-        prompt: filePrompt,
-        workingDirectory: target.workingDirectory,
-        // Planning reads; it never writes code. Its only write is the plan file,
-        // and artifact.write alone scopes file edits to the out directory.
-        grants: [CORE_CAPABILITIES.repositoryRead, CORE_CAPABILITIES.filesystemRead, CORE_CAPABILITIES.artifactWrite],
-        allowedRoots: [],
-        mcpConfigPath: null,
-        maxWallTimeMs: PLANNER_WALL_TIME_MS,
-        // Honoured on the first attempt only; a retry claims a fresh slot.
-        reservation,
-        signal,
-        log: this.deps.log.child({ runId, missionId: scope.missionId, runtime: profile.adapterId }),
-      })) {
-        // The planner has no task and therefore no `Run` row to hang events off,
-        // but its output is still part of the mission's causal record: a user
-        // whose plan was rejected twice has to be able to read why.
-        this.deps.recorder.record(runScope, event);
-        if (event.type === 'message') chunks.push(event.text);
-        if (event.type === 'completed' && event.summary !== undefined) chunks.push(event.summary);
-        if (event.type === 'failed') failure = `${event.code}: ${event.message}`;
-      }
-    } catch (e) {
-      failure = errorMessage(e);
-    }
-
-    this.deps.recorder.record(runScope, {
-      type: 'run.finished',
-      status: failure === null ? 'SUCCEEDED' : 'FAILED',
-      durationMs: this.deps.clock.epochMs() - startedAt,
-    });
-
+    const { chunks, failure } = await this.#stream(profile, filePrompt, target, scope, attempt, reservation);
     if (failure !== null) return { ok: false, error: failure };
     try {
       if (await fs.exists(planFile)) {
@@ -837,4 +1129,10 @@ function describeChecks(repository: Repository): string {
     .filter((entry): entry is [string, string] => typeof entry[1] === 'string' && entry[1].length > 0)
     .map(([name, command]) => `${name} (\`${command}\`)`);
   return configured.length === 0 ? 'none detected' : configured.join(', ');
+}
+
+/** A filename safe to write into the out directory: no separators, nothing hidden. */
+function safeFilename(name: string): string {
+  const flat = name.replace(/[\\/]+/g, '_').replace(/^\.+/, '').trim();
+  return flat.length > 0 ? flat : 'upload';
 }

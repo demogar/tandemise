@@ -393,27 +393,7 @@ export class ArtifactHarvester {
     }
 
     if (type !== 'ProductSpec') return none;
-    const spec = readSpecCriteria(frontMatter);
-    const users = this.criteria.listActive(mission.id).filter((c) => c.source === 'user');
-    const check = checkSpecCriteria(users.map((u) => u.key), spec);
-    if (check.refused.length > 0) {
-      return { refusal: `has acceptance criteria the Done-when ledger cannot hold: ${check.refused.join('; ')}.`, spec: null, advisories: [] };
-    }
-    const advisories: string[] = [];
-    for (const key of check.uncovered) {
-      const statement = users.find((u) => u.key === key)?.statement ?? '';
-      advisories.push(
-        `The ProductSpec leaves ${key} uncovered ("${summarize(statement, 160)}"). `
-        + `Add ${key} to \`covers\` on the acceptance criterion that proves it, or add a criterion for it.`,
-      );
-    }
-    if (check.unknownCovers.length > 0) {
-      advisories.push(
-        `The ProductSpec covers ids that are not Done-when lines: ${check.unknownCovers.join(', ')}. `
-        + (users.length > 0 ? `The Done-when lines are ${users.map((u) => u.key).join(', ')}.` : 'This mission has no Done-when lines; leave `covers` empty.'),
-      );
-    }
-    return { refusal: null, spec, advisories };
+    return checkSpecLedger(this.criteria.listActive(mission.id).filter((c) => c.source === 'user'), frontMatter);
   }
 
   /** The artifact being revised, when the file on disk is still exactly its body. */
@@ -429,12 +409,46 @@ export class ArtifactHarvester {
   }
 }
 
-function readTitle(frontMatter: Readonly<Record<string, unknown>>): string | null {
+/**
+ * A ProductSpec's front matter held against the person's Done-when lines.
+ *
+ * Exported so mission intake (spec A2) judges an uploaded spec by exactly the
+ * rule a product step's spec meets: `refusal` means the ledger cannot hold it,
+ * and each advisory names a line it leaves uncovered or an id it covers that
+ * is not a line. A spec with neither covers the product stage.
+ */
+export function checkSpecLedger(
+  users: readonly { readonly key: string; readonly statement: string }[],
+  frontMatter: Readonly<Record<string, unknown>>,
+): { readonly refusal: string | null; readonly spec: readonly SpecCriterionInput[] | null; readonly advisories: readonly string[] } {
+  const spec = readSpecCriteria(frontMatter);
+  const check = checkSpecCriteria(users.map((u) => u.key), spec);
+  if (check.refused.length > 0) {
+    return { refusal: `has acceptance criteria the Done-when ledger cannot hold: ${check.refused.join('; ')}.`, spec: null, advisories: [] };
+  }
+  const advisories: string[] = [];
+  for (const key of check.uncovered) {
+    const statement = users.find((u) => u.key === key)?.statement ?? '';
+    advisories.push(
+      `The ProductSpec leaves ${key} uncovered ("${summarize(statement, 160)}"). `
+      + `Add ${key} to \`covers\` on the acceptance criterion that proves it, or add a criterion for it.`,
+    );
+  }
+  if (check.unknownCovers.length > 0) {
+    advisories.push(
+      `The ProductSpec covers ids that are not Done-when lines: ${check.unknownCovers.join(', ')}. `
+      + (users.length > 0 ? `The Done-when lines are ${users.map((u) => u.key).join(', ')}.` : 'This mission has no Done-when lines; leave `covers` empty.'),
+    );
+  }
+  return { refusal: null, spec, advisories };
+}
+
+export function readTitle(frontMatter: Readonly<Record<string, unknown>>): string | null {
   const title = frontMatter['title'];
   return typeof title === 'string' && title.trim().length > 0 ? title.trim() : null;
 }
 
-function readHandoff(frontMatter: Readonly<Record<string, unknown>>): ArtifactHandoff | null {
+export function readHandoff(frontMatter: Readonly<Record<string, unknown>>): ArtifactHandoff | null {
   const handoff = frontMatter['handoff'];
   return typeof handoff === 'object' && handoff !== null && typeof (handoff as { headline?: unknown }).headline === 'string'
     ? handoff as ArtifactHandoff

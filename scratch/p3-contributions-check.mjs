@@ -3,6 +3,8 @@
 // or a link) is one shape wherever it arrives; a workspace handoff link may
 // carry a path instead of a url; a skipped plan stage must name a real
 // upload; and a parked agent task waits on a person, not the scheduler.
+// In process, over the real services: pinning, and the lazy intake that
+// turns an upload into a typed artifact the planner may skip a stage for.
 //
 //   npm run build && node scratch/p3-contributions-check.mjs
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
@@ -99,7 +101,7 @@ section('github: pull request snapshots');
 // Real SQLite, real artifact store and real services, composed as
 // scratch/p14-issues-check.mjs composes them, so the PR resolver can be
 // rebound to a stub before anything resolves it.
-async function engineHarness(HOME, prStub) {
+async function engineHarness(HOME, prStub, configure = () => {}) {
   const app = await import('@tandemise/application');
   const { Container, compose } = await import('@tandemise/kernel');
   const { createLogger, createPaths, systemClock } = await import('@tandemise/shared');
@@ -149,6 +151,7 @@ async function engineHarness(HOME, prStub) {
   container.bind(app.SYSTEM_ENVIRONMENT, () => app.describeEnvironment({ home: HOME, schemaVersion: 1 }), { source: 'check' });
   container.bind(app.PROCESS_LIVENESS, () => app.osProcessLiveness, { source: 'check' });
   container.rebind(app.PULL_REQUEST_SNAPSHOTS, () => prStub, { source: 'check' });
+  configure(container, app);
   const services = app.createServices(container);
   return { app, container, services, paths, artifacts: container.resolve(app.ARTIFACT_REPOSITORY), repositories: container.resolve(app.REPO_REPOSITORY) };
 }
@@ -256,6 +259,173 @@ section('daemon: pinning');
     check('a symlink out of the repository is refused', link?.code === 'outside_workspace', link && { code: link.code, message: link.message });
     const artifactPath = await C.resolveWorkspacePath(ws, `blobs/${one.evidence.sha256.slice(0, 2)}/${one.evidence.sha256}`);
     check('a path inside the artifact root resolves', artifactPath.endsWith(one.evidence.sha256), artifactPath);
+  } finally {
+    h.container.resolve((await import('@tandemise/persistence')).DATABASE).close?.();
+    rmSync(HOME, { recursive: true, force: true });
+  }
+}
+
+// ------------------------------------------------ intake and skipped stages
+// Uploads pinned at creation are converted once, lazily, at the first
+// refinement or planning; an intake ProductSpec that passes the Done-when
+// check lets the planner skip the product stage, which becomes a SKIPPED
+// placeholder. One fake profile plays every part, each step keyed to the
+// prompt it answers, so the intake and the planner never see each other's
+// steps.
+section('daemon: intake and skips');
+{
+  const HOME = mkdtempSync(join(tmpdir(), 'tdm-p3-intake-'));
+  const checkout = join(HOME, 'checkout');
+  mkdirSync(join(checkout, '.tandemise', 'workflows'), { recursive: true });
+  // The project's own workflow: one step, and nothing a planner could skip.
+  writeFileSync(join(checkout, '.tandemise/workflows/p3-flow.yaml'), [
+    'name: P3 own flow', 'steps:',
+    '  - key: brief', '    role: product', '    objective: Write the problem brief for the greeting.', '    outputs: [ProblemBrief]', '',
+  ].join('\n'));
+  // Planning and intake read a real checkout.
+  const { execFileSync } = await import('node:child_process');
+  const git = (...args) => execFileSync('git', ['-c', 'user.name=P3', '-c', 'user.email=p3@example.com', ...args], { cwd: checkout, stdio: 'ignore' });
+  git('init', '-q', '-b', 'main');
+  git('add', '.');
+  git('commit', '-q', '-m', 'init');
+  const { FileWorkflowSource } = await import('../apps/daemon/dist/workflow-source.js');
+  const h = await engineHarness(HOME, { read: async () => null }, (container, app) => {
+    container.rebind(app.WORKFLOW_SOURCE, () => new FileWorkflowSource({ info() {}, warn() {}, error() {}, debug() {}, child() { return this; } }), { source: 'check' });
+  });
+  try {
+    const caller = { personId: h.services.identity.localPerson().id };
+    const ws = (await h.services.workspaces.create(caller, { name: 'Intake' })).workspace.id;
+    h.repositories.create({ id: 'rep_p3_intake', workspaceId: ws, name: 'app', path: checkout, defaultBranch: 'main', remoteUrl: null, checks: D.NO_CHECKS });
+    h.container.resolve(h.app.WORKSPACE_REPOSITORY).update(ws, { defaultRepositoryId: 'rep_p3_intake' });
+
+    const spec = [
+      '---', 'type: ProductSpec', 'schemaVersion: 1', 'title: Greeting spec',
+      'handoff:', '  headline: The greeting, specified from your upload',
+      'acceptanceCriteria:', '  - id: AC1', '    statement: The page greets the visitor by name', '    covers:', '      - U1',
+      '---', '', '## Scope', '', 'A greeting.', '', '## Acceptance criteria', '', '- AC1: the page greets the visitor by name.', '',
+    ].join('\n');
+    const planJson = (artifactId) => JSON.stringify({
+      summary: 'The upload is the spec, so design starts from it.',
+      tasks: [{ key: 'design', title: 'Design the greeting', objective: 'Design the greeting from the spec.', roleId: 'design', dependsOn: [], inputArtifacts: [{ type: 'ProductSpec', required: true }], expectedOutputs: ['DesignBrief'] }],
+      skipped: [{ stage: 'product', outputType: 'ProductSpec', artifactId, reason: 'Your upload is the spec.' }],
+    });
+    const INTAKE = { promptIncludes: 'Turn the uploaded input into' };
+    const PLANNER = { promptIncludes: 'You are the Planner' };
+    const script = (skipId) => ({
+      resume: 'ok',
+      captures: { dest: 'Write it to `([^`]+)`', upload: '^- ProductSpec "[^"]*" \\(id ([^)]+)\\)' },
+      steps: [
+        { kind: 'write-file', path: 'prompts/intake-{{runId}}.txt', content: '{{prompt}}', when: INTAKE },
+        { kind: 'write-file', path: '{{dest}}', content: spec, when: INTAKE },
+        { kind: 'write-file', path: 'prompts/planner-{{runId}}.txt', content: '{{prompt}}', when: PLANNER },
+        { kind: 'message', text: planJson(skipId), when: PLANNER },
+        { kind: 'complete', summary: 'done' },
+      ],
+    });
+    const profile = await h.services.runtimes.create({ adapterId: 'fake', name: 'Scripted', workspaceId: ws, settings: { script: script('{{upload}}') }, maxConcurrent: 4 });
+    const profiles = h.container.resolve(h.app.RUNTIME_PROFILE_REPOSITORY);
+    const events = h.container.resolve(h.app.EVENT_REPOSITORY);
+    const intakes = (missionId) => events.listByMission(missionId).filter((e) => e.body.type === 'mission.intake_completed').map((e) => e.body);
+    const tasksOf = (missionId) => h.container.resolve(h.app.TASK_REPOSITORY).listByMission(missionId);
+    const b64 = (text) => Buffer.from(text).toString('base64');
+    const refusal = async (fn) => { try { await fn(); return null; } catch (e) { return e; } };
+    const { readdirSync, readFileSync } = await import('node:fs');
+    const plannerPrompts = (goal) => {
+      let files = [];
+      try { files = readdirSync(join(checkout, 'prompts')).filter((f) => f.startsWith('planner-')); } catch { /* none yet */ }
+      return files.map((f) => readFileSync(join(checkout, 'prompts', f), 'utf8')).filter((p) => p.includes(goal));
+    };
+    const upload = { kind: 'file', filename: 'greeting-spec.md', mediaType: 'text/markdown', dataBase64: b64('# Greeting\n\nGreet the visitor by name.\n\n## Acceptance criteria\n\n- The page greets the visitor by name.\n') };
+
+    // ---- creation pins, and runs no intake
+    const GOAL = 'Greet the visitor by name';
+    const m = await h.services.missions.create(caller, { workspaceId: ws, goal: GOAL, title: 'Greeting', successCriteria: ['The page greets the visitor by name'], uploads: [upload] });
+    const evidence = h.artifacts.listByMission(m.id, 'Evidence');
+    check('creating with an upload pins it as Evidence with no task', evidence.length === 1 && evidence[0].taskId === null && evidence[0].sourceRefs[0]?.label === 'greeting-spec.md', evidence);
+    check('the pinned upload is on the timeline', events.listByMission(m.id).some((e) => e.body.type === 'artifact.created' && e.body.artifactId === evidence[0]?.id));
+    check('creation runs no intake', intakes(m.id).length === 0, intakes(m.id));
+
+    // ---- planning runs intake once, and the planner skips the covered stage
+    await h.services.planning.plan(m.id);
+    const first = intakes(m.id);
+    const made = h.artifacts.listByMission(m.id).filter((a) => a.type === 'ProductSpec');
+    const intake = made[0];
+    check('planning runs intake once', first.length === 1 && first[0].uploads === 1 && first[0].failed.length === 0, first);
+    check('intake made one ProductSpec with no task', made.length === 1 && intake.taskId === null, made);
+    check('the event lists what intake made', eq(first[0]?.produced, [{ artifactId: intake?.id, type: 'ProductSpec' }]), first[0]);
+    check('the intake artifact carries the upload\'s refs', eq(intake?.sourceRefs, evidence[0]?.sourceRefs), intake?.sourceRefs);
+    check('intake is authored by the runtime, recorded by the system, answered for by the creator',
+      intake?.authorId === D.RUNTIME_ACTOR && intake?.recordedBy === D.SYSTEM_ACTOR && intake?.responsibleId === m.createdBy, intake);
+    const link = intake?.handoff?.links?.find((l) => l.kind === 'workspace');
+    check('a local upload gets a workspace link to its stored blob', link?.path === `blobs/${evidence[0]?.sha256.slice(0, 2)}/${evidence[0]?.sha256}` && link.url === undefined, intake?.handoff);
+    const listPrompts = () => { try { return readdirSync(join(checkout, 'prompts')); } catch { return []; } };
+    const ledger = h.container.resolve(h.app.MISSION_CRITERIA_REPOSITORY).listActive(m.id);
+    check('a covering intake spec joins the Done-when ledger like a product step\'s', ledger.some((c) => c.key === 'AC1' && c.specArtifactId === intake?.id), ledger.map((c) => [c.key, c.source, c.specArtifactId]));
+    const intakePrompt = listPrompts().filter((f) => f.startsWith('intake-')).map((f) => readFileSync(join(checkout, 'prompts', f), 'utf8'))[0] ?? '';
+    check('the intake prompt names the upload and its fixed objective', intakePrompt.includes('greeting-spec.md') && intakePrompt.includes('preserving its content. The Evidence is the source of truth.'), intakePrompt.slice(0, 600));
+    const prompts = plannerPrompts(GOAL);
+    check('the planner is told the upload covers a stage', prompts.length === 1 && prompts[0].includes(`- ProductSpec "Greeting spec" (id ${intake?.id})`)
+      && prompts[0].includes('An upload already covers a stage when a preexisting artifact of that stage\'s output type exists. Omit the stage and name it under `skipped` with the artifact it was covered by.'), prompts.map((p) => p.slice(-2500)));
+
+    const tasks = tasksOf(m.id);
+    const placeholder = tasks.find((t) => t.status === 'SKIPPED');
+    const design = tasks.find((t) => t.key === 'design');
+    check('the skipped stage is a SKIPPED placeholder', placeholder?.roleId === 'product' && eq(placeholder.expectedOutputs, ['ProductSpec']) && placeholder.completionGate === null, placeholder);
+    check('the placeholder says which upload covers it', placeholder?.statusReason === 'Covered by your upload: greeting-spec.md', placeholder?.statusReason);
+    check('the stage that reads the spec depends on the placeholder', design !== undefined && design.dependsOn.includes(placeholder?.key), design?.dependsOn);
+    const detail = await h.services.projections.missionDetail(m.id);
+    check('the plan validates on read', eq(detail.planIssues, []), detail.planIssues);
+    const view = detail.tasks.find((t) => t.id === placeholder?.id);
+    check('the placeholder is covered by the upload', view?.coveredBy?.filename === 'greeting-spec.md' && view.coveredBy.artifactId === intake?.id, view?.coveredBy);
+    check('other tasks are covered by nothing', detail.tasks.filter((t) => t.id !== placeholder?.id).every((t) => t.coveredBy === null), detail.tasks.map((t) => t.coveredBy));
+    check('the mission lists its upload and what intake made of it', detail.uploads?.length === 1 && detail.uploads[0].evidenceId === evidence[0]?.id
+      && detail.uploads[0].filename === 'greeting-spec.md' && detail.uploads[0].mediaType === 'text/markdown' && detail.uploads[0].intakeArtifactId === intake?.id, detail.uploads);
+
+    // ---- the same bytes again, then a replan: one blob, still one intake
+    const again = await h.container.resolve(h.app.CONTRIBUTION_SERVICE).pin({ missionId: m.id, caller, contribution: upload });
+    check('the same bytes pinned again are the same blob', again.evidence.contentRef === evidence[0]?.contentRef);
+    await h.services.planning.plan(m.id);
+    check('a replan runs no second intake', intakes(m.id).length === 1 && h.artifacts.listByMission(m.id).filter((a) => a.type === 'ProductSpec').length === 1, intakes(m.id));
+    check('the replan still skips the covered stage', tasksOf(m.id).filter((t) => t.status === 'SKIPPED').length === 1, tasksOf(m.id).map((t) => [t.key, t.status]));
+
+    // ---- an intake spec that leaves a Done-when line uncovered covers nothing
+    const GOAL2 = 'Greet the visitor and say goodbye';
+    const m2 = await h.services.missions.create(caller, { workspaceId: ws, goal: GOAL2, title: 'Greeting and goodbye', successCriteria: ['The page greets the visitor by name', 'The page says goodbye'], uploads: [upload] });
+    await h.services.planning.plan(m2.id);
+    const intake2 = h.artifacts.listByMission(m2.id).filter((a) => a.type === 'ProductSpec');
+    check('intake still runs for an uncovered spec', intakes(m2.id).length === 1 && intake2.length === 1, intakes(m2.id));
+    const ledger2 = h.container.resolve(h.app.MISSION_CRITERIA_REPOSITORY).listActive(m2.id);
+    check('an uncovered intake spec stays off the ledger', ledger2.every((c) => c.specArtifactId === null), ledger2.map((c) => [c.key, c.specArtifactId]));
+    const prompts2 = plannerPrompts(GOAL2);
+    check('the planner is not offered an uncovered spec', prompts2.length > 0 && prompts2.every((p) => !p.includes(`(id ${intake2[0]?.id})`)), prompts2.map((p) => p.slice(-1500)));
+    // Now the planner names the real intake artifact: still not an upload it may skip for.
+    profiles.update(profile.id, { settings: { script: script(intake2[0]?.id ?? 'none') } });
+    await h.services.planning.plan(m2.id);
+    const rejected = events.listByMission(m2.id).filter((e) => e.body.type === 'note' && /skipped stage 'product' names .*which is not an upload of type ProductSpec/.test(e.body.text));
+    check('a plan skipping the product stage for an uncovered spec is rejected', rejected.some((e) => e.body.text.includes(intake2[0]?.id)), events.listByMission(m2.id).filter((e) => e.body.type === 'note').map((e) => e.body.text));
+    check('no placeholder is made for an uncovered spec', tasksOf(m2.id).length > 0 && tasksOf(m2.id).every((t) => t.status !== 'SKIPPED'), tasksOf(m2.id).map((t) => [t.key, t.status]));
+    profiles.update(profile.id, { settings: { script: script('{{upload}}') } });
+
+    // ---- refinement is the first of the two, when it comes first
+    const GOAL3 = 'Greet the visitor in their language';
+    const m3 = await h.services.missions.create(caller, { workspaceId: ws, goal: GOAL3, title: 'Localised greeting', successCriteria: ['The page greets the visitor by name'], uploads: [upload] });
+    h.services.refinement.begin(caller, m3.id);
+    await h.services.refinement.settled(m3.id);
+    check('the first refinement runs intake', intakes(m3.id).length === 1, intakes(m3.id));
+    await h.services.planning.plan(m3.id);
+    check('planning after refinement runs no second intake', intakes(m3.id).length === 1 && tasksOf(m3.id).some((t) => t.status === 'SKIPPED'), intakes(m3.id));
+
+    // ---- a project's own workflow never skips
+    const m4 = await h.services.missions.create(caller, { workspaceId: ws, goal: 'Run our own flow', title: 'Own flow', successCriteria: ['The page greets the visitor by name'], workflowPreset: 'p3-flow', uploads: [upload] });
+    await h.services.planning.plan(m4.id);
+    check('an authored workflow still runs intake', intakes(m4.id).length === 1, intakes(m4.id));
+    check('an authored workflow gets no placeholder', eq(tasksOf(m4.id).map((t) => [t.key, t.status]), [['brief', 'READY']]), tasksOf(m4.id).map((t) => [t.key, t.status]));
+
+    // ---- a refused upload creates no mission
+    const before = h.container.resolve(h.app.MISSION_REPOSITORY).list({}).length;
+    const refused = await refusal(() => h.services.missions.create(caller, { workspaceId: ws, goal: 'Build from a figma link', uploads: [{ kind: 'link', url: 'https://www.figma.com/file/x' }] }));
+    check('a bare unreadable link at creation is a 400', refused?.code === 'VALIDATION' && refused.message === 'Nothing here can read that link. Attach an export of it.', refused && { code: refused.code, message: refused.message });
+    check('the refused upload left no mission behind', h.container.resolve(h.app.MISSION_REPOSITORY).list({}).length === before, [before, h.container.resolve(h.app.MISSION_REPOSITORY).list({}).length]);
   } finally {
     h.container.resolve((await import('@tandemise/persistence')).DATABASE).close?.();
     rmSync(HOME, { recursive: true, force: true });

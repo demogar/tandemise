@@ -18,6 +18,7 @@ import type { EventRecorder, EventScope } from '../support/event-recorder.js';
 import { requireSeat, type Caller } from '../support/identity.js';
 import { buildRefinementPrompt } from '../planning/refinement-prompt.js';
 import { refinementTitle } from '../planning/materialize.js';
+import { intakeArtifactFor, missionUploads } from '../planning/intake.js';
 import type { ReadinessService } from './readiness.js';
 import { ensureTandemiseIgnore } from '../support/ignore.js';
 
@@ -51,6 +52,12 @@ export interface RefinementDeps {
   readonly paths: TandemisePaths;
   readonly clock: Clock;
   readonly log: Logger;
+  /**
+   * Converts the mission's uploads before the first pass reads the request
+   * (spec A2). Optional for older harnesses; planning's `ensureIntake`, which
+   * never throws and does nothing the second time.
+   */
+  readonly intake?: (missionId: MissionId) => Promise<unknown>;
 }
 
 /** A pass that could not finish, with the sentence the person reads. */
@@ -183,6 +190,10 @@ export class RefinementServiceImpl implements RefinementService {
     const repository = mission.repositoryId === null ? null : this.deps.repositories.get(mission.repositoryId) ?? null;
     const scope = scopeOf(mission);
 
+    // Before the refinement picks its own runtime: intake runs on the
+    // planner's, and what it makes is context the pass should read.
+    await this.deps.intake?.(mission.id);
+
     const candidates = this.#candidates(workspace);
     if (candidates.length === 0) {
       throw new RefinementFailure('No runtime is enabled to refine this request. Enable one in Runtimes and refine again, or add Done-when criteria by hand.');
@@ -286,6 +297,7 @@ export class RefinementServiceImpl implements RefinementService {
       answered: this.deps.questions.listByMission(mission.id)
         .flatMap((q) => (q.status === 'answered' && q.answer !== null ? [{ text: q.text, answer: q.answer }] : [])),
       rejected: ledger.filter((c) => c.status === 'rejected').map((c) => c.statement),
+      uploads: this.#intakeContext(mission.id),
       template: this.deps.templates.render('Refinement') ?? '(write a Refinement document)',
       workingDirectory: target.workingDirectory,
       destination: file,
@@ -417,6 +429,15 @@ export class RefinementServiceImpl implements RefinementService {
   }
 
   // ---------------------------------------------------------------- helpers
+
+  /** What intake made of the uploads, as the pass reads it: an uploaded spec is where Done-when lines come from. */
+  #intakeContext(missionId: MissionId): readonly { readonly type: string; readonly title: string; readonly headline: string }[] {
+    const artifacts = this.deps.artifacts.listByMission(missionId);
+    return missionUploads(artifacts).flatMap((evidence) => {
+      const intake = intakeArtifactFor(evidence, artifacts);
+      return intake === undefined ? [] : [{ type: intake.type, title: intake.title, headline: intake.handoff?.headline ?? intake.summary ?? '' }];
+    });
+  }
 
   #requireDraft(missionId: MissionId, verb: string): Mission {
     const mission = this.deps.missions.get(missionId);

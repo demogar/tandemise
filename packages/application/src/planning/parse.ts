@@ -4,7 +4,7 @@ import {
   ARTIFACT_TYPES, DEFAULT_RETRY_POLICY, DEFAULT_WAIT_EVERY_MS, DEFAULT_WAIT_TIMEOUT_MS, HUMAN_ROLE_ID,
   ISOLATION_MODES, NO_APPROVAL, WAIT_ROLE_ID,
 } from '@tandemise/domain';
-import { Err, Ok, type Result } from '@tandemise/shared';
+import { Err, Ok, type ArtifactId, type Result } from '@tandemise/shared';
 import { extractPlanJson } from './prompt.js';
 
 const DEFAULT_WALL_TIME_MS = 25 * 60_000;
@@ -74,9 +74,18 @@ const plannedTask = z.object({
   timeoutMs: z.number().int().min(60_000).max(86_400_000).optional(),
 });
 
+/** A stage left out because an upload covers it (spec A2); validation checks the artifact is real. */
+const skippedStage = z.object({
+  stage: z.string().trim().min(1),
+  outputType: artifactType,
+  artifactId: z.string().trim().min(1),
+  reason: z.string().trim().default(''),
+});
+
 const missionPlan = z.object({
   summary: z.string().trim().default(''),
   tasks: z.array(plannedTask).min(1, 'a plan needs at least one task'),
+  skipped: z.array(skippedStage).default([]),
 });
 
 export function parsePlanResponse(response: string): Result<MissionPlan, readonly string[]> {
@@ -118,5 +127,6 @@ export function parsePlanResponse(response: string): Result<MissionPlan, readonl
     } as PlannedTask;
   });
   if (issues.length > 0) return Err(issues);
-  return Ok({ summary: parsed.data.summary, tasks });
+  const skipped = parsed.data.skipped.map((s) => ({ ...s, artifactId: s.artifactId as ArtifactId }));
+  return Ok({ summary: parsed.data.summary, tasks, ...(skipped.length === 0 ? {} : { skipped }) });
 }

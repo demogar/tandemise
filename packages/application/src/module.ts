@@ -564,6 +564,8 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       clock: clock(r),
       log: log(r).child({ component: 'planning' }),
       skills: r.resolve(t.SKILL_SERVICE),
+      parser: r.resolve(t.ARTIFACT_PARSER),
+      templates: r.resolve(t.ARTIFACT_TEMPLATES),
       // Resolved per plan, not at construction: the integration service is
       // composed after planning, and a plan should see what is connected now.
       connectedApps: async (workspaceId) => (await r.resolve(t.INTEGRATION_SERVICE).list(asId(workspaceId)))
@@ -637,6 +639,8 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       recorder: r.resolve(t.EVENT_RECORDER),
       clock: clock(r),
       log: log(r).child({ component: 'missions' }),
+      // Resolved per call: uploads at creation are pinned through it (spec A2).
+      contributions: { pin: (input) => r.resolve(t.CONTRIBUTION_SERVICE).pin(input) },
     }), { source: SOURCE });
 
     bind(t.REFINEMENT_SERVICE, (r) => new RefinementServiceImpl({
@@ -660,6 +664,8 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       paths: paths(r),
       clock: clock(r),
       log: log(r).child({ component: 'refinement' }),
+      // The first refinement converts the uploads when it comes before planning (spec A2).
+      intake: (missionId) => r.resolve(t.PLANNING_SERVICE).ensureIntake(missionId),
     }), { source: SOURCE });
 
     bind(t.LIMIT_SERVICE, (r) => new LimitService({
