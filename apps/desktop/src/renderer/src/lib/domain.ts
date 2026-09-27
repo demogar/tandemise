@@ -295,11 +295,11 @@ export const CONTRIBUTION_TOTAL_MESSAGE = 'These files add up to more than 24 MB
 export const LINKABLE_OUTPUT_TYPES: readonly ArtifactType[] = ['DesignBrief', 'ChangeSet', 'ImplementationPlan', 'ProductSpec'];
 export const PARKABLE_TASK_STATUSES: readonly TaskStatus[] = ['READY', 'RUNNING', 'SUCCEEDED'];
 
-/** Where the work most likely goes next, prefilled in "Continue elsewhere": a design in Figma, code in an editor. */
+/** Where the work most likely goes next, prefilled in "Continue elsewhere" and editable there: a design in Figma, code or a plan in Cursor, a spec in Google Docs. */
 export function defaultElsewhereTool(outputs: readonly ArtifactType[]): string {
   if (outputs.includes('DesignBrief')) return 'Figma';
-  if (outputs.includes('ChangeSet') || outputs.includes('ImplementationPlan')) return 'your editor';
-  return 'your doc';
+  if (outputs.includes('ChangeSet') || outputs.includes('ImplementationPlan')) return 'Cursor';
+  return 'Google Docs';
 }
 
 export const API_VERSION = 'v1';
