@@ -211,6 +211,9 @@ export function buildRouter(services: TandemiseServices, options: { readonly tes
   // to another tool and comes back as a person's round.
   r.post('/v1/tasks/:id/park', async (ctx) =>
     services.missions.parkTask(asId(ctx.params.id!), ctx.caller, await ctx.body(parkTaskRequest)));
+  // Takes no body worth the contribution cap: the default 8 MiB applies.
+  r.post('/v1/tasks/:id/unpark', async (ctx) =>
+    services.missions.unparkTask(asId(ctx.params.id!), ctx.caller));
   r.post('/v1/tasks/:id/hand-back', async (ctx) =>
     services.missions.handBack(asId(ctx.params.id!), ctx.caller, await ctx.body(handBackRequest)), CONTRIBUTION_BODY);
 

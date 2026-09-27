@@ -88,6 +88,8 @@ export type OrchestrationEvent =
   | { readonly type: 'mission.pulled'; readonly position: number; readonly limit: number; readonly active: number; readonly skipped?: number }
   /** "Continue elsewhere": an agent task was parked to work in another tool (spec A4). */
   | { readonly type: 'task.parked_external'; readonly tool: string }
+  /** "Take it back": a parked task's park was called off and the agent runs it again; the tool it had been continued in. */
+  | { readonly type: 'task.unparked'; readonly tool: string }
   /** A parked task's hand-back landed as a human-authored round; which outputs, and whether the contribution was a file or a link. */
   | { readonly type: 'task.handed_back'; readonly artifactIds: readonly ArtifactId[]; readonly round: number; readonly contribution: 'file' | 'link' }
   /** Mission intake (spec A2) ran once over the mission's pinned uploads: what it produced and what it could not convert. */
@@ -132,7 +134,7 @@ export const SEMANTIC_EVENT_TYPES: ReadonlySet<string> = new Set([
   'tool.started', 'approval.escalated', 'review.skipped', 'review.required', 'task.attention',
   'artifact.tighten_requested', 'artifact.over_budget',
   'feedback.given', 'feedback.addressed', 'feedback.dismissed', 'task.round_started', 'mission.pulled',
-  'task.parked_external', 'task.handed_back', 'mission.intake_completed',
+  'task.parked_external', 'task.unparked', 'task.handed_back', 'mission.intake_completed',
 ]);
 
 export function isSemanticEvent(body: TandemiseEventBody): boolean {

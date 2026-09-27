@@ -11,6 +11,9 @@ import { HandoffLinkButton, openableLinks } from './HandoffLinks.js';
 import { ContinueElsewhereDialog, HandBackDialog } from './HandBackDialog.js';
 import { StartRoundButton } from './ImpactDialog.js';
 import { pluralize, relativeTime, taskTone, type Tone } from '../lib/format.js';
+import { useDaemonMutation } from '../lib/queries.js';
+import { describeError } from '../lib/daemon.js';
+import { showFlash } from '../lib/notices.js';
 import { actorLabel, type Actors } from '../lib/team.js';
 
 /** What changed, at most: the handoff contract caps `changed` at three, and a card shows all of them. */
@@ -65,6 +68,8 @@ export function HandoffCard({
   const workspaceId = useWorkspaceId();
   const [elsewhere, setElsewhere] = useState<'continue' | 'hand_back' | null>(null);
   const parked = task?.parkedExternal ?? null;
+  // "Take it back": the person changed their mind, and the agent runs the step again.
+  const takeBack = useDaemonMutation((daemon, taskId: string) => daemon.unparkTask(taskId), ['tasks', 'missions', 'approvals'], missionId);
   // Offered where the daemon would take it (spec A4): an agent's step making something that can come back from
   // another tool, which nothing downstream has run on yet. The daemon still decides, and says why in the dialog.
   const canContinue = task !== undefined && parked === null && task.executor === 'agent' && !usedDownstream
@@ -164,10 +169,19 @@ export function HandoffCard({
           <div className="feedcard__needs-line">
             <Icon name="clock" size={13} />
             <span className="feedcard__needs-text">Waiting for your work in {parked.tool}</span>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={takeBack.isPending}
+              onClick={() => takeBack.mutate(card.taskId!, { onSuccess: () => showFlash(`Taken back from ${parked.tool}`) })}
+            >
+              {takeBack.isPending ? 'Taking it back…' : 'Take it back'}
+            </button>
             <button type="button" className="btn btn--primary" onClick={() => setElsewhere('hand_back')}>
               Hand back
             </button>
           </div>
+          {takeBack.isError ? <p className="field__error" role="alert">{describeError(takeBack.error).detail}</p> : null}
         </div>
       ) : null}
 

@@ -178,6 +178,12 @@ export interface MissionService {
    */
   parkTask(taskId: TaskId, caller: Caller, request: ParkTaskRequest): Promise<TaskView>;
   /**
+   * "Take it back": calls a park off. The step goes back to READY and runs
+   * again; the work the park held waits for it. CONFLICT, writing nothing,
+   * unless the step is parked and its mission still open.
+   */
+  unparkTask(taskId: TaskId, caller: Caller): Promise<TaskView>;
+  /**
    * "Hand back" (spec A4): the person's contribution becomes the parked step's
    * next round, written as its expected outputs. CONFLICT, with nothing
    * written, unless the step is parked and its mission still open.

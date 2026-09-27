@@ -296,6 +296,24 @@ export class FeedbackRounds {
   }
 
   /**
+   * The reverse of `holdDependents` when the park is called off rather than
+   * handed back: the work it held (still PENDING with the hold's `reason`)
+   * stops saying it waits on the other tool. It stays PENDING, since the step
+   * it needs is going again, and the scheduler releases it the way it releases
+   * any work whose dependencies are done once the step succeeds. Call it
+   * inside the caller's unit.
+   */
+  releaseHeld(task: MissionTask, reason: string): void {
+    const { deps } = this;
+    const all = deps.tasks.listByMission(task.missionId);
+    for (const t of all) {
+      if (t.status !== 'PENDING' || t.statusReason !== reason || !upstreamTaskIds(t, all).has(task.id)) continue;
+      deps.tasks.update(t.id, { statusReason: null });
+    }
+    deps.recorder.invalidate('tasks', task.missionId);
+  }
+
+  /**
    * Closes an output card as "Request changes": the note is on the card, and
    * the round carries it. Call it with the round start in one unit and pass
    * the card as `keepCardId`, so the round does not withdraw it under its own

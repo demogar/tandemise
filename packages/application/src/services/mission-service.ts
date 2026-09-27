@@ -688,6 +688,43 @@ export class MissionServiceImpl implements MissionService {
   }
 
   /**
+   * "Take it back": the person changed their mind about continuing a step
+   * elsewhere, and the agent picks it up again. The step goes back to READY
+   * as a retry would, the work the park held stops waiting on the other tool
+   * and waits for the step instead, and the scheduler runs it again. Nothing
+   * is pinned or written; a hand-back after this is refused, as the step is
+   * no longer parked.
+   */
+  async unparkTask(taskId: TaskId, caller: Caller): Promise<TaskView> {
+    const task = this.#requireTask(taskId);
+    const mission = this.#require(task.missionId);
+    const { actorId } = actorFor(this.deps, mission.workspaceId, caller);
+    const park = this.#assertParked(task, mission, 'taken back');
+    this.#assertMayTake(task, mission, actorId, 'take back');
+    const scope: EventScope = { ...scopeOf(mission), taskId, roleId: task.roleId, actorId };
+    const reason = `Taken back from ${park.tool}.`;
+    this.deps.recorder.deferred(() => this.deps.unitOfWork.transaction(() => {
+      // Checked again inside the unit: a hand-back racing this one may have landed first.
+      const current = this.#requireTask(taskId);
+      if (parkedExternalOf(current, this.#log(mission.id)) === null) {
+        throw new TandemiseError('CONFLICT', `'${task.title}' is no longer waiting for work from another tool.`, { details: { taskId } });
+      }
+      this.deps.tasks.update(taskId, {
+        status: 'READY', statusReason: null, needsAttention: false, finishedAt: null,
+        // Room for one more attempt, as a retry gives: a step parked after its last attempt must still run.
+        retryPolicy: { ...current.retryPolicy, maxAttempts: Math.max(current.retryPolicy.maxAttempts, current.attempts + 1) },
+      });
+      this.deps.recorder.record(scope, { type: 'task.status', from: current.status, to: 'READY', reason });
+      this.deps.recorder.record(scope, { type: 'task.unparked', tool: park.tool });
+      this.deps.rounds.releaseHeld(current, `Waiting for '${task.key}' from ${park.tool}.`);
+      this.#reviveMission(mission, `'${task.key}' was taken back from ${park.tool}.`);
+    }));
+    this.deps.recorder.invalidate('tasks', mission.id);
+    this.deps.scheduler.wake();
+    return this.#taskView(mission.id, taskId);
+  }
+
+  /**
    * "Hand back" (spec A4): what the person made elsewhere comes back as the
    * parked step's next round, a human-authored one.
    *
@@ -700,7 +737,7 @@ export class MissionServiceImpl implements MissionService {
     const task = this.#requireTask(taskId);
     const mission = this.#require(task.missionId);
     const { actorId, recordedBy } = actorFor(this.deps, mission.workspaceId, caller, request.onBehalfOf);
-    const park = this.#assertHandBack(task, mission);
+    const park = this.#assertParked(task, mission, 'handed back');
     // Whoever records it is the one taking the step; the author may be someone without a seat.
     this.#assertMayTake(task, mission, recordedBy, 'hand back');
     if (this.deps.contributions === undefined) throw TandemiseError.validation('This build cannot take a hand-back.');
@@ -821,8 +858,8 @@ export class MissionServiceImpl implements MissionService {
     this.deps.recorder.invalidate('targets', task.missionId);
   }
 
-  /** The step's park, or a CONFLICT saying why nothing can be handed back to it. Writes nothing. */
-  #assertHandBack(task: MissionTask, mission: Mission): ParkedExternal {
+  /** The step's park, or a CONFLICT saying why nothing can be handed back to it or taken back from it. Writes nothing. */
+  #assertParked(task: MissionTask, mission: Mission, action: 'handed back' | 'taken back'): ParkedExternal {
     const park = task.executor === 'agent' ? parkedExternalOf(task, this.#log(mission.id)) : null;
     if (park === null) {
       throw new TandemiseError('CONFLICT', `'${task.title}' is not waiting for work from another tool.`, {
@@ -830,7 +867,8 @@ export class MissionServiceImpl implements MissionService {
       });
     }
     if (mission.status === 'CANCELLED' || mission.status === 'COMPLETE') {
-      throw new TandemiseError('CONFLICT', `This mission is ${mission.status === 'CANCELLED' ? 'cancelled' : 'complete'}; start a new mission to continue this work.`, {
+      const next = action === 'handed back' ? 'start a new mission to continue this work' : 'there is nothing left to run it in';
+      throw new TandemiseError('CONFLICT', `This mission is ${mission.status === 'CANCELLED' ? 'cancelled' : 'complete'}; ${next}.`, {
         details: { taskId: task.id, missionId: mission.id, status: mission.status },
       });
     }
@@ -933,7 +971,7 @@ export class MissionServiceImpl implements MissionService {
    * A4), and nobody can claim it: the person who answers for it may, and so
    * may anyone they answer to, up to the owners.
    */
-  #assertMayTake(task: MissionTask, mission: Mission, actorId: string, action: 'claim' | 'complete' | 'continue' | 'hand back'): void {
+  #assertMayTake(task: MissionTask, mission: Mission, actorId: string, action: 'claim' | 'complete' | 'continue' | 'hand back' | 'take back'): void {
     if (task.executor === 'agent') {
       if (task.staffing == null || task.responsibleId == null) return;
       const team = indexTeam(this.deps.members.listByWorkspace(mission.workspaceId, { includeRemoved: true }));

@@ -434,6 +434,11 @@ export class DaemonClient {
     return this.#request('POST', `/tasks/${taskId}/park`, body);
   }
 
+  /** "Take it back": calls off a park, so the agent runs the step again. */
+  unparkTask(taskId: string): Promise<TaskView> {
+    return this.#request('POST', `/tasks/${taskId}/unpark`);
+  }
+
   /** "Hand back" (spec A4): the contribution becomes the parked step's next round. A 120 s timeout covers the pin. */
   handBack(taskId: string, body: HandBackRequest): Promise<{ task: TaskView; artifacts: ArtifactManifest[] }> {
     return this.#request('POST', `/tasks/${taskId}/hand-back`, body, undefined, { timeoutMs: CONTRIBUTION_TIMEOUT_MS });

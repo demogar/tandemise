@@ -43,11 +43,11 @@ export interface ParkedExternal {
 /**
  * Whether an agent step is parked elsewhere right now: it is AWAITING_EXTERNAL
  * and its newest `task.parked_external` came after its newest
- * `task.handed_back`. Read from the log rather than a column, so a wait step
+ * `task.handed_back` or `task.unparked` (a park called off). Read from the log rather than a column, so a wait step
  * (the other AWAITING_EXTERNAL) is never mistaken for one.
  *
  * `events` is the mission's semantic log in sequence order; only this task's
- * park and hand-back events are read from it.
+ * park, hand-back and take-back events are read from it.
  */
 export function parkedExternalOf(
   task: Pick<MissionTask, 'id' | 'status' | 'executor'>,
@@ -55,16 +55,16 @@ export function parkedExternalOf(
 ): ParkedExternal | null {
   if (task.status !== 'AWAITING_EXTERNAL' || task.executor !== 'agent') return null;
   let parked: RunEventRecord | undefined;
-  let handedBackAfter = false;
+  let endedAfter = false;
   for (const event of events) {
     if (event.taskId !== task.id) continue;
     if (event.body.type === 'task.parked_external') {
       parked = event;
-      handedBackAfter = false;
-    } else if (event.body.type === 'task.handed_back' && parked !== undefined) {
-      handedBackAfter = true;
+      endedAfter = false;
+    } else if ((event.body.type === 'task.handed_back' || event.body.type === 'task.unparked') && parked !== undefined) {
+      endedAfter = true;
     }
   }
-  if (parked === undefined || handedBackAfter || parked.body.type !== 'task.parked_external') return null;
+  if (parked === undefined || endedAfter || parked.body.type !== 'task.parked_external') return null;
   return { tool: parked.body.tool, since: parked.createdAt, actorId: parked.actorId ?? null };
 }

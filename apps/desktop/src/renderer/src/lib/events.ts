@@ -338,6 +338,8 @@ function describe(record: RunEventRecord, roleNames: ReadonlyMap<string, string>
       };
     case 'task.parked_external':
       return { ...base, icon: 'externalLink', tone: 'pending', title: `Continued in ${body.tool}`, detail: null, link: null };
+    case 'task.unparked':
+      return { ...base, icon: 'refresh', tone: 'running', title: `Taken back from ${body.tool}`, detail: null, link: null };
     case 'task.handed_back':
       return {
         ...base,
