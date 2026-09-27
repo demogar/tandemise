@@ -567,12 +567,15 @@ section('daemon: park and hand back');
   gitc('init', '-q', '-b', 'main');
   commitFile('README.md');
   execFileSync('git', ['init', '-q', '--bare', remoteRepo]);
-  gitc('remote', 'add', 'origin', remoteRepo);
-  gitc('push', '-q', 'origin', 'main');
+  // Named for GitHub and rewritten to the bare repository, with no `origin`:
+  // the fetch has to find the remote whose configured URL is acme/app.
+  gitc('config', `url.${remoteRepo}.insteadOf`, 'https://github.com/acme/app.git');
+  gitc('remote', 'add', 'acme', 'https://github.com/acme/app.git');
+  gitc('push', '-q', 'acme', 'main');
   gitc('checkout', '-q', '-b', 'feat/greet');
   commitFile('greet.txt');
   const prSha = gitc('rev-parse', 'HEAD');
-  gitc('push', '-q', 'origin', 'HEAD:refs/pull/7/head');
+  gitc('push', '-q', 'acme', 'HEAD:refs/pull/7/head');
   gitc('checkout', '-q', 'main');
   gitc('branch', '-q', '-D', 'feat/greet');
   // Two agent worktree branches: the one a hand-back replaces, and another step's.

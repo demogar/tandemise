@@ -235,16 +235,18 @@ export class ContributionServiceImpl implements ContributionService {
    * The remote that points at the pull request's repository on GitHub, or
    * `origin` when none names it (a mirror, or a checkout whose remote is a
    * local path). The repository is the one gh read the pull request from.
+   * Read from the remotes' configured URLs rather than `git remote -v`, which
+   * shows them after any `insteadOf` rewrite.
    */
   async #githubRemote(git: (args: readonly string[]) => Promise<{ exitCode: number; stdout: string }>, repo: string): Promise<string> {
-    const listed = await git(['remote', '-v']);
+    const listed = await git(['config', '--get-regexp', '^remote\\..*\\.url$']);
     if (listed.exitCode !== 0) return 'origin';
     const wanted = repo.toLowerCase();
     for (const line of listed.stdout.split('\n')) {
-      const [name, remoteUrl] = line.trim().split(/\s+/);
-      if (name === undefined || remoteUrl === undefined) continue;
-      const match = /github\.com[:/]([^/]+\/[^/]+?)(?:\.git)?\/?$/i.exec(remoteUrl);
-      if (match !== null && match[1]!.toLowerCase() === wanted) return name;
+      const entry = /^remote\.(.+)\.url\s+(\S+)$/.exec(line.trim());
+      if (entry === null) continue;
+      const match = /github\.com[:/]([^/]+\/[^/]+?)(?:\.git)?\/?$/i.exec(entry[2]!);
+      if (match !== null && match[1]!.toLowerCase() === wanted) return entry[1]!;
     }
     return 'origin';
   }
