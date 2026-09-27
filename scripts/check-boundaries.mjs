@@ -82,6 +82,8 @@ for (const [name, spec] of Object.entries(PACKAGES)) {
     ['@tandemise/artifacts/strip-front-matter', 'packages/artifacts/src/strip-front-matter.ts'],
     // The Inbox and the daemon's mission feed judge "for me" with one rule.
     ['@tandemise/api-contract/for-me', 'packages/api-contract/src/for-me.ts'],
+    // Settings → About and the offline check build the copied diagnostics with one function.
+    ['@tandemise/api-contract/about', 'packages/api-contract/src/about.ts'],
   ]);
   const PURE_SUBPATHS = new Set(PURE_SUBPATH_SOURCES.keys());
   const ANY_IMPORT_RE = /^\s*(?:import|export)\b[^;]*?\bfrom\s+['"]([^'"]+)['"]|^\s*import\s+['"]([^'"]+)['"]|\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)|\brequire\s*\(/gm;

@@ -18,6 +18,7 @@ export function createSystemEnvironment(config: DaemonConfig, schemaVersion: num
   const startedAt = new Date().toISOString() as Timestamp;
   return {
     daemonVersion: config.version,
+    daemonBuild: config.build,
     schemaVersion,
     home: config.home,
     startedAt,

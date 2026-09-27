@@ -11,6 +11,7 @@
 import { spawn } from 'node:child_process';
 
 export const OFFLINE_CHECKS = [
+  'about-check',
   'artifact-lineage-check',
   'artifact-write-scope-check',
   'concurrency-check',

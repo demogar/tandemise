@@ -394,6 +394,8 @@ export interface TaskWatchView {
 
 export interface SystemInfo {
   readonly daemonVersion: string;
+  /** Short git commit the daemon was built from, or `dev` when unknown. */
+  readonly daemonBuild: string;
   readonly apiVersion: string;
   readonly schemaVersion: number;
   readonly startedAt: string;

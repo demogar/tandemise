@@ -1,3 +1,5 @@
+import type { AppAboutFacts } from '@tandemise/api-contract/about';
+
 /**
  * The whole surface the renderer is allowed to reach outside its sandbox.
  *
@@ -62,6 +64,17 @@ export interface TandemiseBridge {
    * Rejects unless the app was started with TANDEMISE_NOTIFY_RECORD.
    */
   notificationsDebug(op: string, arg?: unknown): Promise<unknown>;
+  /** Version, build, Electron, Chromium, Node and OS of this app, for Settings → About. */
+  getAppInfo(): Promise<AppAboutFacts>;
+}
+
+/**
+ * Exposed as `window.tandemiseTest` only when the app runs with
+ * `TANDEMISE_TEST_HOOKS=1`, for the real-app suites: the macOS About panel is a
+ * native window CDP cannot read, so a suite reads the options it was given.
+ */
+export interface TandemiseTestBridge {
+  aboutPanelOptions(): Promise<Record<string, unknown>>;
 }
 
 /** IPC channel names, kept in one place so a typo fails at compile time. */
@@ -75,4 +88,9 @@ export const IPC = {
   notificationTest: 'notifications:test',
   notificationOpen: 'notifications:open',
   notificationDebug: 'notifications:debug',
+  appInfo: 'app:info',
+  testAboutPanelOptions: 'test:about-panel-options',
 } as const;
+
+/** The renderer argument that tells the preload to expose the test bridge. */
+export const TEST_HOOKS_ARGUMENT = '--tandemise-test-hooks';

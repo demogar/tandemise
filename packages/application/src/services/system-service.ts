@@ -32,6 +32,7 @@ export class SystemServiceImpl implements SystemService {
   info(): SystemInfo {
     return {
       daemonVersion: this.environment.daemonVersion,
+      daemonBuild: this.environment.daemonBuild,
       apiVersion: API_VERSION,
       schemaVersion: this.environment.schemaVersion,
       startedAt: this.environment.startedAt,

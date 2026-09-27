@@ -50,6 +50,7 @@ export interface EnvironmentOverrides {
 export function describeEnvironment(overrides: EnvironmentOverrides = {}): SystemEnvironmentPort {
   return {
     daemonVersion: overrides.daemonVersion ?? '0.0.0-dev',
+    daemonBuild: 'dev',
     schemaVersion: overrides.schemaVersion ?? 0,
     home: overrides.home ?? '',
     startedAt: systemClock.now(),

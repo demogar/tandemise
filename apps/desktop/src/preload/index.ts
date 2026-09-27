@@ -1,5 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { IPC, type DaemonStatus, type NotificationOpen, type TandemiseBridge } from '../shared/bridge.js';
+import {
+  IPC,
+  TEST_HOOKS_ARGUMENT,
+  type DaemonStatus,
+  type NotificationOpen,
+  type TandemiseBridge,
+  type TandemiseTestBridge,
+} from '../shared/bridge.js';
 
 /**
  * The only bridge between the sandboxed renderer and the OS.
@@ -32,6 +39,16 @@ const bridge: TandemiseBridge = {
     };
   },
   notificationsDebug: (op, arg) => ipcRenderer.invoke(IPC.notificationDebug, op, arg),
+  getAppInfo: () => ipcRenderer.invoke(IPC.appInfo),
 };
 
 contextBridge.exposeInMainWorld('tandemise', bridge);
+
+// Only when the main process started with TANDEMISE_TEST_HOOKS=1 and passed the
+// flag to this renderer; a normal run has no `window.tandemiseTest` at all.
+if (process.argv.includes(TEST_HOOKS_ARGUMENT)) {
+  const testBridge: TandemiseTestBridge = {
+    aboutPanelOptions: () => ipcRenderer.invoke(IPC.testAboutPanelOptions),
+  };
+  contextBridge.exposeInMainWorld('tandemiseTest', testBridge);
+}

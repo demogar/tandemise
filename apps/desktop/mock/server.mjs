@@ -193,6 +193,7 @@ route('GET', '/health', () => ({ status: 'ok' }));
 
 route('GET', '/system', () => ({
   daemonVersion: '0.1.0-mock',
+  daemonBuild: 'dev',
   apiVersion: 'v1',
   schemaVersion: 3,
   startedAt: STARTED_AT,

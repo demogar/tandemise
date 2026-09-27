@@ -21,7 +21,7 @@
     "apps/*"
   ],
   "scripts": {
-    "build": "tsc -b tsconfig.build.json",
+    "build": "tsc -b tsconfig.build.json && node scripts/write-build-info.mjs",
     "build:watch": "tsc -b tsconfig.build.json --watch",
     "clean": "tsc -b tsconfig.build.json --clean && rimraf 'packages/*/dist' 'apps/*/dist'",
     "check:boundaries": "node scripts/check-boundaries.mjs",

@@ -187,6 +187,7 @@ Task-oriented, one per concept:
 | [The desk and the status report](docs/guides/desk-and-status-report.md) | read Home at a glance and write a report from facts |
 | [Routines](docs/guides/routines.md) | put standing work on a schedule |
 | [Notifications](docs/guides/notifications.md) | hear about new Inbox items while the window is in the background |
+| [About and diagnostics](docs/guides/about-and-diagnostics.md) | see which app and daemon build is running, and copy diagnostics for a bug report |
 | [Workflows](docs/WORKFLOWS.md) | write my own process as a file, and see which gate facts exist |
 
 ## Repository layout

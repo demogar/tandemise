@@ -1,0 +1,78 @@
+{
+  "id": "A3",
+  "title": "The About panel shows version, build, copyright, license and the repository",
+  "ok": true,
+  "checks": [
+    {
+      "label": "test hook present (TANDEMISE_TEST_HOOKS=1)",
+      "ok": true
+    },
+    {
+      "label": "applicationName is Tandemise",
+      "ok": true,
+      "observed": "Tandemise"
+    },
+    {
+      "label": "applicationVersion is 0.5.0",
+      "ok": true,
+      "observed": "0.5.0"
+    },
+    {
+      "label": "version (the build) is the commit d9141a8, not Electron's version",
+      "ok": true,
+      "observed": "d9141a8"
+    },
+    {
+      "label": "copyright is NOTICE's line plus the Apache-2.0 license",
+      "ok": true,
+      "observed": "Copyright 2026 Demostenes Garcia G. and the Tandemise contributors\nLicensed under the Apache License, Version 2.0"
+    },
+    {
+      "label": "credits and website point at the repository",
+      "ok": true,
+      "observed": {
+        "credits": "Source, documentation and issues:\nhttps://github.com/demogar/tandemise",
+        "website": "https://github.com/demogar/tandemise"
+      }
+    },
+    {
+      "label": "the bridge has no test hook for anything else",
+      "ok": true
+    },
+    {
+      "label": "Help menu: Documentation, Report an Issue, Tandemise on GitHub",
+      "ok": true,
+      "observed": "Documentation, Report an Issue, missing value, Tandemise on GitHub"
+    },
+    {
+      "label": "the app menu has About Tandemise",
+      "ok": true,
+      "observed": "About Tandemise, missing value, Services, missing value, Hide Tandemise, Hide Others, Show All, missing value, Quit Tandemise, Quit and Keep Windows"
+    },
+    {
+      "label": "the open panel reads \"Version 0.5.0 (d9141a8)\"",
+      "ok": true,
+      "observed": [
+        "Tandemise",
+        "Version 0.5.0 (d9141a8)",
+        "Source, documentation and issues:",
+        "https://github.com/demogar/tandemise",
+        "Copyright 2026 Demostenes Garcia G. and the Tandemise contributors",
+        "Licensed under the Apache License, Version 2.0"
+      ]
+    },
+    {
+      "label": "the open panel shows the copyright and license",
+      "ok": true
+    },
+    {
+      "label": "the open panel shows the repository in its credits",
+      "ok": true
+    }
+  ],
+  "notes": [
+    "setAboutPanelOptions received: {\"applicationName\":\"Tandemise\",\"applicationVersion\":\"0.5.0\",\"version\":\"d9141a8\",\"copyright\":\"Copyright 2026 Demostenes Garcia G. and the Tandemise contributors\\nLicensed under the Apache License, Version 2.0\",\"credits\":\"Source, documentation and issues:\\nhttps://github.com/demogar/tandemise\",\"website\":\"https://github.com/demogar/tandemise\",\"iconPath\":\"/Users/demogar/projects/tandemise/tandemise-about/apps/desktop/build/icon.png\"}",
+    "About panel text (Accessibility):\nTandemise\nVersion 0.5.0 (d9141a8)\n\nSource, documentation and issues:\nhttps://github.com/demogar/tandemise\nCopyright 2026 Demostenes Garcia G. and the Tandemise contributors\nLicensed under the Apache License, Version 2.0"
+  ],
+  "shots": []
+}
