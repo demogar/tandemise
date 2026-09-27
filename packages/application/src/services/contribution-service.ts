@@ -50,7 +50,29 @@ export interface ContributionDeps {
    * that read it. Null in a build without one, which then records no branch.
    */
   readonly exec?: CommandExecutor | null;
+  /**
+   * What the person's git needs to reach a remote on their behalf (an
+   * ssh-agent socket, an askpass helper), added to the fetch alone. The tool
+   * runner's environment is an allowlist that drops them, and widening it
+   * would hand them to every agent tool too.
+   */
+  readonly credentialEnv?: () => Readonly<Record<string, string>>;
 }
+
+/** The variables a user's git reads to authenticate without a prompt. */
+const GIT_CREDENTIAL_VARIABLES = ['SSH_AUTH_SOCK', 'GIT_ASKPASS', 'SSH_ASKPASS'] as const;
+
+/** The credential variables set in `ambient`, for `ContributionDeps.credentialEnv`. */
+export function pickGitCredentialEnv(ambient: Readonly<Record<string, string | undefined>>): Readonly<Record<string, string>> {
+  const out: Record<string, string> = {};
+  for (const key of GIT_CREDENTIAL_VARIABLES) {
+    const value = ambient[key];
+    if (value !== undefined && value.length > 0) out[key] = value;
+  }
+  return out;
+}
+
+type GitRun = (args: readonly string[]) => Promise<{ exitCode: number; stdout: string }>;
 
 /** What a contribution becomes on disk before it is pinned. */
 interface Snapshot {
@@ -60,6 +82,7 @@ interface Snapshot {
   readonly body: string | Uint8Array;
   readonly refs: (contentRef: string) => readonly ExternalRef[];
   readonly resolved: PullRequestSnapshot | null;
+  readonly repositoryPath: string | null;
 }
 
 /**
@@ -102,7 +125,7 @@ export class ContributionServiceImpl implements ContributionService {
       recordedBy,
       responsibleId: null,
     });
-    return { evidence, filename: snapshot.filename, mediaType: snapshot.mediaType, resolved: snapshot.resolved };
+    return { evidence, filename: snapshot.filename, mediaType: snapshot.mediaType, resolved: snapshot.resolved, repositoryPath: snapshot.repositoryPath };
   }
 
   async resolveWorkspacePath(workspaceId: WorkspaceId, path: string): Promise<string> {
@@ -132,6 +155,7 @@ export class ContributionServiceImpl implements ContributionService {
         body,
         refs: (contentRef) => [{ kind: 'file', value: contentRef, label: contribution.filename }],
         resolved: null,
+        repositoryPath: null,
       };
     }
     const { url } = contribution;
@@ -145,13 +169,14 @@ export class ContributionServiceImpl implements ContributionService {
       // The head is fetched before anything is written: a change handed back
       // with no branch here would have nothing for review, QA or integration
       // to check out, so it is refused while there is still nothing to undo.
-      const branch = await this.#fetchHead(repository.path, pr);
-      if (branch === null && requireBranch) {
+      const head = await this.#localHead(mission, pr);
+      if (head.branch === null && requireBranch) {
         throw new ContributionError(
           'unfetchable_pull_request',
-          `Couldn't fetch that pull request into ${repository.name}. Fetch or push its branch, then hand it back again.`,
+          `Couldn't fetch that pull request into ${head.into}. Fetch or push its branch, then hand it back again.`,
         );
       }
+      const branch = head.branch;
       return {
         title: fitTitle(contribution.label ?? pr.title),
         filename: `pull-request-${pr.number}.md`,
@@ -166,6 +191,7 @@ export class ContributionServiceImpl implements ContributionService {
           ...(branch === null ? [] : [{ kind: 'git.branch' as const, value: branch }]),
         ],
         resolved: pr,
+        repositoryPath: head.repository?.path ?? null,
       };
     }
     const exported = contribution.export;
@@ -179,18 +205,28 @@ export class ContributionServiceImpl implements ContributionService {
       body: decode(exported.dataBase64),
       refs: (contentRef) => [{ kind: 'url', value: url }, { kind: 'file', value: contentRef, label: exported.filename }],
       resolved: null,
+      repositoryPath: null,
     };
+  }
+
+  /**
+   * The workspace's repositories, the mission's own first: it is where a
+   * pull request handed back to the mission most likely belongs.
+   */
+  #repositoriesFor(mission: Mission): readonly Repository[] {
+    const all = this.deps.repositories.listByWorkspace(mission.workspaceId);
+    return [...all.filter((r) => r.id === mission.repositoryId), ...all.filter((r) => r.id !== mission.repositoryId)];
   }
 
   /**
    * The first of the mission's repositories whose checkout can read the link,
    * if any, and which one it was. Each repository is tried even when an
    * earlier one failed: a checkout with a broken remote says nothing about the
-   * next one.
+   * next one. Reading is not where the head goes: `#localHead` decides that.
    */
   async #resolve(mission: Mission, url: string): Promise<{ snapshot: PullRequestSnapshot | null; failure: unknown; repository: Repository | null }> {
     let failure: unknown = null;
-    for (const repo of this.deps.repositories.listByWorkspace(mission.workspaceId)) {
+    for (const repo of this.#repositoriesFor(mission)) {
       try {
         const snapshot = await this.deps.snapshots.read(url, repo.path);
         if (snapshot !== null) return { snapshot, failure: null, repository: repo };
@@ -202,54 +238,111 @@ export class ContributionServiceImpl implements ContributionService {
   }
 
   /**
-   * Fetches the pull request's head into `tandemise/pr-<n>` in the checkout
-   * that read it, and returns that branch once it points at the head gh
+   * Makes the pull request's head a local branch, `tandemise/pr-<n>`, in the
+   * repository it belongs to, and returns it once it points at the head gh
    * reported. The head branch itself is never assumed to be local: the pull
-   * request may come from a fork, a web edit or another machine, and GitHub's
-   * `pull/<n>/head` ref is the one name every one of those shares. Null when
-   * the fetch fails or lands on another commit, which the caller decides about.
+   * request may come from a fork, a web edit or another machine.
+   *
+   * A repository that already has the head commit (the person fetched or
+   * pushed it, as the refusal asks) gets the branch without a fetch; a commit
+   * id names exactly one commit, so this is safe in any of the repositories.
+   * Otherwise GitHub's `pull/<n>/head` is fetched, but only through a remote
+   * whose configured URL is the pull request's repository, the mission's own
+   * repository first: another checkout's `origin` has its own pull request
+   * with that number. `into` names where it should have landed, for the
+   * refusal: the repository whose remote matched, or the pull request's own.
    */
-  async #fetchHead(cwd: string, pr: PullRequestSnapshot): Promise<string | null> {
+  async #localHead(mission: Mission, pr: PullRequestSnapshot): Promise<{ branch: string | null; repository: Repository | null; into: string }> {
     const exec = this.deps.exec;
-    if (exec === undefined || exec === null) return null;
+    const none = { branch: null, repository: null, into: pr.repo };
+    if (exec === undefined || exec === null) return none;
     const branch = pullRequestBranch(pr.number);
-    const git = (args: readonly string[]) => exec.run({
+    const ref = `refs/heads/${branch}`;
+    const repositories = this.#repositoriesFor(mission);
+    const runner = (cwd: string, env: Readonly<Record<string, string>> = {}): GitRun => (args) => exec.run({
       command: 'git', args, cwd, timeoutMs: FETCH_TIMEOUT_MS,
       // A remote that asks for a password has no one to ask here; it fails instead of hanging.
-      env: { GIT_TERMINAL_PROMPT: '0' },
+      env: { GIT_TERMINAL_PROMPT: '0', ...env },
     });
     try {
-      const remote = await this.#githubRemote(git, pr.repo);
-      // Forced, so handing back a pull request again after it moved updates the branch.
-      const fetched = await git(['fetch', '--no-tags', remote, `+refs/pull/${pr.number}/head:refs/heads/${branch}`]);
-      if (fetched.exitCode !== 0) return null;
-      const head = await git(['rev-parse', '--verify', '--quiet', `refs/heads/${branch}^{commit}`]);
-      return head.exitCode === 0 && head.stdout.trim() === pr.headRefOid ? branch : null;
+      for (const repository of repositories) {
+        const git = runner(repository.path);
+        if ((await git(['cat-file', '-e', `${pr.headRefOid}^{commit}`])).exitCode !== 0) continue;
+        if ((await git(['update-ref', ref, pr.headRefOid])).exitCode === 0) return { branch, repository, into: repository.name };
+      }
+      let into = pr.repo;
+      for (const repository of repositories) {
+        const git = runner(repository.path, this.deps.credentialEnv?.() ?? {});
+        const remote = await githubRemote(git, pr.repo);
+        if (remote === null) continue;
+        into = repository.name;
+        // Forced, so handing back a pull request again after it moved updates the branch.
+        const fetched = await git(['fetch', '--no-tags', remote, `+refs/pull/${pr.number}/head:${ref}`]);
+        if (fetched.exitCode !== 0) continue;
+        const head = await git(['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]);
+        if (head.exitCode === 0 && head.stdout.trim() === pr.headRefOid) return { branch, repository, into };
+        // It landed on another commit (the pull request moved since gh read
+        // it): nothing may be left pointing at a head nobody handed back.
+        await git(['update-ref', '-d', ref]);
+      }
+      return { ...none, into };
     } catch {
       // A runner that could not start git at all is the same failure as a fetch that did not land.
-      return null;
+      return none;
     }
   }
 
-  /**
-   * The remote that points at the pull request's repository on GitHub, or
-   * `origin` when none names it (a mirror, or a checkout whose remote is a
-   * local path). The repository is the one gh read the pull request from.
-   * Read from the remotes' configured URLs rather than `git remote -v`, which
-   * shows them after any `insteadOf` rewrite.
-   */
-  async #githubRemote(git: (args: readonly string[]) => Promise<{ exitCode: number; stdout: string }>, repo: string): Promise<string> {
-    const listed = await git(['config', '--get-regexp', '^remote\\..*\\.url$']);
-    if (listed.exitCode !== 0) return 'origin';
-    const wanted = repo.toLowerCase();
-    for (const line of listed.stdout.split('\n')) {
-      const entry = /^remote\.(.+)\.url\s+(\S+)$/.exec(line.trim());
-      if (entry === null) continue;
-      const match = /github\.com[:/]([^/]+\/[^/]+?)(?:\.git)?\/?$/i.exec(entry[2]!);
-      if (match !== null && match[1]!.toLowerCase() === wanted) return entry[1]!;
+  async adoptPullRequestHead(input: {
+    repositoryPath: string; commit: string; worktrees: readonly { readonly directory: string; readonly branch: string }[];
+  }): Promise<readonly string[]> {
+    const exec = this.deps.exec;
+    if (exec === undefined || exec === null) return input.worktrees.map((w) => `No git runner here to move ${w.branch}.`);
+    const git = (args: readonly string[]) => exec.run({
+      command: 'git', args, cwd: input.repositoryPath, timeoutMs: FETCH_TIMEOUT_MS, env: { GIT_TERMINAL_PROMPT: '0' },
+    });
+    const problems: string[] = [];
+    for (const worktree of input.worktrees) {
+      try {
+        // Only a worktree of this repository: a step's worktree elsewhere shares
+        // no branches with it. Compared through realpath, since git may record
+        // a path reached through a link (macOS's /var) either way.
+        await git(['worktree', 'prune']);
+        const listed = await git(['worktree', 'list', '--porcelain']);
+        const wanted = await realpathOrNull(worktree.directory);
+        const paths = listed.stdout.split('\n').filter((line) => line.startsWith('worktree ')).map((line) => line.slice('worktree '.length));
+        const registered = wanted !== null && (await Promise.all(paths.map(realpathOrNull))).includes(wanted);
+        if (registered) {
+          const removed = await git(['worktree', 'remove', '--force', worktree.directory]);
+          if (removed.exitCode !== 0) { problems.push(`Could not remove the worktree at ${worktree.directory}.`); continue; }
+        }
+        const moved = await git(['branch', '-f', worktree.branch, input.commit]);
+        if (moved.exitCode !== 0) problems.push(`Could not point ${worktree.branch} at ${input.commit}.`);
+      } catch {
+        problems.push(`Could not move ${worktree.branch}.`);
+      }
     }
-    return 'origin';
+    return problems;
   }
+}
+
+/**
+ * The remote whose configured URL is the pull request's repository on
+ * GitHub, or null when none is. Read from the configured URLs rather than
+ * `git remote -v`, which shows them after any `insteadOf` rewrite. Never a
+ * guess such as `origin`: a remote for another repository has its own pull
+ * request with the same number.
+ */
+async function githubRemote(git: GitRun, repo: string): Promise<string | null> {
+  const listed = await git(['config', '--get-regexp', '^remote\\..*\\.url$']);
+  if (listed.exitCode !== 0) return null;
+  const wanted = repo.toLowerCase();
+  for (const line of listed.stdout.split('\n')) {
+    const entry = /^remote\.(.+)\.url\s+(\S+)$/.exec(line.trim());
+    if (entry === null) continue;
+    const match = /github\.com[:/]([^/]+\/[^/]+?)(?:\.git)?\/?$/i.exec(entry[2]!);
+    if (match !== null && match[1]!.toLowerCase() === wanted) return entry[1]!;
+  }
+  return null;
 }
 
 /**

@@ -78,6 +78,8 @@ export interface PinnedContribution {
   readonly mediaType: string;
   /** Set when a link was read as a pull request, so a hand-back can carry its head ref. */
   readonly resolved: PullRequestSnapshot | null;
+  /** The checkout a pull request's head was made a local branch in, when it was. */
+  readonly repositoryPath: string | null;
 }
 
 /** Outside contributions (spec A1, A5). */
@@ -104,6 +106,15 @@ export interface ContributionService {
    * ContributionError('outside_workspace') for anything else.
    */
   resolveWorkspacePath(workspaceId: WorkspaceId, path: string): Promise<string>;
+  /**
+   * Hands a step's own worktree branches to a pull request's head: each
+   * worktree is removed (`--force`; the hand-back replaced its work) and its
+   * branch forced to `commit`, so the step's next agent round builds on the
+   * pull request. Returns what could not be done, in words; never throws.
+   */
+  adoptPullRequestHead(input: {
+    repositoryPath: string; commit: string; worktrees: readonly { readonly directory: string; readonly branch: string }[];
+  }): Promise<readonly string[]>;
 }
 
 /** Making a rough request ready to plan (P6). Every write is refused once the mission has left DRAFT. */

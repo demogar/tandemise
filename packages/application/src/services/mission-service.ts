@@ -85,7 +85,7 @@ export interface MissionDeps {
   /** The Done-when ledger; the person's lines become U1…Un at creation. Optional for older harnesses. */
   readonly criteria?: MissionCriteriaRepositoryPort;
   /** Pins uploads at creation (spec A2). Optional for older harnesses, which then refuse a mission with uploads. */
-  readonly contributions?: Pick<ContributionService, 'pin'>;
+  readonly contributions?: Pick<ContributionService, 'pin'> & Partial<Pick<ContributionService, 'adoptPullRequestHead'>>;
   /** The workspace's artifact root, which a handed-back file's workspace link is relative to (spec A5). */
   readonly artifactRoot?: (workspaceId: WorkspaceId) => string;
   /** The log a parked step is read from (spec A4). Optional for older harnesses, which then park nothing. */
@@ -832,6 +832,7 @@ export class MissionServiceImpl implements MissionService {
       landed = true;
       // Only after the commit: a stopped pass re-reads its row and must find the reset.
       for (const id of stop) this.deps.scheduler.cancelTask(id);
+      if (task.expectedOutputs.includes('ChangeSet')) await this.#adoptHandedBackHead(task, mission, pinned, park.tool);
       this.deps.recorder.invalidate('tasks', mission.id);
       this.deps.recorder.invalidate('artifacts', mission.id);
       this.deps.scheduler.wake();
@@ -856,6 +857,35 @@ export class MissionServiceImpl implements MissionService {
       targets.update(record.id, { status: 'RELEASED', releasedAt: this.deps.clock.now(), detail });
     }
     this.deps.recorder.invalidate('targets', task.missionId);
+  }
+
+  /**
+   * A change handed back from a pull request becomes where the step's next
+   * agent round starts. The step's worktree branch is fixed per task and a
+   * later round reuses it, so without this a round asked for after the
+   * hand-back would go back onto the agent's old branch, without the pull
+   * request, and its ChangeSet would replace the person's. A change handed
+   * back as a file has no branch to move to: the step's next round starts
+   * from its old branch, which KNOWN_LIMITATIONS says.
+   */
+  async #adoptHandedBackHead(task: MissionTask, mission: Mission, pinned: PinnedContribution, tool: string): Promise<void> {
+    const adopt = this.deps.contributions?.adoptPullRequestHead;
+    const head = pinned.resolved?.headRefOid;
+    const fetched = pinned.evidence.sourceRefs.some((r) => r.kind === 'git.branch');
+    if (adopt === undefined || head === undefined || !fetched || pinned.repositoryPath === null || this.deps.targets === undefined) return;
+    const worktrees = this.deps.targets.listByMission(mission.id)
+      .filter((t) => t.taskId === task.id && t.kind === 'worktree' && t.branch !== null)
+      .map((t) => ({ directory: t.workingDirectory, branch: t.branch! }));
+    const unique = [...new Map(worktrees.map((w) => [w.branch, w])).values()];
+    if (unique.length === 0) return;
+    const problems = await adopt.call(this.deps.contributions, { repositoryPath: pinned.repositoryPath, commit: head, worktrees: unique });
+    if (problems.length > 0) {
+      this.deps.recorder.note(
+        { ...scopeOf(mission), taskId: task.id, roleId: task.roleId },
+        `The change handed back from ${tool} is in place, but a later round of '${task.key}' may not start from it: ${problems.join(' ')}`,
+        'warn',
+      );
+    }
   }
 
   /** The step's park, or a CONFLICT saying why nothing can be handed back to it or taken back from it. Writes nothing. */

@@ -1796,9 +1796,11 @@ export class TaskExecutor {
     if (upstreamIds.size === 0) return null;
 
     // Newest first: after a remediation cycle the fix task's ChangeSet is the
-    // one that should be reviewed, not the original.
-    const changeSets = this.deps.artifacts
-      .listByMission(mission.id, 'ChangeSet')
+    // one that should be reviewed, not the original. Only live ones: a change
+    // handed back as a file (spec A4) replaces the agent's but names no
+    // branch, and the agent's retired branch must not be what work after it
+    // is cut from; with no live branch upstream, the mission base is.
+    const changeSets = liveArtifacts(this.deps.artifacts, mission.id, 'ChangeSet')
       .filter((a) => a.taskId !== null && upstreamIds.has(a.taskId))
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
@@ -1874,8 +1876,10 @@ export class TaskExecutor {
     const record = target.describe();
     if (kind === 'worktree') {
       // The branch and its tree are the reviewable output of the task. Leaving
-      // them is not laziness; discarding them would destroy the work.
-      this.deps.targets.update(record.id, { status: 'READY' });
+      // them is not laziness; discarding them would destroy the work. A
+      // hand-back that landed as the run wound down has already retired the
+      // target, and that stands.
+      if (this.deps.targets.get(record.id)?.status !== 'RELEASED') this.deps.targets.update(record.id, { status: 'READY' });
       await target.dispose();
       return;
     }

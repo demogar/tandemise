@@ -187,6 +187,8 @@ export const ISSUE_TRACKER = token<IssueTrackerPort>('port.IssueTracker');
 export const CONTRIBUTION_SERVICE = token<ContributionService>('application.ContributionService');
 /** Reads a handed-back pull request (P3); rebound by the daemon with `gh`. */
 export const PULL_REQUEST_SNAPSHOTS = token<PullRequestSnapshotPort>('port.PullRequestSnapshots');
+/** The git credential variables (ssh-agent, askpass) a pull request fetch may pass to git; see `pickGitCredentialEnv`. */
+export const GIT_CREDENTIAL_ENV = token<() => Readonly<Record<string, string>>>('port.GitCredentialEnv');
 export const SETUP_SERVICE = token<import('./services/setup-service.js').SetupService>('application.SetupService');
 
 export const TANDEMISE_SERVICES = token<TandemiseServices>('application.TandemiseServices');

@@ -34,7 +34,7 @@ import { createApplicationModule, createServices, SCHEDULER, type TandemiseServi
   WORKFLOW_SOURCE,
   SKILL_FILES,
   ISSUE_TRACKER,
-  PULL_REQUEST_SNAPSHOTS,
+  PULL_REQUEST_SNAPSHOTS, GIT_CREDENTIAL_ENV, pickGitCredentialEnv,
   SETUP_FOLDER,
 } from '@tandemise/application';
 import * as applicationTokens from '@tandemise/application';
@@ -158,6 +158,10 @@ export function bootstrap(config: DaemonConfig, options: { readonly localPersonN
   container.rebind(ISSUE_TRACKER, (r) => new GhIssueTracker(r.resolve(TOOL_COMMAND_EXECUTOR)), { source: 'bootstrap' });
   // A handed-back pull request (P3) is read the same way.
   container.rebind(PULL_REQUEST_SNAPSHOTS, (r) => new GhPullRequestSnapshots(r.resolve(TOOL_COMMAND_EXECUTOR)), { source: 'bootstrap' });
+  // Fetching that pull request's head is the person's own git reaching their
+  // remote, so it may use their ssh-agent or askpass helper. Given to that
+  // fetch alone, read when it runs; the tool runner's allowlist stays as it is.
+  container.bind(GIT_CREDENTIAL_ENV, () => () => pickGitCredentialEnv(process.env), { source: 'bootstrap' });
 
   const services = createServices(container);
 

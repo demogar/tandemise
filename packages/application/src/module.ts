@@ -644,7 +644,10 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       clock: clock(r),
       log: log(r).child({ component: 'missions' }),
       // Resolved per call: uploads at creation are pinned through it (spec A2).
-      contributions: { pin: (input) => r.resolve(t.CONTRIBUTION_SERVICE).pin(input) },
+      contributions: {
+        pin: (input) => r.resolve(t.CONTRIBUTION_SERVICE).pin(input),
+        adoptPullRequestHead: (input) => r.resolve(t.CONTRIBUTION_SERVICE).adoptPullRequestHead(input),
+      },
       // Where a handed-back file's workspace link is made relative to (spec A5).
       artifactRoot: (workspaceId) => paths(r).artifacts(workspaceId),
       events: r.resolve(t.EVENT_REPOSITORY),
@@ -790,6 +793,8 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       artifactRoot: (workspaceId) => paths(r).artifacts(workspaceId),
       // The same runner as `gh`, so a pull request's head is fetched with the daemon's own git and environment.
       exec: r.tryResolve(INTEGRATION_COMMAND_EXECUTOR) ?? null,
+      // Bound by the daemon to what its own environment carries; empty elsewhere.
+      ...(r.has(t.GIT_CREDENTIAL_ENV) ? { credentialEnv: r.resolve(t.GIT_CREDENTIAL_ENV) } : {}),
     }), { source: SOURCE });
 
     bind(t.ISSUE_SERVICE, (r) => new IssueService({
