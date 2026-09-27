@@ -31,6 +31,7 @@ export * from './entities/routine.js';
 export * from './entities/models.js';
 export * from './entities/notifications.js';
 export * from './entities/skill.js';
+export * from './entities/issue.js';
 
 export * from './ports/repositories.js';
 export * from './ports/artifact-store.js';

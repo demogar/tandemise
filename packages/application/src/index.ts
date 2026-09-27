@@ -89,6 +89,8 @@ export { NotificationService, itemsFromInbox, NOTIFY_PREFERENCES_KEY, NOTIFY_STA
 export type { NotificationDeps } from './services/notification-service.js';
 export { RoutineService } from './services/routine-service.js';
 export { SkillService } from './services/skill-service.js';
+export { IssueService } from './services/issue-service.js';
+export type { IssueDeps } from './services/issue-service.js';
 export type { SkillDeps } from './services/skill-service.js';
 export { SkillInstaller, INSTALLED_MARKER } from './engine/skill-installer.js';
 export type { RoutineDeps } from './services/routine-service.js';

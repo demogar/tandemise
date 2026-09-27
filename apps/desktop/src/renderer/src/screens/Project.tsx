@@ -8,6 +8,7 @@ import { useDaemonMutation } from '../lib/queries.js';
 import { useWorkspace } from '../lib/workspace.js';
 import { shortenPath } from '../lib/format.js';
 import { Limits } from './project/Limits.js';
+import { Issues } from './project/Issues.js';
 
 const AUTONOMY_ROWS: readonly { key: keyof AutonomySettings; label: string; hint: string; options: readonly string[] }[] = [
   { key: 'planApproval', label: 'Plan approval', hint: 'Show the proposed task graph before anything runs.', options: ['ask', 'auto'] },
@@ -135,6 +136,8 @@ export function Project(): JSX.Element {
                               )}
                               {addRepository.isError ? <ErrorState error={addRepository.error} /> : null}
                             </section>
+
+              <Issues />
 
               <section className="section">
                               <SectionHead title="Autonomy" meta="Per action class, not one global dial" />

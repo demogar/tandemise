@@ -58,6 +58,11 @@ export interface SchedulerDeps {
    */
   readonly fireRoutines?: () => Promise<unknown>;
   /**
+   * Starts due GitHub issue checks and the write-back pass (P14) in the
+   * background; returns at once so a slow `gh` never holds up dispatch.
+   */
+  readonly syncIssues?: () => void;
+  /**
    * The hard-limit admission rule (P8): null when work may start in the
    * mission, else why not (and the stop is applied). Optional so harnesses
    * built before limits still compose; the module always passes it.
@@ -200,6 +205,8 @@ export class SchedulerService implements LifecycleComponent {
     this.#sweepEscalations();
     // Due routines add their queued drafts first, so the pull below sees them.
     await this.#fireRoutines();
+    // In the background: a draft it adds is pulled on a later pass.
+    this.#syncIssues();
     // Before dispatch: a slot freed by the last pass is filled from the backlog
     // now, and the mission it pulls is planning by the time this pass reconciles.
     await this.#pullBacklog();
@@ -624,6 +631,15 @@ export class SchedulerService implements LifecycleComponent {
       // Escalation is a courtesy to the people waiting; a failure here must
       // not stop the work that is not waiting on anyone.
       this.deps.log.warn('scheduler.escalation_failed', { error: errorMessage(e) });
+    }
+  }
+
+  #syncIssues(): void {
+    try {
+      this.deps.syncIssues?.();
+    } catch (e) {
+      // Issue sync talks to GitHub; nothing it does may stop the pass.
+      this.deps.log.warn('scheduler.issue_sync_failed', { error: errorMessage(e) });
     }
   }
 

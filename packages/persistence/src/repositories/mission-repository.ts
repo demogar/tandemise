@@ -29,6 +29,7 @@ interface MissionRow {
   queued_at: string | null;
   limits: string | null;
   routine_id: string | null;
+  issue_link_id: string | null;
   created_at: string;
   updated_at: string;
   started_at: string | null;
@@ -75,6 +76,7 @@ function toRow(m: Mission): MissionRow {
     queued_at: m.queuedAt,
     limits: m.limits === null || m.limits === undefined ? null : toJson(m.limits),
     routine_id: m.routineId ?? null,
+    issue_link_id: m.issueLinkId ?? null,
     created_at: m.createdAt,
     updated_at: m.updatedAt,
     started_at: m.startedAt,
@@ -105,6 +107,7 @@ function fromRow(r: MissionRow): Mission {
     queuedAt: r.queued_at,
     limits: r.limits === null ? null : parseJson<readonly Limit[]>(r.limits, []),
     routineId: r.routine_id === null ? null : asId<'RoutineId'>(r.routine_id),
+    issueLinkId: r.issue_link_id === null ? null : asId<'IssueLinkId'>(r.issue_link_id),
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     startedAt: r.started_at,
@@ -114,7 +117,7 @@ function fromRow(r: MissionRow): Mission {
 
 const COLUMNS = `id, workspace_id, repository_id, title, goal, constraints, success_criteria,
   status, autonomy, workflow_preset, workflow_inputs, integration_branch, base_branch, status_reason,
-  created_by, staffing, priority, rank, queued_at, limits, routine_id, created_at, updated_at, started_at, completed_at`;
+  created_by, staffing, priority, rank, queued_at, limits, routine_id, issue_link_id, created_at, updated_at, started_at, completed_at`;
 
 export class SqliteMissionRepository implements MissionRepositoryPort {
   readonly #db: TandemiseDatabase;
@@ -134,7 +137,7 @@ export class SqliteMissionRepository implements MissionRepositoryPort {
       `INSERT INTO missions (${COLUMNS}) VALUES (
         :id, :workspace_id, :repository_id, :title, :goal, :constraints, :success_criteria,
         :status, :autonomy, :workflow_preset, :workflow_inputs, :integration_branch, :base_branch, :status_reason,
-        :created_by, :staffing, :priority, :rank, :queued_at, :limits, :routine_id, :created_at, :updated_at, :started_at, :completed_at)`,
+        :created_by, :staffing, :priority, :rank, :queued_at, :limits, :routine_id, :issue_link_id, :created_at, :updated_at, :started_at, :completed_at)`,
     );
     this.#update = db.handle.prepare<MissionRow>(
       `UPDATE missions SET
@@ -143,7 +146,7 @@ export class SqliteMissionRepository implements MissionRepositoryPort {
          workflow_preset = :workflow_preset, workflow_inputs = :workflow_inputs,
          integration_branch = :integration_branch,
          base_branch = :base_branch, status_reason = :status_reason, created_by = :created_by, staffing = :staffing,
-         priority = :priority, rank = :rank, queued_at = :queued_at, limits = :limits, routine_id = :routine_id,
+         priority = :priority, rank = :rank, queued_at = :queued_at, limits = :limits, routine_id = :routine_id, issue_link_id = :issue_link_id,
          updated_at = :updated_at,
          started_at = :started_at, completed_at = :completed_at
        WHERE id = :id`,
@@ -211,6 +214,7 @@ export class SqliteMissionRepository implements MissionRepositoryPort {
       queuedAt: draft.queued === true ? now : null,
       limits: draft.limits ?? null,
       routineId: draft.routineId ?? null,
+      issueLinkId: draft.issueLinkId ?? null,
       createdAt: now,
       updatedAt: now,
       startedAt: null,

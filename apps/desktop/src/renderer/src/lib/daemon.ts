@@ -1,4 +1,5 @@
 import type {
+  IssuesOverview, RepositoryIssuesView, UpdateIssueSettingsRequest,
   ApiErrorBody,
   NotificationPreferencesView,
   UpdateNotificationPreferencesRequest,
@@ -287,6 +288,20 @@ export class DaemonClient {
 
   deleteSkill(skillId: string): Promise<void> {
     return this.#request('DELETE', `/skills/${skillId}`);
+  }
+
+  /** GitHub issue sync for every repository of the project (P14), and the issues it linked. */
+  issues(workspaceId: string): Promise<IssuesOverview> {
+    return this.#get(`/workspaces/${workspaceId}/issues`);
+  }
+
+  updateIssueSettings(repositoryId: string, body: UpdateIssueSettingsRequest): Promise<RepositoryIssuesView> {
+    return this.#request('PATCH', `/repositories/${repositoryId}/issues`, body);
+  }
+
+  /** Checks the repository's issues now and waits for it. */
+  checkIssues(repositoryId: string): Promise<RepositoryIssuesView> {
+    return this.#request('POST', `/repositories/${repositoryId}/issues/check`);
   }
 
   /** Runs a routine once now, through the same checks as a scheduled run. */

@@ -1,6 +1,6 @@
 import { defineModule, type Container, type Resolver, type TandemiseModule } from '@tandemise/kernel';
 import type { Clock, Logger, TandemisePaths } from '@tandemise/shared';
-import { asId, createPaths, nullLogger, systemClock } from '@tandemise/shared';
+import { TandemiseError, asId, createPaths, nullLogger, systemClock } from '@tandemise/shared';
 import { APPROVAL_FACTORY, GRANT_BUILDER, POLICY_ENGINE } from '@tandemise/policy';
 import { CONTEXT_COMPILER } from '@tandemise/context';
 import { RUNTIME_MANAGER, RUNTIME_REGISTRY } from '@tandemise/runtimes-core';
@@ -51,9 +51,10 @@ import { LivenessService } from './services/liveness-service.js';
 import { DeskService } from './services/desk-service.js';
 import { NotificationService } from './services/notification-service.js';
 import { RoutineService } from './services/routine-service.js';
+import { IssueService } from './services/issue-service.js';
 import { SkillService } from './services/skill-service.js';
 import { SkillInstaller } from './engine/skill-installer.js';
-import { DEFAULT_QUIET_AFTER_MS, reachedReason } from '@tandemise/domain';
+import { DEFAULT_QUIET_AFTER_MS, reachedReason, type IssueTrackerPort } from '@tandemise/domain';
 import { RefinementServiceImpl } from './services/refinement-service.js';
 import { PlanningServiceImpl } from './services/planning-service.js';
 import { ProjectionServiceImpl } from './services/projection-service.js';
@@ -337,6 +338,8 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       // planning service, which is composed with the API services after this.
       // Resolved per pass: routines create missions through the mission service, composed after this.
       fireRoutines: () => r.resolve(t.ROUTINE_SERVICE).tick(),
+      // Resolved per pass: issue sync creates missions through the mission service too.
+      syncIssues: () => r.resolve(t.ISSUE_SERVICE).tick(),
       pullBacklog: () => r.resolve(t.BACKLOG_SERVICE).pull(),
       limits: r.resolve(t.LIMIT_SERVICE),
       // Resolved per pass, like the backlog: it reads the planner, composed after this.
@@ -751,6 +754,34 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       clock: clock(r),
     }), { source: SOURCE });
 
+    // P14: the daemon rebinds this with `gh`; without it every check says so.
+    bind(t.ISSUE_TRACKER, (): IssueTrackerPort => {
+      const missing = async (): Promise<never> => { throw new TandemiseError('INTEGRATION_FAILED', 'GitHub issues cannot be read in this build.'); };
+      return { listOpen: missing, view: missing, viewer: missing, comments: missing, postComment: missing, updateComment: missing, close: missing };
+    }, { source: SOURCE });
+
+    bind(t.ISSUE_SERVICE, (r) => new IssueService({
+      issues: r.resolve(t.ISSUE_REPOSITORY),
+      tracker: r.resolve(t.ISSUE_TRACKER),
+      repositories: r.resolve(t.REPO_REPOSITORY),
+      workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
+      missions: r.resolve(t.MISSION_REPOSITORY),
+      members: r.resolve(t.MEMBER_REPOSITORY),
+      criteria: r.resolve(t.MISSION_CRITERIA_REPOSITORY),
+      artifacts: r.resolve(t.ARTIFACT_REPOSITORY),
+      createMission: (caller, request, origin) => r.resolve(t.MISSION_SERVICE).create(caller, request, origin),
+      setQueued: (missionId, queued) => { r.resolve(t.BACKLOG_SERVICE).update(missionId, { queued }); },
+      trace: (missionId) => r.resolve(t.GATE_SERVICE).trace(missionId).trace,
+      stalled: (missionId) => {
+        const verdict = r.resolve(t.LIVENESS_SERVICE).classify(missionId);
+        return verdict.kind === 'stalled' ? { reason: verdict.reason ?? 'It is stalled.', action: verdict.action?.label ?? null } : null;
+      },
+      unitOfWork: r.resolve(t.UNIT_OF_WORK),
+      recorder: r.resolve(t.EVENT_RECORDER),
+      clock: clock(r),
+      log: log(r).child({ component: 'issues' }),
+    }), { source: SOURCE });
+
     bind(t.CRITERIA_SERVICE, (r) => new CriteriaServiceImpl({
       missions: r.resolve(t.MISSION_REPOSITORY),
       artifacts: r.resolve(t.ARTIFACT_REPOSITORY),
@@ -782,6 +813,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       routines: r.resolve(t.ROUTINE_SERVICE),
       notifications: r.resolve(t.NOTIFICATION_SERVICE),
       skills: r.resolve(t.SKILL_SERVICE),
+      issues: r.resolve(t.ISSUE_SERVICE),
     }), { source: SOURCE });
   });
 }

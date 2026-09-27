@@ -73,6 +73,7 @@ export class SqliteMissionCriteriaRepository implements MissionCriteriaRepositor
   readonly #staleProposed;
   readonly #accept;
   readonly #reject;
+  readonly #supersedeBy;
 
   constructor(db: TandemiseDatabase, clock: Clock) {
     this.#db = db;
@@ -122,11 +123,24 @@ export class SqliteMissionCriteriaRepository implements MissionCriteriaRepositor
       `UPDATE mission_criteria SET status = 'accepted', key = :key, statement = :statement, decided_by = :by, decided_at = :at, position = :position
        WHERE id = :id AND status = 'proposed'`,
     );
+    // Superseded, not deleted: what a criterion once said stays on record,
+    // and the next keys continue after it (U4…) rather than reusing U1.
+    this.#supersedeBy = db.handle.prepare<{ missionId: string; by: string; at: string }>(
+      `UPDATE mission_criteria SET superseded_at = :at
+       WHERE mission_id = :missionId AND source = 'user' AND status = 'accepted' AND decided_by = :by AND superseded_at IS NULL`,
+    );
     // A rejected proposal leaves the live key space, like a superseded spec criterion.
     this.#reject = db.handle.prepare<{ id: string; by: string; at: string }>(
       `UPDATE mission_criteria SET status = 'rejected', superseded_at = :at, decided_by = :by, decided_at = :at
        WHERE id = :id AND status = 'proposed'`,
     );
+  }
+
+  replaceUserCriteriaBy(missionId: MissionId, decidedBy: string, statements: readonly string[]): readonly MissionCriterion[] {
+    return this.#db.transaction(() => {
+      this.#supersedeBy.run({ missionId, by: decidedBy, at: this.#clock.now() });
+      return this.addUserCriteria(missionId, statements, decidedBy);
+    });
   }
 
   get(id: CriterionId): MissionCriterion | undefined {

@@ -26,6 +26,8 @@ export const keys = {
   backlog: (ws?: string) => ['missions', 'backlog', ws ?? 'all'] as const,
   // Under 'missions' too: a routine adding a mission, or skipping one, is a missions change.
   routines: (ws?: string) => ['missions', 'routines', ws ?? 'all'] as const,
+  // Under 'missions' too: a check adds drafts, and the chips on missions read it.
+  issues: (ws?: string) => ['missions', 'issues', ws ?? 'all'] as const,
   // Under 'workspaces': a changed limit refreshes it; runs finishing are picked up by its interval.
   usage: (ws?: string) => ['workspaces', 'usage', ws ?? 'all'] as const,
   // Under 'workspaces': a saved role changes "Used by", and it refreshes with the roles.
@@ -174,6 +176,19 @@ export function useSkillVersion(skillId: string | null, version: number | null) 
     queryKey: keys.skillVersion(skillId ?? '', version ?? 0),
     queryFn: () => daemon.skillVersion(skillId ?? '', version ?? 1),
     enabled: skillId !== null && version !== null,
+  });
+}
+
+/** GitHub issue sync (P14). Polled: "Last checked 2 min ago" is the daemon's word for its own clock. */
+export function useIssues() {
+  const daemon = useDaemon();
+  const workspaceId = useWorkspaceId();
+  return useQuery({
+    queryKey: keys.issues(workspaceId),
+    queryFn: () => daemon.issues(workspaceId ?? ''),
+    enabled: Boolean(workspaceId),
+    refetchInterval: 5_000,
+    placeholderData: (previous) => previous,
   });
 }
 
