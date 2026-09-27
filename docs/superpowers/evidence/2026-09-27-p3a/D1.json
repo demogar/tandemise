@@ -15,7 +15,7 @@
       "ok": true,
       "observed": [
         {
-          "evidenceId": "art_01m3jd6eg73hpqragyj0",
+          "evidenceId": "art_01m3jfm2f60rr695prdj",
           "filename": "hello-spec.md",
           "mediaType": "text/markdown",
           "refs": [
@@ -25,7 +25,7 @@
               "label": "hello-spec.md"
             }
           ],
-          "intakeArtifactId": "art_01m3jd6g2n1fb2xnt757"
+          "intakeArtifactId": "art_01m3jfm40xsdxm8s0r40"
         }
       ]
     },
@@ -33,7 +33,7 @@
       "label": "intake made a ProductSpec from it (mission-wide, not a task's)",
       "ok": true,
       "observed": {
-        "id": "art_01m3jd6g2n1fb2xnt757",
+        "id": "art_01m3jfm40xsdxm8s0r40",
         "type": "ProductSpec",
         "taskId": null,
         "refs": [
@@ -79,7 +79,7 @@
           "status": "SKIPPED",
           "statusReason": "Covered by your upload: hello-spec.md",
           "coveredBy": {
-            "artifactId": "art_01m3jd6g2n1fb2xnt757",
+            "artifactId": "art_01m3jfm40xsdxm8s0r40",
             "filename": "hello-spec.md"
           },
           "outputs": [
@@ -134,6 +134,25 @@
         "Verify the running application",
         "Assemble the release candidate"
       ]
+    },
+    {
+      "label": "the stage after the skipped one ran with the intake spec as an input (run_inputs)",
+      "ok": true,
+      "observed": {
+        "task": "design",
+        "run": "run_01m3jfm7p9yr3sffr40j",
+        "inputs": [
+          "art_01m3jfm40xsdxm8s0r40"
+        ],
+        "intake": "art_01m3jfm40xsdxm8s0r40",
+        "waitingOnPlaceholder": [
+          "design",
+          "architecture",
+          "implement",
+          "review",
+          "qa"
+        ]
+      }
     }
   ],
   "notes": [

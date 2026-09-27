@@ -7,18 +7,18 @@
       "label": "proof (API): the handed-back DesignBrief is authored and recorded by you",
       "ok": true,
       "observed": {
-        "authorId": "mem_01m3jd67z8z7a9cm78jq",
-        "recordedBy": "mem_01m3jd67z8z7a9cm78jq",
-        "responsibleId": "mem_01m3jd67z8z7a9cm78jq",
-        "me": "mem_01m3jd67z8z7a9cm78jq"
+        "authorId": "mem_01m3jfkw85z0sgszxp9k",
+        "recordedBy": "mem_01m3jfkw85z0sgszxp9k",
+        "responsibleId": "mem_01m3jfkw85z0sgszxp9k",
+        "me": "mem_01m3jfkw85z0sgszxp9k"
       }
     },
     {
       "label": "proof (API): so is its Evidence",
       "ok": true,
       "observed": {
-        "authorId": "mem_01m3jd67z8z7a9cm78jq",
-        "recordedBy": "mem_01m3jd67z8z7a9cm78jq"
+        "authorId": "mem_01m3jfkw85z0sgszxp9k",
+        "recordedBy": "mem_01m3jfkw85z0sgszxp9k"
       }
     },
     {
@@ -35,11 +35,11 @@
       "label": "proof (API): the ChangeSet is authored by Dana and recorded by you",
       "ok": true,
       "observed": {
-        "authorId": "mem_01m3jdfsnrhcqmbt4ymk",
-        "recordedBy": "mem_01m3jd67z8z7a9cm78jq",
-        "responsibleId": "mem_01m3jdfsnrhcqmbt4ymk",
-        "dana": "mem_01m3jdfsnrhcqmbt4ymk",
-        "me": "mem_01m3jd67z8z7a9cm78jq"
+        "authorId": "mem_01m3jfye1dw6676fxf1w",
+        "recordedBy": "mem_01m3jfkw85z0sgszxp9k",
+        "responsibleId": "mem_01m3jfye1dw6676fxf1w",
+        "dana": "mem_01m3jfye1dw6676fxf1w",
+        "me": "mem_01m3jfkw85z0sgszxp9k"
       }
     },
     {
@@ -54,7 +54,7 @@
     }
   ],
   "notes": [
-    "added Dana Reyes (member mem_01m3jdfsnrhcqmbt4ymk) through the daemon, for this half only",
+    "added Dana Reyes (member mem_01m3jfye1dw6676fxf1w) through the daemon, for this half only",
     "build card: DEVELOPER\nbuild\nDone\nRound 2\njust now\nby\nDana Reyes\n·\nrecorded by\nYou\nOpen workspace ↗\n+1 more doc\nFull doc\nContinue elsewhere\nRequest changes\n\nDana finished the page in her editor; recorded here for her."
   ],
   "shots": [
