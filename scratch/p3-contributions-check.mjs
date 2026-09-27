@@ -86,8 +86,8 @@ section('github: pull request snapshots');
   const snap = await ok.read('https://github.com/acme/app/pull/7', '/tmp');
   check('a PR URL reads view and diff in the given cwd', eq(ran.map((r) => r.args.slice(0, 2)), [['pr', 'view'], ['pr', 'diff']]) && ran.every((r) => r.cwd === '/tmp'), ran);
   check('the snapshot carries repo, number, head and diff', snap?.repo === 'acme/app' && snap.number === 7 && snap.headRefOid === 'abc123' && snap.headRefName === 'feat/greet' && snap.diff.includes('+hi'), snap);
-  const missing = new G.GhPullRequestSnapshots(scripted(() => ({ exitCode: 1, stderr: 'GraphQL: Could not resolve to a PullRequest with the number of 7. Not Found' })));
-  check('a not-found exit is null, not an error', (await missing.read('https://github.com/acme/app/pull/7', '/tmp')) === null);
+  const missing = new G.GhPullRequestSnapshots(scripted(() => ({ exitCode: 1, stderr: 'GraphQL: Could not resolve to a PullRequest with the number of 7. (repository.pullRequest)' })));
+  check('gh\'s real missing-PR text is null, not an error', (await missing.read('https://github.com/acme/app/pull/7', '/tmp')) === null);
   const denied = new G.GhPullRequestSnapshots(scripted(() => ({ exitCode: 1, stderr: 'HTTP 403: Resource not accessible by integration' })));
   check('a no-access exit is null, not an error', (await denied.read('https://github.com/acme/app/pull/7', '/tmp')) === null);
   const huge = new G.GhPullRequestSnapshots(scripted((req) => (req.args[1] === 'view' ? { stdout: JSON.stringify(view) } : { stdout: `${'+'.repeat(99)}\n`.repeat(30_000) })));
@@ -163,9 +163,13 @@ section('daemon: pinning');
   symlinkSync('/tmp', join(checkout, 'escape'));
   const PR = 'https://github.com/acme/app/pull/7';
   const cwds = [];
+  // Swappable, so later checks can put the real resolver or a failing
+  // repository behind the same bound port.
+  let reader = null;
   const stub = {
     read: async (url, cwd) => {
       cwds.push(cwd);
+      if (reader !== null) return reader(url, cwd);
       return url === PR
         ? { url: PR, number: 7, repo: 'acme/app', headRefName: 'feat/greet', headRefOid: 'deadbeef', title: 'Add greeting', body: 'Greets people.', diff: 'diff --git a/x b/x\n+hi\n' }
         : null;
@@ -208,6 +212,32 @@ section('daemon: pinning');
     const exportBody = await h.container.resolve(h.app.ARTIFACT_STORE).readBinary(exported.evidence.id);
     check('with an export it pins the export bytes', Buffer.from(exportBody).toString() === 'PNGBYTES' && exported.mediaType === 'image/png' && exported.resolved === null, Buffer.from(exportBody).toString());
     check('the export carries the url and the file', exported.evidence.sourceRefs.some((r) => r.kind === 'url' && r.value === FIGMA) && exported.evidence.sourceRefs.some((r) => r.kind === 'file' && r.value === exported.evidence.contentRef), exported.evidence.sourceRefs);
+
+    // The real resolver over gh's own words for a PR that does not exist.
+    const G = await import('@tandemise/integration-github');
+    const gone = new G.GhPullRequestSnapshots({ run: async (req) => ({ exitCode: 1, stdout: '', stderr: 'GraphQL: Could not resolve to a PullRequest with the number of 404. (repository.pullRequest)', timedOut: false, durationMs: 0, command: ['gh', ...req.args].join(' ') }) });
+    reader = (url, cwd) => gone.read(url, cwd);
+    const missingPr = await refusal(() => C.pin({ missionId: mission.id, caller, contribution: { kind: 'link', url: 'https://github.com/acme/app/pull/404' } }));
+    check('a missing PR with no export is unreadable, in the person\'s words', missingPr?.code === 'unreadable_link' && missingPr.message === 'Nothing here can read that link. Attach an export of it.', missingPr && { code: missingPr.code, message: missingPr.message });
+
+    // Two repositories: the first one's gh fails outright, the second reads the PR.
+    const second = join(HOME, 'second');
+    mkdirSync(second, { recursive: true });
+    h.repositories.create({ id: 'rep_p3_b', workspaceId: ws, name: 'app-b', path: second, defaultBranch: 'main', remoteUrl: null, checks: D.NO_CHECKS });
+    const tried = [];
+    reader = async (url, cwd) => {
+      tried.push(cwd);
+      if (cwd === checkout) throw new Error('gh exited 1: something broke in this checkout');
+      return { url, number: 7, repo: 'acme/app', headRefName: 'feat/greet', headRefOid: 'cafe', title: 'Add greeting', body: '', diff: '+hi\n' };
+    };
+    const viaSecond = await C.pin({ missionId: mission.id, caller, contribution: { kind: 'link', url: PR } });
+    check('a failing first repository still resolves through the second', viaSecond.resolved?.headRefOid === 'cafe' && eq(tried, [checkout, second]), { tried, resolved: viaSecond.resolved });
+    reader = async () => { throw new Error('gh exited 1: signed out'); };
+    const allFail = await refusal(() => C.pin({ missionId: mission.id, caller, contribution: { kind: 'link', url: PR } }));
+    check('when every repository fails and there is no export, the failure is said', /signed out/.test(allFail?.message ?? ''), allFail?.message);
+    const allFailExport = await C.pin({ missionId: mission.id, caller, contribution: { kind: 'link', url: PR, export: { filename: 'pr.txt', mediaType: 'text/plain', dataBase64: b64('exported') } } });
+    check('when every repository fails an export is still pinned', allFailExport.resolved === null && allFailExport.filename === 'pr.txt', allFailExport);
+    reader = null;
 
     const before = evidence().length;
     const big = await refusal(() => C.pin({ missionId: mission.id, caller, contribution: { kind: 'file', filename: 'big.bin', mediaType: 'application/octet-stream', dataBase64: Buffer.alloc(D.CONTRIBUTION_MAX_BYTES + 1).toString('base64') } }));

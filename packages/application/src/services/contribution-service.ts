@@ -120,15 +120,11 @@ export class ContributionServiceImpl implements ContributionService {
       };
     }
     const { url } = contribution;
-    let resolved: PullRequestSnapshot | null = null;
-    try {
-      resolved = await this.#resolve(mission, url);
-    } catch (e) {
-      // A resolver that fails outright (gh signed out, say) must not stop a
-      // person who attached an export from handing it in; without one, the
-      // failure is the most useful thing to tell them.
-      if (contribution.export === undefined) throw e;
-    }
+    const { snapshot: resolved, failure } = await this.#resolve(mission, url);
+    // A resolver that failed outright (gh signed out, say) on every repository
+    // must not stop a person who attached an export from handing it in;
+    // without one, the failure is the most useful thing to tell them.
+    if (resolved === null && failure !== null && contribution.export === undefined) throw failure;
     if (resolved !== null) {
       const pr = resolved;
       return {
@@ -159,13 +155,22 @@ export class ContributionServiceImpl implements ContributionService {
     };
   }
 
-  /** The first of the mission's repositories whose checkout can read the link, if any. */
-  async #resolve(mission: Mission, url: string): Promise<PullRequestSnapshot | null> {
+  /**
+   * The first of the mission's repositories whose checkout can read the link,
+   * if any. Each repository is tried even when an earlier one failed: a
+   * checkout with a broken remote says nothing about the next one.
+   */
+  async #resolve(mission: Mission, url: string): Promise<{ snapshot: PullRequestSnapshot | null; failure: unknown }> {
+    let failure: unknown = null;
     for (const repo of this.deps.repositories.listByWorkspace(mission.workspaceId)) {
-      const snapshot = await this.deps.snapshots.read(url, repo.path);
-      if (snapshot !== null) return snapshot;
+      try {
+        const snapshot = await this.deps.snapshots.read(url, repo.path);
+        if (snapshot !== null) return { snapshot, failure: null };
+      } catch (e) {
+        failure ??= e;
+      }
     }
-    return null;
+    return { snapshot: null, failure };
   }
 }
 

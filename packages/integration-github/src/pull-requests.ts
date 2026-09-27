@@ -15,6 +15,9 @@ const PR_URL = /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/;
 const DIFF_MAX_BYTES = 2 * 1024 * 1024;
 const TRUNCATED_NOTE = '… diff truncated at 2 MB';
 
+/** What gh prints for a pull request or repository that does not exist, or that this account cannot see. */
+const MISSING = /Could not resolve to a (PullRequest|Repository)/i;
+
 const viewSchema = z.object({
   number: z.number().int().positive(),
   title: z.string(),
@@ -56,6 +59,11 @@ export class GhPullRequestSnapshots implements PullRequestSnapshotPort {
       // read that link. Anything else (gh missing, signed out, a timeout) is a
       // real failure they can fix, so it is not hidden behind a null.
       if (e instanceof TandemiseError && (e.code === 'NOT_FOUND' || e.code === 'PERMISSION_DENIED')) return null;
+      // gh reports a missing pull request as a GraphQL error with no "Not
+      // Found" in it, which the shared failure words leave as a plain exit;
+      // matched here rather than there so the issue tracker's errors keep
+      // their meaning.
+      if (e instanceof Error && MISSING.test(e.message)) return null;
       throw e;
     }
   }
