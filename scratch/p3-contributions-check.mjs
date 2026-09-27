@@ -415,6 +415,27 @@ section('daemon: intake and skips');
     await h.services.planning.plan(m3.id);
     check('planning after refinement runs no second intake', intakes(m3.id).length === 1 && tasksOf(m3.id).some((t) => t.status === 'SKIPPED'), intakes(m3.id));
 
+    // ---- refine first with no Done-when lines: the spec covers only once U1 is accepted
+    const GOAL5 = 'Greet the visitor, lines to come';
+    const m5 = await h.services.missions.create(caller, { workspaceId: ws, goal: GOAL5, title: 'Greeting, refined', uploads: [upload] });
+    h.services.refinement.begin(caller, m5.id);
+    await h.services.refinement.settled(m5.id);
+    const intake5 = h.artifacts.listByMission(m5.id).find((a) => a.type === 'ProductSpec');
+    const criteriaRepo = h.container.resolve(h.app.MISSION_CRITERIA_REPOSITORY);
+    const specRows = (id) => criteriaRepo.listActive(id).filter((c) => c.source === 'spec');
+    check('refinement converts the upload before any line exists', intakes(m5.id).length === 1 && intake5 !== undefined && specRows(m5.id).length === 0, { intakes: intakes(m5.id), rows: specRows(m5.id) });
+    h.services.refinement.addCriterion(caller, m5.id, { statement: 'The page greets the visitor by name' });
+    await h.services.planning.plan(m5.id);
+    check('once U1 is accepted the plan skips the product stage', tasksOf(m5.id).some((t) => t.status === 'SKIPPED' && t.roleId === 'product'), tasksOf(m5.id).map((t) => [t.key, t.status]));
+    check('and the spec it skipped for is the ledger\'s spec', specRows(m5.id).length > 0 && specRows(m5.id).every((c) => c.specArtifactId === intake5?.id), specRows(m5.id).map((c) => [c.key, c.specArtifactId]));
+    check('still one intake', intakes(m5.id).length === 1, intakes(m5.id));
+    // A line the spec does not cover arrives: it covers nothing any more.
+    criteriaRepo.addUserCriteria(m5.id, ['The page says goodbye']);
+    await h.services.planning.plan(m5.id);
+    const prompts5 = plannerPrompts(GOAL5);
+    check('a spec that stops covering is not offered', prompts5.length >= 2 && !prompts5[prompts5.length - 1].includes(`(id ${intake5?.id})`) && prompts5.some((p) => p.includes(`(id ${intake5?.id})`)), prompts5.map((p) => p.slice(-800)));
+    check('and no placeholder is made for it', tasksOf(m5.id).every((t) => t.status !== 'SKIPPED'), tasksOf(m5.id).map((t) => [t.key, t.status]));
+
     // ---- a project's own workflow never skips
     const m4 = await h.services.missions.create(caller, { workspaceId: ws, goal: 'Run our own flow', title: 'Own flow', successCriteria: ['The page greets the visitor by name'], workflowPreset: 'p3-flow', uploads: [upload] });
     await h.services.planning.plan(m4.id);

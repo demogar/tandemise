@@ -419,12 +419,22 @@ export class PlanningServiceImpl implements PlanningService {
   }
 
   /**
-   * The intake artifacts that may stand in for a stage, judged now.
+   * The intake artifacts that may stand in for a stage, judged now, with the
+   * ledger brought in line with that judgement.
    *
-   * A ProductSpec is held to the Done-when ledger as it stands today, the
-   * same rule a product step's spec meets: one that leaves a line uncovered
-   * is context for the planner but covers nothing (ruling 4). The other types
-   * have no ledger to answer to.
+   * A ProductSpec is held to the Done-when ledger as it stands now, the same
+   * rule a product step's spec meets: one that leaves a line uncovered is
+   * context for the planner but covers nothing (ruling 4). One that covers
+   * every line becomes the mission's spec rows in the same breath
+   * (`replaceSpecCriteria`, as the harvester does), so a stage is never
+   * skipped for a spec whose criteria the ledger does not hold. Coverage and
+   * ledger membership are decided here together, not at conversion: on the
+   * refine-first path the lines a spec covers are accepted after intake ran.
+   *
+   * Spec rows a product step wrote are never replaced; only absent ones or
+   * ones an intake spec wrote. Rows of an intake spec that stopped covering
+   * are left for the product step the planner must now plan to replace.
+   * The other types have no ledger to answer to.
    */
   async #coveringIntake(mission: Mission): Promise<readonly ArtifactManifest[]> {
     const artifacts = this.deps.artifacts.listByMission(mission.id);
@@ -433,6 +443,11 @@ export class PlanningServiceImpl implements PlanningService {
       const intake = intakeArtifactFor(evidence, artifacts);
       if (intake !== undefined) made.set(intake.id, intake);
     }
+    const specRows = (this.deps.criteria?.listActive(mission.id) ?? []).filter((c) => c.source === 'spec');
+    let specOf: string | null = specRows[0]?.specArtifactId ?? null;
+    const mayWrite = specRows.length === 0 || (specOf !== null && made.has(specOf));
+    let written = false;
+
     const covering: ArtifactManifest[] = [];
     for (const intake of made.values()) {
       if (intake.type !== 'ProductSpec') {
@@ -442,7 +457,16 @@ export class PlanningServiceImpl implements PlanningService {
       const parsed = this.deps.parser?.parse('ProductSpec', (await this.deps.artifactStore.read(intake.id)).body);
       if (parsed === undefined || !parsed.ok) continue;
       const check = checkSpecLedger(this.#userCriteria(mission.id), parsed.value.frontMatter);
-      if (check.refusal === null && check.advisories.length === 0) covering.push(intake);
+      if (check.refusal !== null || check.advisories.length > 0 || check.spec === null) continue;
+      if (specOf !== intake.id) {
+        // Only one spec can be the mission's; with two covering uploads the first one written wins.
+        if (!mayWrite || written || this.deps.criteria === undefined) continue;
+        this.deps.criteria.replaceSpecCriteria(mission.id, intake.id, check.spec);
+        this.deps.recorder.invalidate('criteria', mission.id);
+        specOf = intake.id;
+        written = true;
+      }
+      covering.push(intake);
     }
     return covering;
   }
@@ -566,15 +590,9 @@ export class PlanningServiceImpl implements PlanningService {
       ...manifest, authorId: RUNTIME_ACTOR, responsibleId: mission.createdBy ?? null, recordedBy: SYSTEM_ACTOR,
       handoff, wordCount: this.deps.measure.measure(type, parsed.value.body).mainWords, overBudget: false,
     });
-    if (type === 'ProductSpec' && this.deps.criteria !== undefined) {
-      // The same ledger path as a product step's spec, but only for a spec that
-      // covers every line: one that does not is context, not the mission's spec.
-      const check = checkSpecLedger(this.#userCriteria(mission.id), front);
-      if (check.refusal === null && check.advisories.length === 0 && check.spec !== null) {
-        this.deps.criteria.replaceSpecCriteria(mission.id, recorded.id, check.spec);
-        this.deps.recorder.invalidate('criteria', mission.id);
-      }
-    }
+    // Whether it joins the Done-when ledger is decided with whether it covers
+    // the product stage, in #coveringIntake, against the ledger as it stands
+    // when a plan is made: refinement may add the lines it covers after this.
     this.deps.recorder.record(scope, { type: 'artifact.created', artifactId: recorded.id });
     return recorded;
   }
