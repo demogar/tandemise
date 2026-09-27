@@ -32,6 +32,8 @@ const file = A.handoffSchema.safeParse({ headline: 'h', points: [], links: [{ la
 check('a non-workspace link stays http(s) only', !file.success);
 const noUrlNoPath = A.handoffSchema.safeParse({ headline: 'h', points: [], links: [{ label: 'X', kind: 'other' }] });
 check('a non-workspace link without a url is refused', !noUrlNoPath.success && noUrlNoPath.error.issues.some((i) => /link url must be a full URL/.test(i.message)), noUrlNoPath.success ? noUrlNoPath.data : noUrlNoPath.error.issues);
+const bareWorkspace = A.handoffSchema.safeParse({ headline: 'h', points: [], links: [{ label: 'X', kind: 'workspace' }] });
+check('a workspace link with neither url nor path says so', !bareWorkspace.success && bareWorkspace.error.issues.some((i) => /a workspace link needs a url or a path/.test(i.message)), bareWorkspace.success ? bareWorkspace.data : bareWorkspace.error.issues);
 
 // A minimal planned task: the shape validateMissionPlan already accepts
 // (copied from the `task` fixture in scratch/p15-setup-check.mjs), parameterised

@@ -74,7 +74,8 @@ function ReaderDocument({ view, onVersion }: { view: ArtifactReadView; onVersion
   // Output a round overtook before it was judged: without this it would read as the latest version.
   const setAside = (view.withdrawnAt ?? null) !== null;
   // Only http(s) leaves the app: the main process refuses anything else, and a button that does nothing is worse than none.
-  const links = (handoff?.links ?? []).filter((link) => /^https?:\/\//i.test(link.url));
+  // A workspace link may carry a path instead of a url (spec A5); rendering that is Task 6's job.
+  const links = (handoff?.links ?? []).filter((link): link is typeof link & { url: string } => link.url !== undefined && /^https?:\/\//i.test(link.url));
   // `needs` asks the person the request is for; anyone else is told who it waits on, as the feed does.
   // Read defensively: the offline mock serves read views without it.
   const waitingOn = handoff?.needs ? waitingFor(view.openRequest ?? null, actors) : null;

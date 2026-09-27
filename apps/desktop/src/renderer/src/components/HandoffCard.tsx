@@ -76,7 +76,8 @@ export function HandoffCard({
     ?? (card.pendingApproval ? card.pendingApproval.approval.title : null)
     ?? (card.humanAction === 'claim' ? 'Someone to take this step. Claim it, do it, then mark it done.' : card.humanAction === 'complete' ? 'You to do this step and mark it done.' : null);
   // Only http(s) leaves the app; the main process refuses anything else, and a dead button is worse than none.
-  const links = (handoff?.links ?? []).filter((link) => /^https?:\/\//i.test(link.url));
+  // A workspace link may carry a path instead of a url (spec A5); rendering that is Task 6's job.
+  const links = (handoff?.links ?? []).filter((link): link is typeof link & { url: string } => link.url !== undefined && /^https?:\/\//i.test(link.url));
   const tone = cardTone(card);
 
   return (

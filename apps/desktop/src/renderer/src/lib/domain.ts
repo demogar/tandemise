@@ -71,6 +71,9 @@ const SEMANTIC: Readonly<Record<TandemiseEventBody['type'], boolean>> = {
   'feedback.dismissed': true,
   'task.round_started': true,
   'mission.pulled': true,
+  'task.parked_external': true,
+  'task.handed_back': true,
+  'mission.intake_completed': true,
   note: true,
 };
 

@@ -65,7 +65,15 @@ export const handoffSchema: z.ZodType<ArtifactHandoff, z.ZodTypeDef, unknown> = 
     if (link.path !== undefined && link.kind !== 'workspace') {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'only a workspace link may carry a path', path: ['path'] });
     }
-    if (link.url === undefined && !(link.kind === 'workspace' && link.path !== undefined)) {
+    if (link.url === undefined && link.path === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: link.kind === 'workspace' ? 'a workspace link needs a url or a path' : 'link url must be a full URL',
+        path: ['url'],
+      });
+    } else if (link.url === undefined && link.kind !== 'workspace') {
+      // A path alone is only good for a workspace link (the check above already refused a
+      // non-workspace path); every other kind still needs its own url even when it has a path.
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'link url must be a full URL', path: ['url'] });
     }
   })).max(HANDOFF_LIMITS.links, `handoff.links may have at most ${HANDOFF_LIMITS.links} items`).default([]),

@@ -334,6 +334,26 @@ function describe(record: RunEventRecord, roleNames: ReadonlyMap<string, string>
         ].filter((part): part is string => part !== null).join(' · ') || null,
         link: null,
       };
+    case 'task.parked_external':
+      return { ...base, icon: 'externalLink', tone: 'pending', title: `Continued in ${body.tool}`, detail: null, link: null };
+    case 'task.handed_back':
+      return {
+        ...base,
+        icon: 'check',
+        tone: 'succeeded',
+        title: `Handed back (round ${body.round})`,
+        detail: body.contribution === 'file' ? 'From a file' : 'From a link',
+        link: body.artifactIds[0] ? { kind: 'artifact', id: body.artifactIds[0] } : null,
+      };
+    case 'mission.intake_completed':
+      return {
+        ...base,
+        icon: 'file',
+        tone: 'pending',
+        title: `Read ${pluralize(body.uploads, 'upload')}`,
+        detail: body.failed.length > 0 ? `${body.produced.length} converted, ${body.failed.length} could not be read` : null,
+        link: null,
+      };
   }
 }
 
