@@ -124,9 +124,14 @@ Handing back a GitHub pull request link reads the branch's head commit and
 its diff through `gh`, and fetches the head into a local branch,
 `tandemise/pr-<number>`, in the repository that read it — so downstream
 review, QA and integration work from that exact commit even when the branch
-was never on this machine (a fork, a web edit, another laptop). For a change,
-the pull request's branch replaces the agent's own when the mission's
-branches are integrated. If the fetch fails, a change is refused with
+was never on this machine (a fork, a web edit, another laptop). The pull request
+is fetched only through a remote that points at its own repository on
+GitHub (the mission's repository first), and if the commit is already in
+one of the project's checkouts no fetch is needed. For a change, the pull
+request's branch replaces the agent's own when the mission's branches are
+integrated, and if you later request changes, the agent's next round starts
+from your pull request. A change handed back as a file is kept as the step's
+output but is not built on — hand back a pull request for that. If the fetch fails, a change is refused with
 "Couldn't fetch that pull request into `<repository>`. Fetch or push its
 branch, then hand it back again."; anything else is handed back without a
 branch. A link nothing can read, with no export attached, is refused —

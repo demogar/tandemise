@@ -48,6 +48,12 @@ above, so it costs nothing against a mission or monthly limit. The timeline says
 ran ("Read N uploads"), but it has no transcript, time or token count of its
 own to show.
 
+**Code handed back as a file is not built on.** A change handed back as a
+file or an export becomes the step's output, and review reads it, but it has
+no branch: integration merges nothing for it, work after it starts from the
+mission's base branch, and a later agent round of the step starts from the
+agent's own earlier branch. To have the code built on, hand back a pull request.
+
 **Only a GitHub pull request link is read back on its own.** Handing in or
 handing back a link, Tandemise can fetch a pull request's diff and commit
 through `gh`; anything else — a Figma file, a doc, any other URL — needs an
