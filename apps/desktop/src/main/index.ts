@@ -2,7 +2,8 @@ import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, sh
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DaemonConnector } from './daemon-connection.js';
-import { IPC } from '../shared/bridge.js';
+import { Notifier } from './notifier.js';
+import { IPC, type NotificationOpen } from '../shared/bridge.js';
 import { WINDOW_BACKGROUND } from '../shared/brand.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -99,6 +100,21 @@ function showWindow(): void {
   mainWindow.focus();
 }
 
+/**
+ * A clicked notification (P16): bring the window forward, then tell the
+ * renderer where to go. A window still loading gets the route once it has.
+ */
+function openFromNotification(target: NotificationOpen): void {
+  showWindow();
+  const contents = mainWindow?.webContents;
+  if (!contents) return;
+  const send = (): void => contents.send(IPC.notificationOpen, target);
+  if (contents.isLoading()) contents.once('did-finish-load', send);
+  else send();
+}
+
+const notifier = new Notifier(connector, () => mainWindow, openFromNotification);
+
 function createTray(): void {
   const icon = nativeImage.createFromPath(join(here, '../../resources/trayTemplate.png'));
   icon.setTemplateImage(true);
@@ -168,6 +184,12 @@ function registerIpc(): void {
     if (parsed && (parsed.protocol === 'http:' || parsed.protocol === 'https:')) await shell.openExternal(url);
   });
 
+  ipcMain.handle(IPC.notificationTest, () => notifier.test());
+  ipcMain.handle(IPC.notificationDebug, (_event, op: unknown, arg: unknown) => {
+    if (!Notifier.recording) throw new Error('Notification debugging is only available with TANDEMISE_NOTIFY_RECORD set.');
+    return notifier.debug(typeof op === 'string' ? op : '', arg);
+  });
+
   ipcMain.handle(IPC.revealInFinder, async (_event, path: unknown) => {
     if (typeof path === 'string' && path.length > 0) shell.showItemInFolder(path);
   });
@@ -194,6 +216,8 @@ app.whenReady().then(() => {
   mainWindow = createWindow();
 
   void connector.refresh().finally(() => connector.watch());
+  // Polls whether or not a window is open, so a hidden app still reaches the person.
+  notifier.start();
 
   app.on('activate', showWindow);
 });
@@ -206,5 +230,6 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   quitting = true;
+  notifier.stop();
   tray?.destroy();
 });

@@ -1,0 +1,36 @@
+{
+  "id": "B4",
+  "title": "Too long first draft → one tighten pass → short",
+  "ok": true,
+  "checks": [
+    {
+      "label": "exactly one tighten pass",
+      "ok": true,
+      "observed": 1
+    },
+    {
+      "label": "design succeeded without spending an attempt",
+      "ok": true,
+      "observed": {
+        "status": "SUCCEEDED",
+        "attempts": 1
+      }
+    },
+    {
+      "label": "the kept artifact is within budget",
+      "ok": true,
+      "observed": {
+        "words": 9,
+        "overBudget": false
+      }
+    },
+    {
+      "label": "timeline shows the tighten request",
+      "ok": true
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p16-notify/scratch/acceptance/p0/evidence/B4-timeline.png"
+  ]
+}

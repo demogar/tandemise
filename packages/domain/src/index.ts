@@ -29,6 +29,7 @@ export * from './entities/liveness.js';
 export * from './entities/status-report.js';
 export * from './entities/routine.js';
 export * from './entities/models.js';
+export * from './entities/notifications.js';
 
 export * from './ports/repositories.js';
 export * from './ports/artifact-store.js';

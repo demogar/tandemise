@@ -75,3 +75,6 @@ Home's **Needs you now** lists the same rows. Home's cards count them
 separately: **Needs you** counts requests (cards, steps, refinements, quiet
 agents), **Stalled** counts stuck missions (see
 [The desk](desk-and-status-report.md)).
+
+When the window is in the background, each new row reaches you once as a
+native notification; see [Notifications](notifications.md).

@@ -1,0 +1,66 @@
+{
+  "id": "G4",
+  "title": "A queued mission that is not ready is skipped",
+  "ok": true,
+  "checks": [
+    {
+      "label": "a queued mission with no Done-when line is not pulled, even with a free slot",
+      "ok": true
+    },
+    {
+      "label": "its row: Urgent, \"Needs refinement\", \"Queued · 1/1\"",
+      "ok": true,
+      "observed": {
+        "title": "G4 urgent but rough: make onboarding nicer muiyv4wa",
+        "priority": "Urgent",
+        "chip": "Urgent",
+        "readiness": "Needs refinement",
+        "queue": "Queued · 1/1",
+        "subtitle": "Add at least one Done-when criterion to plan",
+        "selected": true
+      }
+    },
+    {
+      "label": "and what it needs: \"Add at least one Done-when criterion to plan\"",
+      "ok": true,
+      "observed": "Add at least one Done-when criterion to plan"
+    },
+    {
+      "label": "proof (API): the ready Normal is pulled; the rough Urgent stays a draft",
+      "ok": true
+    },
+    {
+      "label": "its timeline says it was second, and why",
+      "ok": true,
+      "observed": "Tandemise\nAcceptance\n1 repository\nHome\nMissions\nInbox\n2\nArtifacts\nACCEPTANCE\nRepositories\nTeam\nRuntimes\nIntegrations\nAPP\nSettings\nDaemon connected · 61431\nmsn_01m3fxn8trjs88q879bk\nMissions\np2-solo\nG4 normal and ready: a hello page muiyv4wa\nG4 normal and ready: a hello page muiyv4wa\nAwaiting plan approval\nStart\nRe-plan\nCancel\n1 decision waiting on you. Approve the plan for G4 normal and ready: a hello page muiyv4wa?\nReview\nFeed\n1\nPlan\n1\nTimeline\nArtifacts\n1\nChecks & Gates\nMetrics\n6 events · lates"
+    },
+    {
+      "label": "the rough Urgent is still \"Queued · 1/1\", \"Needs refinement\"",
+      "ok": true,
+      "observed": [
+        {
+          "title": "G4 urgent but rough: make onboarding nicer muiyv4wa",
+          "priority": "Urgent",
+          "chip": "Urgent",
+          "readiness": "Needs refinement",
+          "queue": "Queued · 1/1",
+          "subtitle": "Add at least one Done-when criterion to plan",
+          "selected": true
+        }
+      ]
+    },
+    {
+      "label": "header: \"Working on 1 of 1 · 1 queued\"",
+      "ok": true,
+      "observed": "Working on 1 of 1 · 1 queued\n\nFull: the next queued mission that is ready is planned as soon as one in progress finishes.\n\nWork on at most\nOff\n1\n2\n3\n5"
+    }
+  ],
+  "notes": [
+    "setup: cancelled 2 mission(s) left by earlier scenarios, limit off"
+  ],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p16-notify/scratch/acceptance/p7/evidence/G4-rough-waits.png",
+    "/Users/demogar/projects/tandemise/tandemise-p16-notify/scratch/acceptance/p7/evidence/G4-ready-pulled-timeline.png",
+    "/Users/demogar/projects/tandemise/tandemise-p16-notify/scratch/acceptance/p7/evidence/G4-backlog-after.png"
+  ]
+}

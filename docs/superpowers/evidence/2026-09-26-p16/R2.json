@@ -1,0 +1,106 @@
+{
+  "id": "R2",
+  "title": "Three at once become one notification; a switched-off kind stays quiet",
+  "ok": true,
+  "checks": [
+    {
+      "label": "one poll, one notification for three new cards",
+      "ok": true,
+      "observed": {
+        "got": 1,
+        "count": 1
+      }
+    },
+    {
+      "label": "it reads \"3 things need you\"",
+      "ok": true,
+      "observed": {
+        "title": "3 things need you",
+        "body": "Approve the plan for R2 compress the images muj00a9o? · R2 compress the images muj00a9o; Approve the plan for R2 add a sitemap muj00a9o? · R2 add a sitemap muj00a9o; and 1 more",
+        "route": "/inbox",
+        "workspaceId": "ws_01m3fze67m7h0a6cqej4",
+        "ids": [
+          "apr_01m3fzfq04g5109sgd7x",
+          "apr_01m3fzfmherj9fac7gnr",
+          "apr_01m3fzfj2mvbh62v83kd"
+        ],
+        "shape": "coalesced",
+        "at": "2026-09-26T23:05:59.016Z",
+        "test": false,
+        "windowVisible": true
+      }
+    },
+    {
+      "label": "its body names two of the three cards and \"and 1 more\"",
+      "ok": true,
+      "observed": "Approve the plan for R2 compress the images muj00a9o? · R2 compress the images muj00a9o; Approve the plan for R2 add a sitemap muj00a9o? · R2 add a sitemap muj00a9o; and 1 more"
+    },
+    {
+      "label": "it opens the Inbox",
+      "ok": true,
+      "observed": "/inbox"
+    },
+    {
+      "label": "proof (settings.json): all three card ids are recorded",
+      "ok": true,
+      "observed": [
+        "apr_01m3fzem4xjvvhk586dh",
+        "apr_01m3fzfq04g5109sgd7x",
+        "apr_01m3fzfmherj9fac7gnr",
+        "apr_01m3fzfj2mvbh62v83kd"
+      ]
+    },
+    {
+      "label": "nothing more on the next polls",
+      "ok": true
+    },
+    {
+      "label": "clicking it opens the Inbox with the three missions",
+      "ok": true,
+      "observed": "Inbox\nWhat is waiting on a person.\nApprove the plan for R2 fix the footer links muj00a9o?\nOne document task and nothing downstream, for rounds without dependents.\nFor you·R2 fix the footer links muj00a9o\nPlan\njust now\nApprove the plan for R2 add a sitemap muj00a9o?\nOne document task and nothing downstream, for rounds without dependents.\nFor you·R2 add a sitemap muj00a9o\nPlan\njust now\nApprove the plan for R2 compress the images muj00a9o?\nOne document task and nothing downstream, for rounds without dependents.\nFor you·R2 compress the images muj00a9o\nPlan\njust now\nDecided\n2 decisions\nApprove the plan for R1 tidy the release notes muizzgag?\nWithdrawn — the work ended first · “acceptance: clean s"
+    },
+    {
+      "label": "the Refinements switch reads off",
+      "ok": true
+    },
+    {
+      "label": "proof (API): kinds.refinements is false, the rest on",
+      "ok": true,
+      "observed": {
+        "decisions": true,
+        "refinements": false,
+        "stalled": true,
+        "quiet": true,
+        "limits": true
+      }
+    },
+    {
+      "label": "the refinement is in the Inbox and no notification was shown for it",
+      "ok": true,
+      "observed": []
+    },
+    {
+      "label": "proof (settings.json): it is recorded as seen",
+      "ok": true,
+      "observed": [
+        "apr_01m3fzfmherj9fac7gnr",
+        "apr_01m3fzfj2mvbh62v83kd",
+        "refinement:msn_01m3fzfxkht6nsx4rwyx"
+      ]
+    },
+    {
+      "label": "switching Refinements back on does not announce the old one",
+      "ok": true,
+      "observed": []
+    }
+  ],
+  "notes": [
+    "setup: cancelled 2 mission(s) left by earlier scenarios, limit off",
+    "missions: msn_01m3fzfj22jxfzvyssbr \"R2 fix the footer links muj00a9o\"; msn_01m3fzfmgtmjfxnar53s \"R2 add a sitemap muj00a9o\"; msn_01m3fzfpznkxww3hzwe2 \"R2 compress the images muj00a9o\"",
+    "draft msn_01m3fzfxkht6nsx4rwyx"
+  ],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p16-notify/scratch/acceptance/p16/evidence/R2-inbox-from-coalesced.png",
+    "/Users/demogar/projects/tandemise/tandemise-p16-notify/scratch/acceptance/p16/evidence/R2-settings-refinements-off.png"
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "id": "B3a",
+  "title": "Full doc: the appendix is collapsed with its word count",
+  "ok": true,
+  "checks": [
+    {
+      "label": "an \"Appendix (N words)\" section exists and starts collapsed",
+      "ok": true,
+      "observed": {
+        "summary": "Appendix (400 words)",
+        "open": false
+      }
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p16-notify/scratch/acceptance/p0/evidence/B3a-reader-appendix.png"
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "id": "B14",
+  "title": "A check for me: Needs you, decided on the card, then gone",
+  "ok": true,
+  "checks": [
+    {
+      "label": "the architecture check is under Needs you",
+      "ok": true,
+      "observed": "msn_01m3fwcym8rpek5hptfb\nMissions\np0\nB check muiy313a\nB check muiy313a\nExecuting\nPause\nCancel\nFeed\n2\nPlan\n8\nTimeline\nArtifacts\n6\nChecks & Gates\nMetrics\nDone when\n0 of 1 verified\nU1\nThe acceptance scenario finishes its steps\nCovered by AC1\nNot verified\nAC1\nScripted criterion 1: the hello page greets the visitor by name.\nCovers U1 · Waiting for QA\nNot verified\nNeeds you\n2 items\nPRODUCT MANAGER\ndocs\n"
+    },
+    {
+      "label": "it reads as non-blocking (\"Check when you can\")",
+      "ok": true,
+      "observed": "ARCHITECT\narchitecture\nDone\njust now\nby\nRuntime\n·\nresponsible\nYou\nFull doc\nRequest changes\n\nArchitecturePlan ready for the hello page\n\nWritten by the scripted acceptance agent\nNo model was called\nCheck when you can Check architecture when you can\nRecording for\nDemostenes Garcia G. (you)\nAna Ruiz\nMaria Lopez\nNothing is waiting on this; your note is kept with the work.\nNeeds changes\nLooks good"
+    },
+    {
+      "label": "decided \"Looks good\" on the card",
+      "ok": true
+    },
+    {
+      "label": "the check left Needs you",
+      "ok": true,
+      "observed": "msn_01m3fwcym8rpek5hptfb\nMissions\np0\nB check muiy313a\nB check muiy313a\nExecuting\nPause\nCancel\nFeed\n1\nPlan\n8\nTimeline\nArtifacts\n7\nChecks & Gates\nMetrics\nDone when\n0 of 1 verified\nU1\nThe acceptance scenario finishes its steps\nCovered by AC1\nNot verified\nAC1\nScripted criterion 1: the hello page greets "
+    }
+  ],
+  "notes": [
+    "check \"Check architecture when you can\" options: Looks good, Needs changes"
+  ],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p16-notify/scratch/acceptance/p0/evidence/B14-check-needs-you.png",
+    "/Users/demogar/projects/tandemise/tandemise-p16-notify/scratch/acceptance/p0/evidence/B14-check-decided.png"
+  ]
+}

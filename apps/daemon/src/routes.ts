@@ -10,6 +10,7 @@ import {
   dismissFeedbackRequest, giveFeedbackRequest, startRoundRequest,
   addCriterionRequest, answerQuestionRequest, criterionVerdictRequest, updateMissionRequest, workspaceUsageQuery,
   advanceClockRequest, createRoutineRequest, updateRoutineRequest,
+  takeNotificationsRequest, updateNotificationPreferencesRequest,
 } from '@tandemise/api-contract';
 import { normalizeLimits } from '@tandemise/domain';
 import type { TandemiseServices } from '@tandemise/application';
@@ -52,6 +53,13 @@ export function buildRouter(services: TandemiseServices, options: { readonly tes
   r.patch('/v1/settings', async (ctx) =>
     services.system.updateSettings(await ctx.body(z.record(z.string(), z.unknown()))));
   r.get('/v1/diagnostics', () => services.system.diagnostics());
+
+  // Desktop notifications (P16): preferences for Settings, and the desktop main process's poll.
+  r.get('/v1/notifications/preferences', () => services.notifications.preferences());
+  r.put('/v1/notifications/preferences', async (ctx) =>
+    services.notifications.updatePreferences(await ctx.body(updateNotificationPreferencesRequest)));
+  r.post('/v1/notifications/take', async (ctx) =>
+    services.notifications.take(ctx.caller, await ctx.body(takeNotificationsRequest)));
 
   // ------------------------------------------------------------ workspaces
   r.get('/v1/home', (ctx) => services.projections.home(ctx.query.get('workspaceId') ?? undefined));

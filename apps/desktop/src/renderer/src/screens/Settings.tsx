@@ -4,6 +4,7 @@ import { useDaemonMutation, useSettings, useSystem } from '../lib/queries.js';
 import { useConnection } from '../lib/connection.js';
 import { useThemePreference, type ThemePreference } from '../lib/theme.js';
 import { dateTime } from '../lib/format.js';
+import { NotificationSettings } from './settings/Notifications.js';
 
 export function Settings(): JSX.Element {
   const settings = useSettings();
@@ -40,7 +41,7 @@ export function Settings(): JSX.Element {
                 </div>
               </section>
 
-              
+              <NotificationSettings />
 
               
 

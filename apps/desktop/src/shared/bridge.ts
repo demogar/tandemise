@@ -34,6 +34,13 @@ export interface DaemonStatus {
   readonly updatedAt: string;
 }
 
+/** Where a clicked notification takes the window (P16). */
+export interface NotificationOpen {
+  readonly route: string;
+  /** The project to switch to first, or null to stay on the current one. */
+  readonly workspaceId: string | null;
+}
+
 export type Platform = 'darwin' | 'win32' | 'linux' | (string & {});
 
 export interface TandemiseBridge {
@@ -46,6 +53,15 @@ export interface TandemiseBridge {
   selectDirectory(title?: string): Promise<string | null>;
   openExternal(url: string): Promise<void>;
   revealInFinder(path: string): Promise<void>;
+  /** Settings → "Send a test notification" (P16). */
+  testNotification(): Promise<void>;
+  /** A notification was clicked: open this route. Returns an unsubscribe. */
+  onNotificationOpen(listener: (target: NotificationOpen) => void): () => void;
+  /**
+   * Acceptance-suite hook (list, click, hide, window, focus, pause, resume, poll).
+   * Rejects unless the app was started with TANDEMISE_NOTIFY_RECORD.
+   */
+  notificationsDebug(op: string, arg?: unknown): Promise<unknown>;
 }
 
 /** IPC channel names, kept in one place so a typo fails at compile time. */
@@ -56,4 +72,7 @@ export const IPC = {
   selectDirectory: 'dialog:select-directory',
   openExternal: 'shell:open-external',
   revealInFinder: 'shell:reveal',
+  notificationTest: 'notifications:test',
+  notificationOpen: 'notifications:open',
+  notificationDebug: 'notifications:debug',
 } as const;

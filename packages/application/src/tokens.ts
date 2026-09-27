@@ -20,6 +20,7 @@ import type { BacklogService } from './services/backlog-service.js';
 import type { LimitService } from './services/limit-service.js';
 import type { LivenessService } from './services/liveness-service.js';
 import type { DeskService } from './services/desk-service.js';
+import type { NotificationService } from './services/notification-service.js';
 import type { RoutineService } from './services/routine-service.js';
 import type { StaffingResolver } from './engine/staffing-resolver.js';
 import type { ReviewPipeline } from './engine/reviews.js';
@@ -169,6 +170,7 @@ export const LIMIT_SERVICE = token<LimitService>('application.LimitService');
 export const LIVENESS_SERVICE = token<LivenessService>('application.LivenessService');
 export const DESK_SERVICE = token<DeskService>('application.DeskService');
 export const ROUTINE_SERVICE = token<RoutineService>('application.RoutineService');
+export const NOTIFICATION_SERVICE = token<NotificationService>('application.NotificationService');
 
 export const TANDEMISE_SERVICES = token<TandemiseServices>('application.TandemiseServices');
 

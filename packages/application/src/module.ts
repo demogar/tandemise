@@ -49,6 +49,7 @@ import { BacklogService } from './services/backlog-service.js';
 import { LimitService } from './services/limit-service.js';
 import { LivenessService } from './services/liveness-service.js';
 import { DeskService } from './services/desk-service.js';
+import { NotificationService } from './services/notification-service.js';
 import { RoutineService } from './services/routine-service.js';
 import { DEFAULT_QUIET_AFTER_MS, reachedReason } from '@tandemise/domain';
 import { RefinementServiceImpl } from './services/refinement-service.js';
@@ -713,6 +714,15 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       log: log(r).child({ component: 'routines' }),
     }), { source: SOURCE });
 
+    // Desktop notifications (P16): the Inbox diffed against what was announced, kept in settings.json.
+    bind(t.NOTIFICATION_SERVICE, (r) => new NotificationService({
+      workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
+      members: r.resolve(t.MEMBER_REPOSITORY),
+      settings: r.resolve(t.SETTINGS_STORE),
+      inbox: (workspaceId) => r.resolve(t.PROJECTION_SERVICE).inbox(workspaceId),
+      clock: clock(r),
+    }), { source: SOURCE });
+
     bind(t.CRITERIA_SERVICE, (r) => new CriteriaServiceImpl({
       missions: r.resolve(t.MISSION_REPOSITORY),
       artifacts: r.resolve(t.ARTIFACT_REPOSITORY),
@@ -742,6 +752,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       liveness: r.resolve(t.LIVENESS_SERVICE),
       desk: r.resolve(t.DESK_SERVICE),
       routines: r.resolve(t.ROUTINE_SERVICE),
+      notifications: r.resolve(t.NOTIFICATION_SERVICE),
     }), { source: SOURCE });
   });
 }

@@ -1,0 +1,47 @@
+{
+  "id": "H5",
+  "title": "A USD limit that cannot be measured says so and never stops work",
+  "ok": true,
+  "checks": [
+    {
+      "label": "Metrics → Limit: \"not reported / $5.00\"",
+      "ok": true,
+      "observed": "Limit\nSet on this mission\nCost (USD)\nnot reported / $5.00\n\nCost: not reported. This runtime does not report cost, so this limit cannot be measured and never stops work.\n\nAgent minutes used\n1\nTokens used\n1,500\nCost\nnot reported"
+    },
+    {
+      "label": "and \"Cost: not reported\"",
+      "ok": true,
+      "observed": "Limit\nSet on this mission\nCost (USD)\nnot reported / $5.00\n\nCost: not reported. This runtime does not report cost, so this limit cannot be measured and never stops work.\n\nAgent minutes used\n1\nTokens used\n1,500\nCost\nnot reported"
+    },
+    {
+      "label": "timeline: \"USD limit cannot be measured for this runtime\"",
+      "ok": true,
+      "observed": "Tandemise\nAcceptance\n1 repository\nHome\nMissions\nInbox\nArtifacts\nACCEPTANCE\nRepositories\nTeam\nRuntimes\nIntegrations\nAPP\nSettings\nDaemon connected · 63015\nmsn_01m3fygz56evwvdy6kk8\nMissions\np2-solo\nH5 cost unknown muizesb4 SCRIPTED_USAGE_MIN=1\nH5 cost unknown muizesb4 SCRIPTED_USAGE_MIN=1\nComplete\nFeed\nPlan\n1\nTimeline\nArtifacts\n2\nChecks & Gates\nMetrics\n15 events · latest just now\nFollowing\nRaw log\nMission created: H5 cost unknown muizesb4 SCRIPTED_USAGE_MIN=1\n05:49:10 PM\n·\nYou\nMission moved to Plan"
+    },
+    {
+      "label": "the mission ran to the end",
+      "ok": true
+    },
+    {
+      "label": "proof (SQL): no incident",
+      "ok": true
+    },
+    {
+      "label": "proof (API): cost stays null (never 0), tokens are measured",
+      "ok": true,
+      "observed": {
+        "agentMinutes": 1,
+        "tokens": 1500,
+        "costUsd": null,
+        "runs": 1
+      }
+    }
+  ],
+  "notes": [
+    "setup: cancelled 1 mission(s) left by earlier scenarios, limit off"
+  ],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p16-notify/scratch/acceptance/p8/evidence/H5-usd-not-reported.png",
+    "/Users/demogar/projects/tandemise/tandemise-p16-notify/scratch/acceptance/p8/evidence/H5-timeline-note.png"
+  ]
+}

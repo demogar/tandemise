@@ -89,6 +89,11 @@ copy-pasted between tools. Everything is attributable and recoverable.
 Each step can run on the model that fits it, retry on a stronger one and drop to a
 cheaper one near a limit — see [Choosing models](docs/guides/models.md).
 
+When something needs you and the window is in the background, a native
+notification says so once, never a flood, and opens the decision when clicked.
+See [Notifications](docs/guides/notifications.md) for the switches and quiet
+hours.
+
 ## Architecture
 
 ```
@@ -181,6 +186,7 @@ Task-oriented, one per concept:
 | [The Inbox](docs/guides/inbox.md) | find stalled missions and quiet agents, and unstick them |
 | [The desk and the status report](docs/guides/desk-and-status-report.md) | read Home at a glance and write a report from facts |
 | [Routines](docs/guides/routines.md) | put standing work on a schedule |
+| [Notifications](docs/guides/notifications.md) | hear about new Inbox items while the window is in the background |
 | [Workflows](docs/WORKFLOWS.md) | write my own process as a file, and see which gate facts exist |
 
 ## Repository layout

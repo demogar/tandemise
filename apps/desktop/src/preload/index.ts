@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { IPC, type DaemonStatus, type TandemiseBridge } from '../shared/bridge.js';
+import { IPC, type DaemonStatus, type NotificationOpen, type TandemiseBridge } from '../shared/bridge.js';
 
 /**
  * The only bridge between the sandboxed renderer and the OS.
@@ -23,6 +23,15 @@ const bridge: TandemiseBridge = {
   selectDirectory: (title) => ipcRenderer.invoke(IPC.selectDirectory, title),
   openExternal: (url) => ipcRenderer.invoke(IPC.openExternal, url),
   revealInFinder: (path) => ipcRenderer.invoke(IPC.revealInFinder, path),
+  testNotification: () => ipcRenderer.invoke(IPC.notificationTest),
+  onNotificationOpen(listener) {
+    const handler = (_event: unknown, target: NotificationOpen): void => listener(target);
+    ipcRenderer.on(IPC.notificationOpen, handler);
+    return () => {
+      ipcRenderer.off(IPC.notificationOpen, handler);
+    };
+  },
+  notificationsDebug: (op, arg) => ipcRenderer.invoke(IPC.notificationDebug, op, arg),
 };
 
 contextBridge.exposeInMainWorld('tandemise', bridge);
