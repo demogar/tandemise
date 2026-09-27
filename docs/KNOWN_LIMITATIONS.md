@@ -42,6 +42,23 @@ with `runId: null` and the UI cannot show a planning transcript.
 records, so the planner's and the refinement agent's time and tokens are not
 measured against a mission or monthly limit (see `docs/guides/limits.md`).
 
+**Limits do not count intake either.** Turning an upload into the typed
+document a mission works from has no `Run` row, like planning and refinement
+above, so it costs nothing against a mission or monthly limit — and nothing
+shows it happened, beyond the document it produced.
+
+**Only a GitHub pull request link is read back on its own.** Handing in or
+handing back a link, Tandemise can fetch a pull request's diff and commit
+through `gh`; anything else — a Figma file, a doc, any other URL — needs an
+export attached, or it is refused: "Nothing here can read that link. Attach an
+export of it."
+
+**A file you hand in is capped at 24 MB, and so is everything in one
+request.** One file over that is refused before it is read ("That file is
+larger than 24 MB."); several files that individually fit but add up to more
+are refused together ("These files add up to more than 24 MB. Add the rest
+later as feedback.").
+
 **`git.clean` is only measured on a step with its own worktree.** A step that
 works in place shares your checkout, whose state says nothing about the step,
 so a gate reading `git.clean` there is refused when the workflow or plan is

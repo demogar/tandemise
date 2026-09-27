@@ -120,6 +120,23 @@ not have stops the workflow when it is planned, naming the step.
 Two gate facts, `skills.loaded` and `skills.missing`, are measured in every
 step gate (see [Gate facts](#gate-facts)). See [the skills guide](guides/skills.md).
 
+## Skipped and parked steps
+
+A stage the planner would otherwise run can be skipped when an uploaded file
+or link already covers it — see [Hand work in and back](guides/outside-contributions.md).
+The skip is a real `SKIPPED` task in the graph, not a gap: it carries the
+stage's output type, so dependents still find a producer, and its reason
+reads `Covered by your upload: <filename>`. **A workflow file you wrote never
+skips a stage this way** — every step you declared runs; only a plan the
+planner proposes can leave one out.
+
+An agent step can also come back `AWAITING_EXTERNAL` mid-mission: someone took
+its work to another tool with "Continue elsewhere" and it is waiting for them
+to hand it back, the same status a `wait` step uses while it polls — but the
+meaning is the other way round. For a `wait` step, `AWAITING_EXTERNAL` means
+the mission is still moving on its own; for a parked agent step, it means the
+mission is waiting on a person, until the hand-back lands as a new round.
+
 ## When something is wrong
 
 Mistakes are caught when the workflow is read, naming the step and the problem —
