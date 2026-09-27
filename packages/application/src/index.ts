@@ -90,6 +90,8 @@ export type { NotificationDeps } from './services/notification-service.js';
 export { RoutineService } from './services/routine-service.js';
 export { SkillService } from './services/skill-service.js';
 export { IssueService } from './services/issue-service.js';
+export { ContributionError, ContributionServiceImpl } from './services/contribution-service.js';
+export type { ContributionDeps, ContributionErrorCode } from './services/contribution-service.js';
 export type { IssueDeps } from './services/issue-service.js';
 export type { SkillDeps } from './services/skill-service.js';
 export { SkillInstaller, INSTALLED_MARKER } from './engine/skill-installer.js';

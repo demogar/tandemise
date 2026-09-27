@@ -6,4 +6,5 @@ export { gh, ghJson, isMissingCli, isUnauthenticated } from './gh.js';
 export type { GhOptions } from './gh.js';
 export { githubIntegrationModule } from './module.js';
 export { GhIssueTracker } from './issues.js';
+export { GhPullRequestSnapshots } from './pull-requests.js';
 export type { GhContext } from './gh.js';

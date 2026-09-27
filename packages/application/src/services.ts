@@ -3,7 +3,7 @@ import type {
   TaskId, WorkspaceId,
 } from '@tandemise/shared';
 import type {
-  Approval, ArtifactManifest, ExecutionTargetRecord, Mission, RoleStaffing, RoleTemplate,
+  Approval, ArtifactManifest, ExecutionTargetRecord, Mission, OutsideContribution, PullRequestSnapshot, RoleStaffing, RoleTemplate,
   RunEventRecord, RuntimeProfile, StaffingPatch,
 } from '@tandemise/domain';
 import type {
@@ -66,6 +66,39 @@ export interface TandemiseServices {
   readonly issues: import('./services/issue-service.js').IssueService;
   /** The project's setup as files in a repository (P15). */
   readonly setup: import('./services/setup-service.js').SetupService;
+  /** Files and links handed in from outside a mission, pinned as Evidence (P3). */
+  readonly contributions: ContributionService;
+}
+
+/** One contribution pinned as Evidence, with what a caller needs to type it next. */
+export interface PinnedContribution {
+  /** Always type `Evidence`, content-addressed and never changed after this. */
+  readonly evidence: ArtifactManifest;
+  readonly filename: string;
+  readonly mediaType: string;
+  /** Set when a link was read as a pull request, so a hand-back can carry its head ref. */
+  readonly resolved: PullRequestSnapshot | null;
+}
+
+/** Outside contributions (spec A1, A5). */
+export interface ContributionService {
+  /**
+   * Pins one contribution as Evidence with its ExternalRefs, authored by the
+   * caller's member or `onBehalfOf` and recorded by the caller's (spec A6).
+   * Throws ContributionError('unreadable_link' | 'too_large' | 'empty').
+   */
+  pin(input: {
+    missionId: MissionId; taskId?: TaskId | null; caller: Caller;
+    /** A member id, as every other `onBehalfOf` in the API. */
+    onBehalfOf?: string | null;
+    contribution: OutsideContribution;
+  }): Promise<PinnedContribution>;
+  /**
+   * Resolves a workspace link path to an absolute path inside one of the
+   * workspace's repository roots or its artifact root; throws
+   * ContributionError('outside_workspace') for anything else.
+   */
+  resolveWorkspacePath(workspaceId: WorkspaceId, path: string): Promise<string>;
 }
 
 /** Making a rough request ready to plan (P6). Every write is refused once the mission has left DRAFT. */

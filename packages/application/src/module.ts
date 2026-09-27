@@ -53,8 +53,9 @@ import { NotificationService } from './services/notification-service.js';
 import { RoutineService } from './services/routine-service.js';
 import { IssueService } from './services/issue-service.js';
 import { SkillService } from './services/skill-service.js';
+import { ContributionServiceImpl } from './services/contribution-service.js';
 import { SkillInstaller } from './engine/skill-installer.js';
-import { DEFAULT_QUIET_AFTER_MS, reachedReason, type IssueTrackerPort } from '@tandemise/domain';
+import { DEFAULT_QUIET_AFTER_MS, reachedReason, type IssueTrackerPort, type PullRequestSnapshotPort } from '@tandemise/domain';
 import { SetupService } from './services/setup-service.js';
 import { RefinementServiceImpl } from './services/refinement-service.js';
 import { PlanningServiceImpl } from './services/planning-service.js';
@@ -761,6 +762,20 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       return { listOpen: missing, view: missing, viewer: missing, comments: missing, postComment: missing, updateComment: missing, close: missing };
     }, { source: SOURCE });
 
+    // P3: the daemon rebinds this with `gh`; without it no link resolves, and
+    // a hand-back needs an export.
+    bind(t.PULL_REQUEST_SNAPSHOTS, (): PullRequestSnapshotPort => ({ read: async () => null }), { source: SOURCE });
+
+    bind(t.CONTRIBUTION_SERVICE, (r) => new ContributionServiceImpl({
+      missions: r.resolve(t.MISSION_REPOSITORY),
+      repositories: r.resolve(t.REPO_REPOSITORY),
+      members: r.resolve(t.MEMBER_REPOSITORY),
+      artifactStore: r.resolve(t.ARTIFACT_STORE),
+      artifacts: r.resolve(t.ARTIFACT_REPOSITORY),
+      snapshots: r.resolve(t.PULL_REQUEST_SNAPSHOTS),
+      artifactRoot: (workspaceId) => paths(r).artifacts(workspaceId),
+    }), { source: SOURCE });
+
     bind(t.ISSUE_SERVICE, (r) => new IssueService({
       issues: r.resolve(t.ISSUE_REPOSITORY),
       tracker: r.resolve(t.ISSUE_TRACKER),
@@ -843,6 +858,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       skills: r.resolve(t.SKILL_SERVICE),
       issues: r.resolve(t.ISSUE_SERVICE),
       setup: r.resolve(t.SETUP_SERVICE),
+      contributions: r.resolve(t.CONTRIBUTION_SERVICE),
     }), { source: SOURCE });
   });
 }
