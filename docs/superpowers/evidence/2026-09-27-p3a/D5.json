@@ -31,7 +31,7 @@
         "status": "AWAITING_EXTERNAL",
         "parkedExternal": {
           "tool": "Figma",
-          "since": "2026-09-27T22:30:39.969Z"
+          "since": "2026-09-27T23:09:46.301Z"
         }
       }
     },
@@ -64,9 +64,9 @@
       "ok": true,
       "observed": {
         "status": "SUCCEEDED",
-        "round2": "art_01m3jfw3jrzefbhpptp3",
-        "supersedes": "art_01m3jfvm4e1sznd0hwdw",
-        "round1": "art_01m3jfvm4e1sznd0hwdw"
+        "round2": "art_01m3jj3q0ej0fzyw4dp2",
+        "supersedes": "art_01m3jj381agbsb2j6q36",
+        "round1": "art_01m3jj381agbsb2j6q36"
       }
     },
     {
@@ -88,16 +88,16 @@
       "observed": {
         "runs": 1,
         "inputs": [
-          "art_01m3jfw3jrzefbhpptp3"
+          "art_01m3jj3q0ej0fzyw4dp2"
         ],
-        "round1": "art_01m3jfvm4e1sznd0hwdw",
-        "round2": "art_01m3jfw3jrzefbhpptp3"
+        "round1": "art_01m3jj381agbsb2j6q36",
+        "round2": "art_01m3jj3q0ej0fzyw4dp2"
       }
     },
     {
       "label": "the build's prompt carries the handed-back work",
       "ok": true,
-      "observed": "d)\n<<<UNTRUSTED_DATA id=1 label=\"DesignBrief: design\" origin=\"artifact art_01m3jfw3jrzefbhpptp3\">>>\nReworked the greeting in Figma: larger, higher, warmer colours.\n\n## Handed back from Figma\n\nFrom hello-design-v2.md (Evidence art_01m3jfw3jn5jbqqmrzk1).\n\n# Hello page, v2\n\nThe greeting is larger and sits higher. Colours: warm, #f6c28b on #fffaf3.\n\n<<<END_UNTRUSTED_DATA id=1>>>\n\n## Policy — what you "
+      "observed": "d)\n<<<UNTRUSTED_DATA id=1 label=\"DesignBrief: design\" origin=\"artifact art_01m3jj3q0ej0fzyw4dp2\">>>\nReworked the greeting in Figma: larger, higher, warmer colours.\n\n## Handed back from Figma\n\nFrom hello-design-v2.md (Evidence art_01m3jj3q0ckzrxk6d55h).\n\n# Hello page, v2\n\nThe greeting is larger and sits higher. Colours: warm, #f6c28b on #fffaf3.\n\n<<<END_UNTRUSTED_DATA id=1>>>\n\n## Policy — what you "
     },
     {
       "label": "the build card is finished in the window",

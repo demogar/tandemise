@@ -26,15 +26,15 @@
       "observed": {
         "resolved": {
           "request": {
-            "workspaceId": "ws_01m3jfkw845q74m250f6",
+            "workspaceId": "ws_01m3jhv6rxnqg50901ve",
             "path": "blobs/61/612599c5989da30ed0e41be75db62b45cdf174c23374f4775d8e06e370ac7730"
           },
           "status": 200,
           "body": {
-            "path": "/private/var/folders/dh/glpvvh110393gdzjc_v2x1sr0000gn/T/tdm-p3-run-muke1b9h/home/workspaces/ws_01m3jfkw845q74m250f6/artifacts/blobs/61/612599c5989da30ed0e41be75db62b45cdf174c23374f4775d8e06e370ac7730"
+            "path": "/private/var/folders/dh/glpvvh110393gdzjc_v2x1sr0000gn/T/tdm-p3-run-mukffeqa/home/workspaces/ws_01m3jhv6rxnqg50901ve/artifacts/blobs/61/612599c5989da30ed0e41be75db62b45cdf174c23374f4775d8e06e370ac7730"
           }
         },
-        "evidencePath": "/tmp/tdm-p3/home/workspaces/ws_01m3jfkw845q74m250f6/artifacts/blobs/61/612599c5989da30ed0e41be75db62b45cdf174c23374f4775d8e06e370ac7730"
+        "evidencePath": "/tmp/tdm-p3/home/workspaces/ws_01m3jhv6rxnqg50901ve/artifacts/blobs/61/612599c5989da30ed0e41be75db62b45cdf174c23374f4775d8e06e370ac7730"
       }
     },
     {
@@ -57,21 +57,21 @@
       "observed": {
         "resolved": {
           "request": {
-            "workspaceId": "ws_01m3jfkw845q74m250f6",
+            "workspaceId": "ws_01m3jhv6rxnqg50901ve",
             "path": "README.md"
           },
           "status": 200,
           "body": {
-            "path": "/private/var/folders/dh/glpvvh110393gdzjc_v2x1sr0000gn/T/tdm-p3-run-muke1b9h/project/README.md"
+            "path": "/private/var/folders/dh/glpvvh110393gdzjc_v2x1sr0000gn/T/tdm-p3-run-mukffeqa/project/README.md"
           }
         },
-        "readme": "/private/var/folders/dh/glpvvh110393gdzjc_v2x1sr0000gn/T/tdm-p3-run-muke1b9h/project/README.md"
+        "readme": "/private/var/folders/dh/glpvvh110393gdzjc_v2x1sr0000gn/T/tdm-p3-run-mukffeqa/project/README.md"
       }
     },
     {
       "label": "the reader of the handed-back DesignBrief offers \"Open workspace\"",
       "ok": true,
-      "observed": "design\ndesign\nby\nYou\nRequest changes\n\nReworked the greeting in Figma: larger, higher, warmer colours.\n\nOpen workspace ↗\nv1\nv2\nCompare with v1\nDesign Brief\nSep 27, 2026, 5:30 PM\nhello-design-v2.md\nDetails\n\nReworked the greeting in Figma: larger, higher, warmer colours.\n\nHanded back from Figma\n\nFrom h"
+      "observed": "design\ndesign\nby\nYou\nRequest changes\n\nReworked the greeting in Figma: larger, higher, warmer colours.\n\nOpen workspace ↗\nv1\nv2\nCompare with v1\nDesign Brief\nSep 27, 2026, 6:09 PM\nhello-design-v2.md\nDetails\n\nReworked the greeting in Figma: larger, higher, warmer colours.\n\nHanded back from Figma\n\nFrom h"
     },
     {
       "label": "proof (API): a path out of the project is refused",

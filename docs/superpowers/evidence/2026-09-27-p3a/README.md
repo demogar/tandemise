@@ -1,13 +1,14 @@
 # P3a evidence: handing work in and back, in the real app
 
-Branch `feat/p3-contributions-and-evals`, product build `1cc77fa`: the P3a work plus the fixes for the
-whole-branch review (see `.superpowers/sdd/2026-09-16-p3-outside-contributions/final-fix-report.md`). One
-uninterrupted run of D1–D8 on a fresh install: **all 8 scenarios pass (99/99 checks).**
+Branch `feat/p3-contributions-and-evals`, product build `f87f610`: the P3a work plus the fixes for the
+whole-branch review and its re-review (see `.superpowers/sdd/2026-09-16-p3-outside-contributions/final-fix-report.md`). One
+uninterrupted run of D1–D8 on a fresh install: **all 8 scenarios pass (100/100 checks).**
 
 This replaces the earlier evidence (build `55e9881` + `90aebd6`, which fixed F1 and F2 from the first run). The
 final-review fixes extended three scenarios: D1 proves the stage after a skipped one reads the upload; D2 proves
 "Take it back" on a parked card; D3 hands back a pull request whose head is only on the remote, and proves the
-daemon fetched it into `tandemise/pr-7` and retired the build's own worktree.
+daemon fetched it into `tandemise/pr-7` and retired the build's own worktree; a round asked for afterwards is built
+on the pull request.
 
 ## How it was run
 
@@ -26,7 +27,7 @@ then the findings); `D<n>.json` holds the same per scenario; `run-output.txt` is
 |---|---|---|---|
 | D1 | Mission created with an uploaded spec (plan now, with Done-when): intake runs before planning; the Plan tab shows the spec stage covered by the upload and no product task; the next stage's run reads the intake spec | PASS 13/13 | `D1.json`, `D1-new-mission-with-upload.png`, `D1-plan-covered-row.png` |
 | D2 | Continue elsewhere on a design task: the card shows "Waiting for your work in Figma"; the timeline shows `task.parked_external`; the Desk counts it; "Take it back" returns a parked design to the agent ("Taken back from Figma") and releases the build after it | PASS 21/21 | `D2.json`, `D2-continue-dialog.png`, `D2-parked-card.png`, `D2-timeline.png`, `D2-timeline-raw.png`, `D2-desk.png`, `D2-inbox.png`, `D2-take-it-back-card.png`, `D2-take-it-back-timeline.png` |
-| D3 | Hand back a GitHub PR link whose head is only on the remote: the daemon fetches it into `tandemise/pr-7`; a human-authored round lands; the Evidence carries `github.pr`, `git.commit` and that branch; the build's worktree is retired; downstream consumes that commit | PASS 16/16 | `D3.json`, `D3-hand-back-pr-link.png`, `D3-build-round-2-card.png`, `D3-review-after-hand-back.png` |
+| D3 | Hand back a GitHub PR link whose head is only on the remote: the daemon fetches it into `tandemise/pr-7`; a human-authored round lands; the Evidence carries `github.pr`, `git.commit` and that branch; the build's worktree is retired; downstream consumes that commit; a later agent round (Request changes) is built on the PR | PASS 17/17 | `D3.json`, `D3-hand-back-pr-link.png`, `D3-build-round-2-card.png`, `D3-review-after-hand-back.png`, `D3-build-round-3-on-pr.png` |
 | D4 | Hand back an unreadable link: a bare link is refused with "Attach an export"; with an export, the export becomes the Evidence | PASS 11/11 | `D4.json`, `D4-bare-link-refused.png`, `D4-link-with-export.png`, `D4-design-round-2-card.png` |
 | D5 | Park a finished step whose next step is ready: the next step waits with "Waiting for 'design' from Figma."; after the hand-back it runs on the handed-back version | PASS 13/13 | `D5.json`, `D5-finished-design-card.png`, `D5-continue-finished-design.png`, `D5-build-held-drawer.png`, `D5-hand-back-file.png`, `D5-released-after-hand-back.png`, `D5-build-ran-on-hand-back.png` |
 | D6 | Workspace link: renders "Open workspace ↗" and resolves to the local path | PASS 9/9 | `D6.json`, `D6-design-card-open-workspace.png`, `D6-build-card-open-workspace.png`, `D6-reader-open-workspace.png` |

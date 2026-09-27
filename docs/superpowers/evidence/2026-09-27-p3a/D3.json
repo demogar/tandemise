@@ -16,7 +16,7 @@
       "ok": true,
       "observed": {
         "tool": "GitHub",
-        "since": "2026-09-27T22:28:50.125Z"
+        "since": "2026-09-27T23:07:49.174Z"
       }
     },
     {
@@ -39,7 +39,7 @@
       "observed": [
         "url=https://github.com/acme/app/pull/7",
         "github.pr=acme/app#7",
-        "git.commit=d8fd145f8fe340b6400bae3a4910989eba563d40",
+        "git.commit=36cb47d2ad1b1964dc9dfe953d830bcb6bf2b3c6",
         "git.branch=tandemise/pr-7"
       ]
     },
@@ -47,8 +47,8 @@
       "label": "the daemon fetched the head into tandemise/pr-7 in the project, at the PR's head commit",
       "ok": true,
       "observed": {
-        "fetchedAt": "d8fd145f8fe340b6400bae3a4910989eba563d40",
-        "sha": "d8fd145f8fe340b6400bae3a4910989eba563d40"
+        "fetchedAt": "36cb47d2ad1b1964dc9dfe953d830bcb6bf2b3c6",
+        "sha": "36cb47d2ad1b1964dc9dfe953d830bcb6bf2b3c6"
       }
     },
     {
@@ -60,14 +60,14 @@
       "label": "a human-authored round-2 ChangeSet: authored and recorded by you, carrying the commit",
       "ok": true,
       "observed": {
-        "authorId": "mem_01m3jfkw85z0sgszxp9k",
-        "recordedBy": "mem_01m3jfkw85z0sgszxp9k",
-        "me": "mem_01m3jfkw85z0sgszxp9k",
+        "authorId": "mem_01m3jhv6rxnqg50901vf",
+        "recordedBy": "mem_01m3jhv6rxnqg50901vf",
+        "me": "mem_01m3jhv6rxnqg50901vf",
         "round": 2,
         "refs": [
           "url=https://github.com/acme/app/pull/7",
           "github.pr=acme/app#7",
-          "git.commit=d8fd145f8fe340b6400bae3a4910989eba563d40",
+          "git.commit=36cb47d2ad1b1964dc9dfe953d830bcb6bf2b3c6",
           "git.branch=tandemise/pr-7"
         ]
       }
@@ -98,9 +98,9 @@
       "ok": true,
       "observed": {
         "inputs": [
-          "art_01m3jfrjj4n82j1nnc73"
+          "art_01m3jhzytx5b0r8ccdz4"
         ],
-        "changeSet": "art_01m3jfrjj4n82j1nnc73"
+        "changeSet": "art_01m3jhzytx5b0r8ccdz4"
       }
     },
     {
@@ -108,9 +108,9 @@
       "ok": true,
       "observed": {
         "kind": "worktree",
-        "branch": "tandemise/hello-page-finished-in-a-pull-request-scripted-s/hello-page-finished-in-a-pull-request-scripted-s-ds5r8tan",
+        "branch": "tandemise/hello-page-finished-in-a-pull-request-scripted-s/hello-page-finished-in-a-pull-request-scripted-s-2dmwgbfr",
         "baseBranch": "tandemise/pr-7",
-        "dir": "/tmp/tdm-p3/home/workspaces/ws_01m3jfkw845q74m250f6/missions/msn_01m3jfqkc01ab7hayyqs/worktrees/hello-page-finished-in-a-pull-request-scripted-s-ds5r8tan"
+        "dir": "/tmp/tdm-p3/home/workspaces/ws_01m3jhv6rxnqg50901ve/missions/msn_01m3jhyy7g76frb4001e/worktrees/hello-page-finished-in-a-pull-request-scripted-s-2dmwgbfr"
       }
     },
     {
@@ -119,7 +119,7 @@
       "observed": [
         {
           "status": "RELEASED",
-          "branch": "tandemise/hello-page-finished-in-a-pull-request-scripted-s/hello-page-finished-in-a-pull-request-scripted-s-ds5r8tam"
+          "branch": "tandemise/hello-page-finished-in-a-pull-request-scripted-s/hello-page-finished-in-a-pull-request-scripted-s-2dmwgbfq"
         }
       ]
     },
@@ -127,22 +127,34 @@
       "label": "the review's branch contains the handed-back commit",
       "ok": true,
       "observed": {
-        "sha": "d8fd145f8fe340b6400bae3a4910989eba563d40",
-        "reviewBranch": "tandemise/hello-page-finished-in-a-pull-request-scripted-s/hello-page-finished-in-a-pull-request-scripted-s-ds5r8tan"
+        "sha": "36cb47d2ad1b1964dc9dfe953d830bcb6bf2b3c6",
+        "reviewBranch": "tandemise/hello-page-finished-in-a-pull-request-scripted-s/hello-page-finished-in-a-pull-request-scripted-s-2dmwgbfr"
       }
     },
     {
       "label": "the review's prompt carries the pull request and its diff",
       "ok": true,
-      "observed": ")\n<<<UNTRUSTED_DATA id=1 label=\"ChangeSet: build\" origin=\"artifact art_01m3jfrjj4n82j1nnc73\">>>\nFinished the page in the pull request; it greets the visitor by name.\n\n## Handed back from GitHub\n\nFrom pull request acme/app#7 (Evidence art_01m3jfrjj0gqgdkk9g6x).\n\n# Greet the visitor by name\n\nAdds the hello page.\n\n## Diff\n\n```diff\ndiff --git a/hello.html b/hello.html\nnew file mode 100644\nindex 000000"
+      "observed": ")\n<<<UNTRUSTED_DATA id=1 label=\"ChangeSet: build\" origin=\"artifact art_01m3jhzytx5b0r8ccdz4\">>>\nFinished the page in the pull request; it greets the visitor by name.\n\n## Handed back from GitHub\n\nFrom pull request acme/app#7 (Evidence art_01m3jhzytv41vagzgycy).\n\n# Greet the visitor by name\n\nAdds the hello page.\n\n## Diff\n\n```diff\ndiff --git a/hello.html b/hello.html\nnew file mode 100644\nindex 000000"
+    },
+    {
+      "label": "a later agent round of the build (round 3, asked for in the window) is built on the pull request's commit",
+      "ok": true,
+      "observed": {
+        "round": 3,
+        "status": "SUCCEEDED",
+        "branch": "tandemise/hello-page-finished-in-a-pull-request-scripted-s/hello-page-finished-in-a-pull-request-scripted-s-2dmwgbfq",
+        "builtOnPr": true,
+        "impact": true
+      }
     }
   ],
   "notes": [
-    "the fake gh knows https://github.com/acme/app/pull/7: head hello-from-pr @ d8fd145f8fe3, a real commit only on the remote, as refs/pull/7/head"
+    "the fake gh knows https://github.com/acme/app/pull/7: head hello-from-pr @ 36cb47d2ad1b, a real commit only on the remote, as refs/pull/7/head"
   ],
   "shots": [
     "/Users/demogar/projects/tandemise/tandemise-p3/docs/superpowers/evidence/2026-09-27-p3a/D3-hand-back-pr-link.png",
     "/Users/demogar/projects/tandemise/tandemise-p3/docs/superpowers/evidence/2026-09-27-p3a/D3-build-round-2-card.png",
-    "/Users/demogar/projects/tandemise/tandemise-p3/docs/superpowers/evidence/2026-09-27-p3a/D3-review-after-hand-back.png"
+    "/Users/demogar/projects/tandemise/tandemise-p3/docs/superpowers/evidence/2026-09-27-p3a/D3-review-after-hand-back.png",
+    "/Users/demogar/projects/tandemise/tandemise-p3/docs/superpowers/evidence/2026-09-27-p3a/D3-build-round-3-on-pr.png"
   ]
 }

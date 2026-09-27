@@ -15,7 +15,7 @@
       "ok": true,
       "observed": [
         {
-          "evidenceId": "art_01m3jfm2f60rr695prdj",
+          "evidenceId": "art_01m3jhvcv7kz3d3rpd79",
           "filename": "hello-spec.md",
           "mediaType": "text/markdown",
           "refs": [
@@ -25,7 +25,7 @@
               "label": "hello-spec.md"
             }
           ],
-          "intakeArtifactId": "art_01m3jfm40xsdxm8s0r40"
+          "intakeArtifactId": "art_01m3jhved21mttacabhq"
         }
       ]
     },
@@ -33,7 +33,7 @@
       "label": "intake made a ProductSpec from it (mission-wide, not a task's)",
       "ok": true,
       "observed": {
-        "id": "art_01m3jfm40xsdxm8s0r40",
+        "id": "art_01m3jhved21mttacabhq",
         "type": "ProductSpec",
         "taskId": null,
         "refs": [
@@ -79,7 +79,7 @@
           "status": "SKIPPED",
           "statusReason": "Covered by your upload: hello-spec.md",
           "coveredBy": {
-            "artifactId": "art_01m3jfm40xsdxm8s0r40",
+            "artifactId": "art_01m3jhved21mttacabhq",
             "filename": "hello-spec.md"
           },
           "outputs": [
@@ -140,11 +140,11 @@
       "ok": true,
       "observed": {
         "task": "design",
-        "run": "run_01m3jfm7p9yr3sffr40j",
+        "run": "run_01m3jhvj2xtqk7mwxqhw",
         "inputs": [
-          "art_01m3jfm40xsdxm8s0r40"
+          "art_01m3jhved21mttacabhq"
         ],
-        "intake": "art_01m3jfm40xsdxm8s0r40",
+        "intake": "art_01m3jhved21mttacabhq",
         "waitingOnPlaceholder": [
           "design",
           "architecture",

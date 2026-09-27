@@ -20,7 +20,7 @@
         "status": "AWAITING_EXTERNAL",
         "parkedExternal": {
           "tool": "Figma",
-          "since": "2026-09-27T22:27:08.949Z"
+          "since": "2026-09-27T23:06:06.349Z"
         },
         "statusReason": "Continued in Figma"
       }
@@ -48,7 +48,7 @@
     {
       "label": "the timeline shows \"Continued in Figma\"",
       "ok": true,
-      "observed": "Designer started\nScripted agent on local:/private/var/folders/dh/glpvvh110393gdzjc_v2x1sr0000gn/T/tdm-p3-run-muke1b9h/project\n05:27:05 PM\n·\nDesign agent\nProduct Designer task is now Awaiting external\nContinued in Figma\n05:27:08 PM\n·\nYou\nContinued in Figma\n05:2"
+      "observed": "Designer started\nScripted agent on local:/private/var/folders/dh/glpvvh110393gdzjc_v2x1sr0000gn/T/tdm-p3-run-mukffeqa/project\n06:06:02 PM\n·\nDesign agent\nProduct Designer task is now Awaiting external\nContinued in Figma\n06:06:06 PM\n·\nYou\nContinued in Figma\n06:0"
     },
     {
       "label": "the raw log shows task.parked_external {\"tool\":\"Figma\"}",
@@ -90,7 +90,7 @@
       "observed": {
         "parked": {
           "tool": "Figma",
-          "since": "2026-09-27T22:27:24.389Z"
+          "since": "2026-09-27T23:06:22.043Z"
         },
         "build": [
           "PENDING",
@@ -152,7 +152,7 @@
     {
       "label": "the timeline shows \"Taken back from Figma\" after \"Continued in Figma\"",
       "ok": true,
-      "observed": "esign agent\nProduct Designer task is now Awaiting external\nContinued in Figma\n05:27:24 PM\n·\nYou\nContinued in Figma\n05:27:24 PM\n·\nYou\nProduct Designer stopped\nRun cancelled\n05:27:24 PM\n·\nDesign agent\nProduct Designer run cancelled\nTook 3s\n05:27:24 PM\n·\nDesign agent\nProduct Designer task is now Ready\nTaken back from Figma.\n05:27:26 PM\n·\nYou\nTaken back from Figma\n05:27:26 PM\n·\nYou"
+      "observed": "esign agent\nProduct Designer task is now Awaiting external\nContinued in Figma\n06:06:22 PM\n·\nYou\nContinued in Figma\n06:06:22 PM\n·\nYou\nProduct Designer stopped\nRun cancelled\n06:06:22 PM\n·\nDesign agent\nProduct Designer run cancelled\nTook 3s\n06:06:22 PM\n·\nDesign agent\nProduct Designer task is now Ready\nTaken back from Figma.\n06:06:24 PM\n·\nYou\nTaken back from Figma\n06:06:24 PM\n·\nYou"
     }
   ],
   "notes": [],
