@@ -148,6 +148,13 @@ export class MissionServiceImpl implements MissionService {
 
     const id = ids.mission();
     const title = request.title?.trim() || titleFromGoal(request.goal);
+    // Queued only while it is a draft: a mission planned now is not waiting for anything.
+    const queued = request.queued === true && request.planNow !== true;
+    // A draft with uploads joins the queue only once they are pinned. Pinning
+    // can take minutes (`gh` reading a pull request), and a draft in the queue
+    // can be pulled into planning by any tick meanwhile; a refused upload then
+    // removes a mission that is already being planned.
+    const uploading = (request.uploads ?? []).length > 0;
     const created = this.deps.unitOfWork.transaction(() => {
       // Validated and stored with the mission, in one transaction, rather than
       // patched on afterwards: with plans approved automatically, a task can
@@ -171,8 +178,7 @@ export class MissionServiceImpl implements MissionService {
         createdBy: actorId,
         staffing,
         ...(request.priority === undefined ? {} : { priority: request.priority }),
-        // Queued only while it is a draft: a mission planned now is not waiting for anything.
-        queued: request.queued === true && request.planNow !== true,
+        queued: queued && !uploading,
         // Its own limits (P8); absent, the project's default mission limits apply.
         ...(request.limits === undefined ? {} : { limits: normalizeLimits(request.limits) }),
         // Which routine made it (P11); a person's own mission has none.
@@ -198,6 +204,7 @@ export class MissionServiceImpl implements MissionService {
     // the person did not get back from their request. Pinning writes blobs
     // and may call `gh`, so it cannot share the creation transaction.
     const pinned = await this.#pinUploads(caller, id, request);
+    const announced = queued && uploading ? this.deps.missions.update(id, { queuedAt: this.deps.clock.now() }) : created;
 
     this.deps.recorder.note(
       { workspaceId, missionId: id, actorId },
@@ -210,15 +217,17 @@ export class MissionServiceImpl implements MissionService {
     if (pinned.length > 0) this.deps.recorder.invalidate('artifacts', id);
     this.deps.recorder.invalidate('missions', id);
     // A queued draft may be pulled at once if the project has room.
-    if (created.queuedAt !== null) this.deps.scheduler.wake();
+    if (announced.queuedAt !== null) this.deps.scheduler.wake();
 
     if (request.planNow === true) {
       // In the background: the caller gets the mission back in PLANNING, not a
-      // request held open for as long as a model takes to think.
+      // request held open for as long as a model takes to think. Only now,
+      // with every upload pinned, so planning never starts on a mission a
+      // refused upload is about to remove.
       await this.deps.planning.begin(id);
       return this.#require(id);
     }
-    return created;
+    return announced;
   }
 
   /** Every upload pinned as Evidence with no task, or the mission removed and the refusal said. */
