@@ -658,13 +658,20 @@ export class MissionServiceImpl implements MissionService {
     const tool = request.tool.trim();
     const reason = continuedIn(tool);
     const scope: EventScope = { ...scopeOf(mission), taskId, roleId: task.roleId, actorId };
-    this.deps.tasks.update(taskId, { status: 'AWAITING_EXTERNAL', statusReason: reason, needsAttention: false, finishedAt: null });
-    this.deps.recorder.record(scope, { type: 'task.status', from: task.status, to: 'AWAITING_EXTERNAL', reason });
-    // Only now: the run ends after the park is on the row. A no-op when nothing runs.
+    // One unit: the park, the work it holds and the mission it reopens land together.
+    this.deps.recorder.deferred(() => this.deps.unitOfWork.transaction(() => {
+      this.deps.tasks.update(taskId, { status: 'AWAITING_EXTERNAL', statusReason: reason, needsAttention: false, finishedAt: null });
+      this.deps.recorder.record(scope, { type: 'task.status', from: task.status, to: 'AWAITING_EXTERNAL', reason });
+      this.deps.recorder.record(scope, { type: 'task.parked_external', tool });
+      // The output is away until the hand-back, so work about to read it waits,
+      // as it does for a round; finishing the step again releases it.
+      this.deps.rounds.holdDependents({ ...task, status: 'AWAITING_EXTERNAL' }, `Waiting for '${task.key}' from ${tool}.`);
+      // A mission that had finished waits on the person again, rather than reading as done.
+      this.#reviveMission(mission, `'${task.key}' was continued in ${tool}.`);
+    }));
+    // Only after the commit: the run ends after the park is on the row, so the
+    // executor keeps it. A no-op when nothing runs.
     this.deps.scheduler.cancelTask(taskId);
-    this.deps.recorder.record(scope, { type: 'task.parked_external', tool });
-    // A mission that had finished waits on the person again, rather than reading as done.
-    this.#reviveMission(mission, `'${task.key}' was continued in ${tool}.`);
     this.deps.recorder.invalidate('tasks', mission.id);
     return this.#taskView(mission.id, taskId);
   }
@@ -686,8 +693,12 @@ export class MissionServiceImpl implements MissionService {
     // Whoever records it is the one taking the step; the author may be someone without a seat.
     this.#assertMayTake(task, mission, recordedBy, 'hand back');
     if (this.deps.contributions === undefined) throw TandemiseError.validation('This build cannot take a hand-back.');
+    // Read before anything is pinned: a hand-back that cannot land leaves nothing behind.
+    const workspace = this.deps.workspaces.get(mission.workspaceId);
+    if (workspace === undefined) throw TandemiseError.notFound('Workspace', mission.workspaceId);
+    const role = this.deps.roles.get(task.roleId, mission.workspaceId);
 
-    let pinned;
+    let pinned: PinnedContribution;
     try {
       pinned = await this.deps.contributions.pin({
         missionId: mission.id, taskId, caller, onBehalfOf: request.onBehalfOf ?? null, contribution: request.contribution,
@@ -697,78 +708,87 @@ export class MissionServiceImpl implements MissionService {
       throw e;
     }
     const { evidence } = pinned;
-    const round = (task.round ?? 1) + 1;
-    const body = await this.#handBackBody(request.note, park.tool, pinned);
-    const link = this.#handBackLink(mission.workspaceId, request.contribution, pinned);
-    const derived = this.deps.measure.deriveHandoff(request.note);
-    const handoff: ArtifactHandoff = link === null
-      ? derived
-      : { ...derived, links: [...derived.links.slice(0, HANDOFF_MAX_LINKS - 1), link] };
-    // The Evidence's refs ride on every output: a file's blob, a link's url,
-    // and for a pull request its head commit and branch, so review and QA
-    // downstream read the commit that was handed back.
-    const sourceRefs: readonly ExternalRef[] = evidence.sourceRefs;
+    let landed = false;
+    try {
+      const round = (task.round ?? 1) + 1;
+      const body = await this.#handBackBody(request.note, park.tool, pinned);
+      const link = this.#handBackLink(mission.workspaceId, request.contribution, pinned);
+      const derived = this.deps.measure.deriveHandoff(request.note);
+      const handoff: ArtifactHandoff = link === null
+        ? derived
+        : { ...derived, links: [...derived.links.slice(0, HANDOFF_MAX_LINKS - 1), link] };
+      // The Evidence's refs ride on every output: a file's blob, a link's url,
+      // and for a pull request its head commit and branch, so review and QA
+      // downstream read the commit that was handed back.
+      const sourceRefs: readonly ExternalRef[] = evidence.sourceRefs;
 
-    const written: { manifest: ArtifactManifest; type: MissionTask['expectedOutputs'][number] }[] = [];
-    for (const type of task.expectedOutputs) {
-      const previous = supersededBy(task, type, this.deps.artifacts, this.deps.tasks);
-      const manifest = await this.deps.artifactStore.write({
-        workspaceId: mission.workspaceId, missionId: mission.id, taskId, type, title: task.title, body,
-        mediaType: 'text/markdown', summary: handoff.headline, sourceRefs, supersedes: previous?.id ?? null,
-      });
-      written.push({ manifest, type });
+      // Blobs are written first, outside the unit: they are content-addressed,
+      // and one no row points to is harmless.
+      const written: { manifest: ArtifactManifest; type: MissionTask['expectedOutputs'][number] }[] = [];
+      for (const type of task.expectedOutputs) {
+        const previous = supersededBy(task, type, this.deps.artifacts, this.deps.tasks);
+        const manifest = await this.deps.artifactStore.write({
+          workspaceId: mission.workspaceId, missionId: mission.id, taskId, type, title: task.title, body,
+          mediaType: 'text/markdown', summary: handoff.headline, sourceRefs, supersedes: previous?.id ?? null,
+        });
+        written.push({ manifest, type });
+      }
+
+      // Everything after the awaits is one unit, whose events reach subscribers
+      // only once it commits: a failure part-way leaves the step parked, with
+      // no output, no event and no consumer reset.
+      const { artifacts, stop } = this.deps.recorder.deferred(() => this.deps.unitOfWork.transaction(() => {
+        // Checked again now that the awaits are behind us: a second hand-back
+        // that raced this one has landed, and this one records nothing.
+        const current = this.#requireTask(taskId);
+        if (parkedExternalOf(current, this.#log(mission.id)) === null) {
+          throw new TandemiseError('CONFLICT', `'${task.title}' was already handed back.`, { details: { taskId } });
+        }
+        // Handing it back is taking it: whoever did the work is its assignee now, as completing a step makes them.
+        const taken: { assigneeId?: string; responsibleId?: string } = current.assigneeId !== actorId ? this.#claimFields(current, mission, actorId) : {};
+        const responsibleId = taken.responsibleId ?? current.responsibleId ?? null;
+        const scope: EventScope = { ...scopeOf(mission), taskId, roleId: task.roleId, actorId };
+        this.deps.recorder.record(scope, { type: 'artifact.created', artifactId: evidence.id });
+        const outputs = written.map(({ manifest, type }) => {
+          const recorded = this.deps.artifacts.create({
+            ...manifest, authorId: actorId, recordedBy, responsibleId, handoff,
+            // Measured so the reader can show its length, never held to a budget: a person's work is theirs to size.
+            wordCount: this.deps.measure.measure(type, body).mainWords, overBudget: false, round,
+          });
+          this.deps.recorder.record(scope, { type: 'artifact.created', artifactId: recorded.id });
+          return recorded;
+        });
+        const next: MissionTask = { ...current, ...taken, round };
+        this.deps.recorder.record(scope, {
+          type: 'task.handed_back', artifactIds: outputs.map((a) => a.id), round, contribution: request.contribution.kind,
+        });
+        // P2's rule for work that read the version this replaces: redone, or kept
+        // and flagged. Redone first, so the flagging below passes over it.
+        const redone = this.deps.rounds.redoConsumers(next, round, request.downstream ?? 'keep');
+        // A person's contribution cites no note ids, so it answers every note on the step.
+        this.deps.rounds.onPersonCompleted(next, scope);
+        const outcome = this.deps.reviews.onRoundPassed({ task: next, mission, workspace, role, gate: null, checks: [], scope });
+        const reason = outcome.status === 'SUCCEEDED' ? `Handed back from ${park.tool}.` : outcome.reason;
+        this.deps.tasks.update(taskId, {
+          ...taken, round, status: outcome.status, statusReason: reason, needsAttention: false,
+          ...(outcome.status === 'SUCCEEDED' ? { finishedAt: this.deps.clock.now() } : {}),
+        });
+        this.deps.recorder.record(scope, {
+          type: 'task.status', from: current.status, to: outcome.status, ...(reason === null ? {} : { reason }),
+        });
+        return { artifacts: outputs, stop: redone };
+      }));
+      landed = true;
+      // Only after the commit: a stopped pass re-reads its row and must find the reset.
+      for (const id of stop) this.deps.scheduler.cancelTask(id);
+      this.deps.recorder.invalidate('tasks', mission.id);
+      this.deps.recorder.invalidate('artifacts', mission.id);
+      this.deps.scheduler.wake();
+      return { task: await this.#taskView(mission.id, taskId), artifacts };
+    } finally {
+      // A hand-back that did not land leaves no pin behind to be read as one.
+      if (!landed) this.deps.artifacts.withdraw([evidence.id], this.deps.clock.now());
     }
-
-    // Checked again now that the awaits are behind us: a second hand-back that
-    // raced this one has landed, and this one records nothing.
-    const current = this.#requireTask(taskId);
-    if (parkedExternalOf(current, this.#log(mission.id)) === null) {
-      this.deps.artifacts.withdraw([evidence.id], this.deps.clock.now());
-      throw new TandemiseError('CONFLICT', `'${task.title}' was already handed back.`, { details: { taskId } });
-    }
-
-    // Handing it back is taking it: whoever did the work is its assignee now, as completing a step makes them.
-    const taken: { assigneeId?: string; responsibleId?: string } = current.assigneeId !== actorId ? this.#claimFields(current, mission, actorId) : {};
-    const responsibleId = taken.responsibleId ?? current.responsibleId ?? null;
-    const scope: EventScope = { ...scopeOf(mission), taskId, roleId: task.roleId, actorId };
-    this.deps.recorder.record(scope, { type: 'artifact.created', artifactId: evidence.id });
-    const artifacts = written.map(({ manifest, type }) => {
-      const recorded = this.deps.artifacts.create({
-        ...manifest, authorId: actorId, recordedBy, responsibleId, handoff,
-        // Measured so the reader can show its length, never held to a budget: a person's work is theirs to size.
-        wordCount: this.deps.measure.measure(type, body).mainWords, overBudget: false, round,
-      });
-      this.deps.recorder.record(scope, { type: 'artifact.created', artifactId: recorded.id });
-      return recorded;
-    });
-    const landed: MissionTask = { ...current, ...taken, round };
-    this.deps.recorder.record(scope, {
-      type: 'task.handed_back', artifactIds: artifacts.map((a) => a.id), round, contribution: request.contribution.kind,
-    });
-    // P2's rule for work that read the version this replaces: redone, or kept
-    // and flagged. Redone first, so the flagging below passes over it.
-    const stop = this.deps.rounds.redoConsumers(landed, round, request.downstream ?? 'keep');
-    // A person's contribution cites no note ids, so it answers every note on the step.
-    this.deps.rounds.onPersonCompleted(landed, scope);
-
-    const workspace = this.deps.workspaces.get(mission.workspaceId);
-    if (workspace === undefined) throw TandemiseError.notFound('Workspace', mission.workspaceId);
-    const outcome = this.deps.reviews.onRoundPassed({
-      task: landed, mission, workspace, role: this.deps.roles.get(task.roleId, mission.workspaceId), gate: null, checks: [], scope,
-    });
-    const reason = outcome.status === 'SUCCEEDED' ? `Handed back from ${park.tool}.` : outcome.reason;
-    this.deps.tasks.update(taskId, {
-      ...taken, round, status: outcome.status, statusReason: reason, needsAttention: false,
-      ...(outcome.status === 'SUCCEEDED' ? { finishedAt: this.deps.clock.now() } : {}),
-    });
-    this.deps.recorder.record(scope, {
-      type: 'task.status', from: current.status, to: outcome.status, ...(reason === null ? {} : { reason }),
-    });
-    for (const id of stop) this.deps.scheduler.cancelTask(id);
-    this.deps.recorder.invalidate('tasks', mission.id);
-    this.deps.recorder.invalidate('artifacts', mission.id);
-    this.deps.scheduler.wake();
-    return { task: await this.#taskView(mission.id, taskId), artifacts };
   }
 
   /** The step's park, or a CONFLICT saying why nothing can be handed back to it. Writes nothing. */

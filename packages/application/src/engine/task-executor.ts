@@ -242,9 +242,12 @@ export class TaskExecutor {
       // settling from that stale copy compared READY with READY, skipped the
       // write, and left the row RUNNING with nothing running.
       const current = this.#requireTask(task.id);
-      // Reset or cancelled by someone else while this attempt was failing (a
-      // Redo aborts the pass, which can surface as a throw): that status stands.
-      if (current.status === 'PENDING' || current.status === 'CANCELLED') {
+      // Moved by someone else while this attempt was failing (a Redo resets it,
+      // a park writes AWAITING_EXTERNAL, and the abort can surface as a throw):
+      // that status stands, the rule #overtaken and #stopped apply. Only the
+      // status the attempt started from is not a decision: a throw before the
+      // step was marked RUNNING leaves it READY, and that is still a failure.
+      if (!LIVE_RUN_STATUSES.includes(current.status) && current.status !== task.status) {
         return { kind: 'settled', status: current.status, reason: current.statusReason };
       }
       return this.#settleFailure(current, scope, errorMessage(e));

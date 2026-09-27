@@ -284,6 +284,18 @@ export class FeedbackRounds {
   }
 
   /**
+   * Holds the work waiting on `task` while its output is away, as a round
+   * holds it (see `#holdReady`): parking a step elsewhere (spec A4) takes its
+   * output away until the hand-back. Call it inside the caller's unit, after
+   * the task's own status has moved off SUCCEEDED; the scheduler releases what
+   * it held once the task is done again.
+   */
+  holdDependents(task: MissionTask, reason: string): void {
+    this.#holdReady(task, reason);
+    this.deps.recorder.invalidate('tasks', task.missionId);
+  }
+
+  /**
    * Closes an output card as "Request changes": the note is on the card, and
    * the round carries it. Call it with the round start in one unit and pass
    * the card as `keepCardId`, so the round does not withdraw it under its own

@@ -558,7 +558,7 @@ section('daemon: park and hand back');
     const solo = await project('Parking');
     repo.workspaces.update(solo.ws, { concurrency: { ...repo.workspaces.get(solo.ws).concurrency, maxTotalWorkers: 1 } });
     const one = await addMission(solo, [{ key: 'design', agent: solo.slow, orderHint: 0 }, { key: 'other', agent: solo.quick, orderHint: 1 }]);
-    await until(() => task(one.t.design).status === 'RUNNING' && scheduler.activeTaskIds().includes(one.t.design));
+    await until(() => runsOf(one.t.design).some((r) => r.status === 'RUNNING'));
     check('the design step is running and holds the only slot', task(one.t.design).status === 'RUNNING' && task(one.t.other).status === 'READY', [task(one.t.design).status, task(one.t.other).status]);
     const parked = await h.services.missions.parkTask(one.t.design, caller, { tool: 'Figma' });
     check('parkTask answers with the parked view', parked.status === 'AWAITING_EXTERNAL' && parked.parkedExternal?.tool === 'Figma', parked);
@@ -631,14 +631,83 @@ section('daemon: park and hand back');
     const closed = await refusal(() => h.services.missions.handBack(three.t.design, caller, { note: 'Too late.', contribution: file }));
     check('hand back on a cancelled mission is a 409 and writes nothing', closed?.code === 'CONFLICT' && h.artifacts.listByMission(three.mission.id).length === count3, closed && { code: closed.code, message: closed.message });
 
+    // ---- a hand-back whose output cannot be written leaves no pin and stays parked
+    {
+      const m = await addMission(p, [{ key: 'design', agent: p.quick }]);
+      await h.services.missions.parkTask(m.t.design, caller, { tool: 'Figma' });
+      const store = h.container.resolve(h.app.ARTIFACT_STORE);
+      const write = store.write;
+      store.write = async (req) => { if (req.type !== 'Evidence') throw new Error('disk full'); return write.call(store, req); };
+      let failed;
+      try {
+        failed = await refusal(() => h.services.missions.handBack(m.t.design, caller, { note: 'Done.', contribution: file }));
+      } finally {
+        store.write = write;
+      }
+      check('a failed write fails the hand-back', /disk full/.test(failed?.message ?? ''), failed?.message);
+      check('it leaves no Evidence behind and the step parked', h.artifacts.listByMission(m.mission.id).length === 0 && task(m.t.design).status === 'AWAITING_EXTERNAL',
+        { artifacts: h.artifacts.listByMission(m.mission.id).map((a) => a.type), status: task(m.t.design).status });
+    }
+
+    // ---- a READY dependent is held while its input is away, then reads round 2
+    {
+      const m = await addMission(p, [{ key: 'design', agent: p.quick }]);
+      await until(() => task(m.t.design).status === 'SUCCEEDED');
+      // Promoted but not yet dispatched: the scheduler is not ticked until after the park.
+      const dependent = repo.tasks.add({
+        id: ids.task(), missionId: m.mission.id, key: 'read', title: 'read', objective: 'o', roleId: 'design',
+        dependsOn: ['design'], requiredCapabilities: [], inputArtifacts: [{ type: 'DesignBrief', required: true }], expectedOutputs: ['ProblemBrief'],
+        executionPolicy: { isolation: 'none', maxWallTimeMs: 60000, capabilities: [] }, approvalPolicy: { beforeStart: false, onCompletion: false },
+        retryPolicy: { maxAttempts: 2, backoffMs: 0, onExhausted: 'block' }, completionGate: null, status: 'READY', statusReason: null, attempts: 0,
+        remediatesTaskId: null, repositoryId: null, executor: 'agent', waitPolicy: null, orderHint: 1, staffingOverride: { assignees: [p.reader] },
+        createdAt: now(), updatedAt: now(), startedAt: null, finishedAt: null,
+      }).id;
+      await h.services.missions.parkTask(m.t.design, caller, { tool: 'Figma' });
+      check('park holds a READY dependent', task(dependent).status === 'PENDING' && task(dependent).statusReason === "Waiting for 'design' from Figma.", task(dependent));
+      await scheduler.tick();
+      await scheduler.tick();
+      check('the held dependent does not run while its input is away', runsOf(dependent).length === 0 && task(dependent).status === 'PENDING', task(dependent));
+      const back = await h.services.missions.handBack(m.t.design, caller, { note: 'Redrawn in Figma.', contribution: file });
+      await until(() => task(dependent).status === 'SUCCEEDED');
+      check('after the hand-back it runs on round 2', task(dependent).status === 'SUCCEEDED' && runsOf(dependent).length === 1
+        && repo.runInputs.listByRun(runsOf(dependent)[0].id).includes(back.artifacts[0]?.id), runsOf(dependent).map((r) => repo.runInputs.listByRun(r.id)));
+    }
+
+    // ---- a run that throws as it is stopped keeps the park
+    {
+      const m = await addMission(p, [{ key: 'design', agent: p.slow }]);
+      // The runtime itself must be running, not only the attempt: the park has to abort a live run.
+      await until(() => runsOf(m.t.design).some((r) => r.status === 'RUNNING'));
+      // The run's final write fails, so the aborted attempt surfaces as a throw
+      // in the executor. Patched on the class: the executor holds its own reference.
+      const proto = Object.getPrototypeOf(repo.runs);
+      const update = proto.update;
+      let thrown = 0;
+      proto.update = function (id, patch) {
+        if (this.get(id)?.taskId === m.t.design && patch.status !== undefined && patch.status !== 'RUNNING') { thrown++; throw new Error('disk went away'); }
+        return update.call(this, id, patch);
+      };
+      try {
+        await h.services.missions.parkTask(m.t.design, caller, { tool: 'Figma' });
+        await until(() => !scheduler.activeTaskIds().includes(m.t.design));
+      } finally {
+        proto.update = update;
+      }
+      check('the aborted attempt threw', thrown > 0, { thrown, runs: runsOf(m.t.design).map((r) => [r.status, r.errorMessage]) });
+      check('a throw after the park keeps the step AWAITING_EXTERNAL', task(m.t.design).status === 'AWAITING_EXTERNAL' && task(m.t.design).statusReason === 'Continued in Figma', task(m.t.design));
+      const back = await refusal(() => h.services.missions.handBack(m.t.design, caller, { note: 'Done in Figma.', contribution: file }));
+      check('and it is handed back', back === null && task(m.t.design).status === 'SUCCEEDED' && task(m.t.design).round === 2, back?.message ?? task(m.t.design));
+    }
+
     // ---- downstream: work that read round 1 is redone or kept
     const downstream = async (choice) => {
       const m = await addMission(p, [{ key: 'design', agent: p.quick }]);
       await until(() => task(m.t.design).status === 'SUCCEEDED');
       const [round1] = live(m.t.design, 'DesignBrief');
       await h.services.missions.parkTask(m.t.design, caller, { tool: 'Figma' });
-      // Added after the park, READY, as the scheduler would have promoted it
-      // when design first succeeded: it runs on round 1 while design is away.
+      // Constructed: parking holds the READY dependents it finds, so a
+      // consumer of round 1 is added after the park. Hand-back still applies
+      // redo/keep to whatever did read the old version.
       const consumer = repo.tasks.add({
         id: ids.task(), missionId: m.mission.id, key: 'review', title: 'review', objective: 'o', roleId: 'design',
         dependsOn: ['design'], requiredCapabilities: [], inputArtifacts: [{ type: 'DesignBrief', required: true }], expectedOutputs: ['ProblemBrief'],

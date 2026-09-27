@@ -673,12 +673,12 @@ export class ProjectionServiceImpl implements ProjectionService {
   }
 }
 
-/** The card a task is waiting on: a check waits on nobody, so any other pending card comes first. */
 /** The view's shape of a parked step: who parked it stays in the log. */
 function parkedView(park: { readonly tool: string; readonly since: string } | null): TaskView['parkedExternal'] {
   return park === null ? null : { tool: park.tool, since: park.since };
 }
 
+/** The card a task is waiting on: a check waits on nobody, so any other pending card comes first. */
 function pendingCardFor(cards: readonly { readonly id: string; readonly kind: string }[]): string | null {
   return (cards.find((c) => c.kind !== 'check') ?? cards[0])?.id ?? null;
 }
