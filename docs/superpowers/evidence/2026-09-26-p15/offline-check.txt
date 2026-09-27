@@ -1,0 +1,150 @@
+
+== the vocabulary: one scope per fact, nothing listed that is never measured
+  ok   evaluation re-exports the same list
+  ok   every fact has a scope of step, mission or workspace
+  ok   every fact says where it is measured
+  ok   security.required_checks is gone (nothing could ever measure it)
+  ok   checks.<name> is gone (a repository configures only five checks)
+  ok   git.clean stays, scoped to a step with a worktree
+  ok   mission facts are mission scope
+  ok   project facts are workspace scope
+  ok   artifact.<Type> needs a real type
+  ok   approval.<kind> needs a real kind; release is approval.release_candidate
+  ok   the GateFactBuilder no longer offers withSecurityChecks
+  ok   ready_to_ship no longer reads security.required_checks
+
+== every step fact is measured by GateService.factsFor; no mission or project fact is
+  ok   each step fact has a value in factsFor
+  ok   no mission or project fact is in factsFor (so a step gate could never read one)
+  ok   git.clean is read from the newest check row like any check
+  ok   the limit service measures mission.agent_minutes
+  ok   the liveness service measures mission.stalled
+  ok   the readiness facts come from the readiness rule
+
+== git.clean: measured by CheckService in a real worktree, FAIL lists the files
+  ok   a clean worktree measures PASS
+  ok   an uncommitted file measures FAIL
+  ok   and the detail names it
+  ok   the gate now reads the newest measurement (FAIL)
+  ok   and a gate reading it fails with the reason
+  ok   a step working in place reads SKIP, which never passes
+  ok   a gate that does not read it measures nothing
+
+== lintGate: every rule, in the words the person reads
+  ok   a valid step gate has no problems
+  ok   (c) mission scope, exact words
+  ok   (c) project scope
+  ok   (b) unknown fact with a suggestion
+  ok   (b) removed facts are unknown now
+  ok   (b) no suggestion for something far away
+  ok   (a) a gate that never checks its own output
+  ok   (a) several outputs are offered with "or"
+  ok   (a) reading another step's artifact is not enough
+  ok   review.independent needs independentOf
+  ok   review.independent with independentOf is fine
+  ok   git.clean on a step working in place
+  ok   git.clean in a worktree is fine
+  ok   diff.files_changed needs a ChangeSet
+  ok   a gate that does not parse
+
+== the presets and the engine's own spliced tasks pass the validator
+  ok   every preset gate is valid
+  ok   the spliced fix / merge task gate is valid
+
+== the planner prompt lists only step facts
+  ok   it lists the step facts from the vocabulary
+  ok   it lists no mission or project fact
+  ok   it does not offer review.independent (a planner cannot set independentOf)
+  ok   it still tells the planner to gate on its own output
+
+== docs/WORKFLOWS.md's facts table is generated from the vocabulary
+  ok   the table in the file equals the generated one
+  ok   it has a Scope column and every fact
+
+== workflow files, plans and materialize refuse the same gates
+  ok   mission.stalled: listed with the reason
+  ok   missing output check: listed with the reason
+  ok   a broken file has no definition, so nothing plans from it
+  ok   a good file loads
+  ok   the workflow list (New mission) carries the issue
+  ok   compile: git.clean on a step inheriting "none" from its role
+  ok   validateMissionPlan (planner output) refuses it
+  ok   a running mission's graph is re-checked for syntax only
+  ok   materializePlan refuses it
+
+== export: byte-stable, no secrets, ids, paths or timestamps, committable
+  ok   the expected files
+  ok   every role of the project, built-ins included
+  ok   the workflow already in this repository is kept, not rewritten
+  ok   no skills.lock (P13 adds it)
+  ok   twice: the same hash
+  ok   twice: the same bytes
+  ok   the hash is over the files on disk
+  ok   no absolute paths
+  ok   no row ids
+  ok   no timestamps
+  ok   no secret
+  ok   tandemise.yaml: version, wip limit, limits, defaults
+  ok   the secret became a declared placeholder
+  ok   the export view lists the placeholders
+  ok   keys are sorted
+  ok   roles/development.md: models in the front matter, instructions below
+  ok   routines.yaml: the routine, without enabled or history
+  ok   "Last exported <hash>" is remembered
+  ok   the old ignore file was repaired
+  ok   the old exclude line was repaired
+  ok   and the export said so
+  ok   git no longer ignores the exported files
+  ok   git still ignores Tandemise's working files
+  ok   a second export has nothing left to repair
+  ok   a rule of their own is reported with how to fix it
+  ok   a workflow from another repository is copied byte for byte
+  ok   the last export is now the second repository
+
+== import: preview Add / Change / Remove / Same, one atomic Apply, routines arrive off
+  ok   an unchanged folder previews all Same
+  ok   Same rows offer no choice
+  ok   editing a role's model: exactly one Change
+  ok   its detail says what changes
+  ok   Change defaults to take theirs
+  ok   a new routine is an Add, taken by default
+  ok   it says it arrives off
+  ok   a role missing from the files is a Remove that keeps yours by default
+  ok   files changed since the preview: refused with 409 words
+  ok   and nothing changed
+  ok   applied: the model change and the routine; kept: the QA edit and the removal
+  ok   the role has the new model
+  ok   Remove kept yours: the docs writer is still there
+  ok   Keep mine kept yours: QA instructions unchanged
+  ok   the imported routine is off, not scheduled, with the note
+  ok   the note reads "Imported — review and turn on"
+  ok   nothing started: no mission was created
+  ok   the routine list shows the note
+  ok   turning it on clears the note and schedules it
+  ok   previewing again: only what was kept still differs
+  ok   Remove, taken: the added role is deleted
+
+== import from another folder: workflows land in the project, a bad one cannot be taken, a failed apply changes nothing
+  ok   the .tandemise folder itself can be chosen
+  ok   a file this version does not read is listed as ignored
+  ok   a new workflow is an Add
+  ok   a workflow with a bad gate cannot be taken, and says why
+  ok   the project's own workflow is a Remove kept by default
+  ok   the missing routine is a Remove, the new one an Add
+  ok   choosing theirs for it is refused
+  ok   the apply failed
+  ok   the role change before it was rolled back
+  ok   no workflow file was written, and nothing staged is left
+  ok   the same apply, working: role, workflow, routine
+  ok   the new workflow file is in the project's default repository
+  ok   the kept workflow is still there
+  ok   the imported mission routine is off with the note
+  ok   the removed routine was kept (Remove defaults to yours)
+
+== a folder without .tandemise, and a file that cannot be read
+  ok   no .tandemise folder: a plain reason
+  ok   an unreadable role file is a row with its reason and no choice
+  ok   a newer setup version is refused on its rows
+
+123 passed, 0 failed
+ALL P15 SETUP CHECKS PASSED

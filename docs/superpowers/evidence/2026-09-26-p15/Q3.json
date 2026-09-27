@@ -1,0 +1,80 @@
+{
+  "id": "Q3",
+  "title": "An imported routine arrives off, marked \"Imported — review and turn on\"",
+  "ok": true,
+  "checks": [
+    {
+      "label": "the preview counts one to add",
+      "ok": true,
+      "observed": "From /tmp/tdm-p15/project/.tandemise: 1 to add · 0 to change · 0 to remove · 24 the same\n\nITEM\tKIND\tCHANGE\tYOUR CHOICE\n\nFriday status report\nA new routine.\nArrives off: turn it on in Missions → Routines after reviewing it.\n\tRoutine\tAdd\t\nKeep mine\nTake theirs\n\n\nProject settings\n\tProject\tSame\t—\n\nWork-"
+    },
+    {
+      "label": "its row: \"Friday status report: Add\", arriving off",
+      "ok": true,
+      "observed": [
+        "Friday status report: Add",
+        "Friday status report\nA new routine.\nArrives off: turn it on in Missions → Routines after reviewing it.\n\tRoutine\tAdd\t\nKeep mine\nTake theirs"
+      ]
+    },
+    {
+      "label": "applied, and told routines arrive off",
+      "ok": true,
+      "observed": "Applied 1 change. Imported routines are off until you turn them on in Missions → Routines.\n\nAdded Friday status report"
+    },
+    {
+      "label": "Missions → Routines: the row says \"Imported — review and turn on\"",
+      "ok": true,
+      "observed": "Friday status report\nEvery Friday at 16:00 ·\nPaused\nImported — review and turn on\nStatus report\nOff\nRun now\nEdit"
+    },
+    {
+      "label": "and it is Off and paused",
+      "ok": true,
+      "observed": "Friday status report\nEvery Friday at 16:00 ·\nPaused\nImported — review and turn on\nStatus report\nOff\nRun now\nEdit"
+    },
+    {
+      "label": "its switch is off",
+      "ok": true
+    },
+    {
+      "label": "proof (API): enabled false, no next run",
+      "ok": true,
+      "observed": {
+        "id": "rtn_01m3g24a53b2bk2j3s13",
+        "workspaceId": "ws_01m3g21zjrd1hxp0tq08",
+        "name": "Friday status report",
+        "kind": "status_report",
+        "goal": "",
+        "successCriteria": [],
+        "priority": "normal",
+        "limits": null,
+        "workflowPreset": null,
+        "schedule": {
+          "type": "weekly",
+          "day": 5,
+          "at": "16:00"
+        },
+        "enabled": false,
+        "nextRunAt": null,
+        "lastRunAt": null,
+        "lastOutcome": null,
+        "lastDetail": "Imported — review and turn on",
+        "lastMissionId": null,
+        "lastArtifactId": null,
+        "createdBy": "mem_01m3g21zjrd1hxp0tq09",
+        "createdAt": "2026-09-26T23:52:10.147Z",
+        "updatedAt": "2026-09-26T23:52:10.148Z"
+      }
+    },
+    {
+      "label": "proof (API): nothing started — no new mission",
+      "ok": true
+    }
+  ],
+  "notes": [
+    "edited on disk: routines.yaml gains \"Friday status report\" (weekly, Friday 16:00)"
+  ],
+  "shots": [
+    "Q3-preview-routine-add.png",
+    "Q3-routine-off-imported.png"
+  ]
+}

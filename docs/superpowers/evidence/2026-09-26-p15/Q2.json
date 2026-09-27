@@ -1,0 +1,64 @@
+{
+  "id": "Q2",
+  "title": "A role's model edited in the file: one Change in the preview, applied, shown in Team",
+  "ok": true,
+  "checks": [
+    {
+      "label": "the preview counts one change and nothing else",
+      "ok": true,
+      "observed": "From /tmp/tdm-p15/project/.tandemise: 0 to add · 1 to change · 0 to remove · 23 the same\n\nITEM\tKIND\tCHANGE\tYOUR CHOICE\n\nDeveloper\nmodel: base-model → better-model\n\tRole\tChange\t\nKeep mine\nTake theirs\n\n\nProject settings\n\tProject\tSame\t—\n\nWork-in-progress limit\n\tProject\tSame\t—\n\nMonthly limits\n\tLimits\tSa"
+    },
+    {
+      "label": "exactly one row is not Same: \"Developer: Change\"",
+      "ok": true,
+      "observed": [
+        [
+          "Developer: Change",
+          "Developer\nmodel: base-model → better-model\n\tRole\tChange\t\nKeep mine\nTake theirs"
+        ]
+      ]
+    },
+    {
+      "label": "it says what changes",
+      "ok": true,
+      "observed": "Developer\nmodel: base-model → better-model\n\tRole\tChange\t\nKeep mine\nTake theirs"
+    },
+    {
+      "label": "its choice is \"Take theirs\"",
+      "ok": true
+    },
+    {
+      "label": "the model is unchanged until Apply (API)",
+      "ok": true
+    },
+    {
+      "label": "the window says it applied one change",
+      "ok": true,
+      "observed": "Applied 1 change. Imported routines are off until you turn them on in Missions → Routines.\n\nChanged Developer: model: base-model → better-model"
+    },
+    {
+      "label": "Team → Roles → Developer: the \"Model\" field reads better-model",
+      "ok": true,
+      "observed": "better-model"
+    },
+    {
+      "label": "proof (API): the role's model is better-model, its retry model kept",
+      "ok": true,
+      "observed": {
+        "model": "better-model",
+        "escalate": [
+          "strong-model"
+        ],
+        "economyModel": null
+      }
+    }
+  ],
+  "notes": [
+    "edited on disk: roles/development.md model: base-model → better-model"
+  ],
+  "shots": [
+    "Q2-preview-one-change.png",
+    "Q2-applied.png",
+    "Q2-team-shows-new-model.png"
+  ]
+}
