@@ -209,9 +209,12 @@ completion path.
 
 ### Handing back
 
-A parked card shows **Hand back**: a note, one contribution (file or link),
-and, when downstream tasks consumed an earlier version, the P2 choice
-`downstream: 'redo' | 'keep'`. `MissionService.handBack(taskId, request)`:
+A parked card shows **Hand back**: a note and one contribution (file or link).
+Parking is refused once downstream work has used the output, and parking
+**holds** the steps that wait on it (P2's hold, reason "Waiting for '<key>'
+from <tool>."), so no step can consume a version the person took away. The
+request still accepts the P2 choice `downstream: 'redo' | 'keep'` (default
+`keep`) as a safety net; the dialog does not ask it. `MissionService.handBack(taskId, request)`:
 
 1. Allowed only on an agent task in `AWAITING_EXTERNAL` with `parkedExternal`.
    Staffing is checked (`#assertMayTake`, `#claimFields`).
@@ -300,7 +303,7 @@ another tool; what comes back is a fresh human-authored round.
 | D2 | Continue elsewhere on a design task | The card shows "Waiting for your work in Figma"; the timeline shows `task.parked_external`; the Desk counts it |
 | D3 | Hand back a GitHub PR link | A human-authored round lands; the Evidence carries `github.pr` + `git.commit` refs; downstream consumes that commit |
 | D4 | Hand back an unreadable link | A bare link is refused with "attach an export"; with an export, the export becomes the Evidence |
-| D5 | Hand-back supersedes a consumed version | The dialog offers redo / keep; redo re-queues the consumer |
+| D5 | Park a finished step whose next step is ready | The next step waits with "Waiting for '<key>' from <tool>."; after the hand-back it runs on the handed-back version |
 | D6 | Workspace link | Renders "Open workspace ↗" and resolves to the local path |
 | D7 | Attribution | The hand-back card shows "by You · responsible You"; the reader shows recorded-by |
 | D8 | Feedback with a file | The file appears as an input of the next round |

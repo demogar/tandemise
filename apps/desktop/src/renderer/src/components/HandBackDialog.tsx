@@ -1,17 +1,14 @@
 import { useState } from 'react';
 import type { ArtifactType } from '@tandemise/domain';
-import type { TaskView } from '@tandemise/api-contract';
 import { Modal } from './Modal.js';
 import { Icon } from './Icon.js';
 import { RecordingFor, behalfOf, defaultRecordFor } from './ActorChip.js';
 import { ContributionPicker, type Contribution } from './ContributionPicker.js';
-import { DownstreamChoice, STATUS_WORDS } from './ImpactDialog.js';
-import { useDaemonMutation, useMission } from '../lib/queries.js';
+import { useDaemonMutation } from '../lib/queries.js';
 import { useActors } from '../lib/team.js';
 import { describeError } from '../lib/daemon.js';
 import { showFlash } from '../lib/notices.js';
 import { defaultElsewhereTool } from '../lib/domain.js';
-import { titleCase } from '../lib/format.js';
 
 /** The daemon's limits on a tool name and a note, said before sending rather than as a refusal after. */
 const MAX_TOOL_CHARS = 40;
@@ -86,11 +83,12 @@ export function ContinueElsewhereDialog({
 }
 
 /**
- * "Hand back" (spec A4): a note, the one piece of work that came back, and -
- * only when finished work already used this step's output - P2's choice about
- * that work. What comes back becomes the step's next round, authored by the
- * person; the daemon's refusals (a link nothing here can read, a step already
- * handed back) are shown in its own words.
+ * "Hand back" (spec A4): a note and the one piece of work that came back,
+ * which becomes the step's next round, authored by the person. Nothing
+ * downstream is asked about: parking held the work waiting on this step, so
+ * none of it has read an earlier version to redo or keep. The daemon's
+ * refusals (a link nothing here can read, a step already handed back) are
+ * shown in its own words.
  */
 export function HandBackDialog({
   task,
@@ -104,20 +102,14 @@ export function HandBackDialog({
   onClose: () => void;
 }): JSX.Element {
   const actors = useActors();
-  const mission = useMission(missionId);
   const [note, setNote] = useState('');
   const [contribution, setContribution] = useState<Contribution[]>([]);
   const [recordFor, setRecordFor] = useState<string | null>(defaultRecordFor(actors, null));
-  const used = usedBy(task.id, mission.data?.tasks ?? []);
-  // The daemon's default: work still running on the old version is wasted if kept; finished work is the person's call.
-  const [choice, setChoice] = useState<'redo' | 'keep' | null>(null);
-  const downstream = choice ?? (used.some((t) => t.status === 'RUNNING') ? 'redo' : 'keep');
   const give = useDaemonMutation(
     (daemon) =>
       daemon.handBack(task.id, {
         note: note.trim(),
         contribution: contribution[0]!,
-        ...(used.length > 0 ? { downstream } : {}),
         ...behalfOf(actors, recordFor),
       }),
     ['tasks', 'missions', 'approvals', 'artifacts'],
@@ -179,14 +171,6 @@ export function HandBackDialog({
           label="The work"
           hint="One file, or a link."
         />
-        {used.length > 0 ? (
-          <div className="impact">
-            <p className="impact__used">
-              {used.map((t) => `${titleCase(t.key)} (${STATUS_WORDS[t.status]})`).join(', ')} used the earlier version.
-            </p>
-            <DownstreamChoice choice={downstream} onChoice={setChoice} />
-          </div>
-        ) : null}
         {give.isError ? (
           <p className="field__error" role="alert">
             <Icon name="alert" size={12} /> {describeError(give.error).detail}
@@ -194,18 +178,5 @@ export function HandBackDialog({
         ) : null}
       </div>
     </Modal>
-  );
-}
-
-/**
- * The steps that already read this one's output, as far as the mission view
- * can tell: those that depend on it and have run. Held work that never started
- * has read nothing, so it is not asked about. The daemon applies the choice to
- * the consumers it knows from its run inputs; this only decides whether to ask.
- */
-export function usedBy(taskId: string, tasks: readonly TaskView[]): readonly TaskView[] {
-  const self = tasks.find((t) => t.id === taskId);
-  return tasks.filter(
-    (t) => t.id !== taskId && t.runCount > 0 && (t.dependsOn.includes(taskId) || (self !== undefined && t.dependsOn.includes(self.key))),
   );
 }

@@ -1,4 +1,4 @@
-import type { Approval, ArtifactType, CriterionResult, LimitMetric, MissionPriority, MissionStatus, RoutineTemplate, TandemiseEventBody } from '@tandemise/domain';
+import type { Approval, ArtifactType, CriterionResult, LimitMetric, MissionPriority, MissionStatus, RoutineTemplate, TaskStatus, TandemiseEventBody } from '@tandemise/domain';
 
 /**
  * The handful of *runtime* values the renderer needs from the domain.
@@ -292,7 +292,7 @@ export const CONTRIBUTION_TOTAL_MESSAGE = 'These files add up to more than 24 MB
  * decides, and says why when it refuses.
  */
 export const LINKABLE_OUTPUT_TYPES: readonly ArtifactType[] = ['DesignBrief', 'ChangeSet', 'ImplementationPlan', 'ProductSpec'];
-export const PARKABLE_TASK_STATUSES: readonly string[] = ['READY', 'RUNNING', 'SUCCEEDED'];
+export const PARKABLE_TASK_STATUSES: readonly TaskStatus[] = ['READY', 'RUNNING', 'SUCCEEDED'];
 
 /** Where the work most likely goes next, prefilled in "Continue elsewhere": a design in Figma, code in an editor. */
 export function defaultElsewhereTool(outputs: readonly ArtifactType[]): string {

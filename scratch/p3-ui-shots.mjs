@@ -7,10 +7,9 @@
 // screenshot of each state into /tmp/tdm-p3/shots. It asserts the DOM as it
 // goes and prints a summary; every process it starts is stopped at the end.
 //
-// Two states cannot be reached through the product today and are staged in
+// One state cannot be reached through the product today and is staged in
 // SQLite, for the screenshot only: a stage covered by an upload (the scripted
-// planner never emits `skipped`), and a dependent that already used a parked
-// step (the daemon refuses to park once anything has). Both are said below.
+// planner never emits `skipped`). It is said where it happens.
 import { execFileSync, spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
@@ -118,13 +117,21 @@ try {
   const coveredId = await until(async () => { const h = await page.evaluate('location.hash'); return /#\/missions\/msn_/.test(h) && h.split('/')[2]; }, { label: 'mission page', timeoutMs: 30_000 });
   const uploaded = await until(async () => { const d = await api.get(`/v1/missions/${coveredId}`); return (d.uploads ?? []).length === 2 && d.tasks.length > 0 && d; }, { label: 'uploads pinned and planned', timeoutMs: 60_000 });
   check('the mission carries both uploads', uploaded.uploads.map((u) => u.filename).sort().join(',') === 'hello-design.png,hello-spec.md', uploaded.uploads);
-  const intake = await until(async () => { const d = await api.get(`/v1/missions/${coveredId}`); return d.uploads.find((u) => u.intakeArtifactId !== null) && d; }, { label: 'intake', timeoutMs: 60_000 }).catch(() => null);
-  const design = uploaded.tasks.find((t) => t.key === 'design');
-  // Staged: the scripted planner does not emit `skipped`, so the placeholder the planner would write is written here.
-  const covered = intake?.uploads.find((u) => u.intakeArtifactId !== null);
+  const both = await until(async () => { const d = await api.get(`/v1/missions/${coveredId}`); return d.uploads.every((u) => u.intakeArtifactId !== null) && d; }, { label: 'both intakes', timeoutMs: 60_000 }).catch(() => null);
+  const intakeType = async (u) => (u.intakeArtifactId === null ? null : (await api.get(`/v1/artifacts/${u.intakeArtifactId}`)).manifest.type);
+  const imageUpload = both?.uploads.find((u) => u.filename === 'hello-design.png');
+  const imageType = imageUpload ? await intakeType(imageUpload) : null;
+  check('the image upload\'s intake is a DesignBrief', imageType === 'DesignBrief', imageType);
+  // Staged: the scripted planner does not emit `skipped`, so the placeholder the planner would write is written here,
+  // on the stage whose output an upload's intake already made (P5's spec, from hello-spec.md).
+  let covered = null;
+  let holder = null;
+  for (const u of both?.uploads ?? []) {
+    const type = await intakeType(u);
+    const task = uploaded.tasks.find((t) => t.expectedOutputs.includes(type));
+    if (task !== undefined) { covered = u; holder = task; break; }
+  }
   if (covered) {
-    const art = await api.get(`/v1/artifacts/${covered.intakeArtifactId}`);
-    const holder = uploaded.tasks.find((t) => t.expectedOutputs.includes(art.manifest.type)) ?? design;
     exec(`UPDATE mission_tasks SET status = 'SKIPPED', status_reason = ? WHERE id = ?`, `Covered by your upload: ${covered.filename}`, holder.id);
     await page.navigate(`#/missions/${coveredId}/plan`);
     await page.send('Page.reload', {});
@@ -140,7 +147,7 @@ try {
     await shot('05b-covered-step-drawer');
     await page.evaluate(`document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))`);
   } else {
-    check('intake produced an artifact for an upload', false, intake?.uploads ?? 'no intake');
+    check('an upload\'s intake matches a stage of the plan', false, both?.uploads ?? 'no intake');
   }
   await api.post(`/v1/missions/${coveredId}/cancel`, { reason: 'shots: covered row seen' }).catch(() => undefined);
 
@@ -191,38 +198,21 @@ try {
   await shot('06-inbox-parked-row');
   await page.navigate('#/');
   await page.waitForText('Waiting for your work in Figma', { timeoutMs: 15_000 }).catch(() => '');
+  const home = await body();
+  check('Home says the parked run stopped, not failed', /Product Designer stopped/.test(home) && !/Product Designer failed/.test(home), home.slice(home.indexOf('Recent activity'), home.indexOf('Recent activity') + 300));
   await shot('06b-home-parked-row');
 
-  console.log('\n== Hand back: the redo/keep choice (staged dependent)');
-  const build = await c.task(missionId, 'build');
-  const designRun = c.sql('SELECT * FROM runs WHERE task_id = ? ORDER BY attempt DESC LIMIT 1', parked.id)[0];
-  // Staged: the daemon refuses to park a step whose output anything used, so a build that used it is written here.
-  exec(`INSERT INTO runs (id, mission_id, task_id, assignment_id, attempt, status, role_id, runtime_profile_id, execution_target_id, started_at, finished_at)
-        VALUES ('run_shotstaged000000000', ?, ?, ?, 1, 'SUCCEEDED', ?, ?, ?, ?, ?)`,
-    missionId, build.id, designRun.assignment_id, designRun.role_id, designRun.runtime_profile_id, designRun.execution_target_id, designRun.started_at, designRun.started_at);
-  exec(`UPDATE mission_tasks SET status = 'SUCCEEDED' WHERE id = ?`, build.id);
-  await page.navigate(`#/missions/${missionId}`);
-  await page.send('Page.reload', {});
-  await page.waitForText('Waiting for your work in Figma', { timeoutMs: 20_000 });
-  await page.clickIn('Waiting for your work in Figma', 'Hand back', { rowSelector: 'article.feedcard' });
-  const choice = await until(() => dialog('Hand back design'), { label: 'hand-back dialog', timeoutMs: 5_000 });
-  check('the hand-back asks Redo or Keep when a dependent used the step', /Build \(done\) used the earlier version/.test(choice) && /Redo them after the new version/.test(choice) && /Keep their work/.test(choice), choice);
-  await page.fill('What did you do in Figma?', 'Moved the greeting up and made it larger.');
-  await shot('03-hand-back-redo-keep');
-  await page.evaluate(`document.documentElement.setAttribute('data-theme', 'light')`);
-  await shot('03d-hand-back-light');
-  await page.evaluate(`document.documentElement.removeAttribute('data-theme')`);
-  await page.click('Cancel', { within: '[role=dialog]' });
-  exec(`DELETE FROM runs WHERE id = 'run_shotstaged000000000'`);
-  exec(`UPDATE mission_tasks SET status = ? WHERE id = ?`, build.status, build.id);
-
   console.log('\n== Hand back: a bare link is refused in the daemon\'s words');
-  await page.send('Page.reload', {});
+  await page.navigate(`#/missions/${missionId}`);
   await page.waitForText('Waiting for your work in Figma', { timeoutMs: 20_000 });
   await page.clickIn('Waiting for your work in Figma', 'Hand back', { rowSelector: 'article.feedcard' });
   await until(() => dialog('Hand back design'), { label: 'hand-back dialog', timeoutMs: 5_000 });
-  check('no redo/keep without a dependent that used it', !/Keep their work/.test(await dialog('Hand back design')));
+  check('the hand-back asks nothing about downstream work: parking held it', !/Keep their work|Redo them/.test(await dialog('Hand back design')));
   await page.fill('What did you do in Figma?', 'Moved the greeting up and made it larger.');
+  await shot('03-hand-back-dialog');
+  await page.evaluate(`document.documentElement.setAttribute('data-theme', 'light')`);
+  await shot('03d-hand-back-light');
+  await page.evaluate(`document.documentElement.removeAttribute('data-theme')`);
   await page.click('Add link', { within: '[role=dialog]' });
   await page.fill('Link', 'https://www.figma.com/file/abc123/hello');
   await page.click('Add', { within: '[role=dialog]' });

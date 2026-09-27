@@ -1,4 +1,4 @@
-import { useId, useState, type ReactNode } from 'react';
+import { useState } from 'react';
 import type { DownstreamImpactView, TaskView } from '@tandemise/api-contract';
 import type { TaskStatus } from '@tandemise/domain';
 import { Modal } from './Modal.js';
@@ -12,7 +12,7 @@ import { openImpact, showFlash, useImpactRequest } from '../lib/notices.js';
 import { describeError } from '../lib/daemon.js';
 
 /** Where a dependent is, in the feed's words: "done", not SUCCEEDED. */
-export const STATUS_WORDS: Readonly<Record<TaskStatus, string>> = {
+const STATUS_WORDS: Readonly<Record<TaskStatus, string>> = {
   PENDING: 'planned',
   READY: 'queued',
   RUNNING: 'running',
@@ -103,63 +103,35 @@ export function ImpactDialog({
         <p className="impact__used">
           {used}.
         </p>
-        <DownstreamChoice
-          choice={choice}
-          onChoice={setChoice}
-          redoDetail={
-            <ul className="impact__list">
-              {impact.dependents.map((d) => (
-                <li key={d.taskId}>
-                  <label className="impact__dependent">
-                    <input
-                      type="checkbox"
-                      checked={picked.includes(d.taskId)}
-                      onChange={(e) => setPicked(e.target.checked ? [...picked, d.taskId] : picked.filter((id) => id !== d.taskId))}
-                    />
-                    <span className="truncate">{d.title}</span>
-                  </label>
-                </li>
-              ))}
-            </ul>
-          }
-        />
+        <label className="impact__choice">
+          <input type="radio" name="impact-choice" checked={choice === 'redo'} onChange={() => setChoice('redo')} />
+          <span>Redo them after the new version</span>
+        </label>
+        {choice === 'redo' ? (
+          <ul className="impact__list">
+            {impact.dependents.map((d) => (
+              <li key={d.taskId}>
+                <label className="impact__dependent">
+                  <input
+                    type="checkbox"
+                    checked={picked.includes(d.taskId)}
+                    onChange={(e) => setPicked(e.target.checked ? [...picked, d.taskId] : picked.filter((id) => id !== d.taskId))}
+                  />
+                  <span className="truncate">{d.title}</span>
+                </label>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        <label className="impact__choice">
+          <input type="radio" name="impact-choice" checked={choice === 'keep'} onChange={() => setChoice('keep')} />
+          <span>
+            Keep their work <span className="impact__hint">They are flagged when the new version lands.</span>
+          </span>
+        </label>
         {start.isError ? <ErrorState error={start.error} /> : null}
       </div>
     </Modal>
-  );
-}
-
-/**
- * P2's one choice about work that used a version being replaced: redo it after
- * the new one, or keep it and flag it. Shared by the round dialog and the
- * hand-back (spec A4), so both ask it in the same words.
- */
-export function DownstreamChoice({
-  choice,
-  onChoice,
-  redoDetail,
-}: {
-  choice: 'redo' | 'keep';
-  onChoice: (choice: 'redo' | 'keep') => void;
-  /** Shown under "Redo" while it is chosen: which of the dependents to redo, where the caller can pick. */
-  redoDetail?: ReactNode;
-}): JSX.Element {
-  // One radio group per mounted dialog: two open at once (a round over a hand-back) must not share a name.
-  const name = useId();
-  return (
-    <>
-      <label className="impact__choice">
-        <input type="radio" name={name} checked={choice === 'redo'} onChange={() => onChoice('redo')} />
-        <span>Redo them after the new version</span>
-      </label>
-      {choice === 'redo' ? redoDetail : null}
-      <label className="impact__choice">
-        <input type="radio" name={name} checked={choice === 'keep'} onChange={() => onChoice('keep')} />
-        <span>
-          Keep their work <span className="impact__hint">They are flagged when the new version lands.</span>
-        </span>
-      </label>
-    </>
   );
 }
 

@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'wouter';
-import type { FeedCard, MissionDetail } from '@tandemise/api-contract';
+import type { FeedCard, MissionDetail, TaskView } from '@tandemise/api-contract';
+import type { TaskStatus } from '@tandemise/domain';
 import { Drawer } from '../../components/Modal.js';
 import { HandoffCard } from '../../components/HandoffCard.js';
-import { usedBy } from '../../components/HandBackDialog.js';
 import { Empty, ErrorState, SkeletonList } from '../../components/primitives.js';
 import { useDaemonMutation, useMissionFeed } from '../../lib/queries.js';
 import { useActors, type Actors } from '../../lib/team.js';
@@ -85,7 +85,7 @@ export function FeedPane({ detail, focusNeeds, onFocused }: { detail: MissionDet
         objective={c.taskId === null ? undefined : objectives.get(c.taskId)}
         waitingFor={c.section === 'in_progress' ? waitingFor(c, detail, actors) : undefined}
         task={c.taskId === null ? undefined : tasksById.get(c.taskId)}
-        usedDownstream={c.taskId !== null && usedBy(c.taskId, detail.tasks).length > 0}
+        usedDownstream={c.taskId !== null && ranOnOutput(c.taskId, detail.tasks)}
       />
     );
 
@@ -182,3 +182,20 @@ function waitingFor(card: FeedCard, detail: MissionDetail, actors: Actors): stri
   // The latest addressee is where an escalated request sits now.
   return `Waiting for ${actors.name(addressees[addressees.length - 1]!)}`;
 }
+
+/**
+ * Whether work that depends on this step has already run, as far as the
+ * mission view can tell: the daemon refuses to take a step elsewhere once its
+ * output was used, so the card stops offering it. The daemon still decides.
+ * The status counts as well as the run count: a step is marked running before
+ * its run row lands, and the view may be read in between.
+ */
+function ranOnOutput(taskId: string, tasks: readonly TaskView[]): boolean {
+  const self = tasks.find((t) => t.id === taskId);
+  return tasks.some((t) => t.id !== taskId
+    && (t.runCount > 0 || STARTED.includes(t.status))
+    && (t.dependsOn.includes(taskId) || (self !== undefined && t.dependsOn.includes(self.key))));
+}
+
+/** Statuses a dependent only reaches by starting; held or redone work waits in PENDING or READY. */
+const STARTED: readonly TaskStatus[] = ['RUNNING', 'AWAITING_INPUT', 'AWAITING_APPROVAL', 'SUCCEEDED', 'FAILED'];

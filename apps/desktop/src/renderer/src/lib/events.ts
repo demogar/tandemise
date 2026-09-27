@@ -134,6 +134,8 @@ function describe(record: RunEventRecord, roleNames: ReadonlyMap<string, string>
     case 'completed':
       return { ...base, icon: 'check', tone: 'succeeded', title: `${role} finished`, detail: body.summary ?? null, link: null };
     case 'failed':
+      // A run stopped on purpose (a park, a cancel, a redo) ends as CANCELLED; calling that a failure would be false.
+      if (body.code === 'CANCELLED') return { ...base, icon: 'stop', tone: 'pending', title: `${role} stopped`, detail: body.message, link: null };
       return { ...base, icon: 'alertCircle', tone: 'failed', title: `${role} failed`, detail: `${body.code}: ${body.message}`, link: null };
     case 'raw':
       return { ...base, icon: 'terminal', tone: 'pending', title: body.channel, detail: body.text, link: null };

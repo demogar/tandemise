@@ -32,11 +32,12 @@ const prompt = Buffer.concat(chunks).toString('utf8');
 
 const workIn = /^Work in: (.+)$/m.exec(prompt)?.[1]?.trim() ?? process.cwd();
 const outputs = [...prompt.matchAll(/^### ([A-Za-z]+) → (\S+)$/gm)].map((m) => ({ type: m[1], destination: m[2] }));
-// P3 intake: one document, offered as "## As a <Type>" for each type it may be, written where "Write it to `…`" says.
-// The stand-in writes the first type offered, so an image becomes a DesignBrief and a spec a ProductSpec.
+// P3 intake: one document, written where "Write it to `…`" says. A single target is offered as
+// "One <Type>, exactly in this shape:", several as "## As a <Type>" each; the stand-in writes the
+// first type offered, so an image becomes a DesignBrief and a spec a ProductSpec.
 {
   const intakeTo = /^Write it to `([^`]+)`/m.exec(prompt)?.[1];
-  const intakeType = /^## As an? ([A-Za-z]+)$/m.exec(prompt)?.[1];
+  const intakeType = /^One ([A-Za-z]+), exactly in this shape:$/m.exec(prompt)?.[1] ?? /^## As an? ([A-Za-z]+)$/m.exec(prompt)?.[1];
   if (outputs.length === 0 && intakeTo !== undefined && intakeType !== undefined) outputs.push({ type: intakeType, destination: intakeTo });
 }
 const title = (/^#+\s*Task[^\n]*\n+([^\n]+)/m.exec(prompt)?.[1] ?? 'Scripted work').slice(0, 80);
