@@ -305,7 +305,7 @@ another tool; what comes back is a fresh human-authored round.
 | D4 | Hand back an unreadable link | A bare link is refused with "attach an export"; with an export, the export becomes the Evidence |
 | D5 | Park a finished step whose next step is ready | The next step waits with "Waiting for '<key>' from <tool>."; after the hand-back it runs on the handed-back version |
 | D6 | Workspace link | Renders "Open workspace ↗" and resolves to the local path |
-| D7 | Attribution | The hand-back card shows "by You · responsible You"; the reader shows recorded-by |
+| D7 | Attribution | The hand-back card shows "by You" (the responsible person is left out when they did the work, as on every card); the reader shows recorded-by |
 | D8 | Feedback with a file | The file appears as an input of the next round |
 
 ---

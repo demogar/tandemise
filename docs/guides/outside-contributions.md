@@ -11,8 +11,11 @@ pinned as a permanent, attributed record before anything reads them.
    file** or **Add link**.
 2. A file is read on the spot; a link is just pasted. Only a GitHub pull
    request link can be read on its own — anything else needs an export
-   attached (press **Attach an export**), or hand-back and feedback will
-   refuse it with "Nothing here can read that link. Attach an export of it."
+   attached (press **Attach an export**) first. A bare link nothing can read
+   is refused the same way here, in feedback and in a hand-back: "Nothing
+   here can read that link. Attach an export of it." **At creation, that
+   refusal takes the whole mission down with it** — nothing partial is left
+   behind for you to fix up — so attach the export before you create.
 3. Create the mission as usual (plan now, create and refine, or add to the
    backlog).
 
@@ -40,7 +43,7 @@ mission works from, based on what it is:
 
 If your upload already covers a stage the plan would otherwise run — a spec
 that passes the same Done-when check a product step would have to pass, say —
-that stage is skipped. The Plan tab shows it as a muted row, "\<Stage\> ·
+that stage is skipped. The Plan tab shows it as a muted row, "`<stage>` ·
 covered by your upload", instead of a task that runs. **A project's own
 workflow never skips a stage this way**; its steps still read your upload the
 same way.
@@ -52,9 +55,15 @@ Uploads never make a draft ready to plan on their own — you still need at
 least one accepted Done-when line for that, exactly as without an upload. See
 [Refine a rough request](refine.md).
 
-Your uploads show on the mission's **Get it ready** panel under "Your
-uploads". Until intake has run, each one says "Read when refining or planning
-starts"; afterwards, **Read what it became** opens the document it produced.
+If you use **Create and refine**, or **Add to backlog** while it waits its
+turn, the mission stays a draft, and its **Get it ready** panel lists **Your
+uploads**: until intake has run each one says "Read when refining or planning
+starts", and afterwards **Read what it became** opens the document it
+produced. **Plan mission** (pressed with Done-when filled in) sends the
+mission straight into planning — it is never a draft, so this panel never
+appears for it. There, look at the **Plan** tab for the covered-stage row,
+and the **Artifacts** tab, which lists every artifact the mission has,
+including your pinned upload and whatever intake made of it.
 
 ## Can I attach a file or link to feedback?
 
@@ -74,10 +83,10 @@ already used its output.
 1. Press **Continue elsewhere** and say where you're taking it (Figma, your
    editor, a doc — anything, up to 40 characters).
 2. Tandemise stops the agent and marks the step as waiting for you. Anything
-   that depends on this step's output now waits too, with "Waiting for '\<key\>'
-   from \<tool\>." — so nothing downstream can run on a version you have since
-   taken away.
-3. The card now reads "Waiting for your work in \<tool\>", with a **Hand
+   that depends on this step's output now waits too, with "Waiting for
+   '`<key>`' from `<tool>`." — so nothing downstream can run on a version you
+   have since taken away.
+3. The card now reads "Waiting for your work in `<tool>`", with a **Hand
    back** button. The **Inbox** lists it the same way, and the **Desk**
    counts it among what needs a person.
 
@@ -105,16 +114,17 @@ its diff through `gh`, so downstream review and QA work from that exact
 commit. A link nothing can read, with no export attached, is refused —
 attach the export and try again.
 
-The card afterward shows who did the work and who is responsible for it —
-"by You · responsible You" for a solo project — the same attribution every
-other artifact carries. If you're handing back work someone without a seat on
-the project did, use **Recording for** to say so; no account is needed for
-them.
+The card afterward shows who did the work — "by You" for a solo hand-back,
+the same attribution every artifact carries (the responsible person is left
+out when they did the work themselves, as on every card). Opening the reader
+also shows who recorded it, which matters once the two differ: if you're
+handing back work someone without a seat on the project did, use **Recording
+for** to say so; no account is needed for them.
 
 ## What if I cancel the run instead?
 
 If you stop a running step without continuing it elsewhere, the feed shows
-"\<role\> stopped" — the run ended, but the step was not taken anywhere and
+"`<role>` stopped" — the run ended, but the step was not taken anywhere and
 nothing is waiting on you for it.
 
 ## What does "Open workspace ↗" do?
