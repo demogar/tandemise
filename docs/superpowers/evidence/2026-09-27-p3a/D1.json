@@ -1,0 +1,146 @@
+{
+  "id": "D1",
+  "title": "An uploaded spec covers the spec stage of a real plan",
+  "ok": false,
+  "checks": [
+    {
+      "label": "the New Mission form shows the upload as a chip",
+      "ok": true,
+      "observed": [
+        "hello-spec.md\n137 B"
+      ]
+    },
+    {
+      "label": "the mission carries the upload, pinned as Evidence",
+      "ok": true,
+      "observed": [
+        {
+          "evidenceId": "art_01m3jbf7h0ymh4y9a1sc",
+          "filename": "hello-spec.md",
+          "mediaType": "text/markdown",
+          "refs": [
+            {
+              "kind": "file",
+              "value": "sha256:3c434eb0d0aefb5b7a709acb5ac1d085be538b22b2f97360829efc54bcce1fbe",
+              "label": "hello-spec.md"
+            }
+          ],
+          "intakeArtifactId": "art_01m3jbf92z4gckw7bhj3"
+        }
+      ]
+    },
+    {
+      "label": "intake made a ProductSpec from it (mission-wide, not a task's)",
+      "ok": true,
+      "observed": {
+        "id": "art_01m3jbf92z4gckw7bhj3",
+        "type": "ProductSpec",
+        "taskId": null,
+        "refs": [
+          {
+            "kind": "file",
+            "value": "sha256:3c434eb0d0aefb5b7a709acb5ac1d085be538b22b2f97360829efc54bcce1fbe",
+            "label": "hello-spec.md"
+          }
+        ]
+      }
+    },
+    {
+      "label": "intake ran before planning (mission.intake_completed precedes the plan)",
+      "ok": true,
+      "observed": {
+        "intakeAt": 9,
+        "planAt": 14,
+        "planned": {
+          "type": "note",
+          "text": "Planner produced 6 tasks: design → architecture → development → review → qa → release on attempt 1.",
+          "level": "info"
+        }
+      }
+    },
+    {
+      "label": "the plan is the planner's, not the preset fallback",
+      "ok": true,
+      "observed": {
+        "planned": {
+          "type": "note",
+          "text": "Planner produced 6 tasks: design → architecture → development → review → qa → release on attempt 1.",
+          "level": "info"
+        }
+      }
+    },
+    {
+      "label": "one SKIPPED placeholder, covered by hello-spec.md, reason \"Covered by your upload: hello-spec.md\"",
+      "ok": true,
+      "observed": [
+        {
+          "key": "product",
+          "title": "product (covered by your upload)",
+          "status": "SKIPPED",
+          "statusReason": "Covered by your upload: hello-spec.md",
+          "coveredBy": {
+            "artifactId": "art_01m3jbf92z4gckw7bhj3",
+            "filename": "hello-spec.md"
+          },
+          "outputs": [
+            "ProductSpec"
+          ]
+        }
+      ]
+    },
+    {
+      "label": "no product task: nothing else is on the product role or writes a ProductSpec",
+      "ok": true,
+      "observed": [
+        "product:product:SKIPPED",
+        "design:design:PENDING",
+        "architecture:architecture:PENDING",
+        "implement:development:PENDING",
+        "review:review:PENDING",
+        "qa:qa:PENDING",
+        "release_candidate:release:PENDING"
+      ]
+    },
+    {
+      "label": "the stages that read the spec wait on the placeholder",
+      "ok": true,
+      "observed": [
+        "product"
+      ]
+    },
+    {
+      "label": "the Plan tab shows a muted \"… · covered by your upload\" row naming hello-spec.md",
+      "ok": true,
+      "observed": "product (covered by your upload) · covered by your upload\nhello-spec.md"
+    },
+    {
+      "label": "the covered row reads \"Spec · covered by your upload\" (spec A2, A8 D1)",
+      "ok": false,
+      "observed": "product (covered by your upload) · covered by your upload"
+    },
+    {
+      "label": "the covered row has no status dot",
+      "ok": true
+    },
+    {
+      "label": "the Plan tab lists no other spec or product card",
+      "ok": true,
+      "observed": [
+        "product (covered by your upload) · covered by your upload",
+        "Define flows, states and interaction behaviour",
+        "Choose the approach and order the work",
+        "Implement the plan",
+        "Review the diff independently",
+        "Verify the running application",
+        "Assemble the release candidate"
+      ]
+    }
+  ],
+  "notes": [
+    "plan cards: [\"product (covered by your upload) · covered by your upload\",\"Define flows, states and interaction behaviour\",\"Choose the approach and order the work\",\"Implement the plan\",\"Review the diff independently\",\"Verify the running application\",\"Assemble the release candidate\"]"
+  ],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p3/docs/superpowers/evidence/2026-09-27-p3a/D1-new-mission-with-upload.png",
+    "/Users/demogar/projects/tandemise/tandemise-p3/docs/superpowers/evidence/2026-09-27-p3a/D1-plan-covered-row.png"
+  ]
+}

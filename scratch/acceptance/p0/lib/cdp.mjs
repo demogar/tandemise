@@ -127,6 +127,28 @@ export async function connect(port = 9333, { timeoutMs = 60_000 } = {}) {
       if (!ok) throw new Error(`no "${prefix}" button in a row containing "${rowText}"`);
       await sleep(500);
     },
+    /**
+     * Puts a file into the `<input type=file>` matched by `selector`, as picking it in the native dialog
+     * would: the File is built in the page and set through a DataTransfer, then `change` fires, so the
+     * app's own handler reads it (P3). `text` or `bytes` (a Buffer or Uint8Array) is its content.
+     */
+    async attachFile(selector, { name, type = 'application/octet-stream', text, bytes }) {
+      const data = Buffer.from(text !== undefined ? Buffer.from(text, 'utf8') : bytes).toString('base64');
+      const ok = await evaluate(`(() => {
+        const input = document.querySelector(${JSON.stringify(selector)});
+        if (!input || input.type !== 'file') return false;
+        const raw = atob(${JSON.stringify(data)});
+        const content = new Uint8Array(raw.length);
+        for (let i = 0; i < raw.length; i++) content[i] = raw.charCodeAt(i);
+        const transfer = new DataTransfer();
+        transfer.items.add(new File([content], ${JSON.stringify(name)}, { type: ${JSON.stringify(type)} }));
+        input.files = transfer.files;
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+        return true;
+      })()`);
+      if (!ok) throw new Error(`no file input matches ${selector}`);
+      await sleep(700);
+    },
     async screenshot(path) {
       // An occluded or hidden window never answers; fail loudly instead of hanging the scenario.
       const { data } = await Promise.race([

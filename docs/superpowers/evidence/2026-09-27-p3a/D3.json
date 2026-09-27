@@ -1,0 +1,122 @@
+{
+  "id": "D3",
+  "title": "Hand back a GitHub pull request: a human round on that commit, read downstream",
+  "ok": true,
+  "checks": [
+    {
+      "label": "the build is parked in GitHub",
+      "ok": true,
+      "observed": {
+        "tool": "GitHub",
+        "since": "2026-09-27T21:15:43.255Z"
+      }
+    },
+    {
+      "label": "the dialog holds the one link and asks nothing about downstream work",
+      "ok": true,
+      "observed": "Hand back build\nWhat did you do in GitHub?\nThe work\nhttps://github.com/acme/app/pull/7\nCancel\nHand back"
+    },
+    {
+      "label": "proof (API): build is round 2 and SUCCEEDED, \"Handed back from GitHub.\"",
+      "ok": true,
+      "observed": {
+        "status": "SUCCEEDED",
+        "round": 2,
+        "statusReason": "Handed back from GitHub."
+      }
+    },
+    {
+      "label": "the Evidence carries the PR's refs: url, github.pr acme/app#7, git.commit <head>, git.branch",
+      "ok": true,
+      "observed": [
+        "url=https://github.com/acme/app/pull/7",
+        "github.pr=acme/app#7",
+        "git.commit=ba0c398b518ed8e06243238c1dc17d0169d642c8",
+        "git.branch=hello-from-pr"
+      ]
+    },
+    {
+      "label": "the Evidence is the snapshot: the PR's title, body and diff",
+      "ok": true,
+      "observed": "# Greet the visitor by name\n\nAdds the hello page.\n\n## Diff\n\n```diff\ndiff --git a/hello.html b/hello.html\nnew file mode 100644\nindex 0000000..0be4dec\n--- /dev/null\n+++ b/hello.html\n@@ -0,0 +1 @@\n+<h1>Hello from the pull request</h1>\n```"
+    },
+    {
+      "label": "a human-authored round-2 ChangeSet: authored and recorded by you, carrying the commit",
+      "ok": true,
+      "observed": {
+        "authorId": "mem_01m3jbf1vx1xmwcn50ec",
+        "recordedBy": "mem_01m3jbf1vx1xmwcn50ec",
+        "me": "mem_01m3jbf1vx1xmwcn50ec",
+        "round": 2,
+        "refs": [
+          "url=https://github.com/acme/app/pull/7",
+          "github.pr=acme/app#7",
+          "git.commit=ba0c398b518ed8e06243238c1dc17d0169d642c8",
+          "git.branch=hello-from-pr"
+        ]
+      }
+    },
+    {
+      "label": "the daemon read it through gh: pr view and pr diff for that URL",
+      "ok": true,
+      "observed": [
+        "pr view https://github.com/acme/app/pull/7",
+        "pr diff https://github.com/acme/app/pull/7"
+      ]
+    },
+    {
+      "label": "the build card shows Round 2, by You, with \"Pull request #7 ↗\"",
+      "ok": true,
+      "observed": "DEVELOPER\nbuild\nDone\nRound 2\njust now\nby\nYou\nPull request #7 ↗\n+1 more doc\nFull doc\nRequest changes\n\nFinished the page in the pull request; it greets the visitor by name."
+    },
+    {
+      "label": "the review ran and finished",
+      "ok": true,
+      "observed": {
+        "status": "SUCCEEDED",
+        "statusReason": null
+      }
+    },
+    {
+      "label": "the review's run read the handed-back ChangeSet",
+      "ok": true,
+      "observed": {
+        "inputs": [
+          "art_01m3jbjpdpn9t70tgkj4"
+        ],
+        "changeSet": "art_01m3jbjpdpn9t70tgkj4"
+      }
+    },
+    {
+      "label": "the review's worktree was cut from the pull request's branch",
+      "ok": true,
+      "observed": {
+        "kind": "worktree",
+        "branch": "tandemise/hello-page-finished-in-a-pull-request-scripted-s/hello-page-finished-in-a-pull-request-scripted-s-2s8n7j6m",
+        "baseBranch": "hello-from-pr",
+        "dir": "/tmp/tdm-p3/home/workspaces/ws_01m3jbf1vwhtdp6gxgbf/missions/msn_01m3jbhqaajj1n0jw45s/worktrees/hello-page-finished-in-a-pull-request-scripted-s-2s8n7j6m"
+      }
+    },
+    {
+      "label": "the review's branch contains the handed-back commit",
+      "ok": true,
+      "observed": {
+        "sha": "ba0c398b518ed8e06243238c1dc17d0169d642c8",
+        "reviewBranch": "tandemise/hello-page-finished-in-a-pull-request-scripted-s/hello-page-finished-in-a-pull-request-scripted-s-2s8n7j6m"
+      }
+    },
+    {
+      "label": "the review's prompt carries the pull request and its diff",
+      "ok": true,
+      "observed": ")\n<<<UNTRUSTED_DATA id=1 label=\"ChangeSet: build\" origin=\"artifact art_01m3jbjpdpn9t70tgkj4\">>>\nFinished the page in the pull request; it greets the visitor by name.\n\n## Handed back from GitHub\n\nFrom pull request acme/app#7 (Evidence art_01m3jbjpdk5fm4as4ek2).\n\n# Greet the visitor by name\n\nAdds the hello page.\n\n## Diff\n\n```diff\ndiff --git a/hello.html b/hello.html\nnew file mode 100644\nindex 000000"
+    }
+  ],
+  "notes": [
+    "the fake gh knows https://github.com/acme/app/pull/7: head hello-from-pr @ ba0c398b518e, a real commit in the acceptance repository"
+  ],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p3/docs/superpowers/evidence/2026-09-27-p3a/D3-hand-back-pr-link.png",
+    "/Users/demogar/projects/tandemise/tandemise-p3/docs/superpowers/evidence/2026-09-27-p3a/D3-build-round-2-card.png",
+    "/Users/demogar/projects/tandemise/tandemise-p3/docs/superpowers/evidence/2026-09-27-p3a/D3-review-after-hand-back.png"
+  ]
+}

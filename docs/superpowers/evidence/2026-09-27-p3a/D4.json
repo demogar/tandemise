@@ -1,0 +1,91 @@
+{
+  "id": "D4",
+  "title": "An unreadable link is refused until an export is attached",
+  "ok": true,
+  "checks": [
+    {
+      "label": "a bare link is refused in the dialog: \"Nothing here can read that link. Attach an export of it.\"",
+      "ok": true,
+      "observed": "Hand back design\nWhat did you do in Figma?\nThe work\nhttps://www.figma.com/file/abc123/hello-page\n\n Nothing here can read that link. Attach an export of it.\n\nCancel\nHand back"
+    },
+    {
+      "label": "proof (API): nothing was written; the design is still parked in Figma",
+      "ok": true,
+      "observed": {
+        "parked": {
+          "tool": "Figma",
+          "since": "2026-09-27T21:14:35.986Z"
+        },
+        "round": 1,
+        "artifactsBefore": 1,
+        "artifactsAfter": 1
+      }
+    },
+    {
+      "label": "the dialog shows the link with its export",
+      "ok": true,
+      "observed": "https://www.figma.com/file/abc123/hello-page\n+ hello-page-export.md"
+    },
+    {
+      "label": "the refusal cleared once the work changed",
+      "ok": true
+    },
+    {
+      "label": "proof (API): the design is round 2, SUCCEEDED, \"Handed back from Figma.\"",
+      "ok": true,
+      "observed": {
+        "status": "SUCCEEDED",
+        "round": 2,
+        "statusReason": "Handed back from Figma."
+      }
+    },
+    {
+      "label": "exactly one Evidence was pinned: the refused attempt left none behind",
+      "ok": true,
+      "observed": [
+        {
+          "id": "art_01m3jbmhf66wssr7fswh",
+          "title": "hello-page-export.md",
+          "refs": [
+            "url=https://www.figma.com/file/abc123/hello-page",
+            "file=sha256:be6eb7073564b5e96b447cc5ec51aa12c92a706f5a49eb46bb84faa2b872762e"
+          ]
+        }
+      ]
+    },
+    {
+      "label": "the Evidence is the export: its file ref names hello-page-export.md, beside the link's url",
+      "ok": true,
+      "observed": [
+        "url=https://www.figma.com/file/abc123/hello-page",
+        "file=sha256:be6eb7073564b5e96b447cc5ec51aa12c92a706f5a49eb46bb84faa2b872762e"
+      ]
+    },
+    {
+      "label": "the Evidence's content is the export's bytes",
+      "ok": true,
+      "observed": "# Hello page (Figma export)\n\nThe greeting sits higher on the page and is larger.\n"
+    },
+    {
+      "label": "the round-2 DesignBrief carries the note and the export's text",
+      "ok": true,
+      "observed": "Moved the greeting up and made it larger, in Figma.\n\n## Handed back from Figma\n\nFrom hello-page-export.md (Evidence art_01m3jbmhf66wssr7fswh).\n\n# Hello page (Figma export)\n\nThe greeting sits higher on the page and is larger.\n"
+    },
+    {
+      "label": "the design card shows Round 2 with a link back to the Figma file (\"Open the link ↗\")",
+      "ok": true,
+      "observed": "PRODUCT DESIGNER\ndesign\nDone\nRound 2\njust now\nby\nYou\nOpen the link ↗\n+1 more doc\nFull doc\nRequest changes\n\nMoved the greeting up and made it larger, in Figma."
+    },
+    {
+      "label": "that link is the Figma URL",
+      "ok": true,
+      "observed": "https://www.figma.com/file/abc123/hello-page"
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p3/docs/superpowers/evidence/2026-09-27-p3a/D4-bare-link-refused.png",
+    "/Users/demogar/projects/tandemise/tandemise-p3/docs/superpowers/evidence/2026-09-27-p3a/D4-link-with-export.png",
+    "/Users/demogar/projects/tandemise/tandemise-p3/docs/superpowers/evidence/2026-09-27-p3a/D4-design-round-2-card.png"
+  ]
+}

@@ -20,6 +20,7 @@
 // agent answers every note in handoff.changed, citing its id. The P2 modes are
 // listed where they are read, below.
 // A task objective that mentions "preview" gets an "Open preview" link in its handoff.
+// P3 knobs (SCRIPTED_PLAN_SKIP, SCRIPTED_WORKSPACE_LINK) are described where they are read.
 // P8 usage knobs (SCRIPTED_USAGE_MIN, SCRIPTED_COST_USD) are described where they are read, at the end.
 import { createHash } from 'node:crypto';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
@@ -80,7 +81,9 @@ const FAIL_UNTIL_NOTE = mode('SCRIPTED_FAIL_UNTIL_NOTE') && !inRound;
 //   SCRIPTED_FAIL_RELEASE    a step asked for a ReleaseCandidate writes nothing, every time; the "P10 desk"
 //                            workflow's release gate needs the artifact, so its retries exhaust (P10)
 // A spec written in a round adds one criterion per note, so a note adds AC3 to two.
-const ledgerBlock = /^Done when \(criteria ledger[^\n]*\n((?:- [^\n]+\n?)+)/m.exec(prompt)?.[1] ?? '';
+// An intake prompt (P3) lists the person's own lines as "Done when (the person's own lines; …)", so a spec
+// made from an upload covers them the way a product step's spec would.
+const ledgerBlock = /^Done when \((?:criteria ledger|the person's own lines)[^\n]*\n((?:- [^\n]+\n?)+)/m.exec(prompt)?.[1] ?? '';
 const ledgerKeys = [...ledgerBlock.matchAll(/^- ([A-Za-z][\w-]*): /gm)].map((m) => m[1]);
 const userKeys = ledgerKeys.filter((k) => /^U\d+$/.test(k));
 const verifyKeys = /with `criterionId` set to its ledger id: ([^.]+)\./.exec(prompt)?.[1]?.split(',').map((k) => k.trim()).filter(Boolean)
@@ -118,6 +121,41 @@ if (process.env.SCRIPTED_PROMPT_DIR) {
   mkdirSync(process.env.SCRIPTED_PROMPT_DIR, { recursive: true });
   writeFileSync(join(process.env.SCRIPTED_PROMPT_DIR, `${Date.now()}-${process.pid}.txt`), prompt);
 }
+// P3, the planner. SCRIPTED_PLAN_SKIP (env, or its name in the goal): a planner prompt that lists a
+// preexisting upload of type ProductSpec is answered with the preset it offers, as JSON, minus the stage
+// that writes the ProductSpec, which is named under `skipped` with the upload's id - what the prompt tells a
+// model to do. Without the mode, or without such an upload, a planner prompt gets no JSON as before, and
+// planning falls back to the preset.
+if (/^You are the Planner for Tandemise/.test(prompt) && mode('SCRIPTED_PLAN_SKIP')) {
+  const upload = /^- ProductSpec ".*" \(id (\S+)\)$/m.exec(prompt)?.[1];
+  const preset = /The preset, for reference:\n\n````json\n([\s\S]*?)\n````/.exec(prompt)?.[1];
+  if (upload !== undefined && preset !== undefined) {
+    const plan = JSON.parse(preset);
+    // Only what "# Capabilities" says this installation can satisfy, as the prompt asks: the scripted
+    // runtime has no browser, and a plan requiring one is rejected.
+    const offered = /can actually satisfy:\n\n([^\n]+)/.exec(prompt)?.[1]?.split(',').map((s) => s.trim());
+    const keep = (caps) => (offered === undefined ? caps : caps.filter((cap) => offered.includes(cap)));
+    for (const t of plan.tasks) {
+      t.requiredCapabilities = keep(t.requiredCapabilities ?? []);
+      if (t.executionPolicy) t.executionPolicy.capabilities = keep(t.executionPolicy.capabilities ?? []);
+    }
+    const covered = plan.tasks.filter((t) => t.expectedOutputs.includes('ProductSpec'));
+    const gone = new Set(covered.map((t) => t.key));
+    const tasks = plan.tasks
+      .filter((t) => !gone.has(t.key))
+      .map((t) => ({ ...t, dependsOn: t.dependsOn.filter((key) => !gone.has(key)) }));
+    console.log(JSON.stringify({
+      summary: `${plan.summary} The spec stage is left out: the person's upload already is the spec.`,
+      tasks,
+      skipped: covered.map((t) => ({
+        stage: t.roleId, outputType: 'ProductSpec', artifactId: upload,
+        reason: 'The uploaded spec already states the acceptance criteria this stage would write.',
+      })),
+    }));
+    process.exit(0);
+  }
+}
+
 if (SLOW) await new Promise((r) => setTimeout(r, 20_000));
 if (FAIL_UNTIL_NOTE) { console.log('SCRIPTED_FAIL_UNTIL_NOTE: nothing written'); process.exit(0); }
 if (mode('SCRIPTED_FAIL_RELEASE') && outputs.some((o) => o.type === 'ReleaseCandidate')) { console.log('SCRIPTED_FAIL_RELEASE: nothing written'); process.exit(0); }
@@ -261,7 +299,9 @@ for (const { type, destination } of outputs) {
         `Skills in prompt: ${skillsInPrompt.length === 0 ? 'none' : skillsInPrompt.join(', ')}`,
       ]
       : ['Written by the scripted acceptance agent', 'No model was called'],
-    ...(/preview/i.test(objective) ? { links: [{ label: 'Open preview', url: 'https://example.com/preview', kind: 'workspace' }] } : {}),
+    ...(/preview/i.test(objective) ? { links: [{ label: 'Open preview', url: 'https://example.com/preview', kind: 'workspace' }] }
+      // P3: SCRIPTED_WORKSPACE_LINK points at a file in the repository by path, as an agent names its working copy.
+      : mode('SCRIPTED_WORKSPACE_LINK') ? { links: [{ label: 'The page in the repository', kind: 'workspace', path: 'README.md' }] } : {}),
     ...(changed.length > 0 ? { changed } : {}),
   };
   const typeFront = type === 'ReviewReport' && REVIEW_BLOCKING

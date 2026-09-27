@@ -1,0 +1,14 @@
+name: P3 hold
+description: A design, then a build that asks before it starts, so a finished design can go elsewhere while the build is ready and waiting.
+steps:
+  - key: design
+    role: design
+    objective: Design the hello page.
+    outputs: [DesignBrief]
+  - key: build
+    role: development
+    dependsOn: [design]
+    approval: before
+    objective: Build the hello page.
+    inputs: [DesignBrief]
+    outputs: [ChangeSet]
