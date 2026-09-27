@@ -25,7 +25,7 @@ const contributionFile = z.object({
   mediaType: z.string().trim().min(1).max(200),
   dataBase64: z.string().max(CONTRIBUTION_BASE64_MAX, `a file may be at most ${CONTRIBUTION_MAX_BYTES} bytes decoded`),
 });
-export const outsideContributionSchema = z.union([
+export const outsideContributionSchema = z.discriminatedUnion('kind', [
   contributionFile,
   z.object({
     kind: z.literal('link'),
