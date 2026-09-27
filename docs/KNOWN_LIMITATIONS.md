@@ -44,8 +44,9 @@ measured against a mission or monthly limit (see `docs/guides/limits.md`).
 
 **Limits do not count intake either.** Turning an upload into the typed
 document a mission works from has no `Run` row, like planning and refinement
-above, so it costs nothing against a mission or monthly limit — and nothing
-shows it happened, beyond the document it produced.
+above, so it costs nothing against a mission or monthly limit. The timeline says it
+ran ("Read N uploads"), but it has no transcript, time or token count of its
+own to show.
 
 **Only a GitHub pull request link is read back on its own.** Handing in or
 handing back a link, Tandemise can fetch a pull request's diff and commit

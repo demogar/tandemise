@@ -80,19 +80,30 @@ change, an implementation plan, a spec — offers **Continue elsewhere** on its
 card while it is ready, running or finished, as long as nothing downstream has
 already used its output.
 
-1. Press **Continue elsewhere** and say where you're taking it (Figma, your
-   editor, a doc — anything, up to 40 characters).
+1. Press **Continue elsewhere** and say where you're taking it. It starts
+   filled in with a likely place — Figma for a design, Cursor for a change
+   or a plan, Google Docs for a spec — and you can type anything else, up to
+   40 characters.
 2. Tandemise stops the agent and marks the step as waiting for you. Anything
    that depends on this step's output now waits too, with "Waiting for
    '`<key>`' from `<tool>`." — so nothing downstream can run on a version you
    have since taken away.
-3. The card now reads "Waiting for your work in `<tool>`", with a **Hand
-   back** button. The **Inbox** lists it the same way, and the **Desk**
+3. The card now reads "Waiting for your work in `<tool>`", with **Take it
+   back** and **Hand back** buttons. The **Inbox** lists it the same way, and the **Desk**
    counts it among what needs a person.
 
 Once other work has read a step's output, it can no longer be continued
 elsewhere — finish or redo that work first. A `wait` step (one that polls a
 command) can never be parked or handed back; it has its own way of finishing.
+
+## Changed your mind?
+
+Press **Take it back** on the parked card. The step goes back to the agent
+and runs again, and the timeline says "Taken back from `<tool>`". Work that
+depends on the step stops saying it waits on that tool; it waits for the step
+instead, and runs once the step has finished again. Nothing is handed back,
+so a **Hand back** after this is refused — continue the step elsewhere again
+if you want to.
 
 ## How do I hand it back?
 
@@ -110,8 +121,15 @@ a version you took away. Everything that follows the mission's own rules
 round.
 
 Handing back a GitHub pull request link reads the branch's head commit and
-its diff through `gh`, so downstream review and QA work from that exact
-commit. A link nothing can read, with no export attached, is refused —
+its diff through `gh`, and fetches the head into a local branch,
+`tandemise/pr-<number>`, in the repository that read it — so downstream
+review, QA and integration work from that exact commit even when the branch
+was never on this machine (a fork, a web edit, another laptop). For a change,
+the pull request's branch replaces the agent's own when the mission's
+branches are integrated. If the fetch fails, a change is refused with
+"Couldn't fetch that pull request into `<repository>`. Fetch or push its
+branch, then hand it back again."; anything else is handed back without a
+branch. A link nothing can read, with no export attached, is refused —
 attach the export and try again.
 
 The card afterward shows who did the work — "by You" for a solo hand-back,
