@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.6.0](https://github.com/demogar/tandemise/compare/v0.5.0...v0.6.0) (2026-09-27)
+
+
+### Features
+
+* a native notification when something new needs you ([#24](https://github.com/demogar/tandemise/issues/24)) ([2b9ed5e](https://github.com/demogar/tandemise/commit/2b9ed5e26149d9fd83f58f8f31aaf4877c9b3029))
+* an about section with versions, data folder and copyable diagnostics ([#25](https://github.com/demogar/tandemise/issues/25)) ([f19de23](https://github.com/demogar/tandemise/commit/f19de23d0109a4921feddfc62eb176f52beff06a))
+* bring your own skills and pin them to the roles that use them ([#28](https://github.com/demogar/tandemise/issues/28)) ([911a18c](https://github.com/demogar/tandemise/commit/911a18c22bd0b3a1d1f1d93545eabf0fab29f9ca))
+* keep your setup in the repo and reject gates that can never pass ([#29](https://github.com/demogar/tandemise/issues/29)) ([22fa04f](https://github.com/demogar/tandemise/commit/22fa04f8927d7366beeb01b0af2d11e667d55d41))
+* route each step to the right model and escalate on retry ([#18](https://github.com/demogar/tandemise/issues/18)) ([85fa05d](https://github.com/demogar/tandemise/commit/85fa05d30863344e8f4da92fd8472988e58e7025))
+* turn labelled github issues into missions and report back on them ([#30](https://github.com/demogar/tandemise/issues/30)) ([5ac2b8d](https://github.com/demogar/tandemise/commit/5ac2b8d2294ab275e960bd9006ce6a064f7314fa))
+
+
+### Bug Fixes
+
+* name refinement notes after their mission and retire the stale screenshot pass ([#21](https://github.com/demogar/tandemise/issues/21)) ([563f0e6](https://github.com/demogar/tandemise/commit/563f0e61a647857b16f1aa277beb1014098959aa))
+* notes given in the same millisecond reached the agent out of order, and a mission could complete before its review escalated ([#19](https://github.com/demogar/tandemise/issues/19)) ([ed6f917](https://github.com/demogar/tandemise/commit/ed6f917f87408ccfad0171de76695bbad86fe73c))
+* retry starts the daemon with a node that can open the database ([#27](https://github.com/demogar/tandemise/issues/27)) ([5344e15](https://github.com/demogar/tandemise/commit/5344e15e10c5cf68d636857cd67a15934db10e18))
+* the development app shows as tandemise in the dock, not electron ([#23](https://github.com/demogar/tandemise/issues/23)) ([044fb92](https://github.com/demogar/tandemise/commit/044fb92cd1868171a8a97874525fd315bfc6a6a8))
+
+
+### Documentation
+
+* credit tandemise's origins and inspirations ([#26](https://github.com/demogar/tandemise/issues/26)) ([73280cc](https://github.com/demogar/tandemise/commit/73280cc5e67fc4784d2fc2b93d4975e708717ac5))
+* guides and screenshots for the product-owner loop ([#16](https://github.com/demogar/tandemise/issues/16)) ([92f0f03](https://github.com/demogar/tandemise/commit/92f0f0381b7b58003213d2f4e3cb905f3bc5ebe3))
+* recapture every screenshot from the current app ([#20](https://github.com/demogar/tandemise/issues/20)) ([c0f0f9d](https://github.com/demogar/tandemise/commit/c0f0f9d0880b499b9f306c4a6ef040a78b158450))
+
 ## [0.5.0](https://github.com/demogar/tandemise/compare/v0.4.0...v0.5.0) (2026-09-26)
 
 
