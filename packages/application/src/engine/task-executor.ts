@@ -4,14 +4,15 @@ import type {
   DecisionRepositoryPort, EventRepositoryPort, ExecutionTargetRepositoryPort, ExecutionTargetRecord, ExternalRef,
   CriteriaTrace, GateOutcome, LimitPressure, LoadedArtifact, Member, MemberRepositoryPort, Mission, MissionCriterion, MissionQuestionRepositoryPort, MissionRepositoryPort, MissionTask, RepoRepositoryPort,
   Repository, ResourceLease, RoleRepositoryPort, RoleTemplate, Run, RunEventRecord, RunInputRepositoryPort, RunPurpose,
-  ResolvedModel, RunRepositoryPort, RunUsage, TracedCriterion,
+  ResolvedModel, RunRepositoryPort, RunSkill, RunUsage, SkillFile, SkillPin, TracedCriterion,
   RuntimeProfile, RuntimeProfileRepositoryPort, TargetKind, TaskRepositoryPort, TaskStatus,
   Workspace, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
 import {
-  ACCEPT_RESULT_OPTION, CORE_CAPABILITIES, RUNTIME_ACTOR, anyCapabilityMatches, gateDependencies, indexTeam, isActiveMember, resolveModel, responsibleFor,
+  ACCEPT_RESULT_OPTION, CORE_CAPABILITIES, RUNTIME_ACTOR, anyCapabilityMatches, gateDependencies, indexTeam, isActiveMember, missingSkillReason, resolveModel, responsibleFor,
 } from '@tandemise/domain';
 import { isDaemonStopping } from '../support/shutdown.js';
+import { NO_SKILLS, type InstalledSkills, type SkillInstaller } from './skill-installer.js';
 import { LIVE_RUN_STATUSES } from '../support/downstream.js';
 import { liveArtifacts, upstreamTaskIds } from '../support/lineage.js';
 import { githubSlug } from '../support/repository-slug.js';
@@ -144,7 +145,28 @@ export interface TaskExecutorDeps {
    * harnesses built before limits still compose; the module always passes it.
    */
   readonly limits?: LimitGuard;
+  /**
+   * The skills library (P13): a task's pins and their verified content.
+   * Optional so harnesses built before skills still compose; the module always
+   * passes it, together with the installer.
+   */
+  readonly skills?: SkillSupply;
+  readonly skillInstaller?: SkillInstaller;
   readonly log: Logger;
+}
+
+/** What the executor asks of the skills library (P13). */
+export interface SkillSupply {
+  /** The pins a task gets from its role and step, `latest` made concrete; problems name what could not be pinned. */
+  pinsFor(
+    workspaceId: import('@tandemise/shared').WorkspaceId,
+    role: RoleTemplate | undefined,
+    step: { readonly key: string; readonly skillRefs?: readonly import('@tandemise/domain').SkillRef[] },
+  ): { readonly pins: readonly SkillPin[]; readonly problems: readonly string[] };
+  /** Pins whose content is not in the store, or no longer hashes to its pin. */
+  missing(pins: readonly SkillPin[]): Promise<readonly SkillPin[]>;
+  /** A pin's content, verified against its hash; null when missing. */
+  content(hash: string): Promise<readonly SkillFile[] | null>;
 }
 
 /**
@@ -203,6 +225,10 @@ export class TaskExecutor {
     //    the backstop for any other caller.
     const overLimit = this.deps.limits?.admit(mission.id) ?? null;
     if (overLimit !== null) return { kind: 'deferred', reason: overLimit };
+    // 1(b). Skills (P13): a pinned skill whose content is gone refuses the run
+    //       before anything is spent on it, naming the skill.
+    const skillRefusal = await this.#refuseMissingSkills(task, mission, workspace, role, scope);
+    if (skillRefusal !== null) return skillRefusal;
     const leases = this.#acquireLeases(task, mission, repository);
     if (!leases.ok) return { kind: 'deferred', reason: leases.reason };
 
@@ -344,6 +370,8 @@ export class TaskExecutor {
     // attempt ends. A leftover socket would be a second, unauthenticated door
     // into the tool broker.
     let toolSurface: RunToolSurface = NO_TOOL_SURFACE;
+    // The pinned skills this attempt installed (P13); removed again from a target that is not a worktree.
+    let installed: InstalledSkills = NO_SKILLS;
     // The first run keeps its runtime slot when it ends, in case the round
     // needs a tighten pass: freed, it would go to another task while this one
     // harvests and checks, and the pass would run the profile over its limit.
@@ -416,9 +444,12 @@ export class TaskExecutor {
         signal,
       });
       await deps.harvester.prepare(target, scope, running);
+      installed = await this.#installSkills(running, target, profile, adapter, scope);
+      // Every pass of this attempt - the first run, a tighten, a delivery - gets the same skills.
+      const actx: AttemptContext = { ...ctx, skills: installed };
       const brief = await deps.rounds.openRound(running);
       const compiled = await this.#compilePrompt({
-        ...ctx, task: running, workspace, role, grants, target, tools: toolSurface.toolNames, feedback, round: brief,
+        ...actx, task: running, workspace, role, grants, target, tools: toolSurface.toolNames, feedback, round: brief,
       });
       const destinations = running.expectedOutputs.map((type) => `${outDirFor(running)}/${type}.md`);
       // Spec §5: a round continues the last settled session whenever the runtime can, whatever that run's status.
@@ -436,7 +467,7 @@ export class TaskExecutor {
         runId, mcpConfigPath: toolSurface.mcpConfigPath, reservation, retainSlot: retained,
         prompt: session !== null && brief !== null ? roundRequest(brief, destinations) : compiled.prompt,
         ...(session === null ? {} : { continueSession: session, freshPrompt: compiled.prompt }),
-        purpose, round, inputs: compiled.includedArtifactIds,
+        purpose, round, inputs: compiled.includedArtifactIds, skills: installed.received,
       });
 
       const stopped = this.#stopped(outcome, running, scope);
@@ -515,7 +546,7 @@ export class TaskExecutor {
       //         settles (spec §4).
       if (assessed.verdict.passed) {
         const delivered = await this.#deliverQueued({
-          ...ctx, task: running, harvest, assessed, profile, adapter, target, assignment, grants, agent, scope,
+          ...actx, task: running, harvest, assessed, profile, adapter, target, assignment, grants, agent, scope,
           firstRunId: outcome.runId, tools: toolSurface.toolNames, mcpConfigPath: toolSurface.mcpConfigPath,
           retained, produced, checks,
         });
@@ -540,7 +571,7 @@ export class TaskExecutor {
       //        before anyone reviews it, so reviewers read the final version.
       if (assessed.verdict.passed && final.overBudget.length > 0) {
         const tightened = await this.#tighten({
-          ...ctx, task: running, harvest: final, profile, adapter, target, assignment, grants, agent, scope,
+          ...actx, task: running, harvest: final, profile, adapter, target, assignment, grants, agent, scope,
           firstRunId: lastRunId, tools: toolSurface.toolNames, mcpConfigPath: toolSurface.mcpConfigPath,
           retained,
         });
@@ -570,6 +601,9 @@ export class TaskExecutor {
       //     but the run's private tool surface dies with the run.
       retained.reservation?.release();
       await toolSurface.dispose();
+      // A worktree keeps its skills (it is the run's reviewable record, and they
+      // are excluded from its commits); anywhere else is someone's own folder.
+      if (kind !== 'worktree' && installed.written.length > 0) await deps.skillInstaller?.remove(target, scope, installed);
       await this.#releaseTarget(target, kind);
     }
   }
@@ -624,6 +658,7 @@ export class TaskExecutor {
       purpose: input.purpose,
       model: chosen.model,
       modelReason: chosen.reason,
+      skills: input.skills ?? null,
     });
     // Recorded before the run starts, so a round started while it runs already sees it as a consumer.
     deps.runInputs.record(runId, input.inputs);
@@ -767,6 +802,100 @@ export class TaskExecutor {
     });
 
     return { runId, status, failure, cancelled, interrupted };
+  }
+
+  /**
+   * The task's skill pins (P13), resolved once. A planned task got them when it
+   * was created; a task the engine added later (a fix, a merge conflict) takes
+   * its role's pins now and keeps them for every retry.
+   */
+  #pinSkills(task: MissionTask, workspace: Workspace, role: RoleTemplate): { task: MissionTask; problems: readonly string[] } {
+    const skills = this.deps.skills;
+    if (skills === undefined || (task.skills !== null && task.skills !== undefined)) return { task, problems: [] };
+    const { pins, problems } = skills.pinsFor(workspace.id, role, { key: task.key });
+    if (problems.length > 0) return { task, problems };
+    return { task: this.deps.tasks.update(task.id, { skills: pins }), problems: [] };
+  }
+
+  /**
+   * Refuses a run whose pinned skills cannot all be given to it (P13 spec §4):
+   * the task goes BLOCKED with the skill named, and an intervention card asks
+   * the person to import it again and retry. No attempt is spent - nothing ran.
+   */
+  async #refuseMissingSkills(
+    task: MissionTask,
+    mission: Mission,
+    workspace: Workspace,
+    role: RoleTemplate,
+    scope: EventScope,
+  ): Promise<TaskAttemptOutcome | null> {
+    if (this.deps.skills === undefined) return null;
+    const pinned = this.#pinSkills(task, workspace, role);
+    let reason: string | null = null;
+    let named: string[] = [];
+    if (pinned.problems.length > 0) {
+      reason = `${pinned.problems.join(' ')} Import it on the Skills screen or change the pin, then choose Retry.`;
+      named = pinned.problems.map((p) => /skill '([^']+)'/.exec(p)?.[1] ?? '?');
+    } else {
+      const missing = await this.deps.skills.missing(pinned.task.skills ?? []);
+      if (missing.length > 0) {
+        reason = missingSkillReason(missing);
+        named = missing.map((m) => `${m.name} v${m.version}`);
+      }
+    }
+    if (reason === null) return null;
+    const current = this.#requireTask(task.id);
+    // Nothing is waiting on this task but the person: don't raise a second card for the same refusal.
+    const open = this.deps.approvals.pendingForTask(task.id).some((a) => a.kind === 'intervention');
+    if (!open) {
+      const approval = this.deps.approvalFactory.createOrThrow({
+        workspaceId: workspace.id,
+        missionId: mission.id,
+        taskId: task.id,
+        kind: 'intervention',
+        risk: 'read',
+        title: `‘${task.title}’ needs a skill that is missing`,
+        rationale: reason,
+        effect: 'Retry runs the step once the skill is back in the library. Leave blocked stops here.',
+        evidence: [
+          { kind: 'text', label: 'Missing', value: named.join(', ') },
+          { kind: 'text', label: 'Objective', value: summarize(task.objective, 600) },
+        ],
+        options: [
+          { id: 'approve', label: 'Retry' },
+          { id: 'reject', label: 'Leave blocked' },
+        ],
+        recommendedOptionId: null,
+        ...this.deps.reviews.addressFor(task, workspace.id),
+      });
+      this.deps.approvals.create(approval);
+      this.deps.recorder.invalidate('approvals', mission.id);
+    }
+    return this.#block(current, scope, reason);
+  }
+
+  /**
+   * Gives this attempt its pinned skills (P13): verified content, written into
+   * the runtime's skills folder when it has one, else into the prompt.
+   */
+  async #installSkills(
+    task: MissionTask,
+    target: ExecutionTarget,
+    profile: RuntimeProfile,
+    adapter: { skillsFolder?(profile: RuntimeProfile): string | null },
+    scope: EventScope,
+  ): Promise<InstalledSkills> {
+    const { skills, skillInstaller } = this.deps;
+    const pins = task.skills ?? [];
+    if (skills === undefined || skillInstaller === undefined || pins.length === 0) return NO_SKILLS;
+    const contents: { pin: SkillPin; files: readonly SkillFile[] }[] = [];
+    for (const pin of pins) {
+      const files = await skills.content(pin.hash);
+      // Checked before the attempt began; gone since, the attempt fails and says which.
+      if (files === null) throw new Error(missingSkillReason([pin]));
+      contents.push({ pin, files });
+    }
+    return skillInstaller.install({ target, scope, folder: adapter.skillsFolder?.(profile) ?? null, skills: contents });
   }
 
   /**
@@ -1041,7 +1170,7 @@ export class TaskExecutor {
       freshPrompt: fresh.prompt,
       continueSession: resumable ? session : null,
       grants: input.grants, scope, signal: input.signal, agent: input.agent, runId: ids.run(),
-      mcpConfigPath: input.mcpConfigPath,
+      mcpConfigPath: input.mcpConfigPath, skills: input.skills?.received ?? null,
       // The slot the first run kept, handed straight on.
       reservation: takeReservation(input.retained),
       purpose: 'tighten', round: task.round ?? 1, inputs: fresh.includedArtifactIds,
@@ -1180,7 +1309,7 @@ export class TaskExecutor {
         task, mission: input.mission, profile, adapter: input.adapter, target: input.target, assignment: input.assignment,
         prompt: resumable ? roundRequest(brief, destinations, { inPlace: true }) : fresh.prompt, freshPrompt: fresh.prompt,
         continueSession: resumable ? session : null, grants: input.grants, scope, signal: input.signal, agent: input.agent,
-        runId: ids.run(), mcpConfigPath: input.mcpConfigPath,
+        runId: ids.run(), mcpConfigPath: input.mcpConfigPath, skills: input.skills?.received ?? null,
         // The slot is handed on and kept again, since another pass may follow this one.
         reservation: takeReservation(input.retained), retainSlot: input.retained,
         purpose: 'feedback', round: task.round ?? 1, inputs: fresh.includedArtifactIds,
@@ -1503,7 +1632,11 @@ export class TaskExecutor {
         'warn',
       );
     }
-    return { prompt: compiled.prompt, includedArtifactIds: compiled.includedArtifactIds };
+    // P13: the pinned skills - one line each when the runtime loads them from
+    // its skills folder, the whole SKILL.md when it cannot.
+    const skillSection = input.skills?.promptSection ?? null;
+    const prompt = skillSection === null ? compiled.prompt : `${compiled.prompt.trimEnd()}\n\n${skillSection}\n`;
+    return { prompt, includedArtifactIds: compiled.includedArtifactIds };
   }
 
   #contractNotes(
@@ -2100,6 +2233,8 @@ interface AttemptContext {
   readonly role: RoleTemplate;
   readonly scope: EventScope;
   readonly signal: AbortSignal;
+  /** The skills this attempt installed (P13); absent before they are. */
+  readonly skills?: InstalledSkills;
 }
 
 interface PromptInput extends AttemptContext {
@@ -2153,7 +2288,7 @@ interface DriveInput {
   readonly task: MissionTask;
   readonly mission: Mission;
   readonly profile: RuntimeProfile;
-  readonly adapter: { resume?: unknown; acceptsModel?(profile: RuntimeProfile): boolean };
+  readonly adapter: { resume?: unknown; acceptsModel?(profile: RuntimeProfile): boolean; skillsFolder?(profile: RuntimeProfile): string | null };
   readonly target: ExecutionTarget;
   readonly assignment: { id: import('@tandemise/shared').WorkerAssignmentId };
   readonly prompt: string;
@@ -2180,6 +2315,8 @@ interface DriveInput {
   readonly round: number;
   /** The artifacts the compiled prompt included, recorded as this run's inputs. */
   readonly inputs: readonly ArtifactId[];
+  /** The skills the run was given (P13), recorded on its row; null when there is no library. */
+  readonly skills?: readonly RunSkill[] | null;
 }
 
 interface RunFailure {

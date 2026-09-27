@@ -1,6 +1,6 @@
 import type { MissionId, Clock, RepositoryId } from '@tandemise/shared';
 import { ids } from '@tandemise/shared';
-import type { ArtifactHandoff, MissionPlan, MissionTask, PlannedTask, Repository } from '@tandemise/domain';
+import type { ArtifactHandoff, MissionPlan, MissionTask, PlannedTask, Repository, SkillPin } from '@tandemise/domain';
 
 /**
  * Turns an accepted plan into the task rows the scheduler runs.
@@ -24,7 +24,11 @@ export function materializePlan(
   // a needless way to lose a plan.
   const byName = new Map(repositories.map((r) => [r.name.toLowerCase(), r.id]));
   const tasks = options.inferInputs === true ? withInferredInputs(plan.tasks) : plan.tasks;
-  return tasks.map((task, index) => fromPlanned(task, missionId, index, now, byName));
+  return tasks.map((task, index) => {
+    const made = fromPlanned(task, missionId, index, now, byName);
+    // P13: the pins are resolved now, so `latest` means the newest version when the task was created.
+    return options.skills === undefined ? made : { ...made, skills: options.skills(task) };
+  });
 }
 
 export interface MaterializeOptions {
@@ -36,6 +40,12 @@ export interface MaterializeOptions {
    * A workflow file is left as its author wrote it.
    */
   readonly inferInputs?: boolean;
+  /**
+   * The skills each task gets (P13): its role's pins and its step's refs,
+   * resolved to concrete versions. Absent: tasks are created unresolved, and
+   * resolve their role's pins on their first run.
+   */
+  readonly skills?: (task: PlannedTask) => readonly SkillPin[];
 }
 
 function withInferredInputs(tasks: readonly PlannedTask[]): readonly PlannedTask[] {

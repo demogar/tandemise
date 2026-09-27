@@ -1,0 +1,96 @@
+{
+  "id": "N4",
+  "title": "A pinned skill that is missing refuses the run with its name; re-import and Retry finish it",
+  "ok": true,
+  "checks": [
+    {
+      "label": "proof (API): Check lint pinned lint-rules v1 when the plan was made",
+      "ok": true,
+      "observed": [
+        {
+          "name": "lint-rules",
+          "version": 1,
+          "hash": "a8d6b6cfe985dc5acf3cdf8f23060c1e91bb0eddade2f4d33c9f51db5309bd4b",
+          "from": "step"
+        }
+      ]
+    },
+    {
+      "label": "lint-rules is gone from the Library",
+      "ok": true
+    },
+    {
+      "label": "Check lint is BLOCKED with the skill named",
+      "ok": true,
+      "observed": "Skill 'lint-rules' v1 (a8d6b6cfe985) is missing from the skills library. Import it again on the Skills screen, then choose Retry."
+    },
+    {
+      "label": "proof (SQL): no run was started for it",
+      "ok": true,
+      "observed": [
+        {
+          "key": "implement",
+          "attempt": 1,
+          "status": "SUCCEEDED",
+          "skills": [
+            {
+              "name": "tdd",
+              "version": 2,
+              "hash": "73c86d77ec4e37d25dff2bb9934f1e2e0a026cb17143439b0954d7d973f39256",
+              "via": "folder"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "label": "Inbox: \"‘Check lint’ needs a skill that is missing\"",
+      "ok": true,
+      "observed": "Inbox\nWhat is waiting on a person.\n‘Check lint’ needs a skill that is missing\nFor you·N4 lint muj1rrog SCRIPTED_SLOW_20S\nIntervention\njust now\nDecided\n3 decisions\nApprove the plan for N4 lint muj1rrog SCRIPTED_SLOW_20S?\nApproved·\nby\nYou\nN4 lint muj1rrog SCRIPTED_SLOW_20S\nApprove the plan for N3 hello page muj1qt2a?\nApproved·\nby\nYou\nN3 hello page muj1qt2a\nApprove the plan for N2 hello page muj1pmrf?\nApproved·\nby\nYou\nN2 hello page muj1pmrf"
+    },
+    {
+      "label": "the card names lint-rules v1 and says what to do",
+      "ok": true,
+      "observed": "Inbox\nWhat is waiting on a person.\n‘Check lint’ needs a skill that is missing\nFor you·N4 lint muj1rrog SCRIPTED_SLOW_20S\nIntervention\njust now\nRead only\n‘Check lint’ needs a skill that is missing\nIntervention\napr_01m3g2aqrm6gcmagxv26\ntask\ntsk_01m3g29yhs4qdm7y5fm4\nN4 lint muj1rrog SCRIPTED_SLOW_20S\n·\nCheck lint\n·\nrequested by Reviewer\n·\njust now\nWHY IS THIS BEING ASKED?\n\nSkill 'lint-rules' v1 (a8d6b6cfe985) is missing from the skills library. Import it again on the Skills screen, then choose Retry.\n\nWHAT CHANGES IF YOU APPROVE?\n\nRetry runs the step once the skill is back in the library. Leave blocked stops here.\n\nEVIDENCE\nMissing\nlint-rules v1\nObjective\nCheck the change against the lint rules.\nYOUR OPTIONS\nRetry\nLeave blocked\nApplies immediately.\nRetry\nDecided\n3 decisions\nApprove the plan for N4 lint muj1rrog SCRIPTED_SLOW_20S?\nApproved·\nby\nYou\nN4 lint muj1rrog SCRIPTED_SLOW_20S\nApprove the plan for N3 hello page muj1qt2a?\nApproved·\nby\nYou\nN3 hello page muj1qt2a\nApprove the plan for N2 hello page muj1pmrf?\nApproved·\nby\nYou\nN2 hello page muj1pmrf"
+    },
+    {
+      "label": "importing the same folder again: \"New skill\" with the same hash",
+      "ok": true,
+      "observed": "lint-rules\na8d6b6cfe985\n1 file · 119 B\n\nThe lint rules we keep.\n\nFrom /tmp/tdm-p13/more-skills/lint-rules\n\nNew skill\n\nFiles\nSKILL.md (119 B)\nSKILL.md\nLint rules\n\nNo unused imports. No commented-out code."
+    },
+    {
+      "label": "after Retry the mission completes",
+      "ok": true,
+      "observed": "COMPLETE"
+    },
+    {
+      "label": "Check lint's drawer: \"Skills: lint-rules v1 · a8d6b6cfe985 (in prompt)\" or as a folder",
+      "ok": true,
+      "observed": "Skills: lint-rules v1 · a8d6b6cfe985"
+    },
+    {
+      "label": "proof (SQL): one run of Check lint, with lint-rules v1 and its hash",
+      "ok": true,
+      "observed": [
+        {
+          "key": "check_lint",
+          "attempt": 1,
+          "status": "SUCCEEDED",
+          "skills": [
+            {
+              "name": "lint-rules",
+              "version": 1,
+              "hash": "a8d6b6cfe985dc5acf3cdf8f23060c1e91bb0eddade2f4d33c9f51db5309bd4b",
+              "via": "folder"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "N4-refused-card.png",
+    "N4-after-retry.png"
+  ]
+}

@@ -4,6 +4,7 @@ import { isAbsolute, resolve } from 'node:path';
 import type {
   AgentEvent, RuntimeCapability, RuntimeDiscovery, RuntimeHealth, RuntimeProfile,
 } from '@tandemise/domain';
+import { SKILLS_FOLDER } from '@tandemise/domain';
 import {
   DEFAULT_TERMINATION_GRACE_MS, NormalizingEventSink, RUNTIME_SIGNED_OUT, SESSION_NOT_FOUND,
   relieveBackPressure, superviseProcessStream,
@@ -153,6 +154,15 @@ export class ClaudeCodeAdapter implements AgentRuntimeAdapter {
   /** Claude Code takes `--model` on every run (P12). */
   acceptsModel(_profile: RuntimeProfile): boolean {
     return true;
+  }
+
+  /**
+   * Claude Code loads project skills from `.claude/skills` in its working
+   * folder (P13). Workers keep `--setting-sources project,local`, so the
+   * person's own global skills stay out; only the pinned ones are there.
+   */
+  skillsFolder(_profile: RuntimeProfile): string | null {
+    return SKILLS_FOLDER;
   }
 
   capabilities(profile: RuntimeProfile): readonly RuntimeCapability[] {

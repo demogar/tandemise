@@ -12,7 +12,7 @@ import { actorLabel, useActors, type Actors } from '../../lib/team.js';
 import { toWire } from '../../lib/staffing.js';
 import { StaffingEditor } from '../team/StaffingEditor.js';
 import { dateTime, duration, taskTone, titleCase } from '../../lib/format.js';
-import { modelLabel, modelPolicyLabel, quietFor } from '../../lib/domain.js';
+import { modelLabel, modelPolicyLabel, quietFor, skillsLine } from '../../lib/domain.js';
 import { ApprovalCard } from '../approvals/ApprovalCard.js';
 import { RequestChangesButton } from '../../components/RequestChanges.js';
 import { StartRoundButton } from '../../components/ImpactDialog.js';
@@ -206,6 +206,10 @@ export function TaskDetail({ task, detail, onClose }: { task: TaskView; detail: 
           {task.targetName ? <span className="chip">{task.targetName}</span> : null}
           <span className="chip chip--muted">{task.executionPolicy.isolation} isolation</span>
         </div>
+        {/* The skills the newest run got, at their pinned versions (P13). */}
+        {skillsLine(task) ? (
+          <p className="muted" aria-label="Skills" style={{ margin: 0, fontSize: 'var(--fs-sm)' }}>{skillsLine(task)}</p>
+        ) : null}
         {modelPolicyLabel(task.modelPolicy) ? (
           <p className="muted" aria-label="Step models" style={{ margin: 0, fontSize: 'var(--fs-sm)' }}>{modelPolicyLabel(task.modelPolicy)}</p>
         ) : null}

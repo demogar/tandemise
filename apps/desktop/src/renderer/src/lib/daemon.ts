@@ -2,6 +2,13 @@ import type {
   ApiErrorBody,
   NotificationPreferencesView,
   UpdateNotificationPreferencesRequest,
+  DiscoveredSkillsView,
+  ImportSkillRequest,
+  SkillImportView,
+  SkillLibraryView,
+  SkillPreviewView,
+  SkillSourceRequest,
+  SkillVersionDetailView,
   CreateRoutineRequest,
   RoutineView,
   UpdateRoutineRequest,
@@ -248,6 +255,38 @@ export class DaemonClient {
 
   deleteRoutine(id: string): Promise<void> {
     return this.#request('DELETE', `/routines/${id}`);
+  }
+
+  /** The project's skills library (P13), with each local source re-checked. */
+  skills(workspaceId: string): Promise<SkillLibraryView> {
+    return this.#get(`/workspaces/${workspaceId}/skills`);
+  }
+
+  /** The folders under ~/.claude/skills (or the configured discovery root). */
+  discoverSkills(workspaceId: string): Promise<DiscoveredSkillsView> {
+    return this.#get(`/workspaces/${workspaceId}/skills/discover`);
+  }
+
+  previewSkill(workspaceId: string, source: SkillSourceRequest): Promise<SkillPreviewView> {
+    return this.#request('POST', `/workspaces/${workspaceId}/skills/preview`, { source });
+  }
+
+  /** Imports exactly the previewed content: refused when the folder changed since. */
+  importSkill(workspaceId: string, body: ImportSkillRequest): Promise<SkillImportView> {
+    return this.#request('POST', `/workspaces/${workspaceId}/skills`, body);
+  }
+
+  skillVersion(skillId: string, version: number): Promise<SkillVersionDetailView> {
+    return this.#get(`/skills/${skillId}/versions/${version}`);
+  }
+
+  /** Re-imports a skill from its source; only ever on request. */
+  updateSkill(skillId: string): Promise<SkillImportView> {
+    return this.#request('POST', `/skills/${skillId}/update`);
+  }
+
+  deleteSkill(skillId: string): Promise<void> {
+    return this.#request('DELETE', `/skills/${skillId}`);
   }
 
   /** Runs a routine once now, through the same checks as a scheduled run. */

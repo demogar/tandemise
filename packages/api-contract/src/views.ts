@@ -6,6 +6,7 @@ import type {
   MissionPlan, PlanValidationIssue, GateOutcome, AccessLevel, Member, Person, Staffing,
   ArtifactHandoff, TaskStatus, FeedbackStatus, MissionPriority, Limit, LimitStatus,
   MissionStatus, StalledAction, WatchLevel, Routine, RoutineOutcome, RoutineTrigger,
+  SkillFileEntry, SkillSource,
 } from '@tandemise/domain';
 
 /**
@@ -895,4 +896,109 @@ export interface StaffingPreviewView {
   };
   readonly staffing: Staffing;
   readonly escalation: readonly ActorRef[];
+}
+
+// ---------------------------------------------------------------- skills (P13)
+
+export interface SkillVersionView {
+  readonly version: number;
+  readonly hash: string;
+  /** The first 12 hex characters. */
+  readonly shortHash: string;
+  readonly description: string;
+  readonly files: readonly SkillFileEntry[];
+  readonly sizeBytes: number;
+  /** "3 files · 4.2 KB" */
+  readonly sizeLabel: string;
+  readonly importedAt: string;
+}
+
+/**
+ * `current`: the source folder still matches the newest version. `update_available`:
+ * it changed (Update imports it as a new version). `missing`: the folder is gone.
+ * `unchecked`: a git source, checked only when the person clicks Update.
+ */
+export type SkillSourceStatus = 'current' | 'update_available' | 'missing' | 'unchecked';
+
+export interface SkillView {
+  readonly id: string;
+  readonly name: string;
+  readonly description: string;
+  readonly source: SkillSource;
+  /** "~/.claude/skills/tdd", "/path/to/folder", "https://…/repo.git · skills/tdd" */
+  readonly sourceLabel: string;
+  readonly sourceStatus: SkillSourceStatus;
+  readonly latest: SkillVersionView;
+  /** Newest first. */
+  readonly versions: readonly SkillVersionView[];
+  /** Roles in this project that pin it, and at which version. */
+  readonly usedBy: readonly { readonly roleId: string; readonly roleName: string; readonly version: number }[];
+}
+
+export interface SkillLibraryView {
+  readonly skills: readonly SkillView[];
+  /** Where "Your Claude skills" looks (~/.claude/skills unless overridden). */
+  readonly discoverRoot: string;
+}
+
+/** What importing a folder would do. */
+export interface SkillPreviewView {
+  readonly source: SkillSource;
+  readonly sourceLabel: string;
+  /** Null when the folder has no usable name (the problem says why). */
+  readonly name: string | null;
+  readonly description: string;
+  /** Null when the folder was refused before it was read. */
+  readonly hash: string | null;
+  readonly shortHash: string | null;
+  readonly files: readonly SkillFileEntry[];
+  readonly sizeBytes: number;
+  readonly sizeLabel: string;
+  /** The SKILL.md as written, front matter included; null when there is none. */
+  readonly skillMd: string | null;
+  /** Why it cannot be imported; null when it can. */
+  readonly problem: string | null;
+  /** "New skill", "New version v2 of tdd", "Already in the library as tdd v1". */
+  readonly outcome: string;
+  /** False when the content is already a version in the library. */
+  readonly changes: boolean;
+}
+
+export interface DiscoveredSkillView {
+  /** The folder's name under the discovery root. */
+  readonly folder: string;
+  readonly path: string;
+  readonly name: string | null;
+  readonly description: string;
+  readonly hash: string | null;
+  readonly sizeLabel: string;
+  readonly fileCount: number;
+  readonly problem: string | null;
+  /** "In library as tdd v1", "Newer than tdd v1 in the library", or null when it is not in the library. */
+  readonly libraryLabel: string | null;
+  /** False when this exact content is already in the library (nothing to import). */
+  readonly importable: boolean;
+}
+
+export interface DiscoveredSkillsView {
+  readonly root: string;
+  /** False when the root folder does not exist. */
+  readonly exists: boolean;
+  readonly skills: readonly DiscoveredSkillView[];
+}
+
+export interface SkillImportView {
+  readonly skill: SkillView;
+  readonly version: number;
+  /** `skill`: a new skill; `version`: a new version of an existing one; `unchanged`: the content was already there. */
+  readonly created: 'skill' | 'version' | 'unchanged';
+  /** "Imported tdd v1", "Imported tdd v2", "tdd v1 already has these files". */
+  readonly message: string;
+}
+
+export interface SkillVersionDetailView extends SkillVersionView {
+  readonly skillId: string;
+  readonly name: string;
+  /** Null when the stored content is missing. */
+  readonly skillMd: string | null;
 }

@@ -16,6 +16,7 @@ import { actorFor, type Caller } from '../support/identity.js';
 import { isStartApproval, toApprovalView, toApprovalViews } from '../support/approval-view.js';
 import { feedbackEffectFor } from '../support/feedback-rules.js';
 import { materializePlan } from '../planning/materialize.js';
+import { skillPinner, type SkillPinning } from './planning-service.js';
 import type { LimitService } from './limit-service.js';
 import { parsePlanResponse } from '../planning/parse.js';
 
@@ -44,6 +45,8 @@ export interface ApprovalDeps {
    * before limits still compose.
    */
   readonly limits?: Pick<LimitService, 'incidentFor' | 'validateDecision' | 'decide'>;
+  /** The skills library (P13): an edited plan's tasks get their pins like a planned one's. */
+  readonly skills?: SkillPinning;
   readonly clock: Clock;
   readonly log: Logger;
 }
@@ -193,7 +196,9 @@ export class ApprovalServiceImpl implements ApprovalService {
       );
     }
     // Edited from a proposed plan, so its tasks read what they depend on as a planned one's do.
-    const tasks = materializePlan(parsed.value, mission.id, this.deps.clock, [], { inferInputs: true });
+    const tasks = materializePlan(parsed.value, mission.id, this.deps.clock, [], {
+      inferInputs: true, ...skillPinner(this.deps.skills, mission.workspaceId, this.deps.roles.list(mission.workspaceId)),
+    });
     this.deps.tasks.replaceAll(mission.id, tasks);
     this.deps.recorder.note(scope, `The plan was edited before approval: ${tasks.length} tasks.`);
     this.deps.recorder.invalidate('tasks', mission.id);
@@ -245,8 +250,10 @@ export class ApprovalServiceImpl implements ApprovalService {
       // "Retry once more" has to mean it: the task already exhausted its budget,
       // so returning it to READY without extending the budget would have it
       // re-fail on the first dispatch without running anything.
+      // Never fewer than it had: a card raised before any attempt ran (a pinned
+      // skill that was missing, P13) would otherwise leave a budget of one.
       this.deps.tasks.update(task.id, {
-        retryPolicy: { ...task.retryPolicy, maxAttempts: task.attempts + 1 },
+        retryPolicy: { ...task.retryPolicy, maxAttempts: Math.max(task.retryPolicy.maxAttempts, task.attempts + 1) },
       });
       this.#setTaskStatus(task, scope, 'READY', 'A human authorized one more attempt.');
       if (mission.status === 'BLOCKED') {

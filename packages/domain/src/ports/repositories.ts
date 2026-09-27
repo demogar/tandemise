@@ -1,6 +1,6 @@
 import type {
   ApprovalId, ArtifactId, CriterionId, EventId, QuestionId, FeedbackId, MemberId, MissionId, PersonId, RepositoryId, RunId, RuntimeProfileId,
-  ExecutionTargetId, IntegrationId, RoutineId, TaskId, Timestamp, WorkerAssignmentId, WorkspaceId,
+  ExecutionTargetId, IntegrationId, RoutineId, SkillId, TaskId, Timestamp, WorkerAssignmentId, WorkspaceId,
 } from '@tandemise/shared';
 import type { Mission, MissionDraft, MissionProgress, MissionStatus } from '../entities/mission.js';
 import type { MissionTask, TaskStatus } from '../entities/task.js';
@@ -22,6 +22,7 @@ import type { MissionCriterion, SpecCriterionInput } from '../entities/criteria.
 import type { MissionQuestion, QuestionInput } from '../entities/refinement.js';
 import type { LimitIncident, LimitIncidentStatus, LimitMetric, LimitThreshold, UsageTotals } from '../entities/limits.js';
 import type { Routine, RoutineDraft, RoutineRun } from '../entities/routine.js';
+import type { Skill, SkillVersion } from '../entities/skill.js';
 
 /**
  * Persistence ports.
@@ -349,4 +350,23 @@ export interface RoutineRepositoryPort {
   recordRun(run: Omit<RoutineRun, 'id'>): RoutineRun;
   /** Newest first. */
   recentRuns(id: RoutineId, limit: number): readonly RoutineRun[];
+}
+
+/**
+ * The skills library (P13): a project's skills and their immutable versions.
+ * Content lives in the content store, addressed by each version's hash.
+ */
+export interface SkillRepositoryPort {
+  create(skill: Skill): Skill;
+  get(id: SkillId): Skill | undefined;
+  getByName(workspaceId: WorkspaceId, name: string): Skill | undefined;
+  list(workspaceId: WorkspaceId): readonly Skill[];
+  update(id: SkillId, patch: Partial<Pick<Skill, 'description' | 'source' | 'updatedAt'>>): Skill;
+  /** Removes the skill and its versions. */
+  remove(id: SkillId): void;
+  addVersion(version: SkillVersion): SkillVersion;
+  /** Oldest first. */
+  versions(skillId: SkillId): readonly SkillVersion[];
+  /** Whether any version, in any project, still names this content hash. */
+  hashInUse(hash: string): boolean;
 }

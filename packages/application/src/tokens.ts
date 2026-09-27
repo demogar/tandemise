@@ -3,11 +3,11 @@ import type {
   ApprovalRepositoryPort, ArtifactRepositoryPort, ArtifactStorePort, AssignmentRepositoryPort,
   CheckpointRepositoryPort, DecisionRepositoryPort, EvaluationRepositoryPort, EventBusPort,
   EventRepositoryPort, ExecutionTargetRepositoryPort, FeedbackRepositoryPort, IntegrationRepositoryPort,
-  LeaseRepositoryPort, MemberRepositoryPort, MissionCriteriaRepositoryPort, MissionQuestionRepositoryPort, MissionRepositoryPort, LimitRepositoryPort, RoutineRepositoryPort, PersonRepositoryPort, ProjectionBusPort, RepoRepositoryPort,
+  LeaseRepositoryPort, MemberRepositoryPort, MissionCriteriaRepositoryPort, MissionQuestionRepositoryPort, MissionRepositoryPort, LimitRepositoryPort, RoutineRepositoryPort, SkillRepositoryPort, PersonRepositoryPort, ProjectionBusPort, RepoRepositoryPort,
   RoleRepositoryPort, RunInputRepositoryPort, RunRepositoryPort, RuntimeProfileRepositoryPort, SecretStorePort,
   TaskRepositoryPort, UnitOfWork, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
-import type { ArtifactMeasurePort, ArtifactParserPort, ArtifactTemplatePort, ProcessLivenessPort, SettingsStorePort, SystemEnvironmentPort, WorkflowSourcePort, OAuthCallbackPort } from './ports.js';
+import type { ArtifactMeasurePort, ArtifactParserPort, ArtifactTemplatePort, ProcessLivenessPort, SettingsStorePort, SystemEnvironmentPort, WorkflowSourcePort, OAuthCallbackPort, SkillFilesPort } from './ports.js';
 import type {
   ApprovalService, ArtifactService, IntegrationService, MissionService, PlanningService,
   ProjectionService, RoleService, RuntimeService, SystemService, TandemiseServices,
@@ -22,6 +22,7 @@ import type { LivenessService } from './services/liveness-service.js';
 import type { DeskService } from './services/desk-service.js';
 import type { NotificationService } from './services/notification-service.js';
 import type { RoutineService } from './services/routine-service.js';
+import type { SkillService } from './services/skill-service.js';
 import type { StaffingResolver } from './engine/staffing-resolver.js';
 import type { ReviewPipeline } from './engine/reviews.js';
 import type { ArtifactHarvester } from './engine/harvester.js';
@@ -90,6 +91,7 @@ export const MISSION_CRITERIA_REPOSITORY = token<MissionCriteriaRepositoryPort>(
 export const MISSION_QUESTION_REPOSITORY = token<MissionQuestionRepositoryPort>('port.MissionQuestionRepository');
 export const LIMIT_REPOSITORY = token<LimitRepositoryPort>('port.LimitRepository');
 export const ROUTINE_REPOSITORY = token<RoutineRepositoryPort>('port.RoutineRepository');
+export const SKILL_REPOSITORY = token<SkillRepositoryPort>('port.SkillRepository');
 
 export const ARTIFACT_STORE = token<ArtifactStorePort>('port.ArtifactStore');
 /** Workflow files, read from the project's repositories. */
@@ -171,6 +173,9 @@ export const LIVENESS_SERVICE = token<LivenessService>('application.LivenessServ
 export const DESK_SERVICE = token<DeskService>('application.DeskService');
 export const ROUTINE_SERVICE = token<RoutineService>('application.RoutineService');
 export const NOTIFICATION_SERVICE = token<NotificationService>('application.NotificationService');
+export const SKILL_SERVICE = token<SkillService>('application.SkillService');
+/** Skill folders and the content store (P13); rebound by the daemon. */
+export const SKILL_FILES = token<SkillFilesPort>('port.SkillFiles');
 
 export const TANDEMISE_SERVICES = token<TandemiseServices>('application.TandemiseServices');
 

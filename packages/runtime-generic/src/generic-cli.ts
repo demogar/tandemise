@@ -3,6 +3,7 @@ import { promisify } from 'node:util';
 import type {
   AgentEvent, AgentEventType, RuntimeCapability, RuntimeDiscovery, RuntimeHealth, RuntimeProfile,
 } from '@tandemise/domain';
+import { SKILLS_FOLDER } from '@tandemise/domain';
 import {
   DEFAULT_TERMINATION_GRACE_MS, NormalizingEventSink, relieveBackPressure, superviseProcessStream, withDeclaredCapabilities,
 } from '@tandemise/runtimes-core';
@@ -98,6 +99,11 @@ export class GenericCliAdapter implements AgentRuntimeAdapter {
   acceptsModel(profile: RuntimeProfile): boolean {
     const parsed = parseGenericCliSettings(profile.settings);
     return parsed.ok && parsed.value.modelFlag !== null;
+  }
+
+  /** Only a profile whose settings say its CLI reads `.claude/skills` gets skills as a folder (P13). */
+  skillsFolder(profile: RuntimeProfile): string | null {
+    return profile.settings['skillsFolder'] === true ? SKILLS_FOLDER : null;
   }
 
   capabilities(profile: RuntimeProfile): readonly RuntimeCapability[] {

@@ -6,6 +6,7 @@ import { isArtifactType } from './entities/artifact.js';
 import type { ArtifactRequirement, ExecutionPolicy, ApprovalPolicy, RetryPolicy } from './entities/task.js';
 import { validateGate } from './gate.js';
 import type { ModelPolicy } from './entities/models.js';
+import type { SkillRef } from './entities/skill.js';
 
 /**
  * A proposed mission plan.
@@ -58,6 +59,8 @@ export interface PlannedTask {
   readonly completionGate: string | null;
   /** Model settings from a workflow step (P12). A planner never sets them. */
   readonly modelPolicy?: ModelPolicy | null;
+  /** A workflow step's `skills:` (P13), resolved to pins when the task is created. A planner never sets them. */
+  readonly skillRefs?: readonly SkillRef[];
 }
 
 export interface PlanValidationIssue {

@@ -4,6 +4,7 @@ import type { ArtifactType } from './artifact.js';
 import type { GateExpression } from '../gate.js';
 import type { ResolvedStaffingSnapshot, StaffingPatch } from '../staffing.js';
 import type { ModelPolicy } from './models.js';
+import type { SkillPin } from './skill.js';
 
 /** Who carries a task out (MVP.md §11). */
 export const TASK_EXECUTORS = ['agent', 'human', 'wait'] as const;
@@ -135,6 +136,12 @@ export interface MissionTask {
   readonly completionGate: GateExpression | null;
   /** The workflow step's model settings (P12); null or absent when it has none. */
   readonly modelPolicy?: ModelPolicy | null;
+  /**
+   * The skills this task's runs get (P13), resolved when the task was created
+   * (`latest` made concrete). Null or absent: not resolved yet - a task the
+   * engine added later resolves its role's pins on its first run.
+   */
+  readonly skills?: readonly SkillPin[] | null;
   readonly status: TaskStatus;
   /** What a person reads about the task's current state. Changes whenever it waits. */
   readonly statusReason: string | null;

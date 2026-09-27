@@ -1,7 +1,7 @@
 import type {
   ApprovalRepositoryPort, ArtifactHandoff, ArtifactRepositoryPort, ArtifactStorePort, Capability, MemberRepositoryPort, Mission,
   MissionCriteriaRepositoryPort, MissionPlan, MissionQuestionRepositoryPort, MissionRepositoryPort, MissionTask, PlanValidationIssue, RepoRepositoryPort,
-  Repository, RoleRepositoryPort, RoleTemplate, RuntimeProfile, RuntimeProfileRepositoryPort,
+  PlannedTask, Repository, RoleRepositoryPort, RoleTemplate, RuntimeProfile, RuntimeProfileRepositoryPort, SkillPin,
   TaskRepositoryPort, Workspace, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
 import { ARTIFACT_OUT_DIR, CORE_CAPABILITIES, RUNTIME_ACTOR, DEFAULT_ESCALATE_AFTER_MS, canTransition, indexTeam, isActiveMember, compileWorkflow, validateMissionPlan } from '@tandemise/domain';
@@ -12,7 +12,7 @@ import type { ApprovalFactory } from '@tandemise/policy';
 import type { ExecutionTarget, ExecutionTargetManager } from '@tandemise/execution-core';
 import { describeRejections, onlyBusy } from '@tandemise/runtimes-core';
 import type { RuntimeManager, RuntimeSelection, SlotReservation } from '@tandemise/runtimes-core';
-import type { Clock, Logger, MissionId, TandemisePaths } from '@tandemise/shared';
+import type { Clock, Logger, MissionId, TandemisePaths, WorkspaceId } from '@tandemise/shared';
 import { TandemiseError, errorMessage, ids, slugify, summarize } from '@tandemise/shared';
 import type { PlanningService, ProjectionService } from '../services.js';
 import type { EventRecorder, EventScope } from '../support/event-recorder.js';
@@ -72,6 +72,27 @@ export interface PlanningDeps {
   /** The accepted ledger and the answers, which the planner is told. */
   readonly criteria?: Pick<MissionCriteriaRepositoryPort, 'listActive'>;
   readonly questions?: Pick<MissionQuestionRepositoryPort, 'listByMission'>;
+  /** The skills library (P13): pins resolved when the tasks are created. Optional for older harnesses. */
+  readonly skills?: SkillPinning;
+}
+
+/** What planning asks of the skills library (P13). */
+export interface SkillPinning {
+  pinsFor(
+    workspaceId: WorkspaceId,
+    role: RoleTemplate | undefined,
+    step: Pick<PlannedTask, 'key' | 'skillRefs'>,
+  ): { readonly pins: readonly SkillPin[]; readonly problems: readonly string[] };
+}
+
+/** Materialisation's pinning for a plan in this project, or nothing when there is no library. */
+export function skillPinner(
+  skills: SkillPinning | undefined,
+  workspaceId: WorkspaceId,
+  roles: readonly RoleTemplate[],
+): { skills?: (task: PlannedTask) => readonly SkillPin[] } {
+  if (skills === undefined) return {};
+  return { skills: (task) => skills.pinsFor(workspaceId, roles.find((r) => r.id === task.roleId), task).pins };
 }
 
 /**
@@ -236,7 +257,7 @@ export class PlanningServiceImpl implements PlanningService {
     const authored = await this.#authoredWorkflow(planning, repositories, roles, scope);
     if (authored !== null) {
       if (!this.#stillPlanning(planning, scope)) return this.deps.projections.missionDetail(mission.id);
-      const tasks = materializePlan(authored, mission.id, this.deps.clock, repositories);
+      const tasks = materializePlan(authored, mission.id, this.deps.clock, repositories, skillPinner(this.deps.skills, workspace.id, roles));
       this.deps.tasks.replaceAll(mission.id, tasks);
       await this.#storePlanDocument(planning, authored, workspace);
       this.deps.recorder.invalidate('tasks', mission.id);
@@ -252,7 +273,7 @@ export class PlanningServiceImpl implements PlanningService {
 
     if (!this.#stillPlanning(planning, scope)) return this.deps.projections.missionDetail(mission.id);
     // A preset names its inputs, so inferring only fills what a model's plan left out.
-    const tasks = materializePlan(outcome.plan, mission.id, this.deps.clock, repositories, { inferInputs: true });
+    const tasks = materializePlan(outcome.plan, mission.id, this.deps.clock, repositories, { inferInputs: true, ...skillPinner(this.deps.skills, workspace.id, roles) });
     this.deps.tasks.replaceAll(mission.id, tasks);
     await this.#storePlanDocument(planning, outcome.plan, workspace);
     this.deps.recorder.invalidate('tasks', mission.id);
@@ -299,6 +320,17 @@ export class PlanningServiceImpl implements PlanningService {
         `Workflow '${name}' cannot run: ${compiled.error.map((i: { path: string; message: string }) => `${i.path}: ${i.message}`).join('; ')}`,
         { workflow: name, path: found.path },
       );
+    }
+
+    // P13: every skill a step or its role pins must be in the library now, at
+    // that version; a workflow that names one it cannot have does not run.
+    if (this.deps.skills !== undefined) {
+      const skills = this.deps.skills;
+      const problems = compiled.value.tasks.flatMap((task) =>
+        skills.pinsFor(mission.workspaceId, roles.find((r) => r.id === task.roleId), task).problems);
+      if (problems.length > 0) {
+        throw TandemiseError.validation(`Workflow '${name}' cannot run: ${[...new Set(problems)].join(' ')}`, { workflow: name, path: found.path });
+      }
     }
 
     this.deps.recorder.note(scope, `Running the project's own "${name}" workflow, from ${found.path}.`);

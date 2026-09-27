@@ -2,7 +2,7 @@ import { asId, type WorkspaceId } from '@tandemise/shared';
 import type {
   ArtifactType, Capability, IsolationMode, RoleModels, RoleRepositoryPort, RoleTemplate,
 } from '@tandemise/domain';
-import { hasRoleModels, normalizeRoleModels } from '@tandemise/domain';
+import { hasRoleModels, normalizeRoleModels, normalizeRoleSkills } from '@tandemise/domain';
 import type { TandemiseDatabase } from '../database.js';
 import { fromSqlBool, parseJson, toJson, toSqlBool } from '../json.js';
 
@@ -19,6 +19,7 @@ interface RoleRow {
   output_contract: string;
   built_in: number;
   models: string | null;
+  skills: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -37,6 +38,7 @@ function toRow(r: RoleTemplate): RoleRow {
     output_contract: r.outputContract,
     built_in: toSqlBool(r.builtIn),
     models: hasRoleModels(r.models) ? toJson(r.models) : null,
+    skills: r.skills === null || r.skills === undefined || r.skills.length === 0 ? null : toJson(r.skills),
     created_at: r.createdAt,
     updated_at: r.updatedAt,
   };
@@ -56,13 +58,14 @@ function fromRow(r: RoleRow): RoleTemplate {
     outputContract: r.output_contract,
     builtIn: fromSqlBool(r.built_in),
     models: r.models === null ? null : normalizeRoleModels(parseJson<Partial<RoleModels>>(r.models, {})),
+    skills: r.skills === null ? null : normalizeRoleSkills(parseJson<unknown>(r.skills, [])),
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
 }
 
 const COLUMNS = `id, workspace_id, name, summary, instructions, default_capabilities,
-  produces_artifacts, consumes_artifacts, default_isolation, output_contract, built_in, models,
+  produces_artifacts, consumes_artifacts, default_isolation, output_contract, built_in, models, skills,
   created_at, updated_at`;
 
 /**
@@ -89,14 +92,14 @@ export class SqliteRoleRepository implements RoleRepositoryPort {
       `INSERT INTO role_templates (${COLUMNS}) VALUES (
         :id, :workspace_id, :name, :summary, :instructions, :default_capabilities,
         :produces_artifacts, :consumes_artifacts, :default_isolation, :output_contract,
-        :built_in, :models, :created_at, :updated_at)`,
+        :built_in, :models, :skills, :created_at, :updated_at)`,
     );
     this.#update = db.handle.prepare<RoleRow>(
       `UPDATE role_templates SET
          name = :name, summary = :summary, instructions = :instructions,
          default_capabilities = :default_capabilities, produces_artifacts = :produces_artifacts,
          consumes_artifacts = :consumes_artifacts, default_isolation = :default_isolation,
-         output_contract = :output_contract, built_in = :built_in, models = :models, created_at = :created_at,
+         output_contract = :output_contract, built_in = :built_in, models = :models, skills = :skills, created_at = :created_at,
          updated_at = :updated_at
        WHERE id = :id AND workspace_id IS :workspace_id`,
     );

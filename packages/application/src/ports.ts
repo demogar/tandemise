@@ -1,4 +1,4 @@
-import type { ArtifactHandoff, ArtifactType, WorkflowDefinition, WorkflowIssue } from '@tandemise/domain';
+import type { ArtifactHandoff, ArtifactType, SkillFile, WorkflowDefinition, WorkflowIssue } from '@tandemise/domain';
 import type { Result, Timestamp } from '@tandemise/shared';
 
 /**
@@ -159,4 +159,43 @@ export interface OAuthCallbackListener {
 
 export interface OAuthCallbackPort {
   open(): Promise<OAuthCallbackListener>;
+}
+
+/**
+ * A folder read as a skill (P13): every file's bytes, or the reason it was
+ * refused. Reading stops at the first rule broken, so a huge folder is never
+ * read in full. Name, description and hash are the application's to derive.
+ */
+export interface ScannedSkillFolder {
+  /** The absolute folder that was read. */
+  readonly folder: string;
+  readonly files: readonly SkillFile[];
+  readonly sizeBytes: number;
+  /** Why it is not a skill that can be imported, in the person's words; null when it is. */
+  readonly problem: string | null;
+}
+
+/**
+ * Where skills' files come from and where their content is kept (P13).
+ *
+ * A port because it reads the person's folders, clones repositories with `git`
+ * and writes the content store - none of which the engine may do itself. The
+ * daemon binds it (`skill-files.ts`); the default binding finds nothing.
+ * Nothing behind this port ever executes a file it reads.
+ */
+export interface SkillFilesPort {
+  /** Where "Your Claude skills" looks: ~/.claude/skills unless TANDEMISE_SKILLS_DISCOVER_DIR says otherwise. */
+  discoverRoot(): string;
+  /** The discovery root's sub-folders, absolute, sorted; empty when it does not exist. */
+  discover(): Promise<{ readonly exists: boolean; readonly folders: readonly string[] }>;
+  /** Reads a folder under the skill rules: SKILL.md present, size and count limits, no link outside. */
+  scan(folder: string): Promise<ScannedSkillFolder>;
+  /** Clones a repository shallow into a temporary folder (hooks off, nothing run); `dispose` removes it. */
+  fetchGit(source: { readonly url: string; readonly subpath?: string; readonly ref?: string }): Promise<{ readonly folder: string; dispose(): Promise<void> }>;
+  /** Writes content under its hash, once (a hash already stored is left as it is). */
+  store(hash: string, files: readonly SkillFile[]): Promise<void>;
+  /** The stored files, or null when they are absent or no longer hash to `hash`. */
+  read(hash: string): Promise<readonly SkillFile[] | null>;
+  /** Removes stored content. */
+  drop(hash: string): Promise<void>;
 }

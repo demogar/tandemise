@@ -19,6 +19,8 @@ export interface TandemisePaths {
   artifacts(workspaceId: string): string;
   missionLogs(workspaceId: string, missionId: string): string;
   browserProfiles(workspaceId: string): string;
+  /** The skills content store (P13), shared by every project: one folder per content hash. */
+  readonly skills: string;
 }
 
 export function createPaths(root = defaultRoot()): TandemisePaths {
@@ -39,6 +41,7 @@ export function createPaths(root = defaultRoot()): TandemisePaths {
     artifacts: (w) => join(ws(w), 'artifacts'),
     missionLogs: (w, m) => join(mission(w, m), 'logs'),
     browserProfiles: (w) => join(ws(w), 'browser-profiles'),
+    skills: join(abs, 'skills'),
   };
 }
 

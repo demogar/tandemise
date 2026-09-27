@@ -1,0 +1,102 @@
+{
+  "id": "N1",
+  "title": "Import skills from your Claude skills folder and from a folder, after a preview",
+  "ok": true,
+  "checks": [
+    {
+      "label": "Skills (sidebar) starts empty and says what to do",
+      "ok": true,
+      "observed": "Skills\nSkills you already use, pinned to the roles that need them. Every run gets exactly the version it was pinned to.\nImport skills\nNo skills yet\n\nImport the skills you already use - from ~/.claude/skills, a folder or a git repository - then attach them to roles in Team → Roles.\n\nImport skills"
+    },
+    {
+      "label": "the dialog looks in the fixture folder, not the real home",
+      "ok": true,
+      "observed": "Import skills\n\nA skill is a folder with a SKILL.md. You see its files before it is imported, nothing in it is run, and each import is kept as a numbered version your roles pin.\n\nYour Claude skills\nA folder\nA git repository\n\nLooking in /tmp/tdm-p13/claude-skills\n\nhouse-style\nHow our copy reads.\n1 file · 138 B\nPreview\nshared-notes\nhosts links outside the skill folder (to /private/etc/hosts).\nPreview"
+    },
+    {
+      "label": "it lists house-style, shared-notes and tdd",
+      "ok": true,
+      "observed": "Found: house-style|Found: shared-notes|Found: tdd"
+    },
+    {
+      "label": "shared-notes is refused: \"hosts links outside the skill folder\"",
+      "ok": true,
+      "observed": "Import skills\n\nA skill is a folder with a SKILL.md. You see its files before it is imported, nothing in it is run, and each import is kept as a numbered version your roles pin.\n\nYour Claude skills\nA folder\nA git repository\n\nLooking in /tmp/tdm-p13/claude-skills\n\nhouse-style\nHow our copy reads.\n1 file · 138 B\nPreview\nshared-notes\nhosts links outside the skill folder (to /private/etc/hosts).\nPreview\ntdd\nWrite the failing test first, then the code.\n2 files · 248 B\nPreview\nTick the skills to import"
+    },
+    {
+      "label": "and its box cannot be ticked",
+      "ok": true,
+      "observed": true
+    },
+    {
+      "label": "the preview says \"New skill\" and lists SKILL.md and reference.md",
+      "ok": true,
+      "observed": "tdd\nbad50479a67c\n2 files · 248 B\n\nWrite the failing test first, then the code.\n\nFrom /tmp/tdm-p13/claude-skills/tdd\n\nNew skill\n\nFiles\nSKILL.md (189 B)\nreference.md (59 B)\nSKILL.md\nTest first\nWrite a test that fails.\nMake it pass with the least code.\nTidy up while it stays green."
+    },
+    {
+      "label": "and shows the SKILL.md itself",
+      "ok": true,
+      "observed": "tdd\nbad50479a67c\n2 files · 248 B\n\nWrite the failing test first, then the code.\n\nFrom /tmp/tdm-p13/claude-skills/tdd\n\nNew skill\n\nFiles\nSKILL.md (189 B)\nreference.md (59 B)\nSKILL.md\nTest first\nWrite a test that fails.\nMake it pass with the least code.\nTidy up while it stays green."
+    },
+    {
+      "label": "\"Imported tdd v1. Imported house-style v1.\"",
+      "ok": true,
+      "observed": "Imported tdd v1. Imported house-style v1."
+    },
+    {
+      "label": "A folder: the preview named lint-rules as a new skill",
+      "ok": true,
+      "observed": "lint-rules\na8d6b6cfe985\n1 file · 119 B\n\nThe lint rules we keep.\n\nFrom /tmp/tdm-p13/more-skills/lint-rules\n\nNew skill\n\nFiles\nSKILL.md (119 B)\nSKILL.md\nLint rules\n\nNo unused imports. No commented-out code."
+    },
+    {
+      "label": "the Library lists house-style, lint-rules and tdd, each v1",
+      "ok": true,
+      "observed": [
+        {
+          "name": "house-style",
+          "text": "house-style\nHow our copy reads.\nv1 · 1 file · 138 B"
+        },
+        {
+          "name": "lint-rules",
+          "text": "lint-rules\nThe lint rules we keep.\nv1 · 1 file · 119 B"
+        },
+        {
+          "name": "tdd",
+          "text": "tdd\nWrite the failing test first, then the code.\nv1 · 2 files · 248 B"
+        }
+      ]
+    },
+    {
+      "label": "with their descriptions",
+      "ok": true,
+      "observed": "tdd\nWrite the failing test first, then the code.\nv1 · 2 files · 248 B"
+    },
+    {
+      "label": "proof (API): three skills, one version each, hashes recorded",
+      "ok": true,
+      "observed": [
+        [
+          "house-style",
+          "b204e7f41a08"
+        ],
+        [
+          "lint-rules",
+          "a8d6b6cfe985"
+        ],
+        [
+          "tdd",
+          "bad50479a67c"
+        ]
+      ]
+    },
+    {
+      "label": "proof (SQL): content stored once per hash under the home",
+      "ok": true
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "N1-preview.png",
+    "N1-library.png"
+  ]
+}

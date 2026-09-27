@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import {
-  ACCESS_LEVELS, ARTIFACT_TYPES, AUTONOMY_LEVELS, LIMIT_METRICS, MAX_LADDER, MAX_MODEL_NAME, MISSION_PRIORITIES, MISSION_STATUSES, OVERSIGHT_MODES, ROUTINE_HOURS, ROUTINE_KINDS, RUNTIME_CAPABILITIES,
+  ACCESS_LEVELS, ARTIFACT_TYPES, skillNameProblem, AUTONOMY_LEVELS, LIMIT_METRICS, MAX_LADDER, MAX_MODEL_NAME, MISSION_PRIORITIES, MISSION_STATUSES, OVERSIGHT_MODES, ROUTINE_HOURS, ROUTINE_KINDS, RUNTIME_CAPABILITIES,
   staffingPatchSchema,
 } from '@tandemise/domain';
 
@@ -315,6 +315,11 @@ export type ConnectIntegrationRequest = z.infer<typeof connectIntegrationRequest
 /** A model name: blank means "not set"; otherwise one word of at most 100 characters (P12). */
 const roleModelName = z.string().trim().max(MAX_MODEL_NAME).regex(/^\S*$/, 'A model name is passed to the runtime as one word, without spaces.');
 
+/** A skill's name: it becomes a folder name (P13). */
+const skillName = z.string().trim().refine((name) => skillNameProblem(name) === null, {
+  message: 'A skill name is letters, digits, dots, dashes or underscores (up to 64).',
+});
+
 export const upsertRoleRequest = z.object({
   workspaceId: z.string().min(1),
   id: z.string().min(1).max(60),
@@ -335,6 +340,14 @@ export const upsertRoleRequest = z.object({
     escalate: z.array(roleModelName).max(MAX_LADDER),
     economyModel: roleModelName.nullable(),
   }).nullable().optional(),
+  /**
+   * Skills pinned to this role at a version (P13). Omitted keeps what the role
+   * has; null or an empty list clears them. Each must be in the project's library.
+   */
+  skills: z.array(z.object({
+    name: skillName,
+    version: z.number().int().min(1),
+  })).max(20).nullable().optional(),
 });
 export type UpsertRoleRequest = z.infer<typeof upsertRoleRequest>;
 
@@ -453,3 +466,28 @@ export const advanceClockRequest = z.object({
   advanceMs: z.number().int().min(0).max(366 * 24 * 3_600_000),
 });
 export type AdvanceClockRequest = z.infer<typeof advanceClockRequest>;
+
+// ---------------------------------------------------------------- skills (P13)
+
+/** Where a skill is imported from. A path must be absolute (the desktop's folder picker gives one). */
+export const skillSourceSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('claude'), path: z.string().trim().min(1).max(4096) }),
+  z.object({ kind: z.literal('path'), path: z.string().trim().min(1).max(4096) }),
+  z.object({
+    kind: z.literal('git'),
+    url: z.string().trim().min(1).max(2048),
+    subpath: z.string().trim().max(1024).optional(),
+    ref: z.string().trim().max(200).optional(),
+  }),
+]);
+export type SkillSourceRequest = z.infer<typeof skillSourceSchema>;
+
+export const previewSkillRequest = z.object({ source: skillSourceSchema });
+export type PreviewSkillRequest = z.infer<typeof previewSkillRequest>;
+
+/** Imports exactly what was previewed: refused (409) when the content no longer has this hash. */
+export const importSkillRequest = z.object({
+  source: skillSourceSchema,
+  hash: z.string().regex(/^[0-9a-f]{64}$/, 'the hash the preview showed'),
+});
+export type ImportSkillRequest = z.infer<typeof importSkillRequest>;

@@ -94,6 +94,10 @@ notification says so once, never a flood, and opens the decision when clicked.
 See [Notifications](docs/guides/notifications.md) for the switches and quiet
 hours.
 
+Bring the skills you already use (`~/.claude/skills`, a folder, a git repository)
+and pin them to the roles that need them; every run gets exactly the version it
+was pinned to — see [Giving your agents your skills](docs/guides/skills.md).
+
 ## Architecture
 
 ```
@@ -188,6 +192,7 @@ Task-oriented, one per concept:
 | [Routines](docs/guides/routines.md) | put standing work on a schedule |
 | [Notifications](docs/guides/notifications.md) | hear about new Inbox items while the window is in the background |
 | [About and diagnostics](docs/guides/about-and-diagnostics.md) | see which app and daemon build is running, and copy diagnostics for a bug report |
+| [Giving your agents your skills](docs/guides/skills.md) | import the skills I already use and pin them to roles and steps |
 | [Workflows](docs/WORKFLOWS.md) | write my own process as a file, and see which gate facts exist |
 
 ## Repository layout

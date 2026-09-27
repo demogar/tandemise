@@ -3,7 +3,7 @@ import type {
   EvaluationRepositoryPort, GateFacts, GateOutcome, MissionCriteriaRepositoryPort, MissionRepositoryPort, MissionTask, ModelIdentity, RiskClass,
   Run, RunRepositoryPort, RuntimeProfileRepositoryPort, TaskRepositoryPort,
 } from '@tandemise/domain';
-import { blockingFindings, evaluateGate, maxRisk, modelsIndependent, traceCriteria } from '@tandemise/domain';
+import { blockingFindings, evaluateGate, maxRisk, modelsIndependent, skillFacts, traceCriteria } from '@tandemise/domain';
 import { riskForCapability } from '@tandemise/policy';
 import { GateFactBuilder, evaluateNamedGate } from '@tandemise/evaluation';
 import type { MissionId } from '@tandemise/shared';
@@ -78,6 +78,8 @@ export class GateService {
     builder.withApprovals(this.approvals.list({ missionId: task.missionId }));
     const independent = this.#independence(task);
     if (independent !== null) builder.withIndependence(independent);
+    // P13: measured for every step, so a step gate can require its skills.
+    builder.withSkills(skillFacts(task.skills ?? [], this.runs?.listByTask(task.id).at(-1)?.skills ?? null));
     return builder.build();
   }
 

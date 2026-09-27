@@ -249,6 +249,31 @@ export function modelList(text: string): string[] {
   return text.split(/[\n,]/).map((part) => part.trim()).filter((part) => part.length > 0);
 }
 
+/**
+ * P13 skills. Mirrors `skillPinLabel` / `shortHash` in @tandemise/domain
+ * (entities/skill.ts); the renderer may not import values.
+ */
+export function skillPinLabel(pin: { readonly name: string; readonly version: number; readonly hash: string }): string {
+  return `${pin.name} v${pin.version} · ${pin.hash.slice(0, 12)}`;
+}
+
+/**
+ * The step drawer's skills line: what the newest run received (and how), else
+ * what the task pinned; null when it pins none.
+ */
+export function skillsLine(task: {
+  readonly skills?: readonly { readonly name: string; readonly version: number; readonly hash: string }[] | null;
+  readonly latestRun?: { readonly skills?: readonly { readonly name: string; readonly version: number; readonly hash: string; readonly via: 'folder' | 'prompt' }[] | null } | null;
+}): string | null {
+  const received = task.latestRun?.skills ?? null;
+  if (received !== null && received.length > 0) {
+    return `Skills: ${received.map((s) => `${skillPinLabel(s)}${s.via === 'prompt' ? ' (in prompt)' : ''}`).join(', ')}`;
+  }
+  const pinned = task.skills ?? [];
+  if (pinned.length === 0) return null;
+  return `Skills (pinned): ${pinned.map(skillPinLabel).join(', ')}`;
+}
+
 export const API_VERSION = 'v1';
 export const API_VERSION_HEADER = 'x-tandemise-api-version';
 export const STREAM_PATH = '/v1/stream';
