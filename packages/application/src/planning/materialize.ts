@@ -91,13 +91,30 @@ function skippedPlaceholders(
   });
 }
 
-/** Every task that reads a skipped stage's type waits on its placeholder, so the graph shows where that input comes from. */
+/**
+ * Every task that reads a skipped stage's type waits on its placeholder, so
+ * the graph shows where that input comes from. A task that would otherwise
+ * start the plan (it depends on nothing) waits on every placeholder and may
+ * read each one's type: it stands where the skipped stage stood, and a planner
+ * that left `inputArtifacts` out would otherwise start it without the upload
+ * that replaced the stage before it. Optional, since the planner did not ask
+ * for it by name.
+ */
 function withPlaceholderDependencies(
   tasks: readonly PlannedTask[],
   placeholders: readonly { readonly task: PlannedTask }[],
 ): readonly PlannedTask[] {
   if (placeholders.length === 0) return tasks;
   return tasks.map((task) => {
+    if (task.dependsOn.length === 0) {
+      const types = [...new Set(placeholders.flatMap(({ task: p }) => p.expectedOutputs))]
+        .filter((type) => !task.inputArtifacts.some((r) => r.type === type));
+      return {
+        ...task,
+        dependsOn: placeholders.map(({ task: p }) => p.key),
+        inputArtifacts: [...task.inputArtifacts, ...types.map((type) => ({ type, required: false }))],
+      };
+    }
     const extra = placeholders
       .filter(({ task: p }) => task.inputArtifacts.some((r) => p.expectedOutputs.includes(r.type)) && !task.dependsOn.includes(p.key))
       .map(({ task: p }) => p.key);
