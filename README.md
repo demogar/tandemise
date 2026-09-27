@@ -97,9 +97,10 @@ hours.
 Bring the skills you already use (`~/.claude/skills`, a folder, a git repository)
 and pin them to the roles that need them; every run gets exactly the version it
 was pinned to — see [Giving your agents your skills](docs/guides/skills.md).
-Your roles, workflows, routines and limits can live in your repository as
-`.tandemise/` files: export them, commit them, import them on another machine
-with a preview of every change — see [Your setup as code](docs/guides/setup-as-code.md).
+Your roles, workflows, routines, limits, skill pins and GitHub issue settings can
+live in your repository as `.tandemise/` files: export them, commit them, import
+them on another machine with a preview of every change — see
+[Your setup as code](docs/guides/setup-as-code.md).
 
 Label a GitHub issue `tandemise` and it becomes a draft mission (queued when it
 says what "done" means); when the work ships, the issue gets the criteria table
@@ -201,7 +202,7 @@ Task-oriented, one per concept:
 | [About and diagnostics](docs/guides/about-and-diagnostics.md) | see which app and daemon build is running, and copy diagnostics for a bug report |
 | [Giving your agents your skills](docs/guides/skills.md) | import the skills I already use and pin them to roles and steps |
 | [GitHub issues in and out](docs/guides/github-issues.md) | turn labelled issues into missions and report back on them |
-| [Your setup as code](docs/guides/setup-as-code.md) | keep roles, workflows, routines and limits in my repository, and import them |
+| [Your setup as code](docs/guides/setup-as-code.md) | keep roles, workflows, routines, limits, skill pins and issue settings in my repository, and import them |
 | [Workflows](docs/WORKFLOWS.md) | write my own process as a file, and see which gate facts exist |
 
 ## Repository layout

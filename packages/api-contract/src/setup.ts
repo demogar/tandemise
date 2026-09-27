@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { SkillSource } from '@tandemise/domain';
 
 /**
  * Setup as code (P15): the project's setup exported to, and imported from, a
@@ -59,7 +60,7 @@ export interface SetupExportView {
   readonly warnings: readonly string[];
 }
 
-export type SetupItemKindView = 'settings' | 'wip' | 'monthly_limits' | 'mission_limits' | 'role' | 'workflow' | 'routine';
+export type SetupItemKindView = 'settings' | 'wip' | 'monthly_limits' | 'mission_limits' | 'role' | 'workflow' | 'routine' | 'skill' | 'issues';
 export type SetupActionView = 'add' | 'change' | 'remove' | 'same';
 
 export interface SetupItemView {
@@ -72,6 +73,17 @@ export interface SetupItemView {
   readonly notes: readonly string[];
   /** The default choice; null when there is nothing to choose (Same, or a problem). */
   readonly choice: 'mine' | 'theirs' | null;
+  /**
+   * A skill `skills.lock` pins whose files are not on this machine: never
+   * applied, but it can be imported from its recorded source (the Skills
+   * screen's preview, then import), after which a new preview takes it.
+   */
+  readonly needsImport: {
+    readonly name: string;
+    readonly version: number;
+    readonly hash: string;
+    readonly source: SkillSource;
+  } | null;
 }
 
 export interface SetupPreviewView {
@@ -79,7 +91,7 @@ export interface SetupPreviewView {
   readonly hash: string;
   readonly items: readonly SetupItemView[];
   readonly counts: Readonly<Record<SetupActionView, number>>;
-  /** Files in the folder this version does not read (a skills lock, say). */
+  /** Files in the folder this version does not read. */
   readonly ignored: readonly string[];
 }
 

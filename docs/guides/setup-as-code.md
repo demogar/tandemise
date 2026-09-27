@@ -1,7 +1,8 @@
 # Your setup as code
 
-Your roles, their models, your workflows, your routines, your limits and your
-project settings can live in your repository, next to the code they describe.
+Your roles, their models and skill pins, your workflows, your routines, your
+limits, your GitHub issue settings and your project settings can live in your
+repository, next to the code they describe.
 Commit them, bring them to another machine, and see every change in a diff.
 
 Everything happens in **Project → Setup as code**.
@@ -25,6 +26,8 @@ What is written:
 | `.tandemise/roles/<id>.md` | one file per role (built-in ones too): its settings and **models** (`model`, `escalate`, `economyModel`) in the front matter, its instructions below |
 | `.tandemise/workflows/*.yaml` | your workflow files. One that already lives in this repository is left exactly as it is; one from another repository of the project is copied |
 | `.tandemise/routines.yaml` | your routines: goal, Done-when lines, priority, limits, workflow and schedule |
+| `.tandemise/skills.lock` | only when the project has [skills](skills.md): each skill's newest version and every version a role pins, as name, version, content hash and source (the folder or git repository it was imported from). Never the skill's files |
+| `.tandemise/issues.yaml` | only when a repository has [GitHub issue](github-issues.md) settings: per repository (by name) the GitHub repository, label, check interval, whether to close issues and post comments, the workflow, and whether it was on |
 
 A role file looks like this:
 
@@ -44,6 +47,10 @@ name: Developer
 …
 runtime:
   - Claude Code
+skills:
+  - hash: 3f7a…(64 hex digits)
+    name: house-style
+    version: 1
 ---
 
 You implement the plan …
@@ -60,6 +67,11 @@ You implement the plan …
   role file, for the reader); no paths, ids or people.
 - **Timestamps.** The same setup always writes the same bytes and the same
   hash, so a diff shows only what you changed.
+- **Skill files.** `skills.lock` says which files a pin means (by hash) and
+  where they came from; the files themselves stay in your skills library.
+- **Anything a check left behind.** `issues.yaml` holds settings only: never
+  when issues were last read, an error, who switched it on, or the comments
+  Tandemise wrote.
 
 ## How do I bring a setup into a project?
 
@@ -88,6 +100,41 @@ and marked **Imported — review and turn on** in Missions → Routines. Turn it
 when you have read it.
 
 ![An imported routine, off until you turn it on](../../apps/desktop/screenshots/setup-as-code-routine-imported.png)
+
+## Imported GitHub issue settings arrive off
+
+The same rule holds for [GitHub issues](github-issues.md): settings for a
+repository are imported onto the repository **of the same name** in this
+project, always **off**, and its Issues card says **Imported — review and turn
+on**. Nothing is read from GitHub until you switch **Turn labelled issues into
+missions** on. A repository the project does not have cannot be taken; the row
+says to add it first.
+
+![Imported issue settings, off until you turn them on](../../apps/desktop/screenshots/setup-as-code-issues-imported.png)
+
+## How do skill pins come across?
+
+A role file keeps its pins with each skill's **content hash**, and
+`skills.lock` says where each skill came from. On import, what matters is the
+hash, not the version number (another library may number the same files
+differently):
+
+- **Already in this project's library** — the skill's row is **Same**, and the
+  role is pinned to the library's version with those files.
+- **On this machine, but not in this project** (another project imported the
+  same files) — an **Add**: taking it adds the files to the library.
+- **Not on this machine at all** — the row says **Needs import: &lt;name&gt; from
+  &lt;source&gt;** and can never be taken, and neither can a role that pins it: its
+  runs would refuse to start. Press **Fetch &lt;name&gt; from its source…** to see
+  the same preview the Skills screen shows (files and SKILL.md), then **Import
+  &lt;name&gt;**. The folder is read again, the skill row turns **Same**, and the
+  role can be applied.
+
+![A pinned skill whose files are not on this machine: Needs import](../../apps/desktop/screenshots/setup-as-code-needs-import.png)
+
+If the source now has different files from the ones pinned, the fetch says so
+and does not import them: ask for the files the setup was exported with, or
+change the pin.
 
 ## Gates that can never pass are refused
 
@@ -120,7 +167,7 @@ files, and how to fix it.
 
 ## Not yet
 
-- Skills (`skills.lock`) will be added to the export when skills can be
-  attached to roles.
+- A skill is never removed by an import, and a pin to a version the library
+  no longer has is left out of the export.
 - Staffing (which agent does which role) and runtime profiles stay on each
   machine; set them in Team and Runtimes.

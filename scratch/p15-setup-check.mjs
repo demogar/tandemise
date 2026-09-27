@@ -14,7 +14,12 @@
  *   - export is byte-stable (twice, same bytes and hash), has no secrets, ids,
  *     paths or timestamps, and makes the files committable;
  *   - import previews Add/Change/Remove/Same, applies atomically, refuses a
- *     folder that changed since the preview, and imports routines off.
+ *     folder that changed since the preview, and imports routines off;
+ *   - skills (P13): `skills.lock` lists each skill's name, version, hash and
+ *     source (never its files) and role files carry their pins; an import
+ *     applies a pin whose files are in this machine's skills store and names
+ *     one that is not as "Needs import", never applying it;
+ *   - GitHub issue settings (P14) export per repository and always arrive off.
  *
  *   npm run build && node scratch/p15-setup-check.mjs
  */
@@ -40,6 +45,7 @@ const E = await import('@tandemise/evaluation');
 const { newId, ids, systemClock } = await import('@tandemise/shared');
 const { FileSetupFolder } = await import('../apps/daemon/dist/setup-folder.js');
 const { FileWorkflowSource } = await import('../apps/daemon/dist/workflow-source.js');
+const { DaemonSkillFiles } = await import('../apps/daemon/dist/skill-files.js');
 const docTool = await import('../scripts/gate-facts-doc.mjs');
 const YAML = await import('yaml');
 
@@ -68,7 +74,7 @@ section('the vocabulary: one scope per fact, nothing listed that is never measur
 
 // -------------------------------------------------------- engine harness (real DB)
 const HOME = mkdtempSync(join(tmpdir(), 'tdm-p15-'));
-async function engineHarness() {
+async function engineHarness(home = join(HOME, 'home')) {
   const { Container, compose } = await import('@tandemise/kernel');
   const { createLogger, createPaths } = await import('@tandemise/shared');
   const persistenceTokens = await import('@tandemise/persistence');
@@ -80,7 +86,7 @@ async function engineHarness() {
   const { executionCoreModule, CLOCK: EXEC_CLOCK, LOGGER: EXEC_LOGGER, PATHS: EXEC_PATHS } = await import('@tandemise/execution-core');
   const { executionLocalModule } = await import('@tandemise/execution-local');
   const { integrationsCoreModule, CLOCK: INT_CLOCK, LOGGER: INT_LOGGER, COMMAND_EXECUTOR, BACKGROUND_PROCESS_LAUNCHER } = await import('@tandemise/integrations-core');
-  const paths = createPaths(join(HOME, 'home'));
+  const paths = createPaths(home);
   mkdirSync(paths.root, { recursive: true });
   const log = createLogger({ level: 'error', base: { component: 'p15-check' } });
   const clock = systemClock;
@@ -119,12 +125,14 @@ async function engineHarness() {
   // The daemon's real disk adapters, as bootstrap binds them.
   container.rebind(app.WORKFLOW_SOURCE, () => new FileWorkflowSource(quiet), { source: 'check' });
   container.rebind(app.SETUP_FOLDER, () => new FileSetupFolder(quiet), { source: 'check' });
+  container.rebind(app.SKILL_FILES, () => new DaemonSkillFiles(paths.skills, join(home, 'claude-skills'), quiet), { source: 'check' });
   const services = app.createServices(container);
   const r = (t) => container.resolve(t);
   const repo = {
     workspaces: r(app.WORKSPACE_REPOSITORY), repos: r(app.REPO_REPOSITORY), missions: r(app.MISSION_REPOSITORY),
     tasks: r(app.TASK_REPOSITORY), artifacts: r(app.ARTIFACT_REPOSITORY), evaluations: r(app.EVALUATION_REPOSITORY),
     approvals: r(app.APPROVAL_REPOSITORY), criteria: r(app.MISSION_CRITERIA_REPOSITORY), routines: r(app.ROUTINE_REPOSITORY),
+    issues: r(app.ISSUE_REPOSITORY), skills: r(app.SKILL_REPOSITORY),
   };
   return { container, services, repo, clock };
 }
@@ -133,8 +141,8 @@ const h = await engineHarness();
 const caller = { personId: h.services.identity.localPerson().id };
 
 /** A git repository with one commit. */
-function gitRepo(name, files = {}) {
-  const dir = join(HOME, name);
+function gitRepo(name, files = {}, base = HOME) {
+  const dir = join(base, name);
   mkdirSync(dir, { recursive: true });
   git(dir, 'init', '-q', '-b', 'main');
   git(dir, 'config', 'user.email', 'check@example.com');
@@ -427,7 +435,7 @@ const bytes2 = readAll();
   check('the expected files', ['.tandemise/tandemise.yaml', '.tandemise/routines.yaml', '.tandemise/roles/development.md', '.tandemise/roles/docs-writer.md', '.tandemise/workflows/p15.yaml'].every((p) => paths.includes(p)), paths);
   check('every role of the project, built-ins included', D.BUILT_IN_ROLE_IDS.every((id) => paths.includes(`.tandemise/roles/${id}.md`)));
   check('the workflow already in this repository is kept, not rewritten', first.files.find((f) => f.path === '.tandemise/workflows/p15.yaml')?.status === 'kept' && bytes1['workflows/p15.yaml'] === GOOD_WORKFLOW);
-  check('no skills.lock (P13 adds it)', !paths.some((p) => p.includes('skills')));
+  check('a project with no skills writes no skills.lock, and no issues.yaml without issue settings', !paths.some((p) => p.includes('skills') || p.includes('issues')), paths);
   check('twice: the same hash', first.hash === again.hash && /^[0-9a-f]{12}$/.test(first.hash), [first.hash, again.hash]);
   check('twice: the same bytes', JSON.stringify(bytes1) === JSON.stringify(bytes2));
   check('the hash is over the files on disk', app.setupHash(Object.entries(bytes1).filter(([p]) => p !== '.gitignore').map(([path, content]) => ({ path, content }))) === first.hash);
@@ -537,12 +545,12 @@ section('import from another folder: workflows land in the project, a bad one ca
   writeFileSync(join(incoming, '.tandemise/workflows/extra.yaml'), GOOD_WORKFLOW.replace('P15 build', 'Extra'));
   writeFileSync(join(incoming, '.tandemise/workflows/bad.yaml'), GOOD_WORKFLOW.replace('artifact.ChangeSet.exists && checks.tests != FAIL', 'checks.tests != FAIL && mission.stalled == 0'));
   writeFileSync(join(incoming, '.tandemise/routines.yaml'), YAML.stringify({ routines: [{ name: 'Imported weekly', kind: 'mission', goal: 'Tidy the backlog', successCriteria: ['The backlog is tidy'], priority: 'low', limits: null, workflow: null, schedule: { type: 'weekly', day: 5, at: '16:00' } }] }));
-  writeFileSync(join(incoming, '.tandemise/skills.lock'), 'future\n');
+  writeFileSync(join(incoming, '.tandemise/notes.txt'), 'future\n');
 
   const p = await h.services.setup.preview(ws, join(incoming, '.tandemise'));
   const byId = new Map(p.items.map((i) => [i.id, i]));
   check('the .tandemise folder itself can be chosen', p.folder.endsWith('.tandemise'));
-  check('a file this version does not read is listed as ignored', p.ignored.includes('skills.lock'), p.ignored);
+  check('a file this version does not read is listed as ignored', p.ignored.includes('notes.txt'), p.ignored);
   check('a new workflow is an Add', byId.get('workflow:extra.yaml')?.action === 'add');
   check('a workflow with a bad gate cannot be taken, and says why', byId.get('workflow:bad.yaml')?.choice === null && byId.get('workflow:bad.yaml')?.problem?.includes('mission.stalled, which is only known for the whole mission'), byId.get('workflow:bad.yaml'));
   check('the project\'s own workflow is a Remove kept by default', byId.get('workflow:p15.yaml')?.action === 'remove' && byId.get('workflow:p15.yaml')?.choice === 'mine');
@@ -560,6 +568,7 @@ section('import from another folder: workflows land in the project, a bad one ca
       create: () => { throw new Error('the disk is full'); },
       update: (...a) => h.services.routines.update(...a), remove: (...a) => h.services.routines.remove(...a), problemWith: (f) => h.services.routines.problemWith(f),
     },
+    skills: h.services.skills, issueSettings: c.resolve(app.ISSUE_REPOSITORY), issues: h.services.issues,
     workflows: c.resolve(app.WORKFLOW_SOURCE), folder: c.resolve(app.SETUP_FOLDER), settings: c.resolve(app.SETTINGS_STORE),
     unitOfWork: c.resolve(app.UNIT_OF_WORK), recorder: c.resolve(app.EVENT_RECORDER), clock: systemClock, log: quiet,
   });
@@ -592,6 +601,129 @@ section('a folder without .tandemise, and a file that cannot be read');
   const qa = p.items.find((i) => i.id === 'role:qa');
   check('an unreadable role file is a row with its reason and no choice', qa?.problem?.startsWith('A role file starts with front matter') && qa?.choice === null, qa);
   check('a newer setup version is refused on its rows', p.items.find((i) => i.kind === 'settings')?.problem?.includes('setup version 1'), p.items.find((i) => i.kind === 'settings'));
+}
+
+// ------------------------------------------------------------------- skills
+section('skills: skills.lock and role pins are exported; an import applies what the store has and names what needs importing');
+const skillSrc = join(HOME, 'skill-src', 'tdd');
+const SKILL_BODY = 'Write the failing test first, then the code.';
+mkdirSync(skillSrc, { recursive: true });
+writeFileSync(join(skillSrc, 'SKILL.md'), `---\nname: tdd\ndescription: Tests first.\n---\n\n${SKILL_BODY}\n`);
+writeFileSync(join(skillSrc, 'checklist.md'), '- red\n- green\n- refactor\n');
+const importSkill = async (hh, workspaceId, path) => {
+  const pv = await hh.services.skills.preview(workspaceId, { kind: 'path', path });
+  return hh.services.skills.import(workspaceId, { source: { kind: 'path', path }, hash: pv.hash });
+};
+const pinRole = (hh, workspaceId, id, skills) => {
+  const { createdAt, updatedAt, builtIn, workspaceId: _w, ...rest } = hh.services.roles.list(workspaceId).find((r) => r.id === id);
+  return hh.services.roles.upsert({ ...rest, workspaceId, skills });
+};
+const sharedDir = gitRepo('shared');
+const wsS = (await h.services.workspaces.create(caller, { name: 'Skills demo', repositoryPath: sharedDir })).workspace.id;
+const sharedRepoId = h.repo.repos.listByWorkspace(wsS).find((r) => r.path === sharedDir).id;
+const imported = await importSkill(h, wsS, skillSrc);
+const HASH = h.repo.skills.versions(imported.skill.id)[0].hash;
+pinRole(h, wsS, 'development', [{ name: 'tdd', version: 1 }]);
+h.services.issues.configure(caller, sharedRepoId, {
+  enabled: true, githubRepo: 'example/shared', label: 'ready', pollMinutes: 15, closeOnComplete: true, postComments: false, workflowPreset: null,
+});
+// What a check leaves behind: a cursor and an error, never exported.
+h.repo.issues.saveSettings(sharedRepoId, wsS, { lastCheckedAt: new Date().toISOString(), lastError: 'Could not check issues: offline' });
+
+const sharedSetup = join(sharedDir, '.tandemise');
+const readShared = (p) => readFileSync(join(sharedSetup, p), 'utf8');
+{
+  const e1 = await h.services.setup.export(wsS, sharedRepoId);
+  const lock1 = readShared('skills.lock');
+  const dev1 = readShared('roles/development.md');
+  const issues1 = readShared('issues.yaml');
+  const e2 = await h.services.setup.export(wsS, sharedRepoId);
+  check('the export lists skills.lock and issues.yaml', e1.files.some((f) => f.path === '.tandemise/skills.lock') && e1.files.some((f) => f.path === '.tandemise/issues.yaml'), e1.files.map((f) => f.path));
+  check('byte-stable: the same hash and bytes twice', e1.hash === e2.hash && lock1 === readShared('skills.lock') && dev1 === readShared('roles/development.md') && issues1 === readShared('issues.yaml'));
+  const lock = YAML.parse(lock1);
+  check('skills.lock: name, version, hash and source', lock?.version === 1 && lock.skills?.length === 1 && lock.skills[0].name === 'tdd' && lock.skills[0].version === 1
+    && lock.skills[0].hash === HASH && lock.skills[0].source?.kind === 'path' && lock.skills[0].source?.path === skillSrc, lock);
+  check('skills.lock: only those four keys per skill', JSON.stringify(Object.keys(lock?.skills?.[0] ?? {}).sort()) === JSON.stringify(['hash', 'name', 'source', 'version']), lock?.skills?.[0]);
+  check('skills.lock: never the skill\'s content', !lock1.includes(SKILL_BODY) && !lock1.includes('refactor') && !lock1.includes('Tests first'));
+  const front = YAML.parse(dev1.split('---\n')[1]);
+  check('the role file carries its pin with the hash', JSON.stringify(front.skills) === JSON.stringify([{ hash: HASH, name: 'tdd', version: 1 }]), front.skills);
+  check('a role without pins has no skills key', !readShared('roles/qa.md').includes('skills:'));
+  const issues = YAML.parse(issues1);
+  check('issues.yaml: the repository\'s settings, by repository name', JSON.stringify(issues?.repositories) === JSON.stringify([{
+    closeOnComplete: true, enabled: true, githubRepo: 'example/shared', label: 'ready', pollMinutes: 15, postComments: false, repository: 'shared', workflow: null,
+  }]), issues);
+  check('issues.yaml: no cursor, error, member or timestamp', !/lastChecked|lastError|enabledBy|offline|\d{4}-\d\d-\d\dT/.test(issues1), issues1);
+  const same = await h.services.setup.preview(wsS, sharedDir);
+  const skillRow = same.items.find((i) => i.kind === 'skill');
+  check('previewing its own export: the skill and the issue settings are Same', skillRow?.action === 'same' && skillRow?.id === `skill:tdd@${HASH.slice(0, 12)}` && same.items.find((i) => i.kind === 'issues')?.action === 'same', same.items.filter((i) => i.action !== 'same'));
+  check('nothing in skills.lock or issues.yaml is ignored', !same.ignored.includes('skills.lock') && !same.ignored.includes('issues.yaml'), same.ignored);
+}
+
+// Another machine: its own database and its own skills store.
+const HOME2 = join(HOME, 'machine-two');
+mkdirSync(HOME2, { recursive: true });
+const h2 = await engineHarness(join(HOME2, 'home'));
+const caller2 = { personId: h2.services.identity.localPerson().id };
+const aDir = gitRepo('shared', {}, HOME2);
+const wsA = (await h2.services.workspaces.create(caller2, { name: 'Machine two', repositoryPath: aDir })).workspace.id;
+const aRepoId = h2.repo.repos.listByWorkspace(wsA).find((r) => r.path === aDir).id;
+// This project already has its own, different tdd v1.
+const otherSrc = join(HOME2, 'other-tdd', 'tdd');
+mkdirSync(otherSrc, { recursive: true });
+writeFileSync(join(otherSrc, 'SKILL.md'), '---\nname: tdd\ndescription: Our own.\n---\n\nOur own rules.\n');
+await importSkill(h2, wsA, otherSrc);
+const devA = () => h2.services.roles.list(wsA).find((r) => r.id === 'development');
+{
+  const p = await h2.services.setup.preview(wsA, sharedDir);
+  const row = p.items.find((i) => i.kind === 'skill');
+  check('content missing here: "Needs import: tdd from <source>"', row?.action === 'add' && row?.problem === `Needs import: tdd from ${skillSrc}`, row);
+  check('it is never taken', row?.choice === null);
+  check('it offers the recorded source to fetch from', row?.needsImport?.name === 'tdd' && row?.needsImport?.hash === HASH && row?.needsImport?.source?.path === skillSrc, row?.needsImport);
+  const role = p.items.find((i) => i.id === 'role:development');
+  check('the role pinning it cannot be taken yet, and says why', role?.choice === null && role?.problem?.includes('Needs import: tdd'), role);
+  const iss = p.items.find((i) => i.kind === 'issues');
+  check('issue settings for a repository of the same name: an Add that arrives off', iss?.id === 'issues:shared' && iss?.action === 'add' && iss?.choice === 'theirs' && iss?.notes.some((n) => n.startsWith('Arrives off')), iss);
+  const done = await h2.services.setup.apply(caller2, wsA, { path: sharedDir, hash: p.hash, choices: {} });
+  check('applying the defaults does not pin a skill whose files are missing', (devA().skills ?? []).length === 0, devA().skills);
+  check('and adds nothing to the library', h2.repo.skills.versions(h2.repo.skills.getByName(wsA, 'tdd').id).length === 1);
+  const s = h2.repo.issues.settings(aRepoId);
+  check('imported issue settings are off, with every exported field', s?.enabled === false && s.githubRepo === 'example/shared' && s.label === 'ready' && s.pollMinutes === 15 && s.closeOnComplete === true && s.postComments === false, s);
+  const view = h2.services.issues.repositoryView(aRepoId);
+  check('the Issues card says "Imported — review and turn on"', view.statusLabel === 'Imported — review and turn on', view.statusLabel);
+  check('nothing was checked: no cursor', s?.lastCheckedAt === null && s?.enabledBy === null, s);
+  check('the applied lines name them', done.lines.some((l) => l.includes('Issues for shared')), done.lines);
+  const on = h2.services.issues.configure(caller2, aRepoId, { enabled: true });
+  check('turning it on clears the note', on.settings.enabled && on.statusLabel !== 'Imported — review and turn on' && on.settings.lastError === null, on);
+  h2.services.issues.configure(caller2, aRepoId, { enabled: false });
+}
+{
+  // Another project on machine two imports the same files: now the store has them.
+  const bDir = gitRepo('elsewhere', {}, HOME2);
+  const wsB = (await h2.services.workspaces.create(caller2, { name: 'Elsewhere', repositoryPath: bDir })).workspace.id;
+  await importSkill(h2, wsB, skillSrc);
+  const p = await h2.services.setup.preview(wsA, sharedDir);
+  const row = p.items.find((i) => i.kind === 'skill');
+  check('content in this machine\'s store: an Add, taken by default', row?.action === 'add' && row?.problem === null && row?.choice === 'theirs' && row?.needsImport === null, row);
+  check('it says it becomes a new version beside the project\'s own tdd', row?.detail.includes('tdd v2'), row?.detail);
+  const role = p.items.find((i) => i.id === 'role:development');
+  check('the role can now be taken', role?.action === 'change' && role?.choice === 'theirs' && role?.problem === null, role);
+  const iss = p.items.find((i) => i.kind === 'issues');
+  check('issue settings already imported: Same (on or off is not compared)', iss?.action === 'same', iss);
+  await h2.services.setup.apply(caller2, wsA, { path: sharedDir, hash: p.hash, choices: {} });
+  const versions = h2.repo.skills.versions(h2.repo.skills.getByName(wsA, 'tdd').id);
+  check('the library has it as v2, the same bytes', versions.length === 2 && versions[1].hash === HASH, versions.map((v) => [v.version, v.hash.slice(0, 12)]));
+  check('the role pins the local version with that hash (v2), not the number in the file', JSON.stringify(devA().skills) === JSON.stringify([{ name: 'tdd', version: 2 }]), devA().skills);
+  const again = await h2.services.setup.preview(wsA, sharedDir);
+  check('previewing again: the skill and the role are Same', again.items.filter((i) => i.kind === 'skill' || i.id === 'role:development').every((i) => i.action === 'same'), again.items.filter((i) => i.action !== 'same'));
+}
+{
+  // A repository the project does not have.
+  const lone = join(HOME2, 'lone');
+  mkdirSync(join(lone, '.tandemise'), { recursive: true });
+  writeFileSync(join(lone, '.tandemise', 'issues.yaml'), YAML.stringify({ repositories: [{ repository: 'nowhere', githubRepo: 'example/nowhere', enabled: true, label: 'x', pollMinutes: 5, closeOnComplete: false, postComments: true, workflow: null }] }));
+  const p = await h2.services.setup.preview(wsA, lone);
+  const row = p.items.find((i) => i.id === 'issues:nowhere');
+  check('issue settings for a repository this project lacks cannot be taken, and say why', row?.choice === null && row?.problem?.includes("no repository named 'nowhere'"), row);
 }
 
 rmSync(HOME, { recursive: true, force: true });

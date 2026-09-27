@@ -57,7 +57,7 @@
     "wrote .tandemise/workflows/q4-stalled.yaml and q4-no-output.yaml in the project"
   ],
   "shots": [
-    "/Users/demogar/projects/tandemise/tandemise-p15-setup/scratch/acceptance/p15/evidence/Q4-stalled-gate-refused.png",
-    "/Users/demogar/projects/tandemise/tandemise-p15-setup/scratch/acceptance/p15/evidence/Q4-output-check-refused.png"
+    "/Users/demogar/projects/tandemise/tandemise-p15-int/scratch/acceptance/p15/evidence/Q4-stalled-gate-refused.png",
+    "/Users/demogar/projects/tandemise/tandemise-p15-int/scratch/acceptance/p15/evidence/Q4-output-check-refused.png"
   ]
 }

@@ -76,7 +76,7 @@
   ok   the expected files
   ok   every role of the project, built-ins included
   ok   the workflow already in this repository is kept, not rewritten
-  ok   no skills.lock (P13 adds it)
+  ok   a project with no skills writes no skills.lock, and no issues.yaml without issue settings
   ok   twice: the same hash
   ok   twice: the same bytes
   ok   the hash is over the files on disk
@@ -146,5 +146,38 @@
   ok   an unreadable role file is a row with its reason and no choice
   ok   a newer setup version is refused on its rows
 
-123 passed, 0 failed
+== skills: skills.lock and role pins are exported; an import applies what the store has and names what needs importing
+  ok   the export lists skills.lock and issues.yaml
+  ok   byte-stable: the same hash and bytes twice
+  ok   skills.lock: name, version, hash and source
+  ok   skills.lock: only those four keys per skill
+  ok   skills.lock: never the skill's content
+  ok   the role file carries its pin with the hash
+  ok   a role without pins has no skills key
+  ok   issues.yaml: the repository's settings, by repository name
+  ok   issues.yaml: no cursor, error, member or timestamp
+  ok   previewing its own export: the skill and the issue settings are Same
+  ok   nothing in skills.lock or issues.yaml is ignored
+  ok   content missing here: "Needs import: tdd from <source>"
+  ok   it is never taken
+  ok   it offers the recorded source to fetch from
+  ok   the role pinning it cannot be taken yet, and says why
+  ok   issue settings for a repository of the same name: an Add that arrives off
+  ok   applying the defaults does not pin a skill whose files are missing
+  ok   and adds nothing to the library
+  ok   imported issue settings are off, with every exported field
+  ok   the Issues card says "Imported — review and turn on"
+  ok   nothing was checked: no cursor
+  ok   the applied lines name them
+  ok   turning it on clears the note
+  ok   content in this machine's store: an Add, taken by default
+  ok   it says it becomes a new version beside the project's own tdd
+  ok   the role can now be taken
+  ok   issue settings already imported: Same (on or off is not compared)
+  ok   the library has it as v2, the same bytes
+  ok   the role pins the local version with that hash (v2), not the number in the file
+  ok   previewing again: the skill and the role are Same
+  ok   issue settings for a repository this project lacks cannot be taken, and say why
+
+154 passed, 0 failed
 ALL P15 SETUP CHECKS PASSED

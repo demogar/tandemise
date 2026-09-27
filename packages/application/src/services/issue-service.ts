@@ -15,6 +15,7 @@ import type { Clock, IssueLinkId, Logger, MemberId, MissionId, RepositoryId, Wor
 import { TandemiseError, asId, errorMessage } from '@tandemise/shared';
 import type { EventRecorder } from '../support/event-recorder.js';
 import { requireSeat, type Caller } from '../support/identity.js';
+import { IMPORTED_ISSUES_NOTE } from '../setup/codec.js';
 
 export interface IssueDeps {
   readonly issues: IssueRepositoryPort;
@@ -148,6 +149,16 @@ export class IssueService {
     this.deps.log.info('issues.configured', { repositoryId, enabled, githubRepo, label, pollMinutes });
     this.#changed();
     return this.repositoryView(repositoryId);
+  }
+
+  /**
+   * Settings from an import (P15 setup as code): saved exactly as the card
+   * saves them, but always off, carrying "Imported — review and turn on" until
+   * the person turns them on - so an import never starts pulling issues.
+   */
+  importSettings(caller: Caller, repositoryId: RepositoryId, request: Omit<UpdateIssueSettingsRequest, 'enabled'>): void {
+    this.configure(caller, repositoryId, { ...request, enabled: false });
+    this.deps.issues.saveSettings(repositoryId, this.#requireRepository(repositoryId).workspaceId, { lastError: IMPORTED_ISSUES_NOTE });
   }
 
   // ------------------------------------------------------------------ checks
@@ -500,7 +511,8 @@ export class IssueService {
         lastError: s?.lastError ?? null,
       },
       suggestedRepo: githubRepoFromRemote(repository.remoteUrl),
-      statusLabel: issueCheckLabel({
+      // Turning it on clears the note with the error it is kept in.
+      statusLabel: s !== undefined && !s.enabled && s.lastError === IMPORTED_ISSUES_NOTE ? IMPORTED_ISSUES_NOTE : issueCheckLabel({
         enabled: s?.enabled ?? false,
         checking,
         lastCheckedMs: s?.lastCheckedAt ? Date.parse(s.lastCheckedAt) : null,

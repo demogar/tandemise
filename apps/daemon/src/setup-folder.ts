@@ -11,7 +11,7 @@ import { errorMessage, type Logger } from '@tandemise/shared';
 const run = promisify(execFile);
 const SETUP_DIR = '.tandemise';
 /** What an import reads; anything else in the folder is listed as ignored. */
-const READ = [/^tandemise\.yaml$/, /^routines\.yaml$/, /^roles\/[^/]+\.md$/, /^workflows\/[^/]+\.(ya?ml|json)$/];
+const READ = [/^tandemise\.yaml$/, /^routines\.yaml$/, /^skills\.lock$/, /^issues\.yaml$/, /^roles\/[^/]+\.md$/, /^workflows\/[^/]+\.(ya?ml|json)$/];
 /** Tandemise's own working files: never read, never listed. */
 const SKIP = [/^out(\/|$)/, /^\.gitignore$/, /\.tandemise-staged$/];
 const STAGED_SUFFIX = '.tandemise-staged';

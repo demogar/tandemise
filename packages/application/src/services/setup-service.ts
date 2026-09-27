@@ -1,6 +1,7 @@
 import { join, sep } from 'node:path';
 import type {
-  RepoRepositoryPort, Repository, RoleTemplate, RoutineRepositoryPort, RuntimeProfileRepositoryPort, UnitOfWork, WorkspaceKnowledge,
+  IssueRepositoryPort, RepoRepositoryPort, Repository, RoleTemplate, RoutineRepositoryPort, RuntimeProfileRepositoryPort, SkillFile,
+  UnitOfWork, WorkspaceKnowledge,
 } from '@tandemise/domain';
 import type {
   ApplySetupRequest, SetupApplyView, SetupExportRecord, SetupExportView, SetupPreviewView, SetupStatusView, UpdateWorkspaceRequest,
@@ -12,9 +13,13 @@ import type { RoleService, WorkspaceService } from '../services.js';
 import type { EventRecorder } from '../support/event-recorder.js';
 import type { Caller } from '../support/identity.js';
 import type { RoutineService } from './routine-service.js';
+import type { SkillService } from './skill-service.js';
+import type { IssueService } from './issue-service.js';
 import {
   IMPORTED_ROUTINE_NOTE, SETUP_DIR, SETUP_ROLES_DIR, SETUP_WORKFLOWS_DIR, diffSetup, readSetup, renderSetup, setupCounts, setupHash,
-  type ProjectSetup, type RoleSetup, type RoutineSetup, type SetupChoice, type SetupItem, type SetupSnapshot, type WorkflowSetup,
+  skillAvailability, skillItemId,
+  type IssueSetup, type ProjectSetup, type RoleSetup, type RoutineSetup, type SetupChoice, type SetupDiffContext, type SetupItem,
+  type SetupSnapshot, type SkillLockEntry, type SkillPinSetup, type WorkflowSetup,
 } from '../setup/codec.js';
 
 export interface SetupDeps {
@@ -24,6 +29,11 @@ export interface SetupDeps {
   readonly runtimeProfiles: Pick<RuntimeProfileRepositoryPort, 'list'>;
   readonly routines: Pick<RoutineRepositoryPort, 'list' | 'update'>;
   readonly routineService: Pick<RoutineService, 'create' | 'update' | 'remove' | 'problemWith'>;
+  /** The skills library (P13): pins by content hash, and files another project already brought to this machine. */
+  readonly skills: Pick<SkillService, 'library' | 'versionFor' | 'adoptStored' | 'content'>;
+  /** GitHub issue settings (P14), per repository. */
+  readonly issueSettings: Pick<IssueRepositoryPort, 'listSettings'>;
+  readonly issues: Pick<IssueService, 'importSettings'>;
   readonly workflows: WorkflowSourcePort;
   readonly folder: SetupFolderPort;
   readonly settings: SettingsStorePort;
@@ -51,7 +61,10 @@ const KNOWLEDGE_KEYS: readonly (keyof WorkspaceKnowledge)[] = [
  * files, which are not rows, are staged beside their destination and renamed
  * into place only once that transaction has committed.
  *
- * An import never starts work: every routine it adds or changes is saved off.
+ * An import never starts work: every routine it adds or changes is saved off,
+ * and so are a repository's GitHub issue settings. A skill is only ever
+ * pinned when its files are on this machine: one whose files are missing is
+ * shown as "Needs import", never applied, because its runs would refuse.
  */
 export class SetupService {
   constructor(private readonly deps: SetupDeps) {}
@@ -127,6 +140,7 @@ export class SetupService {
     const read = await this.#readFolder(request.path);
     const theirs = readSetup(read.files).snapshot;
     const { workflowSources } = await this.#snapshot(workspaceId);
+    const stored = await this.#storedFiles(workspaceId, taken, theirs);
 
     // Files first, staged: nothing is visible until the rows have committed.
     const write: Record<string, string> = {};
@@ -150,7 +164,7 @@ export class SetupService {
     const staged = await this.deps.folder.stage({ write, remove });
 
     try {
-      this.deps.unitOfWork.transaction(() => this.#applyRows(caller, workspaceId, taken, theirs));
+      this.deps.unitOfWork.transaction(() => this.#applyRows(caller, workspaceId, taken, theirs, stored));
     } catch (e) {
       await staged.discard();
       throw e;
@@ -168,11 +182,13 @@ export class SetupService {
 
   // ------------------------------------------------------------------ rows
 
-  #applyRows(caller: Caller, workspaceId: WorkspaceId, taken: readonly SetupItem[], theirs: SetupSnapshot): void {
+  #applyRows(caller: Caller, workspaceId: WorkspaceId, taken: readonly SetupItem[], theirs: SetupSnapshot, stored: ReadonlyMap<string, readonly SkillFile[]>): void {
     const workspace = this.deps.workspaces.view(workspaceId).workspace;
     const patch: { -readonly [K in keyof UpdateWorkspaceRequest]: UpdateWorkspaceRequest[K] } = {};
     const project = theirs.project;
-    for (const item of taken) {
+    // Skills first, so a role taken in the same apply can pin them.
+    const ordered = [...taken].sort((a, b) => Number(b.kind === 'skill') - Number(a.kind === 'skill'));
+    for (const item of ordered) {
       switch (item.kind) {
         case 'settings':
           if (project === null) break;
@@ -191,7 +207,15 @@ export class SetupService {
           patch.defaultMissionLimits = [...(project?.missionLimits ?? [])];
           break;
         case 'role':
-          this.#applyRole(workspaceId, item, theirs);
+          this.#applyRole(workspaceId, item, theirs, stored);
+          break;
+        case 'skill': {
+          const entry = theirs.skills?.find((s) => skillItemId(s) === item.id);
+          if (entry !== undefined) this.#skillVersion(workspaceId, entry, theirs, stored);
+          break;
+        }
+        case 'issues':
+          this.#applyIssues(caller, workspaceId, item, theirs);
           break;
         case 'routine':
           this.#applyRoutine(caller, workspaceId, item, theirs);
@@ -203,7 +227,51 @@ export class SetupService {
     if (Object.keys(patch).length > 0) this.deps.workspaces.update(workspaceId, patch);
   }
 
-  #applyRole(workspaceId: WorkspaceId, item: SetupItem, theirs: SetupSnapshot): void {
+  /** The library's version with a pin's files, adding them from this machine's store when needed. */
+  #skillVersion(workspaceId: WorkspaceId, pin: SkillPinSetup, theirs: SetupSnapshot, stored: ReadonlyMap<string, readonly SkillFile[]>): number {
+    const have = this.deps.skills.versionFor(workspaceId, pin.name, pin.hash);
+    if (have !== undefined) return have;
+    const files = stored.get(pin.hash);
+    const entry = theirs.skills?.find((s) => s.name === pin.name && s.hash === pin.hash);
+    if (files === undefined || entry === undefined) {
+      // The preview refuses this; a folder or store that changed in between lands here.
+      throw TandemiseError.validation(`Needs import: ${pin.name} v${pin.version}. Its files are not on this machine. Import it, then preview again.`, { skill: pin.name });
+    }
+    return this.deps.skills.adoptStored(workspaceId, entry, files);
+  }
+
+  /** Files in the store for every taken pin the library lacks, read (and verified) before the transaction. */
+  async #storedFiles(workspaceId: WorkspaceId, taken: readonly SetupItem[], theirs: SetupSnapshot): Promise<Map<string, readonly SkillFile[]>> {
+    const pins: SkillPinSetup[] = [];
+    for (const item of taken) {
+      if (item.kind === 'skill') pins.push(...(theirs.skills ?? []).filter((s) => skillItemId(s) === item.id));
+      if (item.kind === 'role' && item.action !== 'remove') pins.push(...(theirs.roles?.find((r) => `role:${r.id}` === item.id)?.skills ?? []));
+    }
+    const out = new Map<string, readonly SkillFile[]>();
+    for (const pin of pins) {
+      if (out.has(pin.hash) || this.deps.skills.versionFor(workspaceId, pin.name, pin.hash) !== undefined) continue;
+      const files = await this.deps.skills.content(pin.hash);
+      if (files !== null) out.set(pin.hash, files);
+    }
+    return out;
+  }
+
+  #applyIssues(caller: Caller, workspaceId: WorkspaceId, item: SetupItem, theirs: SetupSnapshot): void {
+    const name = item.id.slice('issues:'.length);
+    const settings = theirs.issues?.find((i) => i.repository === name);
+    const repository = this.deps.repositories.listByWorkspace(workspaceId).find((r) => r.name === name);
+    if (settings === undefined || repository === undefined) return;
+    this.deps.issues.importSettings(caller, repository.id, {
+      githubRepo: settings.githubRepo,
+      label: settings.label,
+      pollMinutes: settings.pollMinutes,
+      closeOnComplete: settings.closeOnComplete,
+      postComments: settings.postComments,
+      workflowPreset: settings.workflow,
+    });
+  }
+
+  #applyRole(workspaceId: WorkspaceId, item: SetupItem, theirs: SetupSnapshot, stored: ReadonlyMap<string, readonly SkillFile[]>): void {
     const id = item.id.slice('role:'.length);
     if (item.action === 'remove') {
       // A built-in is restored as shipped; a role someone added is deleted.
@@ -227,6 +295,8 @@ export class SetupService {
       defaultIsolation: role.isolation,
       outputContract: role.outputContract.trim(),
       models,
+      // Pinned by the files' hash, at whatever version number this library has them.
+      skills: role.skills.map((pin) => ({ name: pin.name, version: this.#skillVersion(workspaceId, pin, theirs, stored) })),
     });
   }
 
@@ -263,9 +333,20 @@ export class SetupService {
     const read = await this.#readFolder(path);
     const parsed = readSetup(read.files);
     const { snapshot } = await this.#snapshot(workspaceId);
-    const items = diffSetup(snapshot, parsed).map((item) => this.#withRoutineProblem(item, parsed.snapshot));
+    const items = diffSetup(snapshot, parsed, await this.#diffContext(workspaceId, parsed.snapshot)).map((item) => this.#withRoutineProblem(item, parsed.snapshot));
     const hash = setupHash(Object.entries(read.files).map(([p, content]) => ({ path: p, content })));
     return { folder: read.root, hash, items, ignored: read.ignored };
+  }
+
+  async #diffContext(workspaceId: WorkspaceId, theirs: SetupSnapshot): Promise<SetupDiffContext> {
+    const library = this.deps.skills.library(workspaceId);
+    const context = { library, stored: new Set<string>(), repositories: this.deps.repositories.listByWorkspace(workspaceId).map((r) => r.name) };
+    const wanted = [...(theirs.skills ?? []), ...(theirs.roles ?? []).flatMap((r) => r.skills)];
+    for (const pin of wanted) {
+      if (context.stored.has(pin.hash) || skillAvailability(pin, context) === 'library') continue;
+      if ((await this.deps.skills.content(pin.hash)) !== null) context.stored.add(pin.hash);
+    }
+    return context;
   }
 
   /** A routine the routine screen would refuse is refused here too, with its words. */
@@ -305,6 +386,8 @@ export class SetupService {
       monthlyLimits: workspace.monthlyLimits,
       missionLimits: workspace.defaultMissionLimits,
     };
+    const library = this.deps.skills.library(workspaceId);
+    const pinOf = (name: string, version: number): SkillLockEntry | undefined => library.find((v) => v.name === name && v.version === version);
     const roles: RoleSetup[] = this.deps.roles.list(workspaceId).map((role) => ({
       id: role.id,
       name: role.name,
@@ -320,7 +403,26 @@ export class SetupService {
       economyModel: role.models?.economyModel ?? null,
       // Names, never ids: an id means nothing on another machine.
       runtime: (workspace.routing[role.id] ?? []).map((id) => profiles.get(asId<'RuntimeProfileId'>(id)) ?? id),
+      // A pin to a version the library no longer has cannot be written by hash; it is left out.
+      skills: (role.skills ?? []).flatMap((pin) => {
+        const found = pinOf(pin.name, pin.version);
+        return found === undefined ? [] : [{ name: pin.name, version: pin.version, hash: found.hash }];
+      }),
     }));
+    // skills.lock: each skill's newest version, plus every older version a role pins.
+    const newest = new Map<string, SkillLockEntry>();
+    for (const v of library) if ((newest.get(v.name)?.version ?? 0) < v.version) newest.set(v.name, v);
+    const locked = new Map<string, SkillLockEntry>();
+    for (const v of [...newest.values(), ...roles.flatMap((r) => r.skills).flatMap((p) => pinOf(p.name, p.version) ?? [])]) {
+      locked.set(`${v.name}@${v.version}`, { name: v.name, version: v.version, hash: v.hash, source: v.source });
+    }
+    const issues: IssueSetup[] = this.deps.issueSettings.listSettings(workspaceId).flatMap((s) => {
+      const repository = view.repositories.find((r) => r.id === s.repositoryId);
+      return repository === undefined ? [] : [{
+        repository: repository.name, githubRepo: s.githubRepo, enabled: s.enabled, label: s.label, pollMinutes: s.pollMinutes,
+        closeOnComplete: s.closeOnComplete, postComments: s.postComments, workflow: s.workflowPreset,
+      }];
+    });
     const routines: RoutineSetup[] = this.deps.routines.list(workspaceId).map((r) => ({
       name: r.name,
       kind: r.kind,
@@ -340,7 +442,7 @@ export class SetupService {
       workflowSources.set(file, w.path);
       workflows.push({ file, content: w.text });
     }
-    return { snapshot: { project, roles, workflows, routines }, workflowSources };
+    return { snapshot: { project, roles, workflows, routines, skills: [...locked.values()], issues }, workflowSources };
   }
 
   #repository(workspaceId: WorkspaceId, repositoryId: string): Repository {

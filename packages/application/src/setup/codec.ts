@@ -2,15 +2,19 @@ import { createHash } from 'node:crypto';
 import { parse as parseYaml, stringify } from 'yaml';
 import { z } from 'zod';
 import type {
-  AutonomySettings, IsolationMode, Limit, MissionPriority, RoutineKind, RoutineSchedule, WorkspaceKnowledge,
+  AutonomySettings, IsolationMode, Limit, MissionPriority, RoutineKind, RoutineSchedule, SkillSource, WorkspaceKnowledge,
 } from '@tandemise/domain';
-import { ARTIFACT_TYPES, ISOLATION_MODES, MAX_LADDER, MISSION_PRIORITIES, ROUTINE_KINDS, normalizeLimits, parseWorkflowDefinition } from '@tandemise/domain';
-import { limitsSchema, routineScheduleSchema, updateWorkspaceRequest } from '@tandemise/api-contract';
+import {
+  ARTIFACT_TYPES, ISOLATION_MODES, MAX_LADDER, MISSION_PRIORITIES, ROUTINE_KINDS, normalizeLimits, parseWorkflowDefinition, shortHash,
+} from '@tandemise/domain';
+import { limitsSchema, routineScheduleSchema, skillSourceSchema, updateWorkspaceRequest } from '@tandemise/api-contract';
 import { redactSecrets } from '@tandemise/shared';
 
 /**
  * A project's setup as files (P15): `.tandemise/tandemise.yaml`,
- * `roles/<id>.md`, `workflows/*.yaml` and `routines.yaml`.
+ * `roles/<id>.md`, `workflows/*.yaml`, `routines.yaml`, `skills.lock` (the
+ * skills the setup pins, by content hash - never their files) and
+ * `issues.yaml` (each repository's GitHub issue settings).
  *
  * Everything here is pure, so what the export writes, what the import reads and
  * what the preview calls a change are one set of functions the offline check
@@ -24,8 +28,12 @@ export const SETUP_MAIN_FILE = 'tandemise.yaml';
 export const SETUP_ROUTINES_FILE = 'routines.yaml';
 export const SETUP_ROLES_DIR = 'roles';
 export const SETUP_WORKFLOWS_DIR = 'workflows';
+export const SETUP_SKILLS_FILE = 'skills.lock';
+export const SETUP_ISSUES_FILE = 'issues.yaml';
 /** The note an imported routine carries until the person turns it on. */
 export const IMPORTED_ROUTINE_NOTE = 'Imported — review and turn on';
+/** The same note on a repository's imported GitHub issue settings. */
+export const IMPORTED_ISSUES_NOTE = IMPORTED_ROUTINE_NOTE;
 
 const KNOWLEDGE_KEYS = ['architecturePrinciples', 'codingStandards', 'designSystem', 'glossary', 'productVision'] as const;
 
@@ -54,6 +62,31 @@ export interface RoleSetup {
   readonly economyModel: string | null;
   /** Runtime names, for the reader. Compared but never applied (spec ruling 2). */
   readonly runtime: readonly string[];
+  /** The role's skill pins. The hash is what counts: version numbers are per machine. */
+  readonly skills: readonly SkillPinSetup[];
+}
+
+export interface SkillPinSetup {
+  readonly name: string;
+  readonly version: number;
+  readonly hash: string;
+}
+
+/** One line of `skills.lock`: a skill version the setup needs, and where it came from. */
+export interface SkillLockEntry extends SkillPinSetup {
+  readonly source: SkillSource;
+}
+
+/** A repository's GitHub issue settings, by repository name (P14). */
+export interface IssueSetup {
+  readonly repository: string;
+  readonly githubRepo: string | null;
+  readonly enabled: boolean;
+  readonly label: string;
+  readonly pollMinutes: number;
+  readonly closeOnComplete: boolean;
+  readonly postComments: boolean;
+  readonly workflow: string | null;
 }
 
 export interface RoutineSetup {
@@ -79,6 +112,8 @@ export interface SetupSnapshot {
   readonly roles: readonly RoleSetup[] | null;
   readonly workflows: readonly WorkflowSetup[] | null;
   readonly routines: readonly RoutineSetup[] | null;
+  readonly skills: readonly SkillLockEntry[] | null;
+  readonly issues: readonly IssueSetup[] | null;
 }
 
 export interface SetupFile {
@@ -147,8 +182,36 @@ export function renderRole(role: RoleSetup, scrub = new Scrubber()): string {
   if (role.model !== null) front['model'] = role.model;
   if (role.escalate.length > 0) front['escalate'] = [...role.escalate];
   if (role.economyModel !== null) front['economyModel'] = role.economyModel;
+  if (role.skills.length > 0) front['skills'] = sortPins(role.skills).map((p) => ({ name: p.name, version: p.version, hash: p.hash }));
   const body = scrub.text(trimText(role.instructions));
   return `---\n${yaml(front)}---\n\n${body}${body.length > 0 ? '\n' : ''}`;
+}
+
+const sortPins = <T extends SkillPinSetup>(pins: readonly T[]): T[] =>
+  [...pins].sort((a, b) => a.name.localeCompare(b.name) || a.version - b.version || a.hash.localeCompare(b.hash));
+
+function sourceEntry(source: SkillSource): Record<string, unknown> {
+  if (source.kind !== 'git') return { kind: source.kind, path: source.path };
+  return { kind: 'git', url: source.url, ...(source.subpath === undefined ? {} : { subpath: source.subpath }), ...(source.ref === undefined ? {} : { ref: source.ref }) };
+}
+
+/** Where a skill came from, in words: a folder, or a repository with its subfolder and ref. */
+export function skillSourceLabel(source: SkillSource): string {
+  if (source.kind === 'git') return [source.url, source.subpath, source.ref === undefined ? undefined : `@${source.ref}`].filter(Boolean).join(' · ');
+  return source.path;
+}
+
+function issueEntry(issue: IssueSetup): Record<string, unknown> {
+  return {
+    repository: issue.repository,
+    githubRepo: issue.githubRepo,
+    enabled: issue.enabled,
+    label: issue.label,
+    pollMinutes: issue.pollMinutes,
+    closeOnComplete: issue.closeOnComplete,
+    postComments: issue.postComments,
+    workflow: issue.workflow,
+  };
 }
 
 function routineEntry(routine: RoutineSetup, scrub: Scrubber): Record<string, unknown> {
@@ -200,6 +263,16 @@ export function renderSetup(snapshot: SetupSnapshot): RenderedSetup {
   for (const workflow of [...(snapshot.workflows ?? [])].sort((a, b) => a.file.localeCompare(b.file))) {
     files.push({ path: `${SETUP_WORKFLOWS_DIR}/${workflow.file}`, content: workflow.content });
   }
+  // Written only when there is something to say, so a setup without skills or
+  // issue settings exports exactly the bytes it did before.
+  if (snapshot.skills !== null && snapshot.skills.length > 0) {
+    const skills = sortPins(snapshot.skills).map((s) => ({ name: s.name, version: s.version, hash: s.hash, source: sourceEntry(s.source) }));
+    files.push({ path: SETUP_SKILLS_FILE, content: yaml({ version: SETUP_VERSION, skills }) });
+  }
+  if (snapshot.issues !== null && snapshot.issues.length > 0) {
+    const repositories = [...snapshot.issues].sort((a, b) => a.repository.localeCompare(b.repository)).map(issueEntry);
+    files.push({ path: SETUP_ISSUES_FILE, content: yaml({ repositories }) });
+  }
   if (snapshot.project !== null) {
     const scrub = new Scrubber();
     const project = projectEntry(snapshot.project, scrub);
@@ -248,6 +321,12 @@ export interface ReadSetup {
 }
 
 const modelName = z.string().trim().min(1).max(100).regex(/^\S+$/, 'a model name is one word');
+const skillHash = z.string().regex(/^[0-9a-f]{64}$/, 'a skill hash is 64 hex digits');
+const skillPin = z.object({
+  name: z.string().min(1).max(64),
+  version: z.number().int().min(1),
+  hash: skillHash,
+});
 const roleFront = z.object({
   id: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,59}$/, 'a role id is lowercase letters, digits, - and _'),
   name: z.string().min(1).max(120),
@@ -261,6 +340,25 @@ const roleFront = z.object({
   model: modelName.nullable().optional(),
   escalate: z.array(modelName).max(MAX_LADDER).optional(),
   economyModel: modelName.nullable().optional(),
+  skills: z.array(skillPin).max(50).optional(),
+});
+
+const skillsLockFile = z.object({
+  version: z.literal(SETUP_VERSION, { errorMap: () => ({ message: `This file is setup version ${SETUP_VERSION}; this one cannot be read.` }) }),
+  skills: z.array(skillPin.extend({ source: skillSourceSchema })).max(500).default([]),
+});
+
+const issuesFile = z.object({
+  repositories: z.array(z.object({
+    repository: z.string().trim().min(1).max(200),
+    githubRepo: z.string().max(200).nullable().default(null),
+    enabled: z.boolean().default(false),
+    label: z.string().max(100),
+    pollMinutes: z.number().int(),
+    closeOnComplete: z.boolean().default(false),
+    postComments: z.boolean().default(true),
+    workflow: z.string().min(1).max(200).nullable().default(null),
+  })).default([]),
 });
 
 const routineFile = z.object({
@@ -325,6 +423,7 @@ export function readRole(file: string, text: string): { role: RoleSetup } | { pr
       capabilities: f.capabilities, produces: f.produces, consumes: f.consumes, isolation: f.isolation,
       outputContract: f.outputContract, runtime: f.runtime,
       model: f.model ?? null, escalate: f.escalate ?? [], economyModel: f.economyModel ?? null,
+      skills: f.skills ?? [],
     },
   };
 }
@@ -406,7 +505,42 @@ export function readSetup(files: Readonly<Record<string, string>>): ReadSetup {
     }
   }
 
-  return { snapshot: { project, roles, workflows, routines }, problems };
+  let skills: SkillLockEntry[] | null = null;
+  const lockText = files[SETUP_SKILLS_FILE];
+  if (lockText !== undefined) {
+    try {
+      const parsed = skillsLockFile.safeParse(parseYaml(lockText) ?? {});
+      if (!parsed.success) problems.push({ file: SETUP_SKILLS_FILE, item: null, message: issues(parsed.error) });
+      else skills = parsed.data.skills.map((s) => ({ name: s.name, version: s.version, hash: s.hash, source: s.source as SkillSource }));
+    } catch (e) {
+      problems.push({ file: SETUP_SKILLS_FILE, item: null, message: `Not valid YAML: ${firstLine(e)}` });
+    }
+  }
+
+  let issueSettings: IssueSetup[] | null = null;
+  const issuesText = files[SETUP_ISSUES_FILE];
+  if (issuesText !== undefined) {
+    try {
+      const parsed = issuesFile.safeParse(parseYaml(issuesText) ?? {});
+      if (!parsed.success) problems.push({ file: SETUP_ISSUES_FILE, item: null, message: issues(parsed.error) });
+      else {
+        const seen = new Set<string>();
+        issueSettings = [];
+        for (const r of parsed.data.repositories) {
+          if (seen.has(r.repository)) {
+            problems.push({ file: SETUP_ISSUES_FILE, item: r.repository, message: `Two entries are for '${r.repository}'. Keep one.` });
+            continue;
+          }
+          seen.add(r.repository);
+          issueSettings.push({ ...r });
+        }
+      }
+    } catch (e) {
+      problems.push({ file: SETUP_ISSUES_FILE, item: null, message: `Not valid YAML: ${firstLine(e)}` });
+    }
+  }
+
+  return { snapshot: { project, roles, workflows, routines, skills, issues: issueSettings }, problems };
 }
 
 /** A workflow file's problems, from the one workflow validator (gates included). */
@@ -427,7 +561,7 @@ function firstLine(e: unknown): string {
 
 // ---------------------------------------------------------------------- diff
 
-export type SetupItemKind = 'settings' | 'wip' | 'monthly_limits' | 'mission_limits' | 'role' | 'workflow' | 'routine';
+export type SetupItemKind = 'settings' | 'wip' | 'monthly_limits' | 'mission_limits' | 'role' | 'workflow' | 'routine' | 'skill' | 'issues';
 export type SetupAction = 'add' | 'change' | 'remove' | 'same';
 export type SetupChoice = 'mine' | 'theirs';
 
@@ -445,6 +579,41 @@ export interface SetupItem {
   readonly notes: readonly string[];
   /** The default choice: Add and Change take theirs, Remove keeps yours. */
   readonly choice: SetupChoice | null;
+  /**
+   * A skill whose files are neither in the library nor in this machine's
+   * skills store: it cannot be applied (a run would refuse), but it can be
+   * fetched from where it came from, with the Skills screen's own preview.
+   */
+  readonly needsImport: SkillLockEntry | null;
+}
+
+/** What the diff needs to know about this machine, beyond the project's own setup. */
+export interface SetupDiffContext {
+  /** Every version in the project's skills library. */
+  readonly library: readonly SkillPinSetup[];
+  /** Content hashes present in this machine's skills store (shared by every project). */
+  readonly stored: ReadonlySet<string>;
+  /** The project's repository names. */
+  readonly repositories: readonly string[];
+}
+
+const NO_CONTEXT: SetupDiffContext = { library: [], stored: new Set(), repositories: [] };
+
+/** How a pinned skill can be had here: already in the library, in the store, or not at all. */
+export type SkillAvailability = 'library' | 'store' | 'missing';
+
+export function skillAvailability(pin: Pick<SkillPinSetup, 'name' | 'hash'>, context: SetupDiffContext): SkillAvailability {
+  if (context.library.some((v) => v.name === pin.name && v.hash === pin.hash)) return 'library';
+  return context.stored.has(pin.hash) ? 'store' : 'missing';
+}
+
+/** The item id of a skill version: its name and the start of its hash, the same on every machine. */
+export function skillItemId(pin: Pick<SkillPinSetup, 'name' | 'hash'>): string {
+  return `skill:${pin.name}@${shortHash(pin.hash)}`;
+}
+
+export function needsImportMessage(entry: Pick<SkillLockEntry, 'name' | 'source'>): string {
+  return `Needs import: ${entry.name} from ${skillSourceLabel(entry.source)}`;
 }
 
 const stable = (value: unknown): string => JSON.stringify(value, (_k, v: unknown) =>
@@ -489,6 +658,8 @@ function roleFields(role: RoleSetup): Record<string, unknown> {
     model: role.model,
     escalate: role.escalate,
     economyModel: role.economyModel,
+    // By hash: the same files are the same pin, whatever number this library gave them.
+    skills: sortPins(role.skills).map((p) => `${p.name} (${shortHash(p.hash)})`),
   };
 }
 
@@ -503,16 +674,19 @@ const hasPlaceholder = (text: string): boolean => /\$\{SECRET_\d+\}/.test(text);
  * The preview: every item in either set, and what taking the files' version
  * would do to it. Pure; the service applies the choices.
  */
-export function diffSetup(mine: SetupSnapshot, read: ReadSetup): readonly SetupItem[] {
+export function diffSetup(mine: SetupSnapshot, read: ReadSetup, context: SetupDiffContext = NO_CONTEXT): readonly SetupItem[] {
   const theirs = read.snapshot;
   const items: SetupItem[] = [];
   const problemFor = (file: string, item: string | null): string | null =>
     read.problems.find((p) => p.file === file && (item === null || p.item === null || p.item === item))?.message ?? null;
-  const push = (item: Omit<SetupItem, 'choice'> & { choice?: SetupChoice | null }): void => {
+  const push = (item: Omit<SetupItem, 'choice' | 'needsImport'> & { choice?: SetupChoice | null; needsImport?: SkillLockEntry | null }): void => {
     const choice = item.problem !== null || item.action === 'same' ? null
       : item.choice !== undefined ? item.choice : item.action === 'remove' ? 'mine' : 'theirs';
-    items.push({ ...item, choice });
+    items.push({ ...item, choice, needsImport: item.needsImport ?? null });
   };
+  // Where a pin's files came from, for "Needs import: <name> from <source>".
+  const lockEntry = (pin: Pick<SkillPinSetup, 'name' | 'hash'>): SkillLockEntry | undefined =>
+    theirs.skills?.find((s) => s.name === pin.name && s.hash === pin.hash);
   const compare = (a: unknown, b: unknown): SetupAction => (stable(a) === stable(b) ? 'same' : 'change');
 
   // tandemise.yaml: four items, so the WIP limit can be taken without the name.
@@ -561,15 +735,22 @@ export function diffSetup(mine: SetupSnapshot, read: ReadSetup): readonly SetupI
       if (t !== undefined && [t.instructions, t.summary, t.outputContract].some(hasPlaceholder)) {
         notes.push('Contains a ${SECRET_n} placeholder: fill in the value after applying.');
       }
+      // A role is never saved pinning a skill whose files this machine lacks: its runs would refuse.
+      const missingPins = (t?.skills ?? []).filter((p) => skillAvailability(p, context) === 'missing');
+      const skillProblem = missingPins.length === 0 ? null
+        : `${missingPins.map((p) => { const e = lockEntry(p); return e === undefined ? `Needs import: ${p.name} v${p.version} (${shortHash(p.hash)}), which skills.lock does not list` : needsImportMessage(e); }).join('. ')}. Import it first, then preview again.`;
+      for (const p of t?.skills ?? []) {
+        if (skillAvailability(p, context) === 'store') notes.push(`Also adds ${p.name} to the skills library, from files already on this machine.`);
+      }
       if (m === undefined && t !== undefined) {
-        push({ id: `role:${id}`, kind: 'role', name, action: 'add', detail: 'A new role.', problem: null, notes });
+        push({ id: `role:${id}`, kind: 'role', name, action: 'add', detail: 'A new role.', problem: skillProblem, notes });
       } else if (m !== undefined && t === undefined) {
         push({ id: `role:${id}`, kind: 'role', name, action: 'remove', detail: 'Not in the files: taking theirs deletes a role you added, or restores a built-in role as shipped.', problem: null, notes });
       } else if (m !== undefined && t !== undefined) {
         const a = roleFields(m);
         const b = roleFields(t);
         const action = compare(a, b);
-        push({ id: `role:${id}`, kind: 'role', name, action, detail: action === 'same' ? '' : fieldChanges(a, b), problem: null, notes });
+        push({ id: `role:${id}`, kind: 'role', name, action, detail: action === 'same' ? '' : fieldChanges(a, b), problem: action === 'same' ? null : skillProblem, notes: action === 'same' ? [] : notes });
       }
     }
   }
@@ -623,6 +804,66 @@ export function diffSetup(mine: SetupSnapshot, read: ReadSetup): readonly SetupI
         const b = routineFields(t);
         const action = compare(a, b);
         push({ id: `routine:${name}`, kind: 'routine', name, action, detail: action === 'same' ? '' : fieldChanges(a, b), problem, notes: action === 'same' ? [] : notes });
+      }
+    }
+  }
+  // Skills: one row per version skills.lock lists. Never a Remove: a skill the
+  // files do not mention stays in the library.
+  const skillsProblem = problemFor(SETUP_SKILLS_FILE, null);
+  if (skillsProblem !== null) {
+    push({ id: 'skill:(file)', kind: 'skill', name: SETUP_SKILLS_FILE, action: 'change', detail: '', problem: skillsProblem, notes: [] });
+  }
+  const seenSkills = new Set<string>();
+  for (const entry of sortPins(theirs.skills ?? [])) {
+    const id = skillItemId(entry);
+    if (seenSkills.has(id)) continue;
+    seenSkills.add(id);
+    const name = `${entry.name} v${entry.version}`;
+    const where = skillAvailability(entry, context);
+    if (where === 'library') {
+      push({ id, kind: 'skill', name, action: 'same', detail: '', problem: null, notes: [] });
+    } else if (where === 'store') {
+      const next = Math.max(0, ...context.library.filter((v) => v.name === entry.name).map((v) => v.version)) + 1;
+      push({
+        id, kind: 'skill', name, action: 'add', problem: null, notes: [],
+        detail: `Its files (${shortHash(entry.hash)}) are already on this machine: taking it adds them to the library as ${entry.name} v${next}.`,
+      });
+    } else {
+      push({
+        id, kind: 'skill', name, action: 'add', problem: needsImportMessage(entry), needsImport: entry,
+        detail: `Its files (${shortHash(entry.hash)}) are not on this machine. Import them from where they came from, then preview again.`,
+        notes: [],
+      });
+    }
+  }
+
+  // GitHub issue settings: by repository name. Whatever is taken arrives off.
+  const issuesProblem = problemFor(SETUP_ISSUES_FILE, null);
+  if (issuesProblem !== null && theirs.issues === null) {
+    push({ id: 'issues:(file)', kind: 'issues', name: SETUP_ISSUES_FILE, action: 'change', detail: '', problem: issuesProblem, notes: [] });
+  }
+  if (theirs.issues !== null) {
+    const mineByRepo = new Map((mine.issues ?? []).map((i) => [i.repository, i]));
+    // Switched on or off is the person's call on each machine, so it is not compared.
+    const fields = (i: IssueSetup): Record<string, unknown> => ({
+      githubRepo: i.githubRepo, label: i.label, pollMinutes: i.pollMinutes,
+      closeOnComplete: i.closeOnComplete, postComments: i.postComments, workflow: i.workflow,
+    });
+    for (const t of [...theirs.issues].sort((a, b) => a.repository.localeCompare(b.repository))) {
+      const id = `issues:${t.repository}`;
+      const name = `Issues for ${t.repository}`;
+      const m = mineByRepo.get(t.repository);
+      const problem = read.problems.find((p) => p.file === SETUP_ISSUES_FILE && p.item === t.repository)?.message
+        ?? (context.repositories.includes(t.repository) ? null
+          : `This project has no repository named '${t.repository}'. Add it on the Project screen, then preview again.`);
+      const notes = ['Arrives off: turn it on under Repositories → Issues after reviewing it.'];
+      if (m === undefined) {
+        push({ id, kind: 'issues', name, action: 'add', detail: `Read issues labelled '${t.label}' from ${t.githubRepo ?? 'a GitHub repository not named yet'}.`, problem, notes });
+      } else {
+        const a = fields(m);
+        const b = fields(t);
+        const action = compare(a, b);
+        push({ id, kind: 'issues', name, action, detail: action === 'same' ? '' : fieldChanges(a, b), problem: action === 'same' ? null : problem, notes: action === 'same' ? [] : notes });
       }
     }
   }

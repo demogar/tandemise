@@ -5,7 +5,7 @@
 //
 // Fresh TANDEMISE_HOME + project (p0/setup.mjs), the daemon from this
 // checkout's build, the real desktop window with its own user-data-dir and CDP
-// on 9350, then Q1-Q4 in order. The native folder picker cannot be driven over
+// on 9350, then Q1-Q6 in order. The native folder picker cannot be driven over
 // CDP, so the window runs with TANDEMISE_TEST_PICK_DIRECTORY: a scenario writes
 // the folder to import into <scratch>/pick-directory before clicking Import.
 // Writes p15/evidence/REPORT.md.
@@ -52,7 +52,7 @@ desktop.unref();
 const keepGoing = process.argv.includes('--keep-going');
 const only = process.argv.find((a) => a.startsWith('--only='))?.slice('--only='.length).split(',');
 // No real-model scenario: exporting, importing and validating gates never run an agent.
-const scenarios = ['q01-export.mjs', 'q02-import-role-model.mjs', 'q03-import-routine.mjs', 'q04-gates-refused.mjs']
+const scenarios = ['q01-export.mjs', 'q02-import-role-model.mjs', 'q03-import-routine.mjs', 'q04-gates-refused.mjs', 'q05-skills.mjs', 'q06-issues.mjs']
   .filter((file) => !only || only.some((o) => file.includes(o)));
 
 let failed = null;
@@ -79,7 +79,7 @@ if (!process.argv.includes('--hold')) {
 
 // ---------------------------------------------------------------- report
 const results = readdirSync(EVIDENCE).filter((f) => f.endsWith('.json')).map((f) => JSON.parse(readFileSync(join(EVIDENCE, f), 'utf8')));
-const order = ['Q1', 'Q2', 'Q3', 'Q4'];
+const order = ['Q1', 'Q2', 'Q3', 'Q4', 'Q5', 'Q6'];
 results.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
 const lines = [
   '# P15 acceptance report',

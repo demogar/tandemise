@@ -78,3 +78,17 @@ export async function docsSize(c) {
   await c.page.send('Emulation.setDeviceMetricsOverride', { width: 1360, height: 900, deviceScaleFactor: 1, mobile: false });
   await c.sleep(300);
 }
+
+/** Which project the window shows: the renderer keeps it in localStorage; reload to take it. */
+export async function showProject(c, workspaceId) {
+  await c.page.evaluate(`localStorage.setItem('tandemise.workspace', ${JSON.stringify(workspaceId)})`);
+  await c.page.send('Page.reload', {});
+  await c.sleep(1500);
+  await c.until(() => c.page.evaluate(`localStorage.getItem('tandemise.workspace') === ${JSON.stringify(workspaceId)} && Boolean(document.querySelector('nav'))`), { label: 'project shown', timeoutMs: 30_000 });
+  await docsSize(c);
+}
+
+/** The preview row whose aria-label starts with `name`: [aria-label, text]. */
+export async function previewRow(c, name) {
+  return (await previewRows(c)).find(([label]) => label.startsWith(`${name}: `));
+}

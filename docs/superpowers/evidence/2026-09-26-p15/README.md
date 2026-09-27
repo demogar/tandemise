@@ -1,6 +1,6 @@
 # P15 evidence: setup as code, and gates that can pass
 
-Build `0f1389c` (branch `feat/p15-setup-as-code`, base `main` 73280cc). **4/4 real-app scenarios pass**; offline check **123/123**; `npm run ci` green.
+Branch `feat/p15-setup-as-code`, rebased onto `main` 5ac2b8d (with P13 skills and P14 GitHub issues). **6/6 real-app scenarios pass**; offline check **154/154**; `npm run ci` green. The P13 (N1–N4) and P14 (O1–O4) suites also pass on this build.
 
 ## How it was run
 
@@ -20,6 +20,8 @@ The window runs with `TANDEMISE_TEST_PICK_DIRECTORY` so the import folder can be
 | Q2 | `model:` edited in `roles/development.md` → preview shows exactly one Change (Developer, "model: base-model → better-model") → Apply → Team → Roles shows the new model | PASS 8/8 |
 | Q3 | Routine added to `routines.yaml` → Add, "Arrives off" → Apply → Missions → Routines shows it Off with "Imported — review and turn on"; no mission created | PASS 8/8 |
 | Q4 | Workflow files whose gate reads `mission.stalled` / misses `artifact.ChangeSet.exists` → New mission shows each reason | PASS 4/4 |
+| Q5 | A skill pinned to QA → export lists `skills.lock` (name, version, hash, source; no content) → a second project on a store without the files shows "Needs import: house-style from <folder>" (skill and QA rows cannot be taken) → "Fetch house-style from its source…" shows the Skills preview → Import → skill Same, QA takeable → Apply pins it | PASS 16/16 |
+| Q6 | Issue settings exported in `issues.yaml` → imported onto the repository of the same name: switch off, label and repository filled in, status "Imported — review and turn on", never checked | PASS 5/5 |
 
 Details in `REPORT.md` and `Q*.json`; screenshots `Q*-*.png`.
 

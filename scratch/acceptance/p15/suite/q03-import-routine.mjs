@@ -33,7 +33,7 @@ ev.check('its row: "Friday status report: Add", arriving off', row?.[0] === 'Fri
 await page.screenshot(ev.shot('preview-routine-add'));
 
 const applied = await applyInWindow(c);
-ev.check('applied, and told routines arrive off', applied.includes('Applied 1 change.') && applied.includes('Imported routines are off until you turn them on'), applied);
+ev.check('applied, and told routines arrive off', applied.includes('Applied 1 change.') && applied.includes('Imported routines and issue settings are off until you turn them on'), applied);
 
 await page.navigate('#/missions/routines');
 const text = await c.until(async () => page.evaluate(`document.querySelector('[aria-label="Routine: Friday status report"]')?.innerText ?? ''`), { label: 'routine row', timeoutMs: 20_000 });

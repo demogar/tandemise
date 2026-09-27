@@ -1,0 +1,123 @@
+{
+  "id": "Q5",
+  "title": "Skill pins export as skills.lock; a missing skill shows \"Needs import\", is fetched with a preview, then applies",
+  "ok": true,
+  "checks": [
+    {
+      "label": "the export lists .tandemise/skills.lock and .tandemise/issues.yaml",
+      "ok": true,
+      "observed": "Setup as code\nLast exported 912167f54610\nExport\n\nWrites your roles, workflows, routines, limits, project settings, skill pins and GitHub issue settings into .tandemise/ in a repository, so you can commit them and bring them to another machine. Skills are listed by name, version and content hash in skills.lock, never copied. No secrets and no timestamps: the same setup always writes the same bytes.\n\nacceptance-project\nExport\n\nWrote 12 files to acceptance-project/.tandemise · Content hash 912167f54610\n\n.tandemise/issues.yaml · 220 B\n.tandemise/roles/architecture.md · 1629 B\n.tandemise/roles/design.md · 2647 B\n.tandemise/roles/development.md · 2068 B\n.tandemise/roles/finance.md · 850 B\n.tandemise/roles/product.md · 1772 B\n.tandemise/roles/qa.md · 1997 B\n.tandemise/roles/release.md · 1523 B\n.tandemise/roles/review.md · 2092 B\n.tandemise/routines.yaml · 491 B\n.tandemise/skills.lock · 207 B\n.t"
+    },
+    {
+      "label": "on disk: skills.lock names house-style v1 with its hash and folder",
+      "ok": true,
+      "observed": {
+        "skills": [
+          {
+            "hash": "cedb72e68e4d9460e01ff1d73065f5b2bf32c98438eb1c7e9d9d9e9bf4e1f6d8",
+            "name": "house-style",
+            "source": {
+              "kind": "path",
+              "path": "/tmp/tdm-p15/skill-src/house-style"
+            },
+            "version": 1
+          }
+        ],
+        "version": 1
+      }
+    },
+    {
+      "label": "on disk: skills.lock has none of the skill's content",
+      "ok": true
+    },
+    {
+      "label": "on disk: roles/qa.md carries the pin with its hash",
+      "ok": true,
+      "observed": "---\ncapabilities:\n  - artifact.write\n  - browser\n  - browser.navigate\n  - deploy.read\n  - filesystem.read\n  - human.ask\n  - monitoring.read\n  - repository.read\n  - shell.exec\n  - tests.run\nconsumes:\n  - ChangeSet\n  - DesignBrief\n  - ProductSpec\n  - ReviewReport\nid: qa\nisolation: worktree\nname: QA Engineer\noutputContract: |-\n  A QAPlan and then a QAReport with an explicit PASS/FAIL/SKIP and evidence for\n  every acceptance criterion. The ready_to_ship gate requires 100% criteria\n  coverage and zero blocking defects, computed from this report, so its accuracy\n  directly determines whether the mission can ship.\nproduces:\n  - QAPlan\n  - QAReport\nruntime: []\nskills:\n  - hash: cedb72e68e4d9460e01ff"
+    },
+    {
+      "label": "proof (disk): the skills store no longer has the files",
+      "ok": true,
+      "observed": "/tmp/tdm-p15/home/skills/cedb72e68e4d9460e01ff1d73065f5b2bf32c98438eb1c7e9d9d9e9bf4e1f6d8"
+    },
+    {
+      "label": "the skill row: \"house-style v1: Add\" with \"Needs import: house-style from <folder>\"",
+      "ok": true,
+      "observed": [
+        "house-style v1: Add",
+        "house-style v1\nIts files (cedb72e68e4d) are not on this machine. Import them from where they came from, then preview again.\nNeeds import: house-style from /tmp/tdm-p15/skill-src/house-style\nFetch house-style from its source…\tSkill\tAdd\tKeep mine"
+      ]
+    },
+    {
+      "label": "it cannot be taken: its choice reads \"Keep mine\"",
+      "ok": true
+    },
+    {
+      "label": "the QA role that pins it cannot be taken yet, and says why",
+      "ok": true,
+      "observed": [
+        "QA Engineer: Change",
+        "QA Engineer\nskills: none → house-style (cedb72e68e4d)\nNeeds import: house-style from /tmp/tdm-p15/skill-src/house-style. Import it first, then preview again.\nRuns on none in the files and on Scripted agent here. Runtimes are set in Team, so this is not changed.\n\tRole\tChange\tKeep mine"
+      ]
+    },
+    {
+      "label": "the row offers \"Fetch house-style from its source…\"",
+      "ok": true,
+      "observed": [
+        "house-style v1: Add",
+        "house-style v1\nIts files (cedb72e68e4d) are not on this machine. Import them from where they came from, then preview again.\nNeeds import: house-style from /tmp/tdm-p15/skill-src/house-style\nFetch house-style from its source…\tSkill\tAdd\tKeep mine"
+      ]
+    },
+    {
+      "label": "the fetch shows the skill's preview: name, hash, SKILL.md, \"New skill\"",
+      "ok": true,
+      "observed": "house-style\ncedb72e68e4d\n1 file · 122 B\n\nHow we name and shape code.\n\nFrom /tmp/tdm-p15/skill-src/house-style\n\nNew skill\n\nFiles\nSKILL.md (122 B)\nSKILL.md\n\nName things after what they do. Keep functions short.\n\nImport house-style\nCancel"
+    },
+    {
+      "label": "after importing, the folder is read again: \"house-style v1: Same\"",
+      "ok": true
+    },
+    {
+      "label": "and the QA role can be taken: \"QA Engineer: Change\", Take theirs",
+      "ok": true,
+      "observed": [
+        "QA Engineer: Change",
+        "QA Engineer\nskills: none → house-style (cedb72e68e4d)\nRuns on none in the files and on Scripted agent here. Runtimes are set in Team, so this is not changed.\n\tRole\tChange\t\nKeep mine\nTake theirs"
+      ]
+    },
+    {
+      "label": "proof (API): house-style v1 is in the second project's library with the same hash",
+      "ok": true
+    },
+    {
+      "label": "applied, and the lines name the QA role",
+      "ok": true,
+      "observed": "Applied 21 changes. Imported routines and issue settings are off until you turn them on (Missions → Routines, Repositories → Issues). Kept yours for 3.\n\nChanged Work-in-progress limit: limit: off → 2\n\nChanged Monthly limits: limits: none → {\"amount\":600,\"metric\":\"agent_minutes\",\"warnPercent\":80}\n\nChanged Developer: model: none → better-model; escalate: none → strong-model\n\nChanged QA Engineer: skills: none → house-style (cedb72e68e4d)\n\nAdded p0\n\nAdded p10-desk\n\nAdded p12-economy\n\nAdded p12-escalate\n\nAdded p12-models\n\nAdded p12-review\n\nAdded p13-lint\n\nAdded p13-skills\n\nAdded p13-unknown\n\nAdded "
+    },
+    {
+      "label": "proof (API): QA in the second project pins house-style v1",
+      "ok": true,
+      "observed": [
+        {
+          "name": "house-style",
+          "version": 1
+        }
+      ]
+    },
+    {
+      "label": "reading the folder again: the skill and QA are Same",
+      "ok": true,
+      "observed": "From /tmp/tdm-p15/project/.tandemise: 2 to add · 1 to change · 0 to remove · 29 the same"
+    }
+  ],
+  "notes": [
+    "setup (API): imported house-style v1 (cedb72e68e4d) from /tmp/tdm-p15/skill-src/house-style; pinned it to QA; issue settings for acceptance-project (label ready-for-agents, every 15 min)",
+    "a second project \"Second machine\" with a repository named acceptance-project; the window switches to it",
+    "preview: From /tmp/tdm-p15/project/.tandemise: 20 to add · 5 to change · 0 to remove · 7 the same"
+  ],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p15-int/scratch/acceptance/p15/evidence/Q5-export-skills-lock.png",
+    "/Users/demogar/projects/tandemise/tandemise-p15-int/scratch/acceptance/p15/evidence/Q5-needs-import.png",
+    "/Users/demogar/projects/tandemise/tandemise-p15-int/scratch/acceptance/p15/evidence/Q5-fetch-preview.png"
+  ]
+}
