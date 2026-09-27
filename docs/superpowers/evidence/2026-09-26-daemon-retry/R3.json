@@ -1,0 +1,38 @@
+{
+  "id": "R3",
+  "title": "no usable Node: the not-running screen says what is missing and how to fix it",
+  "checks": [
+    {
+      "label": "says Node 22+ is needed and none was found",
+      "pass": true,
+      "detail": "The Tandemise daemon is not running\n\nTandemise needs Node.js 22 or newer to run its daemon, and none was found. Install it from nodejs.org or with Homebrew (brew install node), or set TANDEMISE_NODE to the path of a Node 22+ binary, then press Retry.\n\nLooking for the handshake file at\n/tmp/tdm-retry/home-no-node/daemon.json\nRetry\n\nTandemise will try to start the daemon for you. If that keeps failing, start it by hand with npm run daemon and press Retry."
+    },
+    {
+      "label": "says how to fix it",
+      "pass": true,
+      "detail": "The Tandemise daemon is not running\n\nTandemise needs Node.js 22 or newer to run its daemon, and none was found. Install it from nodejs.org or with Homebrew (brew install node), or set TANDEMISE_NODE to the path of a Node 22+ binary, then press Retry.\n\nLooking for the handshake file at\n/tmp/tdm-retry/home-no-node/daemon.json\nRetry\n\nTandemise will try to start the daemon for you. If that keeps failing, start it by hand with npm run daemon and press Retry."
+    },
+    {
+      "label": "no stack trace on screen",
+      "pass": true,
+      "detail": "The Tandemise daemon is not running\n\nTandemise needs Node.js 22 or newer to run its daemon, and none was found. Install it from nodejs.org or with Homebrew (brew install node), or set TANDEMISE_NODE to the path of a Node 22+ binary, then press Retry.\n\nLooking for the handshake file at\n/tmp/tdm-retry/home-no-node/daemon.json\nRetry\n\nTandemise will try to start the daemon for you. If that keeps failing, start it by hand with npm run daemon and press Retry."
+    },
+    {
+      "label": "no daemon was started",
+      "pass": true
+    },
+    {
+      "label": "Retry gives the same plain message",
+      "pass": true,
+      "detail": "The Tandemise daemon is not running\n\nTandemise needs Node.js 22 or newer to run its daemon, and none was found. Install it from nodejs.org or with Homebrew (brew install node), or set TANDEMISE_NODE to the path of a Node 22+ binary, then press Retry.\n\nLooking for the handshake file at\n/tmp/tdm-retry/home-no-node/daemon.json\nRetry\n\nTandemise will try to start the daemon for you. If that keeps failing, start it by hand with npm run daemon and press Retry."
+    },
+    {
+      "label": "the launch log records what was tried",
+      "pass": true,
+      "detail": "[2026-09-26T23:18:55.215Z] desktop: no usable Node: Tandemise needs Node.js 22 or newer to run its daemon, and none was found. Install it from nodejs.org or with Homebrew (brew install node), or set TANDEMISE_NODE to the path of a Node 22+ binary, then press Retry. Tried: ~/projects/tandemise/tandemise-daemon-retry/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron (electron: it is Node 20.18.3, and the daemon needs Node 22 or newer)\n[2026-09-26T23:18:56.328Z] desktop: no usable Node: Tandemise needs Node.js 22 or newer to run its daemon, and none was found. Install it from nodejs.org or with Homebrew (brew install node), or set TANDEMISE_NODE to the path of a Node 22+ binary, then press Retry. Tried: ~/projects/tandemise/tandemise-daemon-retry/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron (electron: it is Node 20.18.3, and the daemon needs Node 22 or newer)\n"
+    }
+  ],
+  "screen": "The Tandemise daemon is not running\n\nTandemise needs Node.js 22 or newer to run its daemon, and none was found. Install it from nodejs.org or with Homebrew (brew install node), or set TANDEMISE_NODE to the path of a Node 22+ binary, then press Retry.\n\nLooking for the handshake file at\n/tmp/tdm-retry/home-no-node/daemon.json\nRetry\n\nTandemise will try to start the daemon for you. If that keeps failing, start it by hand with npm run daemon and press Retry.",
+  "launchLog": "[2026-09-26T23:18:55.215Z] desktop: no usable Node: Tandemise needs Node.js 22 or newer to run its daemon, and none was found. Install it from nodejs.org or with Homebrew (brew install node), or set TANDEMISE_NODE to the path of a Node 22+ binary, then press Retry. Tried: ~/projects/tandemise/tandemise-daemon-retry/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron (electron: it is Node 20.18.3, and the daemon needs Node 22 or newer)\n[2026-09-26T23:18:56.328Z] desktop: no usable Node: Tandemise needs Node.js 22 or newer to run its daemon, and none was found. Install it from nodejs.org or with Homebrew (brew install node), or set TANDEMISE_NODE to the path of a Node 22+ binary, then press Retry. Tried: ~/projects/tandemise/tandemise-daemon-retry/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron (electron: it is Node 20.18.3, and the daemon needs Node 22 or newer)\n",
+  "pass": true
+}

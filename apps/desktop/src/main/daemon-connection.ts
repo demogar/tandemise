@@ -1,12 +1,16 @@
-import { spawn } from 'node:child_process';
+import { execFile, spawn, spawnSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { accessSync, appendFileSync, closeSync, constants, existsSync, mkdirSync, openSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { EventEmitter } from 'node:events';
 import type { DaemonConnection, DaemonStatus } from '../shared/bridge.js';
+import { LOGIN_PATH_MARKER, parseLoginShellPath, resolveDaemonNode, type NodeResolution } from './node-runtime.js';
 
-const HANDSHAKE_FILE = join(process.env['TANDEMISE_HOME'] ?? join(homedir(), '.tandemise'), 'daemon.json');
+const TANDEMISE_HOME = process.env['TANDEMISE_HOME'] ?? join(homedir(), '.tandemise');
+const HANDSHAKE_FILE = join(TANDEMISE_HOME, 'daemon.json');
+/** Which Node started the daemon, and anything the daemon said on stderr while starting. */
+const LAUNCH_LOG = join(TANDEMISE_HOME, 'logs', 'daemon-launch.log');
 
 /** Poll budget for a daemon we just spawned. Generous: first start compiles nothing but does open a database. */
 const SPAWN_POLL_INTERVAL_MS = 250;
@@ -64,18 +68,33 @@ export class DaemonConnector extends EventEmitter {
     }
 
     this.#set('spawning', null, 'Starting the Tandemise daemon…');
-    try {
-      await spawnDaemon(entry);
-    } catch (error) {
-      return this.#set('unavailable', null, `Could not start the daemon: ${messageOf(error)}`);
+    const node = await findDaemonNode();
+    if (!node.ok) {
+      logLaunch(`no usable Node: ${node.message} Tried: ${describeTried(node)}`);
+      return this.#set('unavailable', null, node.message);
     }
 
-    const started = await pollForHandshake();
+    let launch: Launch;
+    try {
+      launch = await spawnDaemon(entry, node);
+    } catch (error) {
+      return this.#set('unavailable', null, `Could not start the daemon with Node at ${node.command}: ${messageOf(error)}`);
+    }
+
+    const started = await pollForHandshake(launch);
+    if (started === 'exited') {
+      const why = await lastStartupError();
+      return this.#set(
+        'unavailable',
+        null,
+        `The daemon stopped while starting${why ? `: ${why}` : '.'} It ran on Node ${node.version} at ${node.command}. The details are in ${LAUNCH_LOG}.`,
+      );
+    }
     if (!started) {
       return this.#set(
         'unavailable',
         null,
-        `Started the daemon but it did not report a connection within ${SPAWN_POLL_TIMEOUT_MS / 1000}s. Check its log in ~/.tandemise/logs.`,
+        `Started the daemon but it did not report a connection within ${SPAWN_POLL_TIMEOUT_MS / 1000}s. Check ${LAUNCH_LOG} and the logs next to it.`,
       );
     }
     return this.#set('connected', started, `Connected to daemon on ${started.url}.`);
@@ -184,26 +203,127 @@ function daemonEntryPoint(): string | null {
   return candidates.find((candidate) => existsSync(candidate)) ?? null;
 }
 
-async function spawnDaemon(entry: string): Promise<void> {
-  const child = spawn(process.execPath, [entry], {
+interface Launch {
+  /** Flips to true if the child exits before it publishes a handshake. */
+  readonly exited: () => boolean;
+}
+
+/**
+ * The Node the daemon runs on. Not `process.execPath`: that is Electron's own
+ * Node, whose native ABI does not match the better-sqlite3 build `npm install`
+ * made, so the daemon could not open its database (see node-runtime.ts).
+ */
+async function findDaemonNode(): Promise<NodeResolution> {
+  const env = process.env;
+  const needShell = !env['TANDEMISE_NODE'] && env['TANDEMISE_NODE_SEARCH_PATH'] === undefined && process.platform !== 'win32';
+  return resolveDaemonNode({
+    env,
+    platform: process.platform,
+    loginShellPath: needShell ? await readLoginShellPath() : null,
+    electron: { execPath: process.execPath, nodeVersion: process.versions.node },
+    isExecutable: (path) => {
+      try {
+        accessSync(path, constants.X_OK);
+        return statSync(path).isFile();
+      } catch {
+        return false;
+      }
+    },
+    versionOf: (path) => {
+      const out = spawnSync(path, ['--version'], { encoding: 'utf8', timeout: 5_000, env: withoutElectronNode(env) });
+      return out.status === 0 ? out.stdout.trim() : null;
+    },
+  });
+}
+
+/**
+ * PATH as the person's login shell builds it. An app opened from Finder or the
+ * Dock inherits launchd's minimal PATH, which has no nvm, Homebrew or volta in
+ * it; asking the shell is how other macOS apps find the user's tools.
+ */
+function readLoginShellPath(): Promise<string | null> {
+  const shell = process.env['SHELL'] || '/bin/zsh';
+  return new Promise((done) => {
+    execFile(
+      shell,
+      ['-ilc', `printf '%s' "${LOGIN_PATH_MARKER}$PATH${LOGIN_PATH_MARKER}"`],
+      { timeout: 5_000, encoding: 'utf8', env: withoutElectronNode(process.env) },
+      (_error, stdout) => done(parseLoginShellPath(typeof stdout === 'string' ? stdout : '')),
+    );
+  });
+}
+
+function withoutElectronNode(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const { ELECTRON_RUN_AS_NODE: _drop, ...rest } = env;
+  return rest;
+}
+
+async function spawnDaemon(entry: string, node: Extract<NodeResolution, { ok: true }>): Promise<Launch> {
+  logLaunch(`starting ${entry} with Node ${node.version} at ${node.command} (from ${node.source})`);
+  console.info(`[tandemise] starting the daemon with Node ${node.version} at ${node.command} (from ${node.source})`);
+  // stderr goes to a file, not a pipe: the daemon outlives this window, and a
+  // pipe would break under it the moment the window quits.
+  const stderr = openLaunchLog();
+  let exited = false;
+  const child = spawn(node.command, [entry], {
     detached: true,
-    stdio: 'ignore',
-    // Electron's bundled Node refuses to run a plain script without this.
-    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+    stdio: ['ignore', 'ignore', stderr ?? 'ignore'],
+    env: { ...withoutElectronNode(process.env), ...node.env },
+  });
+  if (stderr !== null) closeSync(stderr);
+  child.once('exit', () => {
+    exited = true;
   });
   child.unref();
   await new Promise<void>((resolveSpawn, rejectSpawn) => {
     child.once('spawn', () => resolveSpawn());
     child.once('error', rejectSpawn);
   });
+  return { exited: () => exited };
 }
 
-async function pollForHandshake(): Promise<DaemonConnection | null> {
+function openLaunchLog(): number | null {
+  try {
+    mkdirSync(join(TANDEMISE_HOME, 'logs'), { recursive: true });
+    return openSync(LAUNCH_LOG, 'a');
+  } catch {
+    return null;
+  }
+}
+
+function logLaunch(line: string): void {
+  try {
+    mkdirSync(join(TANDEMISE_HOME, 'logs'), { recursive: true });
+    appendFileSync(LAUNCH_LOG, `[${new Date().toISOString()}] desktop: ${line}\n`);
+  } catch {
+    // Logging must never be why the daemon did not start.
+  }
+}
+
+/** The daemon's own one-line reason ("tandemd failed to start: ..."), never a stack. */
+async function lastStartupError(): Promise<string | null> {
+  let text: string;
+  try {
+    text = await readFile(LAUNCH_LOG, 'utf8');
+  } catch {
+    return null;
+  }
+  const lines = text.split('\n').filter((l) => l.startsWith('tandemd failed to start: '));
+  const last = lines.at(-1);
+  return last ? last.slice('tandemd failed to start: '.length).trim() : null;
+}
+
+function describeTried(resolution: NodeResolution): string {
+  return resolution.tried.map((t) => `${t.path} (${t.source}${t.rejected ? `: ${t.rejected}` : ''})`).join('; ') || 'nothing';
+}
+
+async function pollForHandshake(launch: Launch): Promise<DaemonConnection | 'exited' | null> {
   const deadline = Date.now() + SPAWN_POLL_TIMEOUT_MS;
   while (Date.now() < deadline) {
     await delay(SPAWN_POLL_INTERVAL_MS);
     const connection = await readHandshake();
     if (connection && (await isReachable(connection))) return connection;
+    if (launch.exited()) return 'exited';
   }
   return null;
 }
