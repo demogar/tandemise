@@ -77,9 +77,14 @@ Wherever it arrives, a contribution goes through the same two steps:
 2. **Typed second.** Intake turns the `Evidence` into the typed artifact the
    mission consumes, with a handoff. The `Evidence` stays the source of truth.
 
-**Size.** A file is at most 24 MB decoded. The router's global 8 MiB body cap
-stays; the three routes that accept contributions declare a 32 MiB cap of
-their own. The desktop client uses a 120 s timeout on those calls only.
+**Size.** A file is at most 24 MB decoded, and the files in one request are at
+most 24 MB decoded **in total** ("That file is larger than 24 MB." / "These
+files add up to more than 24 MB. Add the rest later as feedback."). The
+router's global 8 MiB body cap stays; the three routes that accept
+contributions declare a cap of their own: 32 MiB (24 MB as base64) plus 1 MiB
+for the rest of the request, so a request the schema accepts is never refused
+first by the byte count. The desktop client uses a 120 s timeout on those calls
+only.
 
 ## A2. Uploads and intake
 

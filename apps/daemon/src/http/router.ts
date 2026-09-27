@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { TandemiseError, errorMessage, isTandemiseError, redactSecrets, type Logger } from '@tandemise/shared';
-import { API_PREFIX, API_VERSION, API_VERSION_HEADER, HTTP_STATUS_BY_CODE, type ApiErrorBody } from '@tandemise/api-contract';
+import { API_PREFIX, API_VERSION, API_VERSION_HEADER, CONTRIBUTION_BASE64_MAX, HTTP_STATUS_BY_CODE, type ApiErrorBody } from '@tandemise/api-contract';
 import { z } from 'zod';
 import type { Caller } from '@tandemise/application';
 
@@ -96,15 +96,21 @@ const MAX_BODY_BYTES = 8 * 1024 * 1024;
 /**
  * The three routes that accept a contribution's bytes (mission uploads, a
  * feedback attachment, a hand-back) declare this in place of the global cap
- * (spec A1). 32 MiB is the base64 length of a file at the 24 MB decoded cap
- * (`ceil(bytes/3)*4`), so this is the line that actually turns away an
- * oversized upload over HTTP; the message names the limit a person can act
- * on, the same one `ContributionError('too_large', …)` uses when a caller
- * pins bytes directly rather than over HTTP.
+ * (spec A1). `CONTRIBUTION_BASE64_MAX` (imported, not restated) is the base64
+ * length of a file at the 24 MB decoded cap; a request the schema would
+ * accept still carries a workspaceId, a goal or note, filenames and JSON
+ * punctuation around that, so this adds 1 MiB of headroom for the rest of
+ * the envelope rather than clipping a compliant upload at the byte count
+ * alone. The message cannot name a single file - the router cannot tell one
+ * oversized file from several that added up - so it speaks of "the files",
+ * matching `CONTRIBUTION_TOTAL_MESSAGE`'s tone; a single file over the limit
+ * still gets the more precise "That file is larger than 24 MB." from the
+ * schema or from `ContributionError('too_large', …)` when the request is
+ * small enough to reach either of them.
  */
 export const CONTRIBUTION_BODY: RouteOptions = {
-  maxBodyBytes: 32 * 1024 * 1024,
-  overflowMessage: 'That file is larger than 24 MB.',
+  maxBodyBytes: CONTRIBUTION_BASE64_MAX + 1024 * 1024,
+  overflowMessage: 'The files you added are larger than 24 MB.',
 };
 
 export async function readJsonBody(req: IncomingMessage, maxBodyBytes = MAX_BODY_BYTES, overflowMessage?: string): Promise<unknown> {

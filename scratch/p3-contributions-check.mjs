@@ -869,27 +869,69 @@ section('http: contributions');
     check('a 10 MB upload succeeds (over the global 8 MiB cap, under the contribution cap)', tenMb.status === 200 && tenMb.body?.mission?.id !== undefined, { status: tenMb.status, error: tenMb.body?.error });
     check('the 10 MB upload is pinned as Evidence', tenMb.status === 200 && h.artifacts.listByMission(tenMb.body.mission.id, 'Evidence').length === 1);
 
+    // Exactly at the cap: the ruling's +1 MiB router headroom exists so a
+    // request the schema accepts (a file at precisely 24 MB decoded, plus
+    // workspaceId/goal/filename/JSON punctuation around it) is never refused
+    // by the byte count alone.
+    const atCap = await api('POST', '/v1/missions', {
+      workspaceId: ws, goal: 'Ship a file at exactly the limit',
+      uploads: [{ kind: 'file', filename: 'exact.bin', mediaType: 'application/octet-stream', dataBase64: b64Of(D.CONTRIBUTION_MAX_BYTES) }],
+    });
+    check('a file of exactly 24 MB decoded succeeds on create', atCap.status === 200 && atCap.body?.mission?.id !== undefined, { status: atCap.status, error: atCap.body?.error });
+
     const missionsBeforeRefusal = missions.list({ workspaceId: ws }).length;
     const twentyFiveMb = await api('POST', '/v1/missions', {
       workspaceId: ws, goal: 'Ship another greeting', uploads: [{ kind: 'file', filename: 'huge.bin', mediaType: 'application/octet-stream', dataBase64: b64Of(25 * 1024 * 1024) }],
     });
-    // A clean 400 is the common case; a reset connection (the socket closing
-    // before every byte of a 25 MB body lands) is the same refusal racing the
-    // client's own write, so either counts, but only a clean response has a
-    // message to check.
+    // A 25 MB file's base64 (~33.3 MiB) is already over the router's own cap
+    // (32 MiB base64 + 1 MiB headroom) before the request body is even fully
+    // read, so the router's own message answers here, not the schema's or
+    // `ContributionError`'s more precise per-file text (checked directly
+    // below, for a file just over the schema's cap but still under the
+    // router's). A clean 400 is the common case; a reset connection (the
+    // socket closing before every byte of a 25 MB body lands) is the same
+    // refusal racing the client's own write, so either counts, but only a
+    // clean response has a message to check.
     check('a 25 MB upload is refused, not a timeout', (twentyFiveMb.status === 400 || twentyFiveMb.reset) && twentyFiveMb.ms < 10_000, { status: twentyFiveMb.status, reset: twentyFiveMb.reset, ms: twentyFiveMb.ms });
-    check('the refusal names the 24 MB limit', twentyFiveMb.reset || twentyFiveMb.body?.error?.message?.includes('That file is larger than 24 MB.'), twentyFiveMb.body?.error);
+    check('the refusal names the limit, as the router\'s own message', twentyFiveMb.reset || twentyFiveMb.body?.error?.message?.includes('The files you added are larger than 24 MB.'), twentyFiveMb.body?.error);
     check('no mission and no Evidence is left behind by the refused upload', missions.list({ workspaceId: ws }).length === missionsBeforeRefusal, { before: missionsBeforeRefusal, after: missions.list({ workspaceId: ws }).length });
+
+    // A single file just over the schema's per-file cap, but still comfortably
+    // under the router's wider one: this is the request that actually proves
+    // the schema (not the router) speaks the precise per-file text, and that
+    // one oversized file alone never gets the aggregate wording.
+    const justOverSchemaCap = D.CONTRIBUTION_MAX_BYTES + 300_000;
+    const missionsBeforeSingleOver = missions.list({ workspaceId: ws }).length;
+    const singleOver = await api('POST', '/v1/missions', {
+      workspaceId: ws, goal: 'Ship a file just over the limit',
+      uploads: [{ kind: 'file', filename: 'over.bin', mediaType: 'application/octet-stream', dataBase64: b64Of(justOverSchemaCap) }],
+    });
+    check('a single file just over 24 MB (still under the router cap) gets the per-file message, not the aggregate one', singleOver.status === 400 && singleOver.body?.error?.message?.includes('That file is larger than 24 MB.') && !singleOver.body?.error?.message?.includes('add up'), singleOver.body?.error);
+    check('no mission is left behind by the single-file refusal', missions.list({ workspaceId: ws }).length === missionsBeforeSingleOver, { before: missionsBeforeSingleOver, after: missions.list({ workspaceId: ws }).length });
+
+    // Two files, each safely under the per-file cap, whose total decoded
+    // bytes exceed it: the aggregate refinement (spec A1's ruling), not the
+    // per-file one - the router cap has enough headroom to let this reach
+    // the schema at all.
+    const sizeA = Math.floor(D.CONTRIBUTION_MAX_BYTES / 2);
+    const sizeB = (D.CONTRIBUTION_MAX_BYTES + 200_000) - sizeA;
+    const missionsBeforeAggregate = missions.list({ workspaceId: ws }).length;
+    const twoFiles = await api('POST', '/v1/missions', {
+      workspaceId: ws, goal: 'Ship two files that add up',
+      uploads: [
+        { kind: 'file', filename: 'a.bin', mediaType: 'application/octet-stream', dataBase64: b64Of(sizeA) },
+        { kind: 'file', filename: 'b.bin', mediaType: 'application/octet-stream', dataBase64: b64Of(sizeB) },
+      ],
+    });
+    check('two files that individually pass but add up past 24 MB are refused with the aggregate message', twoFiles.status === 400 && twoFiles.body?.error?.message?.includes('These files add up to more than 24 MB. Add the rest later as feedback.'), twoFiles.body?.error);
+    check('no mission and no Evidence is left behind by the aggregate refusal', missions.list({ workspaceId: ws }).length === missionsBeforeAggregate, { before: missionsBeforeAggregate, after: missions.list({ workspaceId: ws }).length });
 
     const nineMbElsewhere = await api('POST', '/v1/workspaces', { name: 'x'.repeat(9 * 1024 * 1024) });
     check('a 9 MiB body to an unrelated route is still refused (global 8 MiB cap)', nineMbElsewhere.status === 400 || nineMbElsewhere.reset, nineMbElsewhere.body?.error);
 
     // ---- park and hand back, over HTTP
-    const missionRes = await api('POST', '/v1/missions', { workspaceId: ws, goal: 'Design the greeting' });
-    const missionId = missionRes.body.mission.id;
-    missions.update(missionId, { status: 'EXECUTING' });
-    const taskId = tasks.add({
-      id: ids.task(), missionId, key: 'design', title: 'Design the greeting', objective: 'o', roleId: 'design',
+    const addParkableTask = (missionId, key) => tasks.add({
+      id: ids.task(), missionId, key, title: key, objective: 'o', roleId: 'design',
       dependsOn: [], requiredCapabilities: [], inputArtifacts: [], expectedOutputs: ['DesignBrief'],
       executionPolicy: { isolation: 'none', maxWallTimeMs: 60000, capabilities: [] }, approvalPolicy: { beforeStart: false, onCompletion: false },
       retryPolicy: { maxAttempts: 1, backoffMs: 0, onExhausted: 'block' }, completionGate: null,
@@ -898,12 +940,29 @@ section('http: contributions');
       createdAt: systemClock.now(), updatedAt: systemClock.now(), startedAt: null, finishedAt: null,
     }).id;
 
+    const missionRes = await api('POST', '/v1/missions', { workspaceId: ws, goal: 'Design the greeting' });
+    const missionId = missionRes.body.mission.id;
+    missions.update(missionId, { status: 'EXECUTING' });
+    const taskId = addParkableTask(missionId, 'design');
+
     const parked = await api('POST', `/v1/tasks/${taskId}/park`, { tool: 'Figma' });
     check('POST park answers with the parked TaskView', parked.status === 200 && parked.body?.status === 'AWAITING_EXTERNAL' && parked.body?.parkedExternal?.tool === 'Figma', parked.body);
 
     const file = { kind: 'file', filename: 'frames.md', mediaType: 'text/markdown', dataBase64: Buffer.from('# Frames\n\nThe greeting, drawn in Figma.\n').toString('base64') };
     const handed = await api('POST', `/v1/tasks/${taskId}/hand-back`, { note: 'Designed in Figma. The frames are attached.', contribution: file });
     check('POST hand-back answers with {task, artifacts}', handed.status === 200 && handed.body?.task?.status === 'SUCCEEDED' && handed.body?.artifacts?.length === 1 && handed.body.artifacts[0].round === 2, handed.body);
+
+    // Exactly at the cap through hand-back too, with the longest note the
+    // schema allows: the same +1 MiB router headroom has to cover this
+    // envelope as well, not just a bare upload's.
+    const missionRes2 = await api('POST', '/v1/missions', { workspaceId: ws, goal: 'Design another greeting' });
+    const missionId2 = missionRes2.body.mission.id;
+    missions.update(missionId2, { status: 'EXECUTING' });
+    const taskId2 = addParkableTask(missionId2, 'design2');
+    await api('POST', `/v1/tasks/${taskId2}/park`, { tool: 'Figma' });
+    const atCapFile = { kind: 'file', filename: 'exact-handback.bin', mediaType: 'application/octet-stream', dataBase64: b64Of(D.CONTRIBUTION_MAX_BYTES) };
+    const handedAtCap = await api('POST', `/v1/tasks/${taskId2}/hand-back`, { note: 'x'.repeat(4000), contribution: atCapFile });
+    check('a file of exactly 24 MB decoded with a 4000-char note succeeds on hand-back', handedAtCap.status === 200 && handedAtCap.body?.task?.status === 'SUCCEEDED', { status: handedAtCap.status, error: handedAtCap.body?.error });
 
     // ---- GET /v1/artifacts/:id/path
     const evidence = h.artifacts.listByTask(taskId).find((a) => a.type === 'Evidence');
