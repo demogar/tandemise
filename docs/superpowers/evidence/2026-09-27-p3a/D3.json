@@ -8,7 +8,7 @@
       "ok": true,
       "observed": {
         "tool": "GitHub",
-        "since": "2026-09-27T21:15:43.255Z"
+        "since": "2026-09-27T21:45:53.396Z"
       }
     },
     {
@@ -31,7 +31,7 @@
       "observed": [
         "url=https://github.com/acme/app/pull/7",
         "github.pr=acme/app#7",
-        "git.commit=ba0c398b518ed8e06243238c1dc17d0169d642c8",
+        "git.commit=9c87c3a958bcf8cd93c916f2d64db439c0c3d83b",
         "git.branch=hello-from-pr"
       ]
     },
@@ -44,14 +44,14 @@
       "label": "a human-authored round-2 ChangeSet: authored and recorded by you, carrying the commit",
       "ok": true,
       "observed": {
-        "authorId": "mem_01m3jbf1vx1xmwcn50ec",
-        "recordedBy": "mem_01m3jbf1vx1xmwcn50ec",
-        "me": "mem_01m3jbf1vx1xmwcn50ec",
+        "authorId": "mem_01m3jd67z8z7a9cm78jq",
+        "recordedBy": "mem_01m3jd67z8z7a9cm78jq",
+        "me": "mem_01m3jd67z8z7a9cm78jq",
         "round": 2,
         "refs": [
           "url=https://github.com/acme/app/pull/7",
           "github.pr=acme/app#7",
-          "git.commit=ba0c398b518ed8e06243238c1dc17d0169d642c8",
+          "git.commit=9c87c3a958bcf8cd93c916f2d64db439c0c3d83b",
           "git.branch=hello-from-pr"
         ]
       }
@@ -82,9 +82,9 @@
       "ok": true,
       "observed": {
         "inputs": [
-          "art_01m3jbjpdpn9t70tgkj4"
+          "art_01m3jd9y5481q3qwm3vw"
         ],
-        "changeSet": "art_01m3jbjpdpn9t70tgkj4"
+        "changeSet": "art_01m3jd9y5481q3qwm3vw"
       }
     },
     {
@@ -92,27 +92,27 @@
       "ok": true,
       "observed": {
         "kind": "worktree",
-        "branch": "tandemise/hello-page-finished-in-a-pull-request-scripted-s/hello-page-finished-in-a-pull-request-scripted-s-2s8n7j6m",
+        "branch": "tandemise/hello-page-finished-in-a-pull-request-scripted-s/hello-page-finished-in-a-pull-request-scripted-s-cypwbpcp",
         "baseBranch": "hello-from-pr",
-        "dir": "/tmp/tdm-p3/home/workspaces/ws_01m3jbf1vwhtdp6gxgbf/missions/msn_01m3jbhqaajj1n0jw45s/worktrees/hello-page-finished-in-a-pull-request-scripted-s-2s8n7j6m"
+        "dir": "/tmp/tdm-p3/home/workspaces/ws_01m3jd67z8z7a9cm78jp/missions/msn_01m3jd8yb04ry21903zq/worktrees/hello-page-finished-in-a-pull-request-scripted-s-cypwbpcp"
       }
     },
     {
       "label": "the review's branch contains the handed-back commit",
       "ok": true,
       "observed": {
-        "sha": "ba0c398b518ed8e06243238c1dc17d0169d642c8",
-        "reviewBranch": "tandemise/hello-page-finished-in-a-pull-request-scripted-s/hello-page-finished-in-a-pull-request-scripted-s-2s8n7j6m"
+        "sha": "9c87c3a958bcf8cd93c916f2d64db439c0c3d83b",
+        "reviewBranch": "tandemise/hello-page-finished-in-a-pull-request-scripted-s/hello-page-finished-in-a-pull-request-scripted-s-cypwbpcp"
       }
     },
     {
       "label": "the review's prompt carries the pull request and its diff",
       "ok": true,
-      "observed": ")\n<<<UNTRUSTED_DATA id=1 label=\"ChangeSet: build\" origin=\"artifact art_01m3jbjpdpn9t70tgkj4\">>>\nFinished the page in the pull request; it greets the visitor by name.\n\n## Handed back from GitHub\n\nFrom pull request acme/app#7 (Evidence art_01m3jbjpdk5fm4as4ek2).\n\n# Greet the visitor by name\n\nAdds the hello page.\n\n## Diff\n\n```diff\ndiff --git a/hello.html b/hello.html\nnew file mode 100644\nindex 000000"
+      "observed": ")\n<<<UNTRUSTED_DATA id=1 label=\"ChangeSet: build\" origin=\"artifact art_01m3jd9y5481q3qwm3vw\">>>\nFinished the page in the pull request; it greets the visitor by name.\n\n## Handed back from GitHub\n\nFrom pull request acme/app#7 (Evidence art_01m3jd9y4z4g7aw7ht64).\n\n# Greet the visitor by name\n\nAdds the hello page.\n\n## Diff\n\n```diff\ndiff --git a/hello.html b/hello.html\nnew file mode 100644\nindex 000000"
     }
   ],
   "notes": [
-    "the fake gh knows https://github.com/acme/app/pull/7: head hello-from-pr @ ba0c398b518e, a real commit in the acceptance repository"
+    "the fake gh knows https://github.com/acme/app/pull/7: head hello-from-pr @ 9c87c3a958bc, a real commit in the acceptance repository"
   ],
   "shots": [
     "/Users/demogar/projects/tandemise/tandemise-p3/docs/superpowers/evidence/2026-09-27-p3a/D3-hand-back-pr-link.png",

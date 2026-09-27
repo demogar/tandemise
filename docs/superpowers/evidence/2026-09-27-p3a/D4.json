@@ -14,7 +14,7 @@
       "observed": {
         "parked": {
           "tool": "Figma",
-          "since": "2026-09-27T21:14:35.986Z"
+          "since": "2026-09-27T21:44:45.402Z"
         },
         "round": 1,
         "artifactsBefore": 1,
@@ -44,7 +44,7 @@
       "ok": true,
       "observed": [
         {
-          "id": "art_01m3jbmhf66wssr7fswh",
+          "id": "art_01m3jdbs55npwwp2tpt8",
           "title": "hello-page-export.md",
           "refs": [
             "url=https://www.figma.com/file/abc123/hello-page",
@@ -69,7 +69,7 @@
     {
       "label": "the round-2 DesignBrief carries the note and the export's text",
       "ok": true,
-      "observed": "Moved the greeting up and made it larger, in Figma.\n\n## Handed back from Figma\n\nFrom hello-page-export.md (Evidence art_01m3jbmhf66wssr7fswh).\n\n# Hello page (Figma export)\n\nThe greeting sits higher on the page and is larger.\n"
+      "observed": "Moved the greeting up and made it larger, in Figma.\n\n## Handed back from Figma\n\nFrom hello-page-export.md (Evidence art_01m3jdbs55npwwp2tpt8).\n\n# Hello page (Figma export)\n\nThe greeting sits higher on the page and is larger.\n"
     },
     {
       "label": "the design card shows Round 2 with a link back to the Figma file (\"Open the link ↗\")",

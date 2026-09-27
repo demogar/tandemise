@@ -1,7 +1,7 @@
 {
   "id": "D1",
   "title": "An uploaded spec covers the spec stage of a real plan",
-  "ok": false,
+  "ok": true,
   "checks": [
     {
       "label": "the New Mission form shows the upload as a chip",
@@ -15,7 +15,7 @@
       "ok": true,
       "observed": [
         {
-          "evidenceId": "art_01m3jbf7h0ymh4y9a1sc",
+          "evidenceId": "art_01m3jd6eg73hpqragyj0",
           "filename": "hello-spec.md",
           "mediaType": "text/markdown",
           "refs": [
@@ -25,7 +25,7 @@
               "label": "hello-spec.md"
             }
           ],
-          "intakeArtifactId": "art_01m3jbf92z4gckw7bhj3"
+          "intakeArtifactId": "art_01m3jd6g2n1fb2xnt757"
         }
       ]
     },
@@ -33,7 +33,7 @@
       "label": "intake made a ProductSpec from it (mission-wide, not a task's)",
       "ok": true,
       "observed": {
-        "id": "art_01m3jbf92z4gckw7bhj3",
+        "id": "art_01m3jd6g2n1fb2xnt757",
         "type": "ProductSpec",
         "taskId": null,
         "refs": [
@@ -75,11 +75,11 @@
       "observed": [
         {
           "key": "product",
-          "title": "product (covered by your upload)",
+          "title": "Spec",
           "status": "SKIPPED",
           "statusReason": "Covered by your upload: hello-spec.md",
           "coveredBy": {
-            "artifactId": "art_01m3jbf92z4gckw7bhj3",
+            "artifactId": "art_01m3jd6g2n1fb2xnt757",
             "filename": "hello-spec.md"
           },
           "outputs": [
@@ -111,12 +111,12 @@
     {
       "label": "the Plan tab shows a muted \"… · covered by your upload\" row naming hello-spec.md",
       "ok": true,
-      "observed": "product (covered by your upload) · covered by your upload\nhello-spec.md"
+      "observed": "Spec · covered by your upload\nhello-spec.md"
     },
     {
       "label": "the covered row reads \"Spec · covered by your upload\" (spec A2, A8 D1)",
-      "ok": false,
-      "observed": "product (covered by your upload) · covered by your upload"
+      "ok": true,
+      "observed": "Spec · covered by your upload"
     },
     {
       "label": "the covered row has no status dot",
@@ -126,7 +126,7 @@
       "label": "the Plan tab lists no other spec or product card",
       "ok": true,
       "observed": [
-        "product (covered by your upload) · covered by your upload",
+        "Spec · covered by your upload",
         "Define flows, states and interaction behaviour",
         "Choose the approach and order the work",
         "Implement the plan",
@@ -137,7 +137,7 @@
     }
   ],
   "notes": [
-    "plan cards: [\"product (covered by your upload) · covered by your upload\",\"Define flows, states and interaction behaviour\",\"Choose the approach and order the work\",\"Implement the plan\",\"Review the diff independently\",\"Verify the running application\",\"Assemble the release candidate\"]"
+    "plan cards: [\"Spec · covered by your upload\",\"Define flows, states and interaction behaviour\",\"Choose the approach and order the work\",\"Implement the plan\",\"Review the diff independently\",\"Verify the running application\",\"Assemble the release candidate\"]"
   ],
   "shots": [
     "/Users/demogar/projects/tandemise/tandemise-p3/docs/superpowers/evidence/2026-09-27-p3a/D1-new-mission-with-upload.png",

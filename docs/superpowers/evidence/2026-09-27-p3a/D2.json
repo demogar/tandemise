@@ -20,7 +20,7 @@
         "status": "AWAITING_EXTERNAL",
         "parkedExternal": {
           "tool": "Figma",
-          "since": "2026-09-27T21:14:35.986Z"
+          "since": "2026-09-27T21:44:45.402Z"
         },
         "statusReason": "Continued in Figma"
       }
@@ -48,7 +48,7 @@
     {
       "label": "the timeline shows \"Continued in Figma\"",
       "ok": true,
-      "observed": "Designer started\nScripted agent on local:/private/var/folders/dh/glpvvh110393gdzjc_v2x1sr0000gn/T/tdm-p3-run-mukbg0xq/project\n04:14:32 PM\n·\nDesign agent\nProduct Designer task is now Awaiting external\nContinued in Figma\n04:14:35 PM\n·\nYou\nContinued in Figma\n04:1"
+      "observed": "Designer started\nScripted agent on local:/private/var/folders/dh/glpvvh110393gdzjc_v2x1sr0000gn/T/tdm-p3-run-mukcisce/project\n04:44:41 PM\n·\nDesign agent\nProduct Designer task is now Awaiting external\nContinued in Figma\n04:44:45 PM\n·\nYou\nContinued in Figma\n04:4"
     },
     {
       "label": "the raw log shows task.parked_external {\"tool\":\"Figma\"}",

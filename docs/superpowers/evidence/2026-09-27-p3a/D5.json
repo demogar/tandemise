@@ -1,7 +1,7 @@
 {
   "id": "D5",
   "title": "A ready next step waits for the hand-back, then runs on the handed-back version",
-  "ok": false,
+  "ok": true,
   "checks": [
     {
       "label": "the design finished (round 1) and the build is ready, asking to start",
@@ -14,9 +14,9 @@
     },
     {
       "label": "the finished design's card offers \"Continue elsewhere\" while the build only asks to start",
-      "ok": false,
+      "ok": true,
       "observed": {
-        "card": "PRODUCT DESIGNER\ndesign\nDone\njust now\nby\nDesign agent\n·\nresponsible\nYou\nOpen workspace ↗\nFull doc\nRequest changes\n\nDesignBrief ready for the hello page\n\nWritten by the scripted acceptance agent\nNo model was called",
+        "card": "PRODUCT DESIGNER\ndesign\nDone\njust now\nby\nDesign agent\n·\nresponsible\nYou\nOpen workspace ↗\nFull doc\nContinue elsewhere\nRequest changes\n\nDesignBrief ready for the hello page\n\nWritten by the scripted acceptance agent\nNo model was called",
         "build": {
           "status": "AWAITING_APPROVAL",
           "runCount": 0,
@@ -31,7 +31,7 @@
         "status": "AWAITING_EXTERNAL",
         "parkedExternal": {
           "tool": "Figma",
-          "since": "2026-09-27T21:17:45.714Z"
+          "since": "2026-09-27T21:47:43.213Z"
         }
       }
     },
@@ -64,9 +64,9 @@
       "ok": true,
       "observed": {
         "status": "SUCCEEDED",
-        "round2": "art_01m3jbpkeemvn8r264ce",
-        "supersedes": "art_01m3jbnr27jyjf8cj78d",
-        "round1": "art_01m3jbnr27jyjf8cj78d"
+        "round2": "art_01m3jddf75kdvw29vma4",
+        "supersedes": "art_01m3jdczqq1reyvfg6xe",
+        "round1": "art_01m3jdczqq1reyvfg6xe"
       }
     },
     {
@@ -88,16 +88,16 @@
       "observed": {
         "runs": 1,
         "inputs": [
-          "art_01m3jbpkeemvn8r264ce"
+          "art_01m3jddf75kdvw29vma4"
         ],
-        "round1": "art_01m3jbnr27jyjf8cj78d",
-        "round2": "art_01m3jbpkeemvn8r264ce"
+        "round1": "art_01m3jdczqq1reyvfg6xe",
+        "round2": "art_01m3jddf75kdvw29vma4"
       }
     },
     {
       "label": "the build's prompt carries the handed-back work",
       "ok": true,
-      "observed": "d)\n<<<UNTRUSTED_DATA id=1 label=\"DesignBrief: design\" origin=\"artifact art_01m3jbpkeemvn8r264ce\">>>\nReworked the greeting in Figma: larger, higher, warmer colours.\n\n## Handed back from Figma\n\nFrom hello-design-v2.md (Evidence art_01m3jbpke99a55qd5ax5).\n\n# Hello page, v2\n\nThe greeting is larger and sits higher. Colours: warm, #f6c28b on #fffaf3.\n\n<<<END_UNTRUSTED_DATA id=1>>>\n\n## Policy — what you "
+      "observed": "d)\n<<<UNTRUSTED_DATA id=1 label=\"DesignBrief: design\" origin=\"artifact art_01m3jddf75kdvw29vma4\">>>\nReworked the greeting in Figma: larger, higher, warmer colours.\n\n## Handed back from Figma\n\nFrom hello-design-v2.md (Evidence art_01m3jddf73c53k03dmrb).\n\n# Hello page, v2\n\nThe greeting is larger and sits higher. Colours: warm, #f6c28b on #fffaf3.\n\n<<<END_UNTRUSTED_DATA id=1>>>\n\n## Policy — what you "
     },
     {
       "label": "the build card is finished in the window",
@@ -105,11 +105,10 @@
       "observed": "DEVELOPER\nbuild\nDone\njust now\nby\nCoding agent\n·\nresponsible\nYou\nOpen workspace ↗\nFull doc\nContinue elsewhere\nRequest changes\n\nChangeSet ready for the hello page\n\nWritten by the scripted acceptance agent\nNo model was called"
     }
   ],
-  "notes": [
-    "WORKAROUND: the window offered no \"Continue elsewhere\", so the design was parked through POST /v1/tasks/:id/park { tool: \"Figma\" } for the rest of the scenario"
-  ],
+  "notes": [],
   "shots": [
     "/Users/demogar/projects/tandemise/tandemise-p3/docs/superpowers/evidence/2026-09-27-p3a/D5-finished-design-card.png",
+    "/Users/demogar/projects/tandemise/tandemise-p3/docs/superpowers/evidence/2026-09-27-p3a/D5-continue-finished-design.png",
     "/Users/demogar/projects/tandemise/tandemise-p3/docs/superpowers/evidence/2026-09-27-p3a/D5-build-held-drawer.png",
     "/Users/demogar/projects/tandemise/tandemise-p3/docs/superpowers/evidence/2026-09-27-p3a/D5-hand-back-file.png",
     "/Users/demogar/projects/tandemise/tandemise-p3/docs/superpowers/evidence/2026-09-27-p3a/D5-released-after-hand-back.png",
