@@ -1,6 +1,6 @@
 import type {
   ApprovalRepositoryPort, ArtifactRepositoryPort, ArtifactStorePort, EventRepositoryPort, LimitStatus, MemberRepositoryPort, Mission,
-  MissionRepositoryPort, StatusReportBacklogItem, StatusReportFacts, StatusReportMission, TaskRepositoryPort, WorkspaceRepositoryPort,
+  MissionRepositoryPort, MissionTask, StatusReportBacklogItem, StatusReportFacts, StatusReportMission, TaskRepositoryPort, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
 import {
   REPORT_HOLDER_PRESET, REPORT_HOLDER_TITLE, SYSTEM_ACTOR, compareBacklog, isInProgress, isTerminalMissionStatus, monthBannerText,
@@ -19,6 +19,7 @@ import type { ReadinessService } from './readiness.js';
 import type { EventRecorder } from '../support/event-recorder.js';
 import type { Caller } from '../support/identity.js';
 import { versionLines } from '../support/artifact-versions.js';
+import { parkedExternalOf } from '../support/outside-work.js';
 
 export interface DeskDeps {
   readonly workspaces: WorkspaceRepositoryPort;
@@ -87,11 +88,20 @@ export class DeskService {
     const cards = this.deps.approvals.list({ workspaceId, statuses: ['PENDING'] }).filter((a) => a.kind !== 'check').length;
     const steps = this.deps.tasks.listByStatus(['AWAITING_HUMAN'])
       .filter((t) => this.deps.missions.get(t.missionId)?.workspaceId === workspaceId).length;
+    // A step parked in another tool waits for the person's hand-back (spec A4).
+    const parked = this.deps.tasks.listByStatus(['AWAITING_EXTERNAL'])
+      .filter((t) => this.deps.missions.get(t.missionId)?.workspaceId === workspaceId && this.#isParked(t)).length;
     const refinements = this.deps.missions.list({ workspaceId, statuses: ['DRAFT'] }).filter((m) => {
       const counts = this.deps.readiness.counts(m.id);
       return counts.openQuestions + counts.proposedPending > 0;
     }).length;
-    return cards + steps + refinements + this.deps.liveness.silentRuns(workspaceId).length;
+    return cards + steps + parked + refinements + this.deps.liveness.silentRuns(workspaceId).length;
+  }
+
+  /** An agent step in AWAITING_EXTERNAL that was parked, not a wait step polling. */
+  #isParked(task: MissionTask): boolean {
+    if (task.executor !== 'agent') return false;
+    return parkedExternalOf(task, this.deps.events.listByMission(task.missionId, { semanticOnly: true })) !== null;
   }
 
   /** What the numbers mean for what runs next; each only while it is true. */
@@ -197,11 +207,12 @@ export class DeskService {
     const cards = this.deps.approvals.list({ missionId: mission.id, statuses: ['PENDING'] })
       .filter((a) => a.kind !== 'check')
       .sort((a, b) => byText(a.createdAt, b.createdAt) || byText(a.id, b.id));
+    const log = this.deps.events.listByMission(mission.id, { semanticOnly: true });
     const people = [...tasks]
-      .filter((t) => t.status === 'AWAITING_HUMAN')
+      .filter((t) => t.status === 'AWAITING_HUMAN' || parkedExternalOf(t, log) !== null)
       .sort((a, b) => a.orderHint - b.orderHint || byText(a.key, b.key))
       .map((t) => `'${t.key}' waits on a person`);
-    const failures = this.deps.events.listByMission(mission.id, { semanticOnly: true })
+    const failures = log
       .filter((e) => e.body.type === 'gate.evaluated' && !e.body.passed);
     const last = failures[failures.length - 1];
     const lastBody = last?.body.type === 'gate.evaluated' ? last.body : null;

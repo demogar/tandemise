@@ -1,14 +1,18 @@
+import { relative } from 'node:path';
 import type {
-  CriteriaTrace,
+  CriteriaTrace, ArtifactHandoff, ArtifactManifest, EventRepositoryPort, ExternalRef, HandoffLink,
   ApprovalRepositoryPort, ArtifactRepositoryPort, MemberRepositoryPort, Mission, MissionCriteriaRepositoryPort, MissionRepositoryPort, MissionStatus,
   MissionTask, RepoRepositoryPort, RoleRepositoryPort, RunRepositoryPort, TaskRepositoryPort, UnitOfWork, WorkspaceRepositoryPort,
   ArtifactStorePort,
 } from '@tandemise/domain';
-import { ISSUE_CRITERIA_AUTHOR, canTransition, evaluateReadiness, indexTeam, isTaskFinished, isTerminalMissionStatus, normalizeLimits, responsibleFor } from '@tandemise/domain';
+import {
+  ISSUE_CRITERIA_AUTHOR, canTransition, escalationChain, evaluateReadiness, indexTeam, isTaskFinished, isTerminalMissionStatus, normalizeLimits,
+  responsibleFor,
+} from '@tandemise/domain';
 import type {
-  ClaimTaskRequest, CompleteTaskRequest, CreateMissionRequest, MissionSummary, TaskView,
+  ClaimTaskRequest, CompleteTaskRequest, CreateMissionRequest, HandBackRequest, MissionSummary, ParkTaskRequest, TaskView,
 } from '@tandemise/api-contract';
-import type { Clock, IssueLinkId, Logger, MissionId, RepositoryId, RoutineId, TaskId } from '@tandemise/shared';
+import type { Clock, IssueLinkId, Logger, MissionId, RepositoryId, RoutineId, TaskId, WorkspaceId } from '@tandemise/shared';
 import { TandemiseError, asId, ids, slugify, summarize } from '@tandemise/shared';
 import type { ContributionService, FeedbackService, MissionService, PlanningService, PinnedContribution, ProjectionService } from '../services.js';
 import { ContributionError } from './contribution-service.js';
@@ -26,6 +30,17 @@ import { feedbackEffectFor } from '../support/feedback-rules.js';
 import { assertStaffing, mergeRoleStaffing } from '../support/staffing-edit.js';
 import { assertReadiness } from './readiness.js';
 import { criteriaSummary } from '../support/criteria-summary.js';
+import {
+  COVERED_MESSAGE, LINKABLE_OUTPUT_TYPES, continuedIn, isCoveredPlaceholder, parkedExternalOf, type ParkedExternal,
+} from '../support/outside-work.js';
+import { CLOSED_MISSION_MESSAGE, isReadableText, missionTakesRounds } from '../support/feedback-rules.js';
+import { uploadFilename } from '../planning/intake.js';
+
+/** Where a step may be continued elsewhere from: queued, running, or done with nobody downstream on it yet (spec A4). */
+const PARKABLE_TASK_STATUSES: readonly MissionTask['status'][] = ['READY', 'RUNNING', 'SUCCEEDED'];
+
+/** A handoff shows at most this many links; the hand-back's own link is kept over a derived one. */
+const HANDOFF_MAX_LINKS = 5;
 
 /** Statuses from which a task may be put back in the queue by hand. */
 const RETRYABLE_TASK_STATUSES: readonly MissionTask['status'][] = [
@@ -71,6 +86,10 @@ export interface MissionDeps {
   readonly criteria?: MissionCriteriaRepositoryPort;
   /** Pins uploads at creation (spec A2). Optional for older harnesses, which then refuse a mission with uploads. */
   readonly contributions?: Pick<ContributionService, 'pin'>;
+  /** The workspace's artifact root, which a handed-back file's workspace link is relative to (spec A5). */
+  readonly artifactRoot?: (workspaceId: WorkspaceId) => string;
+  /** The log a parked step is read from (spec A4). Optional for older harnesses, which then park nothing. */
+  readonly events?: Pick<EventRepositoryPort, 'listByMission'>;
 }
 
 /**
@@ -333,6 +352,11 @@ export class MissionServiceImpl implements MissionService {
     const task = this.#requireTask(taskId);
     const mission = this.#require(task.missionId);
     requireSeat(this.deps, mission.workspaceId, caller);
+    // A stage an upload covers has no work of its own to retry: a replan
+    // decides afresh whether the upload still covers it (spec A2).
+    if (isCoveredPlaceholder(task)) {
+      throw new TandemiseError('CONFLICT', COVERED_MESSAGE, { details: { taskId } });
+    }
     const widening = (options.addCapabilities ?? []).length > 0;
     // A worker parked on a question can be restarted with more access: that is
     // often the question ("I can't do this with my grants").
@@ -493,7 +517,7 @@ export class MissionServiceImpl implements MissionService {
         { details: { taskId, status: task.status } });
     }
     const { actorId, recordedBy } = actorFor(this.deps, mission.workspaceId, caller, request.onBehalfOf);
-    this.#assertMayTake(task, actorId, 'complete');
+    this.#assertMayTake(task, mission, actorId, 'complete');
     // Completing an unclaimed pool task is claiming it: whoever did the work is
     // its assignee, and answers for it unless someone was named responsible.
     const taken: { assigneeId?: string; responsibleId?: string } = task.assigneeId !== actorId
@@ -585,7 +609,7 @@ export class MissionServiceImpl implements MissionService {
     }
     const { actorId } = actorFor(this.deps, mission.workspaceId, caller, request.onBehalfOf);
     if (task.assigneeId === actorId) return this.#taskView(mission.id, taskId);
-    this.#assertMayTake(task, actorId, 'claim');
+    this.#assertMayTake(task, mission, actorId, 'claim');
 
     const fields = this.#claimFields(task, mission, actorId);
     const name = this.#nameOf(actorId);
@@ -593,6 +617,213 @@ export class MissionServiceImpl implements MissionService {
     this.#noteTaken({ ...scopeOf(mission), taskId, roleId: task.roleId, actorId }, task, actorId);
     this.deps.recorder.invalidate('tasks', mission.id);
     return this.#taskView(mission.id, taskId);
+  }
+
+  /**
+   * "Continue elsewhere" (spec A4): the person takes an agent's step to
+   * another tool, and the step waits for their hand-back.
+   *
+   * AWAITING_EXTERNAL is written before the live run is stopped, so the
+   * executor, finding its row no longer running as the run ends, keeps the
+   * park rather than settling the step CANCELLED. The scheduler adopts only
+   * wait steps in AWAITING_EXTERNAL, and a parked status is outside the
+   * concurrency ceiling, so the step neither runs again nor holds a slot.
+   */
+  async parkTask(taskId: TaskId, caller: Caller, request: ParkTaskRequest): Promise<TaskView> {
+    const task = this.#requireTask(taskId);
+    const mission = this.#require(task.missionId);
+    const { actorId } = actorFor(this.deps, mission.workspaceId, caller);
+    const refuse = (reason: string): never => {
+      throw new TandemiseError('CONFLICT', reason, { details: { taskId, status: task.status, executor: task.executor } });
+    };
+    if (task.executor !== 'agent') {
+      refuse(task.executor === 'wait'
+        ? `'${task.title}' is a wait step; it finishes on its own check, not in another tool.`
+        : `'${task.title}' is already a person's step; complete it instead.`);
+    }
+    if (!PARKABLE_TASK_STATUSES.includes(task.status)) refuse(`A step in ${task.status} cannot be continued elsewhere.`);
+    if (!task.expectedOutputs.some((type) => LINKABLE_OUTPUT_TYPES.includes(type))) {
+      refuse(`'${task.title}' makes nothing that can be brought back from another tool.`);
+    }
+    // A finished mission goes back to work, as a round would take it; a cancelled one cannot.
+    if (!missionTakesRounds(mission)) refuse(CLOSED_MISSION_MESSAGE);
+    if (this.deps.events === undefined) refuse('This build cannot park a step.');
+    // Once other work has read this step's output, taking the step away would
+    // leave that work standing on a version nobody is finishing.
+    if (this.deps.rounds.impactOf(task).consumers.length > 0) {
+      refuse(`Work already used the output of '${task.title}', so it cannot be continued elsewhere now.`);
+    }
+    this.#assertMayTake(task, mission, actorId, 'continue');
+
+    const tool = request.tool.trim();
+    const reason = continuedIn(tool);
+    const scope: EventScope = { ...scopeOf(mission), taskId, roleId: task.roleId, actorId };
+    this.deps.tasks.update(taskId, { status: 'AWAITING_EXTERNAL', statusReason: reason, needsAttention: false, finishedAt: null });
+    this.deps.recorder.record(scope, { type: 'task.status', from: task.status, to: 'AWAITING_EXTERNAL', reason });
+    // Only now: the run ends after the park is on the row. A no-op when nothing runs.
+    this.deps.scheduler.cancelTask(taskId);
+    this.deps.recorder.record(scope, { type: 'task.parked_external', tool });
+    // A mission that had finished waits on the person again, rather than reading as done.
+    this.#reviveMission(mission, `'${task.key}' was continued in ${tool}.`);
+    this.deps.recorder.invalidate('tasks', mission.id);
+    return this.#taskView(mission.id, taskId);
+  }
+
+  /**
+   * "Hand back" (spec A4): what the person made elsewhere comes back as the
+   * parked step's next round, a human-authored one.
+   *
+   * The contribution is pinned as Evidence first (a PR link is read through
+   * the resolver), then each output the step declared is written from it, so
+   * the work downstream reads it the same way it reads an agent's round. The
+   * parked runtime session is not resumed: the work moved to another tool.
+   */
+  async handBack(taskId: TaskId, caller: Caller, request: HandBackRequest): Promise<{ task: TaskView; artifacts: ArtifactManifest[] }> {
+    const task = this.#requireTask(taskId);
+    const mission = this.#require(task.missionId);
+    const { actorId, recordedBy } = actorFor(this.deps, mission.workspaceId, caller, request.onBehalfOf);
+    const park = this.#assertHandBack(task, mission);
+    // Whoever records it is the one taking the step; the author may be someone without a seat.
+    this.#assertMayTake(task, mission, recordedBy, 'hand back');
+    if (this.deps.contributions === undefined) throw TandemiseError.validation('This build cannot take a hand-back.');
+
+    let pinned;
+    try {
+      pinned = await this.deps.contributions.pin({
+        missionId: mission.id, taskId, caller, onBehalfOf: request.onBehalfOf ?? null, contribution: request.contribution,
+      });
+    } catch (e) {
+      if (e instanceof ContributionError) throw TandemiseError.validation(e.message, { code: e.code });
+      throw e;
+    }
+    const { evidence } = pinned;
+    const round = (task.round ?? 1) + 1;
+    const body = await this.#handBackBody(request.note, park.tool, pinned);
+    const link = this.#handBackLink(mission.workspaceId, request.contribution, pinned);
+    const derived = this.deps.measure.deriveHandoff(request.note);
+    const handoff: ArtifactHandoff = link === null
+      ? derived
+      : { ...derived, links: [...derived.links.slice(0, HANDOFF_MAX_LINKS - 1), link] };
+    // The Evidence's refs ride on every output: a file's blob, a link's url,
+    // and for a pull request its head commit and branch, so review and QA
+    // downstream read the commit that was handed back.
+    const sourceRefs: readonly ExternalRef[] = evidence.sourceRefs;
+
+    const written: { manifest: ArtifactManifest; type: MissionTask['expectedOutputs'][number] }[] = [];
+    for (const type of task.expectedOutputs) {
+      const previous = supersededBy(task, type, this.deps.artifacts, this.deps.tasks);
+      const manifest = await this.deps.artifactStore.write({
+        workspaceId: mission.workspaceId, missionId: mission.id, taskId, type, title: task.title, body,
+        mediaType: 'text/markdown', summary: handoff.headline, sourceRefs, supersedes: previous?.id ?? null,
+      });
+      written.push({ manifest, type });
+    }
+
+    // Checked again now that the awaits are behind us: a second hand-back that
+    // raced this one has landed, and this one records nothing.
+    const current = this.#requireTask(taskId);
+    if (parkedExternalOf(current, this.#log(mission.id)) === null) {
+      this.deps.artifacts.withdraw([evidence.id], this.deps.clock.now());
+      throw new TandemiseError('CONFLICT', `'${task.title}' was already handed back.`, { details: { taskId } });
+    }
+
+    // Handing it back is taking it: whoever did the work is its assignee now, as completing a step makes them.
+    const taken: { assigneeId?: string; responsibleId?: string } = current.assigneeId !== actorId ? this.#claimFields(current, mission, actorId) : {};
+    const responsibleId = taken.responsibleId ?? current.responsibleId ?? null;
+    const scope: EventScope = { ...scopeOf(mission), taskId, roleId: task.roleId, actorId };
+    this.deps.recorder.record(scope, { type: 'artifact.created', artifactId: evidence.id });
+    const artifacts = written.map(({ manifest, type }) => {
+      const recorded = this.deps.artifacts.create({
+        ...manifest, authorId: actorId, recordedBy, responsibleId, handoff,
+        // Measured so the reader can show its length, never held to a budget: a person's work is theirs to size.
+        wordCount: this.deps.measure.measure(type, body).mainWords, overBudget: false, round,
+      });
+      this.deps.recorder.record(scope, { type: 'artifact.created', artifactId: recorded.id });
+      return recorded;
+    });
+    const landed: MissionTask = { ...current, ...taken, round };
+    this.deps.recorder.record(scope, {
+      type: 'task.handed_back', artifactIds: artifacts.map((a) => a.id), round, contribution: request.contribution.kind,
+    });
+    // P2's rule for work that read the version this replaces: redone, or kept
+    // and flagged. Redone first, so the flagging below passes over it.
+    const stop = this.deps.rounds.redoConsumers(landed, round, request.downstream ?? 'keep');
+    // A person's contribution cites no note ids, so it answers every note on the step.
+    this.deps.rounds.onPersonCompleted(landed, scope);
+
+    const workspace = this.deps.workspaces.get(mission.workspaceId);
+    if (workspace === undefined) throw TandemiseError.notFound('Workspace', mission.workspaceId);
+    const outcome = this.deps.reviews.onRoundPassed({
+      task: landed, mission, workspace, role: this.deps.roles.get(task.roleId, mission.workspaceId), gate: null, checks: [], scope,
+    });
+    const reason = outcome.status === 'SUCCEEDED' ? `Handed back from ${park.tool}.` : outcome.reason;
+    this.deps.tasks.update(taskId, {
+      ...taken, round, status: outcome.status, statusReason: reason, needsAttention: false,
+      ...(outcome.status === 'SUCCEEDED' ? { finishedAt: this.deps.clock.now() } : {}),
+    });
+    this.deps.recorder.record(scope, {
+      type: 'task.status', from: current.status, to: outcome.status, ...(reason === null ? {} : { reason }),
+    });
+    for (const id of stop) this.deps.scheduler.cancelTask(id);
+    this.deps.recorder.invalidate('tasks', mission.id);
+    this.deps.recorder.invalidate('artifacts', mission.id);
+    this.deps.scheduler.wake();
+    return { task: await this.#taskView(mission.id, taskId), artifacts };
+  }
+
+  /** The step's park, or a CONFLICT saying why nothing can be handed back to it. Writes nothing. */
+  #assertHandBack(task: MissionTask, mission: Mission): ParkedExternal {
+    const park = task.executor === 'agent' ? parkedExternalOf(task, this.#log(mission.id)) : null;
+    if (park === null) {
+      throw new TandemiseError('CONFLICT', `'${task.title}' is not waiting for work from another tool.`, {
+        details: { taskId: task.id, status: task.status },
+      });
+    }
+    if (mission.status === 'CANCELLED' || mission.status === 'COMPLETE') {
+      throw new TandemiseError('CONFLICT', `This mission is ${mission.status === 'CANCELLED' ? 'cancelled' : 'complete'}; start a new mission to continue this work.`, {
+        details: { taskId: task.id, missionId: mission.id, status: mission.status },
+      });
+    }
+    return park;
+  }
+
+  /** The mission's semantic log, where parks and hand-backs are recorded. */
+  #log(missionId: MissionId) {
+    return this.deps.events?.listByMission(missionId, { semanticOnly: true }) ?? [];
+  }
+
+  /**
+   * The body of a handed-back output: the person's note, then what came back.
+   * Text (a Markdown file, a PR's title, body and diff) is carried in full so
+   * the work downstream reads the contribution itself; anything else is named,
+   * and its Evidence is one link away.
+   */
+  async #handBackBody(note: string, tool: string, pinned: PinnedContribution): Promise<string> {
+    const { evidence } = pinned;
+    const name = pinned.resolved !== null ? `pull request ${pinned.resolved.repo}#${pinned.resolved.number}` : uploadFilename(evidence);
+    const lines = [note.trim(), '', `## Handed back from ${tool}`, '', `From ${name} (Evidence ${evidence.id}).`];
+    if (isReadableText(pinned.mediaType)) {
+      try {
+        lines.push('', (await this.deps.artifactStore.read(evidence.id)).body.trimEnd());
+      } catch {
+        // Unreadable here is still pinned and linked; the note stands on its own.
+      }
+    }
+    return `${lines.join('\n')}\n`;
+  }
+
+  /** The handoff link a reader follows to the contribution: the PR, the page, or the stored file. */
+  #handBackLink(workspaceId: WorkspaceId, contribution: HandBackRequest['contribution'], pinned: PinnedContribution): HandoffLink | null {
+    if (contribution.kind === 'link') {
+      // Every link kind but `workspace` is http(s) only.
+      if (!/^https?:\/\//i.test(contribution.url)) return null;
+      return pinned.resolved !== null
+        ? { label: `Pull request #${pinned.resolved.number}`, kind: 'pr', url: contribution.url }
+        : { label: contribution.label ?? 'Open the link', kind: 'doc', url: contribution.url };
+    }
+    if (this.deps.artifactRoot === undefined) return null;
+    const path = relative(this.deps.artifactRoot(workspaceId), this.deps.artifactStore.resolvePath(pinned.evidence));
+    return { label: 'Open the file', kind: 'workspace', path };
   }
 
   async skipTask(caller: Caller, taskId: TaskId): Promise<TaskView> {
@@ -647,8 +878,21 @@ export class MissionServiceImpl implements MissionService {
    * The assignee may act on their task; on an unassigned one, anyone the
    * staffing made claimable. A task resolved before staffing existed names no
    * one, and stays open to whoever the workspace lets act at all.
+   *
+   * An agent's step is taken by a person only to continue it elsewhere (spec
+   * A4), and nobody can claim it: the person who answers for it may, and so
+   * may anyone they answer to, up to the owners.
    */
-  #assertMayTake(task: MissionTask, actorId: string, action: 'claim' | 'complete'): void {
+  #assertMayTake(task: MissionTask, mission: Mission, actorId: string, action: 'claim' | 'complete' | 'continue' | 'hand back'): void {
+    if (task.executor === 'agent') {
+      if (task.staffing == null || task.responsibleId == null) return;
+      const team = indexTeam(this.deps.members.listByWorkspace(mission.workspaceId, { includeRemoved: true }));
+      if (team.owners.length === 0 || escalationChain(team, task.responsibleId).includes(actorId)) return;
+      const what = action === 'continue' ? `continue '${task.title}' elsewhere` : `${action} '${task.title}'`;
+      throw new TandemiseError('CONFLICT', `This member cannot ${what}: only the person who answers for it, or someone they answer to, can.`, {
+        details: { taskId: task.id, actorId, responsibleId: task.responsibleId },
+      });
+    }
     const allowed = task.assigneeId != null
       ? task.assigneeId === actorId || reachedByEscalation(task, actorId)
       : task.staffing == null || task.staffing.claimable.includes(actorId);

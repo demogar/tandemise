@@ -2,6 +2,7 @@ import type { MissionId, Clock, RepositoryId } from '@tandemise/shared';
 import { TandemiseError, ids } from '@tandemise/shared';
 import type { ArtifactHandoff, MissionPlan, MissionTask, PlannedTask, Repository, SkillPin } from '@tandemise/domain';
 import { DEFAULT_RETRY_POLICY, NO_APPROVAL, planGateProblems } from '@tandemise/domain';
+import { COVERED_PREFIX } from '../support/outside-work.js';
 
 /**
  * Turns an accepted plan into the task rows the scheduler runs.
@@ -68,7 +69,7 @@ function skippedPlaceholders(
     taken.add(key);
     const filename = uploadFilename?.(skip.artifactId) ?? skip.artifactId;
     return {
-      reason: `Covered by your upload: ${filename}`,
+      reason: `${COVERED_PREFIX} ${filename}`,
       task: {
         key,
         title: `${skip.stage} (covered by your upload)`,

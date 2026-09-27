@@ -1,14 +1,15 @@
 import type {
-  ApprovalRepositoryPort, ArtifactRepositoryPort, FeedbackRepositoryPort, MemberRepositoryPort, Mission,
+  ApprovalRepositoryPort, ArtifactRepositoryPort, FeedbackAttachment, FeedbackRepositoryPort, MemberRepositoryPort, Mission,
   MissionRepositoryPort, MissionTask, RunRepositoryPort, TaskRepositoryPort, UnitOfWork,
 } from '@tandemise/domain';
 import type {
   DismissFeedbackRequest, DownstreamImpactView, FeedbackGivenView, FeedbackView, GiveFeedbackRequest, StartRoundRequest,
   TaskFeedbackView, TaskView,
 } from '@tandemise/api-contract';
-import type { FeedbackId, TaskId } from '@tandemise/shared';
+import type { ArtifactId, Clock, FeedbackId, TaskId } from '@tandemise/shared';
 import { TandemiseError, asId } from '@tandemise/shared';
-import type { FeedbackService, PendingFeedback, ProjectionService } from '../services.js';
+import type { ContributionService, FeedbackService, PendingFeedback, ProjectionService } from '../services.js';
+import { ContributionError } from './contribution-service.js';
 import type { FeedbackRounds } from '../engine/feedback-rounds.js';
 import type { SchedulerService } from '../engine/scheduler.js';
 import type { EventRecorder } from '../support/event-recorder.js';
@@ -30,6 +31,16 @@ export interface FeedbackServiceDeps {
   readonly unitOfWork: UnitOfWork;
   readonly recorder: EventRecorder;
   readonly scheduler: Pick<SchedulerService, 'wake'>;
+  /** Pins a note's files (spec A3). Optional for older harnesses, which then refuse a note with a file. */
+  readonly contributions?: Pick<ContributionService, 'pin'>;
+  /** When pinned files are set aside because their note was refused. */
+  readonly clock?: Clock;
+}
+
+/** What `give` is told a note carries once its files are pinned. */
+interface GiveOptions {
+  readonly forceDownstream?: 'keep';
+  readonly attachments?: readonly FeedbackAttachment[];
 }
 
 /**
@@ -42,7 +53,43 @@ export interface FeedbackServiceDeps {
 export class FeedbackServiceImpl implements FeedbackService {
   constructor(private readonly deps: FeedbackServiceDeps) {}
 
-  give(caller: Caller, taskId: TaskId, request: GiveFeedbackRequest, options: { readonly forceDownstream?: 'keep' } = {}): FeedbackGivenView {
+  /**
+   * A note with its attachments (spec A3): every file, and every link that
+   * carries an export, is pinned as Evidence on the task first, then the note
+   * is given exactly as `give` gives it. A bare link is kept as a link: the
+   * agent that reads the note is the converter, so nothing resolves it here.
+   * A note refused after its files were pinned sets them aside again.
+   */
+  async giveWithAttachments(caller: Caller, taskId: TaskId, request: GiveFeedbackRequest): Promise<FeedbackGivenView> {
+    const { deps } = this;
+    const task = this.#task(taskId);
+    const mission = this.#mission(task);
+    // Refused before anything is pinned: a note that cannot land costs no blob.
+    actorFor(deps, mission.workspaceId, caller, request.onBehalfOf);
+    this.#requireOpenMission(mission);
+    this.#requireReadsFeedback(task);
+    const attachments: FeedbackAttachment[] = [];
+    const pinned: ArtifactId[] = [];
+    try {
+      for (const contribution of request.attachments ?? []) {
+        if (contribution.kind === 'link' && contribution.export === undefined) {
+          attachments.push({ kind: 'link', url: contribution.url, ...(contribution.label === undefined ? {} : { label: contribution.label }) });
+          continue;
+        }
+        if (deps.contributions === undefined) throw TandemiseError.validation('This build cannot take attachments.');
+        const pin = await deps.contributions.pin({ missionId: mission.id, taskId: task.id, caller, onBehalfOf: request.onBehalfOf ?? null, contribution });
+        pinned.push(pin.evidence.id);
+        attachments.push({ kind: 'artifact', artifactId: pin.evidence.id });
+      }
+      return this.give(caller, taskId, request, { attachments });
+    } catch (e) {
+      if (pinned.length > 0) deps.artifacts.withdraw(pinned, deps.clock?.now() ?? new Date().toISOString());
+      if (e instanceof ContributionError) throw TandemiseError.validation(e.message, { code: e.code });
+      throw e;
+    }
+  }
+
+  give(caller: Caller, taskId: TaskId, request: GiveFeedbackRequest, options: GiveOptions = {}): FeedbackGivenView {
     const { deps } = this;
     // One unit: a round that fails to start leaves no note behind it and no
     // card decided for a round that never came.
@@ -50,18 +97,15 @@ export class FeedbackServiceImpl implements FeedbackService {
     return this.afterGive(pending);
   }
 
-  beginGive(caller: Caller, taskId: TaskId, request: GiveFeedbackRequest, options: { readonly forceDownstream?: 'keep' } = {}): PendingFeedback {
+  beginGive(caller: Caller, taskId: TaskId, request: GiveFeedbackRequest, options: GiveOptions = {}): PendingFeedback {
     const { deps } = this;
     const task = this.#task(taskId);
     const mission = this.#mission(task);
     // Resolved before anything is written: someone off the team changes nothing.
     const { actorId, recordedBy } = actorFor(deps, mission.workspaceId, caller, request.onBehalfOf);
     this.#requireOpenMission(mission);
-    if (task.executor === 'wait') {
-      throw new TandemiseError('PRECONDITION_FAILED', `'${task.key}' is a wait step; nothing reads feedback there.`, {
-        details: { taskId },
-      });
-    }
+    this.#requireReadsFeedback(task);
+    const attachments = options.attachments ?? this.#linksOnly(request);
     const artifactId = request.artifactId === undefined ? null : asId<'ArtifactId'>(request.artifactId);
     const artifact = artifactId === null ? undefined : deps.artifacts.get(artifactId);
     if (artifactId !== null && artifact?.taskId !== task.id) {
@@ -69,7 +113,7 @@ export class FeedbackServiceImpl implements FeedbackService {
       const named = artifact === undefined ? 'That output' : `'${artifact.title}'`;
       throw TandemiseError.validation(`${named} is not an output of '${task.key}'.`, { artifactId, taskId });
     }
-    const base = { task, text: request.text, artifactId, authorId: actorId, recordedBy };
+    const base = { task, text: request.text, artifactId, authorId: actorId, recordedBy, attachments };
     const effect = feedbackEffectFor(task, deps.approvals.pendingForTask(task.id), deps.runs);
 
     if (effect.kind === 'queue' || effect.kind === 'attach') {
@@ -197,6 +241,27 @@ export class FeedbackServiceImpl implements FeedbackService {
    */
   #joiningNotes(task: MissionTask): string {
     return this.deps.feedback.listByTask(task.id).filter((i) => i.status === 'open').map((i) => i.text).join('\n\n');
+  }
+
+  /** A wait step has no author to read a note. */
+  #requireReadsFeedback(task: MissionTask): void {
+    if (task.executor === 'wait') {
+      throw new TandemiseError('PRECONDITION_FAILED', `'${task.key}' is a wait step; nothing reads feedback there.`, {
+        details: { taskId: task.id },
+      });
+    }
+  }
+
+  /**
+   * A note's attachments when nothing pinned them: links go through as they
+   * are, and a file is refused rather than dropped, since only
+   * `giveWithAttachments` can pin it.
+   */
+  #linksOnly(request: GiveFeedbackRequest): readonly FeedbackAttachment[] {
+    return (request.attachments ?? []).map((a): FeedbackAttachment => {
+      if (a.kind === 'link' && a.export === undefined) return { kind: 'link', url: a.url, ...(a.label === undefined ? {} : { label: a.label }) };
+      throw TandemiseError.validation('A file on a note has to be pinned first; send it through giveWithAttachments.');
+    });
   }
 
   /** A note on a mission that can take no more rounds would wait for nothing. */

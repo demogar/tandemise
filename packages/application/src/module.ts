@@ -611,6 +611,9 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       unitOfWork: r.resolve(t.UNIT_OF_WORK),
       recorder: r.resolve(t.EVENT_RECORDER),
       scheduler: r.resolve(t.SCHEDULER),
+      // Resolved per call: a note's files are pinned through it (spec A3).
+      contributions: { pin: (input) => r.resolve(t.CONTRIBUTION_SERVICE).pin(input) },
+      clock: clock(r),
     }), { source: SOURCE });
 
     bind(t.MISSION_SERVICE, (r) => new MissionServiceImpl({
@@ -641,6 +644,9 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       log: log(r).child({ component: 'missions' }),
       // Resolved per call: uploads at creation are pinned through it (spec A2).
       contributions: { pin: (input) => r.resolve(t.CONTRIBUTION_SERVICE).pin(input) },
+      // Where a handed-back file's workspace link is made relative to (spec A5).
+      artifactRoot: (workspaceId) => paths(r).artifacts(workspaceId),
+      events: r.resolve(t.EVENT_REPOSITORY),
     }), { source: SOURCE });
 
     bind(t.REFINEMENT_SERVICE, (r) => new RefinementServiceImpl({

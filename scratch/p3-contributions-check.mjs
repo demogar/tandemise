@@ -453,6 +453,260 @@ section('daemon: intake and skips');
   }
 }
 
+// ------------------------------------------------ park and hand back
+// "Continue elsewhere" and "Hand back" over the real engine: a fake runtime
+// drives each agent step, the scheduler is ticked by hand, and the PR
+// resolver is the same stub as above. Each scenario is its own mission; the
+// first has a project of its own so the Desk and Inbox counts are exact.
+section('daemon: park and hand back');
+{
+  const { execFileSync } = await import('node:child_process');
+  const { readFileSync, existsSync } = await import('node:fs');
+  const { systemClock, ids } = await import('@tandemise/shared');
+  const { FAKE_ADAPTER_ID } = await import('@tandemise/runtime-generic');
+  const keepAlive = setInterval(() => {}, 1000);
+  // Short: the tool bridge's unix socket lives under HOME, and macOS caps its path near 104 bytes.
+  const HOME = mkdtempSync(join(tmpdir(), 'tpk-'));
+  const PR = 'https://github.com/acme/app/pull/7';
+  const stub = {
+    read: async (url) => (url === PR
+      ? { url: PR, number: 7, repo: 'acme/app', headRefName: 'feat/greet', headRefOid: 'deadbeef', title: 'Add greeting', body: 'Greets people.', diff: 'diff --git a/x b/x\n+hi\n' }
+      : null),
+  };
+  const h = await engineHarness(HOME, stub);
+  const scheduler = h.container.resolve(h.app.SCHEDULER);
+  const repo = {
+    tasks: h.container.resolve(h.app.TASK_REPOSITORY),
+    missions: h.container.resolve(h.app.MISSION_REPOSITORY),
+    runs: h.container.resolve(h.app.RUN_REPOSITORY),
+    events: h.container.resolve(h.app.EVENT_REPOSITORY),
+    profiles: h.container.resolve(h.app.RUNTIME_PROFILE_REPOSITORY),
+    feedback: h.container.resolve(h.app.FEEDBACK_REPOSITORY),
+    runInputs: h.container.resolve(h.app.RUN_INPUT_REPOSITORY),
+    workspaces: h.container.resolve(h.app.WORKSPACE_REPOSITORY),
+  };
+  const now = () => systemClock.now();
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const until = async (fn, ms = 15000) => {
+    const end = Date.now() + ms;
+    while (Date.now() < end) {
+      await scheduler.tick();
+      const v = fn();
+      if (v) return v;
+      await sleep(40);
+    }
+    return fn();
+  };
+  const refusal = async (fn) => { try { await fn(); return null; } catch (e) { return e; } };
+  const b64 = (text) => Buffer.from(text).toString('base64');
+  try {
+    const caller = { personId: h.services.identity.localPerson().id };
+    const brief = (headline = 'Greeting designed', changed = null) => [
+      '---', 'type: DesignBrief', 'title: Greeting design', 'handoff:', `  headline: ${headline}`,
+      ...(changed === null ? [] : ['  changed:', `    - what: ${JSON.stringify(changed)}`, '      feedback: "{{fb}}"']),
+      'flows:', '  - greeting', '---', '', '# Greeting', '', `${headline}.`, '',
+    ].join('\n');
+    const IN_ROUND = { promptIncludes: 'Feedback to address' };
+    const write = (content, when) => ({ kind: 'write-file', path: '.tandemise/out/DesignBrief.md', content, ...(when ? { when } : {}) });
+    const promptFile = { kind: 'write-file', path: 'prompts/{{runId}}.txt', content: '{{prompt}}' };
+    const done = { kind: 'complete', summary: 'done' };
+    const profile = (name, steps, extra = {}) => repo.profiles.create({
+      id: ids.runtimeProfile(), workspaceId: null, adapterId: FAKE_ADAPTER_ID, name, executablePath: null, args: [],
+      settings: { script: { steps, ...extra } }, capabilities: [], enabled: true, maxConcurrent: 4, createdAt: now(), updatedAt: now(),
+    }).id;
+    const slowProfile = profile('slow', [promptFile, write(brief()), { kind: 'delay', ms: 4000 }, done]);
+    // The consumer writes another type: a DesignBrief downstream would itself supersede design's.
+    const problem = ['---', 'type: ProblemBrief', 'title: Greeting problem', 'handoff:', '  headline: The problem, from the design', 'successMetric: Visitors are greeted', '---', '', '# Problem', '', 'Greet people.', ''].join('\n');
+    const readerProfile = profile('reader', [{ kind: 'write-file', path: '.tandemise/out/ProblemBrief.md', content: problem }, done]);
+    const quickProfile = profile('quick', [promptFile, write(brief()), write(brief('Greeting, revised', 'Used the attached frames'), IN_ROUND), done], { captures: { fb: '^\\d+\\. (fb_[0-9a-z]{20}) \\(' } });
+
+    const project = async (name) => {
+      const ws = (await h.services.workspaces.create(caller, { name })).workspace.id;
+      const owner = h.services.team.me(caller).memberships.find((m) => m.workspaceId === ws).memberId;
+      const agent = (label, profileId) => h.services.team.addMember(caller, ws, { kind: 'agent', name: label, reportsTo: owner, roleIds: ['design'], runtimeProfileIds: [profileId] }).id;
+      return { ws, owner, slow: agent('Slow designer', slowProfile), quick: agent('Quick designer', quickProfile), reader: agent('Reader', readerProfile) };
+    };
+    let seq = 0;
+    const addMission = async (p, defs) => {
+      const mission = await h.services.missions.create(caller, { workspaceId: p.ws, goal: 'Design the greeting', title: `Park ${++seq}` });
+      const dir = h.paths.mission(p.ws, mission.id);
+      mkdirSync(dir, { recursive: true });
+      execFileSync('git', ['init', '-q', '-b', 'main', dir]);
+      execFileSync('git', ['-C', dir, '-c', 'user.name=check', '-c', 'user.email=check@example.com', 'commit', '-q', '--allow-empty', '-m', 'init']);
+      const t = {};
+      for (const d of defs) {
+        t[d.key] = repo.tasks.add({
+          id: ids.task(), missionId: mission.id, key: d.key, title: d.key, objective: 'o', roleId: 'design',
+          dependsOn: d.dependsOn ?? [], requiredCapabilities: [], inputArtifacts: d.inputArtifacts ?? [], expectedOutputs: d.expectedOutputs ?? ['DesignBrief'],
+          executionPolicy: { isolation: 'none', maxWallTimeMs: 60000, capabilities: [] }, approvalPolicy: { beforeStart: false, onCompletion: false },
+          retryPolicy: { maxAttempts: 2, backoffMs: 0, onExhausted: 'block' }, completionGate: null,
+          status: d.status ?? (d.dependsOn ? 'PENDING' : 'READY'), statusReason: d.statusReason ?? null, attempts: 0, remediatesTaskId: null, repositoryId: null,
+          executor: d.executor ?? 'agent', waitPolicy: d.waitPolicy ?? null, orderHint: d.orderHint ?? 0, staffingOverride: d.agent ? { assignees: [d.agent] } : null,
+          createdAt: now(), updatedAt: now(), startedAt: null, finishedAt: null,
+        }).id;
+      }
+      repo.missions.update(mission.id, { status: 'EXECUTING' });
+      return { mission, dir, t };
+    };
+    const task = (id) => repo.tasks.get(id);
+    const eventsOf = (missionId, type) => repo.events.listByMission(missionId).filter((e) => e.body.type === type);
+    const live = (id, type) => { const all = h.artifacts.listByTask(id).filter((a) => type === undefined || a.type === type); const sup = new Set(all.map((a) => a.supersedes)); return all.filter((a) => !sup.has(a.id)); };
+    const runsOf = (id) => [...repo.runs.listByTask(id)].sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+    const file = { kind: 'file', filename: 'frames.md', mediaType: 'text/markdown', dataBase64: b64('# Frames\n\nThe greeting, drawn in Figma.\n') };
+
+    // ---- park a running step, then hand it back with a file
+    const solo = await project('Parking');
+    repo.workspaces.update(solo.ws, { concurrency: { ...repo.workspaces.get(solo.ws).concurrency, maxTotalWorkers: 1 } });
+    const one = await addMission(solo, [{ key: 'design', agent: solo.slow, orderHint: 0 }, { key: 'other', agent: solo.quick, orderHint: 1 }]);
+    await until(() => task(one.t.design).status === 'RUNNING' && scheduler.activeTaskIds().includes(one.t.design));
+    check('the design step is running and holds the only slot', task(one.t.design).status === 'RUNNING' && task(one.t.other).status === 'READY', [task(one.t.design).status, task(one.t.other).status]);
+    const parked = await h.services.missions.parkTask(one.t.design, caller, { tool: 'Figma' });
+    check('parkTask answers with the parked view', parked.status === 'AWAITING_EXTERNAL' && parked.parkedExternal?.tool === 'Figma', parked);
+    await until(() => !scheduler.activeTaskIds().includes(one.t.design));
+    check('park while running: the run aborts and the step stays AWAITING_EXTERNAL, not CANCELLED', task(one.t.design).status === 'AWAITING_EXTERNAL' && task(one.t.design).statusReason === 'Continued in Figma', task(one.t.design));
+    const parkEvents = eventsOf(one.mission.id, 'task.parked_external');
+    check('task.parked_external is recorded with the tool', parkEvents.length === 1 && parkEvents[0].body.tool === 'Figma' && parkEvents[0].taskId === one.t.design, parkEvents.map((e) => e.body));
+    const runsBefore = runsOf(one.t.design).length;
+    scheduler.wake();
+    await scheduler.tick();
+    await scheduler.tick();
+    check('a parked step is not dispatched again', runsOf(one.t.design).length === runsBefore && task(one.t.design).status === 'AWAITING_EXTERNAL', [runsBefore, runsOf(one.t.design).length, task(one.t.design).status]);
+    await until(() => task(one.t.other).status === 'SUCCEEDED');
+    check('the parked step leaves the concurrency ceiling: the next step runs', task(one.t.other).status === 'SUCCEEDED', task(one.t.other));
+    const view = (await h.services.projections.missionTasks(one.mission.id)).find((v) => v.id === one.t.design);
+    check('TaskView.parkedExternal names the tool and the park time', view?.parkedExternal?.tool === 'Figma' && view.parkedExternal.since === parkEvents[0].createdAt, view?.parkedExternal);
+    check('a step never parked has parkedExternal null', (await h.services.projections.missionTasks(one.mission.id)).find((v) => v.id === one.t.other)?.parkedExternal === null);
+    check('the Desk counts one step waiting on a person', h.services.desk.metrics(solo.ws).needsYou === 1, h.services.desk.metrics(solo.ws).needsYou);
+    const facts = h.services.desk.reportFacts(solo.ws).missions.find((m) => m.title === one.mission.title);
+    check('the status report says the parked step waits on a person', facts?.waitingOn.includes("'design' waits on a person"), facts?.waitingOn);
+    const inbox = h.services.projections.inbox(solo.ws);
+    const row = inbox.parked?.[0];
+    check('the Inbox lists "Waiting for your work in Figma"', inbox.parked?.length === 1 && row.title === 'Waiting for your work in Figma' && row.taskId === one.t.design && row.missionId === one.mission.id, inbox.parked);
+    check('its action opens the mission at that step', row?.href === `/missions/${one.mission.id}?task=${one.t.design}`, row?.href);
+    check('the parked row is for the person who parked it', eq(row?.forIds, [solo.owner]), row?.forIds);
+    check('the mission is waiting, not moving', h.services.liveness.classify(one.mission.id).kind === 'waiting', h.services.liveness.classify(one.mission.id));
+
+    const artifactsBefore = h.artifacts.listByMission(one.mission.id).length;
+    const handed = await h.services.missions.handBack(one.t.design, caller, { note: 'Designed in Figma. The frames are attached.', contribution: file });
+    const [out] = live(one.t.design, 'DesignBrief');
+    check('hand back: the step succeeded in round 2', task(one.t.design).status === 'SUCCEEDED' && task(one.t.design).round === 2 && handed.task.status === 'SUCCEEDED', task(one.t.design));
+    check('hand back: one new DesignBrief, round 2, supersedes nothing the agent never finished', handed.artifacts.length === 1 && out?.id === handed.artifacts[0].id && out.round === 2 && out.supersedes === null, out);
+    check('hand back: written and recorded by you, assigned to you', out?.authorId === solo.owner && out.recordedBy === solo.owner && task(one.t.design).assigneeId === solo.owner, [out?.authorId, out?.recordedBy, task(one.t.design).assigneeId]);
+    check('hand back: the handoff headline is the note', out?.handoff?.headline === 'Designed in Figma.', out?.handoff);
+    const evidence = h.artifacts.listByTask(one.t.design).find((a) => a.type === 'Evidence');
+    check('hand back: the file is pinned as Evidence on the step', evidence !== undefined && evidence.sourceRefs.some((r) => r.kind === 'file' && r.label === 'frames.md'), evidence);
+    check('hand back: the output carries the Evidence\'s refs', evidence !== undefined && evidence.sourceRefs.every((r) => out?.sourceRefs.some((o) => o.kind === r.kind && o.value === r.value)), out?.sourceRefs);
+    check('hand back: a workspace link opens the stored file', out?.handoff?.links.some((l) => l.kind === 'workspace' && l.path === `blobs/${evidence?.sha256.slice(0, 2)}/${evidence?.sha256}`), out?.handoff?.links);
+    const handedEvents = eventsOf(one.mission.id, 'task.handed_back');
+    check('task.handed_back is recorded', handedEvents.length === 1 && eq(handedEvents[0].body.artifactIds, [out?.id]) && handedEvents[0].body.round === 2 && handedEvents[0].body.contribution === 'file', handedEvents.map((e) => e.body));
+    check('the new output is on the timeline', eventsOf(one.mission.id, 'artifact.created').some((e) => e.body.artifactId === out?.id));
+    const after = (await h.services.projections.missionTasks(one.mission.id)).find((v) => v.id === one.t.design);
+    check('a handed-back step is no longer parked', after?.parkedExternal === null, after?.parkedExternal);
+    check('nothing waits on a person any more', h.services.desk.metrics(solo.ws).needsYou === 0 && (h.services.projections.inbox(solo.ws).parked ?? []).length === 0);
+    const artifactsAfter = h.artifacts.listByMission(one.mission.id).length;
+    const again = await refusal(() => h.services.missions.handBack(one.t.design, caller, { note: 'Once more.', contribution: file }));
+    check('a second hand-back is a 409', again?.code === 'CONFLICT', again && { code: again.code, message: again.message });
+    check('a refused hand-back writes nothing', h.artifacts.listByMission(one.mission.id).length === artifactsAfter && artifactsAfter === artifactsBefore + 2, [artifactsBefore, artifactsAfter, h.artifacts.listByMission(one.mission.id).length]);
+
+    // ---- a ChangeSet handed back from a pull request carries its head
+    const p = await project('Hand backs');
+    // A pull request link is read in one of the project's checkouts.
+    mkdirSync(join(HOME, 'checkout'), { recursive: true });
+    h.repositories.create({ id: 'rep_p3_park', workspaceId: p.ws, name: 'app', path: join(HOME, 'checkout'), defaultBranch: 'main', remoteUrl: null, checks: D.NO_CHECKS });
+    const two = await addMission(p, [{ key: 'build', agent: p.quick, expectedOutputs: ['ChangeSet'] }]);
+    await h.services.missions.parkTask(two.t.build, caller, { tool: 'Cursor' });
+    check('a READY step can be parked', task(two.t.build).status === 'AWAITING_EXTERNAL' && task(two.t.build).statusReason === 'Continued in Cursor', task(two.t.build));
+    const fromPr = await h.services.missions.handBack(two.t.build, caller, { note: 'Built it in Cursor; the PR is up.', contribution: { kind: 'link', url: PR } });
+    const change = fromPr.artifacts[0];
+    const ref = (kind) => change?.sourceRefs.find((r) => r.kind === kind)?.value;
+    check('the ChangeSet carries the PR\'s head commit and branch', change?.type === 'ChangeSet' && ref('git.commit') === 'deadbeef' && ref('git.branch') === 'feat/greet' && ref('github.pr') === 'acme/app#7', change?.sourceRefs);
+    check('its handoff links the pull request', change?.handoff?.links.some((l) => l.kind === 'pr' && l.url === PR), change?.handoff?.links);
+    check('task.handed_back says it was a link', eventsOf(two.mission.id, 'task.handed_back')[0]?.body.contribution === 'link');
+
+    // ---- a cancelled mission takes no hand-back
+    const three = await addMission(p, [{ key: 'design', agent: p.quick }]);
+    await h.services.missions.parkTask(three.t.design, caller, { tool: 'Figma' });
+    repo.missions.update(three.mission.id, { status: 'CANCELLED' });
+    const count3 = h.artifacts.listByMission(three.mission.id).length;
+    const closed = await refusal(() => h.services.missions.handBack(three.t.design, caller, { note: 'Too late.', contribution: file }));
+    check('hand back on a cancelled mission is a 409 and writes nothing', closed?.code === 'CONFLICT' && h.artifacts.listByMission(three.mission.id).length === count3, closed && { code: closed.code, message: closed.message });
+
+    // ---- downstream: work that read round 1 is redone or kept
+    const downstream = async (choice) => {
+      const m = await addMission(p, [{ key: 'design', agent: p.quick }]);
+      await until(() => task(m.t.design).status === 'SUCCEEDED');
+      const [round1] = live(m.t.design, 'DesignBrief');
+      await h.services.missions.parkTask(m.t.design, caller, { tool: 'Figma' });
+      // Added after the park, READY, as the scheduler would have promoted it
+      // when design first succeeded: it runs on round 1 while design is away.
+      const consumer = repo.tasks.add({
+        id: ids.task(), missionId: m.mission.id, key: 'review', title: 'review', objective: 'o', roleId: 'design',
+        dependsOn: ['design'], requiredCapabilities: [], inputArtifacts: [{ type: 'DesignBrief', required: true }], expectedOutputs: ['ProblemBrief'],
+        executionPolicy: { isolation: 'none', maxWallTimeMs: 60000, capabilities: [] }, approvalPolicy: { beforeStart: false, onCompletion: false },
+        retryPolicy: { maxAttempts: 2, backoffMs: 0, onExhausted: 'block' }, completionGate: null, status: 'READY', statusReason: null, attempts: 0,
+        remediatesTaskId: null, repositoryId: null, executor: 'agent', waitPolicy: null, orderHint: 1, staffingOverride: { assignees: [p.reader] },
+        createdAt: now(), updatedAt: now(), startedAt: null, finishedAt: null,
+      }).id;
+      await until(() => task(consumer).status === 'SUCCEEDED');
+      const readRound1 = repo.runInputs.listByRun(runsOf(consumer)[0].id).includes(round1.id);
+      const result = await h.services.missions.handBack(m.t.design, caller, { note: 'Redrawn in Figma.', contribution: file, ...(choice === undefined ? {} : { downstream: choice }) });
+      return { m, round1, consumer, readRound1, result };
+    };
+    const redo = await downstream('redo');
+    check('downstream: the consumer read round 1', redo.readRound1);
+    check('hand back after a finished round supersedes it', redo.result.artifacts[0]?.supersedes === redo.round1.id, redo.result.artifacts[0]);
+    check('redo: the consumer goes back to wait for the new version', ['PENDING', 'READY'].includes(task(redo.consumer).status) && task(redo.consumer).statusReason === 'Redone after design round 2', task(redo.consumer));
+    await until(() => task(redo.consumer).status === 'SUCCEEDED' && runsOf(redo.consumer).length === 2);
+    check('redo: it runs again on the handed-back version', runsOf(redo.consumer).length === 2 && repo.runInputs.listByRun(runsOf(redo.consumer)[1].id).includes(redo.result.artifacts[0]?.id), runsOf(redo.consumer).map((r) => repo.runInputs.listByRun(r.id)));
+    const keep = await downstream(undefined);
+    check('keep (the default): the consumer stays done and is flagged stale', task(keep.consumer).status === 'SUCCEEDED' && task(keep.consumer).needsAttention === true
+      && eventsOf(keep.m.mission.id, 'task.attention').some((e) => e.body.taskId === keep.consumer && e.body.kind === 'stale_input'), task(keep.consumer));
+
+    // ---- a parked step with work downstream of it cannot be parked again
+    const consumed = await refusal(() => h.services.missions.parkTask(keep.m.t.design, caller, { tool: 'Figma' }));
+    check('a step whose output was consumed cannot be parked (409)', consumed?.code === 'CONFLICT', consumed && { code: consumed.code, message: consumed.message });
+
+    // ---- a note with a file: pinned, stored, and read by the round
+    const five = await addMission(p, [{ key: 'design', agent: p.quick }]);
+    await until(() => task(five.t.design).status === 'SUCCEEDED');
+    const given = await h.services.feedback.giveWithAttachments(caller, five.t.design, { text: 'Match the attached frames', attachments: [file, { kind: 'link', url: 'https://www.figma.com/file/x', label: 'Figma' }] });
+    const row5 = repo.feedback.get(given.feedback.id);
+    const attached = row5?.attachments.find((a) => a.kind === 'artifact');
+    check('the note stores the file as an artifact attachment and the link as a link', attached !== undefined && row5.attachments.some((a) => a.kind === 'link' && a.url === 'https://www.figma.com/file/x'), row5?.attachments);
+    check('the attachment is Evidence pinned on the step', h.artifacts.get(attached?.artifactId)?.type === 'Evidence' && h.artifacts.get(attached?.artifactId)?.taskId === five.t.design, h.artifacts.get(attached?.artifactId));
+    check('the note started round 2', given.roundStarted === 2, given);
+    await until(() => task(five.t.design).status === 'SUCCEEDED' && task(five.t.design).round === 2 && runsOf(five.t.design).length === 2);
+    const round2 = runsOf(five.t.design)[1];
+    check('the round\'s run has the attachment in run_inputs', round2 !== undefined && repo.runInputs.listByRun(round2.id).includes(attached?.artifactId), round2 && repo.runInputs.listByRun(round2.id));
+    const promptPath = round2 === undefined ? '' : join(five.dir, 'prompts', `${round2.id}.txt`);
+    const prompt = promptPath !== '' && existsSync(promptPath) ? readFileSync(promptPath, 'utf8') : '';
+    check('the round\'s prompt lists the file and the link', prompt.includes('frames.md') && prompt.includes('The greeting, drawn in Figma.') && prompt.includes('https://www.figma.com/file/x'), prompt.slice(0, 1500));
+    check('the round\'s previous output is its own DesignBrief, not the attachment', !prompt.includes('Evidence, to edit and write back'), prompt.slice(0, 1500));
+
+    // ---- what cannot be parked
+    const six = await addMission(p, [{ key: 'watch', executor: 'wait', status: 'PENDING', waitPolicy: { command: 'true', everyMs: 1000, timeoutMs: 5000 } }]);
+    repo.tasks.update(six.t.watch, { status: 'READY' });
+    const wait = await refusal(() => h.services.missions.parkTask(six.t.watch, caller, { tool: 'Figma' }));
+    check('a wait step cannot be parked (409)', wait?.code === 'CONFLICT', wait && { code: wait.code, message: wait.message });
+    const seven = await addMission(p, [{ key: 'notes', agent: p.quick, expectedOutputs: ['ProblemBrief'] }]);
+    const unlinkable = await refusal(() => h.services.missions.parkTask(seven.t.notes, caller, { tool: 'Figma' }));
+    check('a step with no linkable output cannot be parked (409)', unlinkable?.code === 'CONFLICT', unlinkable && { code: unlinkable.code, message: unlinkable.message });
+
+    // ---- a stage covered by an upload is not retried or reopened
+    const eight = await addMission(p, [{ key: 'product', status: 'SKIPPED', statusReason: 'Covered by your upload: spec.md', expectedOutputs: ['ProductSpec'] }]);
+    const COVERED = 'This step is covered by your upload; replan to run it.';
+    const retried = await refusal(() => h.services.missions.retryTask(caller, eight.t.product, {}));
+    check('retrying a covered placeholder is a 409', retried?.code === 'CONFLICT' && retried.message === COVERED, retried && { code: retried.code, message: retried.message });
+    const reopened = await refusal(() => h.services.feedback.startRound(caller, eight.t.product, { feedbackIds: ['fb_aaaaaaaaaaaaaaaaaaaa'], downstream: 'none' }));
+    check('starting a round on a covered placeholder is a 409', reopened?.code === 'CONFLICT' && reopened.message === COVERED, reopened && { code: reopened.code, message: reopened.message });
+    check('the placeholder is still skipped', task(eight.t.product).status === 'SKIPPED');
+  } finally {
+    clearInterval(keepAlive);
+    await h.container.dispose?.();
+    rmSync(HOME, { recursive: true, force: true });
+  }
+}
+
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) { for (const f of failures) console.log(`  - ${f}`); process.exit(1); }
 console.log('ALL P3 CONTRIBUTIONS CHECKS PASSED');

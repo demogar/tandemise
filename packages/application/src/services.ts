@@ -3,7 +3,7 @@ import type {
   TaskId, WorkspaceId,
 } from '@tandemise/shared';
 import type {
-  Approval, ArtifactManifest, ExecutionTargetRecord, Mission, OutsideContribution, PullRequestSnapshot, RoleStaffing, RoleTemplate,
+  Approval, ArtifactManifest, ExecutionTargetRecord, FeedbackAttachment, Mission, OutsideContribution, PullRequestSnapshot, RoleStaffing, RoleTemplate,
   RunEventRecord, RuntimeProfile, StaffingPatch,
 } from '@tandemise/domain';
 import type {
@@ -12,7 +12,7 @@ import type {
   ConnectIntegrationRequest, ConnectionAttemptView, ConnectorView,
   IntegrationView, MissionDetail, MissionSummary, RepositoryProbe, RuntimeDiscoveryView,
   RuntimeView, SystemInfo, TaskView, UpdateWorkspaceRequest, UpsertRoleRequest, WorkspaceView,
-  ClaimTaskRequest, CompleteTaskRequest,
+  ClaimTaskRequest, CompleteTaskRequest, HandBackRequest, ParkTaskRequest,
   WorkflowSummary,
   AddMemberRequest, ArtifactView, CreatePersonRequest, MeView, MemberView, PersonView, StaffingPreviewView,
   TeamView, UpdateMemberRequest, UpdatePersonRequest, MissionArtifactView, MissionFeedView, ArtifactReadView,
@@ -166,6 +166,18 @@ export interface MissionService {
   completeTask(caller: Caller, taskId: TaskId, request: CompleteTaskRequest): Promise<TaskView>;
   /** A person takes an unassigned human task, for themselves or for the member named. */
   claimTask(caller: Caller, taskId: TaskId, request: ClaimTaskRequest): Promise<TaskView>;
+  /**
+   * "Continue elsewhere" (spec A4): parks an agent step with a linkable output
+   * as AWAITING_EXTERNAL, stopping its live run. CONFLICT with the reason when
+   * the step cannot be parked.
+   */
+  parkTask(taskId: TaskId, caller: Caller, request: ParkTaskRequest): Promise<TaskView>;
+  /**
+   * "Hand back" (spec A4): the person's contribution becomes the parked step's
+   * next round, written as its expected outputs. CONFLICT, with nothing
+   * written, unless the step is parked and its mission still open.
+   */
+  handBack(taskId: TaskId, caller: Caller, request: HandBackRequest): Promise<{ task: TaskView; artifacts: ArtifactManifest[] }>;
 }
 
 export interface PlanningService {
@@ -291,14 +303,25 @@ export interface PendingFeedback {
 
 export interface FeedbackService {
   /** Spec §2's table decides what happens; see `feedbackEffectFor`. */
-  give(caller: Caller, taskId: TaskId, request: GiveFeedbackRequest, options?: { readonly forceDownstream?: 'keep' }): FeedbackGivenView;
+  give(
+    caller: Caller, taskId: TaskId, request: GiveFeedbackRequest,
+    options?: { readonly forceDownstream?: 'keep'; readonly attachments?: readonly FeedbackAttachment[] },
+  ): FeedbackGivenView;
+  /**
+   * `give` for a note with attachments (spec A3): its files are pinned as
+   * Evidence on the task first, which `give` cannot do synchronously.
+   */
+  giveWithAttachments(caller: Caller, taskId: TaskId, request: GiveFeedbackRequest): Promise<FeedbackGivenView>;
   /**
    * `give`'s writes alone, for a caller with a unit of its own (a retry that
    * also widens access). It must call `afterGive` once that unit has committed:
    * stopping a pass or waking the scheduler before then acts on a round that
    * may still roll back.
    */
-  beginGive(caller: Caller, taskId: TaskId, request: GiveFeedbackRequest, options?: { readonly forceDownstream?: 'keep' }): PendingFeedback;
+  beginGive(
+    caller: Caller, taskId: TaskId, request: GiveFeedbackRequest,
+    options?: { readonly forceDownstream?: 'keep'; readonly attachments?: readonly FeedbackAttachment[] },
+  ): PendingFeedback;
   afterGive(pending: PendingFeedback): FeedbackGivenView;
   /** Confirms a round that waited on the downstream choice. */
   startRound(caller: Caller, taskId: TaskId, request: StartRoundRequest): TaskView;

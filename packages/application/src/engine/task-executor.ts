@@ -1636,7 +1636,11 @@ export class TaskExecutor {
     // its skills folder, the whole SKILL.md when it cannot.
     const skillSection = input.skills?.promptSection ?? null;
     const prompt = skillSection === null ? compiled.prompt : `${compiled.prompt.trimEnd()}\n\n${skillSection}\n`;
-    return { prompt, includedArtifactIds: compiled.includedArtifactIds };
+    // Files attached to the notes this pass answers are shown in the round's
+    // brief, not by the compiler, so they are added to what the run records it
+    // read (spec A3); a continued session gets the same brief and records the same.
+    const attached = (input.round?.attachments ?? []).map((a) => a.manifest.id).filter((id) => !compiled.includedArtifactIds.includes(id));
+    return { prompt, includedArtifactIds: [...compiled.includedArtifactIds, ...attached] };
   }
 
   #contractNotes(

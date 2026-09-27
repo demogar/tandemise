@@ -650,6 +650,27 @@ export interface InboxTaskView {
 }
 
 /**
+ * An agent step parked while a person continues it in another tool (spec A4):
+ * it waits for their hand-back, not for the scheduler.
+ */
+export interface InboxParkedView {
+  readonly taskId: string;
+  readonly taskKey: string;
+  readonly taskTitle: string;
+  readonly missionId: string;
+  readonly missionTitle: string;
+  readonly tool: string;
+  /** "Waiting for your work in Figma". */
+  readonly title: string;
+  /** When it was parked. */
+  readonly since: string;
+  /** Opens the mission at the parked step. */
+  readonly href: string;
+  /** The person who parked it; empty when the log does not say, which is everyone. */
+  readonly forIds: readonly string[];
+}
+
+/**
  * Everything in a workspace waiting on a person, in one read: open approvals
  * and tasks parked for a human. The nav badge is always mounted, so this is
  * one projection rather than a mission detail per working mission.
@@ -663,6 +684,11 @@ export interface InboxView {
   readonly stalled: readonly InboxStalledView[];
   /** Runs quiet past their silent threshold and not snoozed (P9). */
   readonly silentRuns: readonly InboxSilentRunView[];
+  /**
+   * Agent steps parked elsewhere, waiting for a hand-back (spec A4). Optional
+   * so an Inbox built before P3 still type-checks; a live one always sends it.
+   */
+  readonly parked?: readonly InboxParkedView[];
 }
 
 /** One DRAFT mission in the backlog, in pull order. */

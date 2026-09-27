@@ -30,9 +30,7 @@ import { currentHandoff, isPlanAsking, isTaskAsking, primaryArtifact } from '../
 import { resolveChanges, toFeedbackView } from '../support/feedback-view.js';
 import { missionTakesRounds } from '../support/feedback-rules.js';
 import { intakeArtifactFor, missionUploads, uploadFilename } from '../planning/intake.js';
-
-/** The reason a SKIPPED placeholder carries (spec A2), which is what marks it as one. */
-const COVERED_PREFIX = 'Covered by your upload:';
+import { isCoveredPlaceholder, parkedExternalOf, waitingForWorkIn } from '../support/outside-work.js';
 
 /** Where a task that carries an in-round note has not started that round's pass yet. */
 const ROUND_NOT_RUN: readonly MissionTask['status'][] = ['READY', 'PENDING'];
@@ -168,10 +166,30 @@ export class ProjectionServiceImpl implements ProjectionService {
         updatedAt: mission.updatedAt,
       }];
     });
+    // Parked agent steps (spec A4); the log is read only for missions that have one.
+    const parked = this.deps.tasks.listByStatus(['AWAITING_EXTERNAL']).flatMap((task) => {
+      const mission = missionOf(task.missionId);
+      if (mission === undefined || mission.workspaceId !== workspaceId || task.executor !== 'agent') return [];
+      const park = parkedExternalOf(task, this.deps.events.listByMission(mission.id, { semanticOnly: true }));
+      if (park === null) return [];
+      return [{
+        taskId: task.id,
+        taskKey: task.key,
+        taskTitle: task.title,
+        missionId: mission.id,
+        missionTitle: mission.title,
+        tool: park.tool,
+        title: waitingForWorkIn(park.tool),
+        since: park.since,
+        href: `/missions/${mission.id}?task=${task.id}`,
+        forIds: park.actorId === null ? [] : [park.actorId],
+      }];
+    });
     return {
       approvals: toApprovalViews(named, this.deps.approvals.list({ workspaceId, statuses: ['PENDING'] })),
       tasks,
       refinements,
+      parked,
       // Derived here, on the read the nav badge makes: a mission that can move
       // again drops out with no state to clear (P9).
       stalled: this.deps.liveness?.stalled(workspaceId) ?? [],
@@ -425,7 +443,7 @@ export class ProjectionServiceImpl implements ProjectionService {
    * output type says which upload. Anything else is covered by nothing.
    */
   #coveredBy(task: MissionTask, intake: ReadonlyMap<string, { artifactId: string; filename: string }>): TaskView['coveredBy'] {
-    if (task.status !== 'SKIPPED' || !(task.statusReason ?? '').startsWith(COVERED_PREFIX)) return null;
+    if (!isCoveredPlaceholder(task)) return null;
     for (const type of task.expectedOutputs) {
       const found = intake.get(type);
       if (found !== undefined) return found;
@@ -496,6 +514,12 @@ export class ProjectionServiceImpl implements ProjectionService {
       }
     }
 
+    // A parked step is told from a wait step by its park event, so the log is
+    // read only when some agent step is AWAITING_EXTERNAL.
+    const parkLog = tasks.some((t) => t.status === 'AWAITING_EXTERNAL' && t.executor === 'agent')
+      ? this.deps.events.listByMission(mission.id, { semanticOnly: true })
+      : [];
+
     return tasks.map((task): TaskView => {
       const runs = [...this.deps.runs.listByTask(task.id)]
         .sort((a, b) => b.startedAt.localeCompare(a.startedAt));
@@ -539,6 +563,7 @@ export class ProjectionServiceImpl implements ProjectionService {
         attention: task.needsAttention === true ? flags.get(task.id) ?? { kind: 'changes_requested', upstream: null, note: '' } : null,
         watch: this.deps.liveness?.watchOf(task, latestRun) ?? null,
         coveredBy: this.#coveredBy(task, intakeByType),
+        parkedExternal: parkedView(parkedExternalOf(task, parkLog)),
       };
     });
   }
@@ -649,6 +674,11 @@ export class ProjectionServiceImpl implements ProjectionService {
 }
 
 /** The card a task is waiting on: a check waits on nobody, so any other pending card comes first. */
+/** The view's shape of a parked step: who parked it stays in the log. */
+function parkedView(park: { readonly tool: string; readonly since: string } | null): TaskView['parkedExternal'] {
+  return park === null ? null : { tool: park.tool, since: park.since };
+}
+
 function pendingCardFor(cards: readonly { readonly id: string; readonly kind: string }[]): string | null {
   return (cards.find((c) => c.kind !== 'check') ?? cards[0])?.id ?? null;
 }
