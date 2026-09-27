@@ -110,4 +110,25 @@ await openFeed(c, missionId);
 await page.evaluate(`document.querySelector('[data-feed-card="review"]')?.scrollIntoView({ block: 'center' })`);
 await page.screenshot(ev.shot('review-after-hand-back'));
 
+// ------------------------------------------------------------ a later agent round builds on the pull request
+// Request changes on the handed-back build: the agent's round 3 runs in the build's own worktree branch, which
+// the hand-back pointed at the pull request's head, so the round starts from the person's commit.
+const buildRuns = c.runs(back.id).length;
+await c.requestChangesOnCard(missionId, 'build', 'Add a heading level check to the greeting.');
+const impact = await until(() => c.dialogText('Round 3 of'), { label: 'impact dialog', timeoutMs: 10_000 }).catch(() => '');
+if (impact) {
+  await page.evaluate(`(() => { const d = [...document.querySelectorAll('[role=dialog]')].pop(); const l = d && [...d.querySelectorAll('label')].find((x) => x.innerText.trim().startsWith('Keep their work')); l?.querySelector('input')?.click(); })()`);
+  await c.sleep(300);
+  await clickInDialog(c, 'Start round 3');
+}
+const round3 = await waitTask(c, missionId, 'build', (t) => t.round === 3 && t.status === 'SUCCEEDED' && c.runs(t.id).length > buildRuns, 'build round 3', 120_000).catch(() => c.task(missionId, 'build'));
+const round3Target = c.sql("SELECT branch FROM execution_targets WHERE task_id = ? AND kind = 'worktree' ORDER BY created_at DESC LIMIT 1", back.id)[0];
+let builtOnPr = false;
+try { execFileSync('git', ['merge-base', '--is-ancestor', sha, round3Target.branch], { cwd: project }); builtOnPr = true; } catch { /* not built on it */ }
+ev.check('a later agent round of the build (round 3, asked for in the window) is built on the pull request\'s commit', round3.round === 3 && round3.status === 'SUCCEEDED' && builtOnPr,
+  { round: round3.round, status: round3.status, branch: round3Target?.branch, builtOnPr, impact: Boolean(impact) });
+await openFeed(c, missionId);
+await page.evaluate(`document.querySelector('[data-feed-card="build"]')?.scrollIntoView({ block: 'center' })`);
+await page.screenshot(ev.shot('build-round-3-on-pr'));
+
 c.close(); ev.save();
