@@ -1,6 +1,6 @@
 import { relative } from 'node:path';
 import type {
-  CriteriaTrace, ArtifactHandoff, ArtifactManifest, EventRepositoryPort, ExternalRef, HandoffLink,
+  CriteriaTrace, ArtifactHandoff, ArtifactManifest, EventRepositoryPort, ExecutionTargetRepositoryPort, ExternalRef, HandoffLink,
   ApprovalRepositoryPort, ArtifactRepositoryPort, MemberRepositoryPort, Mission, MissionCriteriaRepositoryPort, MissionRepositoryPort, MissionStatus,
   MissionTask, RepoRepositoryPort, RoleRepositoryPort, RunRepositoryPort, TaskRepositoryPort, UnitOfWork, WorkspaceRepositoryPort,
   ArtifactStorePort,
@@ -90,6 +90,8 @@ export interface MissionDeps {
   readonly artifactRoot?: (workspaceId: WorkspaceId) => string;
   /** The log a parked step is read from (spec A4). Optional for older harnesses, which then park nothing. */
   readonly events?: Pick<EventRepositoryPort, 'listByMission'>;
+  /** A change handed back retires the step's own worktree, so integration merges the person's branch instead. */
+  readonly targets?: Pick<ExecutionTargetRepositoryPort, 'listByMission' | 'update'>;
 }
 
 /**
@@ -702,6 +704,8 @@ export class MissionServiceImpl implements MissionService {
     try {
       pinned = await this.deps.contributions.pin({
         missionId: mission.id, taskId, caller, onBehalfOf: request.onBehalfOf ?? null, contribution: request.contribution,
+        // A change is only worth handing back with a branch review, QA and integration can check out.
+        requireBranch: task.expectedOutputs.includes('ChangeSet'),
       });
     } catch (e) {
       if (e instanceof ContributionError) throw TandemiseError.validation(e.message, { code: e.code });
@@ -776,6 +780,7 @@ export class MissionServiceImpl implements MissionService {
         this.deps.recorder.record(scope, {
           type: 'task.status', from: current.status, to: outcome.status, ...(reason === null ? {} : { reason }),
         });
+        if (task.expectedOutputs.includes('ChangeSet')) this.#retireTargets(task, `Superseded by the change handed back from ${park.tool}.`);
         return { artifacts: outputs, stop: redone };
       }));
       landed = true;
@@ -789,6 +794,22 @@ export class MissionServiceImpl implements MissionService {
       // A hand-back that did not land leaves no pin behind to be read as one.
       if (!landed) this.deps.artifacts.withdraw([evidence.id], this.deps.clock.now());
     }
+  }
+
+  /**
+   * Marks the step's own execution targets released. A hand-back replaces the
+   * agent's change with the person's, and the worktree the agent left behind
+   * would otherwise still be merged into the integration branch next to it.
+   * The tree and its branch stay on disk; only the record stops counting them.
+   */
+  #retireTargets(task: MissionTask, detail: string): void {
+    const targets = this.deps.targets;
+    if (targets === undefined) return;
+    for (const record of targets.listByMission(task.missionId)) {
+      if (record.taskId !== task.id || record.status === 'RELEASED') continue;
+      targets.update(record.id, { status: 'RELEASED', releasedAt: this.deps.clock.now(), detail });
+    }
+    this.deps.recorder.invalidate('targets', task.missionId);
   }
 
   /** The step's park, or a CONFLICT saying why nothing can be handed back to it. Writes nothing. */

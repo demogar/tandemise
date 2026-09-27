@@ -306,6 +306,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       r.resolve(EXECUTION_TARGET_MANAGER),
       r.resolve(t.EVENT_RECORDER),
       clock(r),
+      r.resolve(t.ARTIFACT_REPOSITORY),
     ), { source: SOURCE });
 
     bind(t.FEEDBACK_ROUNDS, (r) => new FeedbackRounds({
@@ -647,6 +648,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       // Where a handed-back file's workspace link is made relative to (spec A5).
       artifactRoot: (workspaceId) => paths(r).artifacts(workspaceId),
       events: r.resolve(t.EVENT_REPOSITORY),
+      targets: r.resolve(t.EXECUTION_TARGET_REPOSITORY),
     }), { source: SOURCE });
 
     bind(t.REFINEMENT_SERVICE, (r) => new RefinementServiceImpl({
@@ -786,6 +788,8 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       artifacts: r.resolve(t.ARTIFACT_REPOSITORY),
       snapshots: r.resolve(t.PULL_REQUEST_SNAPSHOTS),
       artifactRoot: (workspaceId) => paths(r).artifacts(workspaceId),
+      // The same runner as `gh`, so a pull request's head is fetched with the daemon's own git and environment.
+      exec: r.tryResolve(INTEGRATION_COMMAND_EXECUTOR) ?? null,
     }), { source: SOURCE });
 
     bind(t.ISSUE_SERVICE, (r) => new IssueService({

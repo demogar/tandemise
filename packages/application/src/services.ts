@@ -85,13 +85,18 @@ export interface ContributionService {
   /**
    * Pins one contribution as Evidence with its ExternalRefs, authored by the
    * caller's member or `onBehalfOf` and recorded by the caller's (spec A6).
-   * Throws ContributionError('unreadable_link' | 'too_large' | 'empty').
+   * A pull request's head is fetched into `tandemise/pr-<n>` in the checkout
+   * that read it and recorded as its `git.branch`.
+   * Throws ContributionError('unreadable_link' | 'too_large' | 'empty'), or
+   * 'unfetchable_pull_request' when `requireBranch` and the head could not be fetched.
    */
   pin(input: {
     missionId: MissionId; taskId?: TaskId | null; caller: Caller;
     /** A member id, as every other `onBehalfOf` in the API. */
     onBehalfOf?: string | null;
     contribution: OutsideContribution;
+    /** A change handed back (a ChangeSet step) is refused, writing nothing, when a pull request's head cannot be fetched. */
+    requireBranch?: boolean;
   }): Promise<PinnedContribution>;
   /**
    * Resolves a workspace link path to an absolute path inside one of the
