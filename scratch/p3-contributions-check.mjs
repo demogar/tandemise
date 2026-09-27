@@ -70,7 +70,13 @@ const wctx = { byKey: new Map(), carded: new Set(), moves: true };
 check('T8: a waiting wait-step is moving', D.taskLiveness({ status: 'AWAITING_EXTERNAL', executor: 'wait' }, wctx).standing === 'moving');
 check('T8b: a parked agent task waits on a person', D.taskLiveness({ status: 'AWAITING_EXTERNAL', executor: 'agent' }, wctx).standing === 'waiting');
 
-check('the new events are in the semantic list', ['task.parked_external', 'task.handed_back', 'mission.intake_completed'].every((t) => D.SEMANTIC_EVENT_TYPES.has(t)));
+check('the new events are in the semantic list', ['task.parked_external', 'task.unparked', 'task.handed_back', 'mission.intake_completed'].every((t) => D.SEMANTIC_EVENT_TYPES.has(t)));
+// Final review: each type a stage can be covered by or continued as has a
+// name of its own; anything else is its CamelCase split into words.
+check('outputTypeLabel names the linkable and skippable types one by one',
+  eq(['ProductSpec', 'ProblemBrief', 'DesignBrief', 'ImplementationPlan', 'ChangeSet'].map(D.outputTypeLabel), ['Spec', 'Brief', 'Design', 'Implementation plan', 'Change']),
+  ['ProductSpec', 'ProblemBrief', 'DesignBrief', 'ImplementationPlan', 'ChangeSet'].map(D.outputTypeLabel));
+check('any other type is split into words', D.outputTypeLabel('ReviewReport') === 'Review report' && D.outputTypeLabel('Evidence') === 'Evidence', [D.outputTypeLabel('ReviewReport'), D.outputTypeLabel('Evidence')]);
 
 check('P3a adds no migration: SCHEMA_VERSION is still 19', SCHEMA_VERSION === 19, SCHEMA_VERSION);
 
@@ -203,10 +209,51 @@ section('daemon: pinning');
     const pr = await C.pin({ missionId: mission.id, caller, contribution: { kind: 'link', url: PR } });
     const ref = (kind) => pr.evidence.sourceRefs.find((r) => r.kind === kind)?.value;
     check('a PR link is read in the workspace repository', cwds.includes(checkout), cwds);
-    check('the PR Evidence carries url, github.pr, git.commit and git.branch', ref('url') === PR && ref('github.pr') === 'acme/app#7' && ref('git.commit') === 'deadbeef' && ref('git.branch') === 'feat/greet', pr.evidence.sourceRefs);
+    // This checkout is not a git repository and the harness's runner cannot
+    // run git, so the head cannot be fetched: the PR's own branch name is
+    // never recorded in its place, since it may not exist here.
+    check('the PR Evidence carries url, github.pr and git.commit, and no git.branch it could not fetch', ref('url') === PR && ref('github.pr') === 'acme/app#7' && ref('git.commit') === 'deadbeef' && ref('git.branch') === undefined, pr.evidence.sourceRefs);
     const prBody = (await h.container.resolve(h.app.ARTIFACT_STORE).read(pr.evidence.id)).body;
     check('the PR Evidence is its title, body and diff', prBody.startsWith('# Add greeting\n\nGreets people.\n\n## Diff\n\n```diff\n') && prBody.includes('+hi'), prBody);
     check('the resolved snapshot comes back', pr.resolved?.headRefOid === 'deadbeef' && pr.mediaType === 'text/markdown', pr.resolved);
+
+    // A diff that itself holds a fence (a changed README) must not close the block around it.
+    reader = async (url) => ({ url, number: 9, repo: 'acme/app', headRefName: 'docs', headRefOid: 'f00d', title: 'Document it', body: 'Shows ```` in prose.', diff: 'diff --git a/README.md b/README.md\n+```js\n+greet()\n+```\n' });
+    const fencedPr = await C.pin({ missionId: mission.id, caller, contribution: { kind: 'link', url: 'https://github.com/acme/app/pull/9' } });
+    reader = null;
+    const fencedBody = (await h.container.resolve(h.app.ARTIFACT_STORE).read(fencedPr.evidence.id)).body;
+    check('a diff holding ``` is fenced longer than any backtick run near it', fencedBody.includes('## Diff\n\n`````diff\n') && fencedBody.trimEnd().endsWith('\n`````') && fencedBody.includes('+```js\n+greet()\n+```\n'), fencedBody);
+
+    // A queued draft with uploads joins the queue only once every upload is
+    // pinned: until then the backlog cannot pull it into planning, and a
+    // refused upload removes a mission nothing has started on.
+    const workspaces = h.container.resolve(h.app.WORKSPACE_REPOSITORY);
+    const missionRepo = h.container.resolve(h.app.MISSION_REPOSITORY);
+    workspaces.update(ws, { maxActiveMissions: 5 });
+    const slowPin = async (goal, answer) => {
+      let release;
+      const gate = new Promise((r) => { release = r; });
+      reader = async (url) => { await gate; return answer(url); };
+      const creating = h.services.missions.create(caller, { workspaceId: ws, goal, successCriteria: ['It is queued safely'], queued: true, uploads: [{ kind: 'link', url: 'https://github.com/acme/app/pull/11' }] });
+      const outcome = creating.then((m) => ({ mission: m }), (error) => ({ error }));
+      await new Promise((r) => setTimeout(r, 50));
+      const pending = missionRepo.list({ workspaceId: ws }).find((m) => m.goal === goal);
+      const pulledWhilePending = await h.services.backlog.pull();
+      const afterPull = pending === undefined ? undefined : missionRepo.get(pending.id);
+      release();
+      const done = await outcome;
+      reader = null;
+      return { pending, pulledWhilePending, afterPull, ...done };
+    };
+    const slowOk = await slowPin('Queue me once pinned', (url) => ({ url, number: 11, repo: 'acme/app', headRefName: 'x', headRefOid: 'abc', title: 'Slow', body: '', diff: '+x\n' }));
+    check('while a slow upload pins, the draft is not queued', slowOk.pending !== undefined && slowOk.pending.queuedAt === null, slowOk.pending);
+    check('and the backlog does not pull it into planning', slowOk.pulledWhilePending.length === 0 && slowOk.afterPull?.status === 'DRAFT', { pulled: slowOk.pulledWhilePending, status: slowOk.afterPull?.status });
+    check('once pinned, it is queued', slowOk.mission?.queuedAt !== null && missionRepo.get(slowOk.mission?.id)?.queuedAt !== null, slowOk.mission ?? slowOk.error?.message);
+    if (slowOk.mission !== undefined) missionRepo.update(slowOk.mission.id, { queuedAt: null });
+    const slowRefused = await slowPin('Refuse me once pinned', () => null);
+    check('a slow upload that is refused removes the draft', slowRefused.error?.code === 'VALIDATION' && missionRepo.list({ workspaceId: ws }).every((m) => m.goal !== 'Refuse me once pinned'), slowRefused.error?.message);
+    check('and nothing was pulled or planned for it meanwhile', slowRefused.pending?.queuedAt === null && slowRefused.pulledWhilePending.length === 0 && slowRefused.afterPull?.status === 'DRAFT', { pending: slowRefused.pending?.queuedAt, pulled: slowRefused.pulledWhilePending, status: slowRefused.afterPull?.status });
+    workspaces.update(ws, { maxActiveMissions: null });
 
     const FIGMA = 'https://www.figma.com/file/x';
     const bare = await refusal(() => C.pin({ missionId: mission.id, caller, contribution: { kind: 'link', url: FIGMA } }));
@@ -274,7 +321,8 @@ section('daemon: pinning');
 // steps.
 section('daemon: intake and skips');
 {
-  const HOME = mkdtempSync(join(tmpdir(), 'tdm-p3-intake-'));
+  // Short: a run's tool bridge socket lives under HOME, and macOS caps its path near 104 bytes.
+  const HOME = mkdtempSync(join(tmpdir(), 'tpi-'));
   const checkout = join(HOME, 'checkout');
   mkdirSync(join(checkout, '.tandemise', 'workflows'), { recursive: true });
   // The project's own workflow: one step, and nothing a planner could skip.
@@ -304,21 +352,21 @@ section('daemon: intake and skips');
       'acceptanceCriteria:', '  - id: AC1', '    statement: The page greets the visitor by name', '    covers:', '      - U1',
       '---', '', '## Scope', '', 'A greeting.', '', '## Acceptance criteria', '', '- AC1: the page greets the visitor by name.', '',
     ].join('\n');
-    const planJson = (artifactId) => JSON.stringify({
+    const planJson = (artifactId, inputArtifacts = [{ type: 'ProductSpec', required: true }]) => JSON.stringify({
       summary: 'The upload is the spec, so design starts from it.',
-      tasks: [{ key: 'design', title: 'Design the greeting', objective: 'Design the greeting from the spec.', roleId: 'design', dependsOn: [], inputArtifacts: [{ type: 'ProductSpec', required: true }], expectedOutputs: ['DesignBrief'] }],
+      tasks: [{ key: 'design', title: 'Design the greeting', objective: 'Design the greeting from the spec.', roleId: 'design', dependsOn: [], inputArtifacts, expectedOutputs: ['DesignBrief'] }],
       skipped: [{ stage: 'product', outputType: 'ProductSpec', artifactId, reason: 'Your upload is the spec.' }],
     });
     const INTAKE = { promptIncludes: 'Turn the uploaded input into' };
     const PLANNER = { promptIncludes: 'You are the Planner' };
-    const script = (skipId) => ({
+    const script = (skipId, inputs) => ({
       resume: 'ok',
       captures: { dest: 'Write it to `([^`]+)`', upload: '^- ProductSpec "[^"]*" \\(id ([^)]+)\\)' },
       steps: [
         { kind: 'write-file', path: 'prompts/intake-{{runId}}.txt', content: '{{prompt}}', when: INTAKE },
         { kind: 'write-file', path: '{{dest}}', content: spec, when: INTAKE },
         { kind: 'write-file', path: 'prompts/planner-{{runId}}.txt', content: '{{prompt}}', when: PLANNER },
-        { kind: 'message', text: planJson(skipId), when: PLANNER },
+        { kind: 'message', text: planJson(skipId, inputs), when: PLANNER },
         { kind: 'complete', summary: 'done' },
       ],
     });
@@ -436,6 +484,43 @@ section('daemon: intake and skips');
     check('a spec that stops covering is not offered', prompts5.length >= 2 && !prompts5[prompts5.length - 1].includes(`(id ${intake5?.id})`) && prompts5.some((p) => p.includes(`(id ${intake5?.id})`)), prompts5.map((p) => p.slice(-800)));
     check('and no placeholder is made for it', tasksOf(m5.id).every((t) => t.status !== 'SKIPPED'), tasksOf(m5.id).map((t) => [t.key, t.status]));
 
+    // ---- a stage after a skip reads the upload, even when the planner did not list it
+    // A planner that leaves `inputArtifacts` empty still gets a design step
+    // that waits on the placeholder and may read the intake spec, so its run
+    // is given the upload that replaced the stage before it.
+    profiles.update(profile.id, { settings: { script: script('{{upload}}', []) } });
+    const GOAL6 = 'Greet the visitor, inputs unnamed';
+    const m6 = await h.services.missions.create(caller, { workspaceId: ws, goal: GOAL6, title: 'Greeting, unnamed inputs', successCriteria: ['The page greets the visitor by name'], uploads: [upload] });
+    await h.services.planning.plan(m6.id);
+    profiles.update(profile.id, { settings: { script: script('{{upload}}') } });
+    const placeholder6 = tasksOf(m6.id).find((t) => t.status === 'SKIPPED');
+    const design6 = tasksOf(m6.id).find((t) => t.key === 'design');
+    const intake6 = h.artifacts.listByMission(m6.id).find((a) => a.type === 'ProductSpec');
+    check('a root step with no inputs named waits on the placeholder', placeholder6 !== undefined && design6?.dependsOn.includes(placeholder6.key), design6?.dependsOn);
+    check('and may read its type, optionally', design6?.inputArtifacts.some((r) => r.type === 'ProductSpec' && r.required === false), design6?.inputArtifacts);
+    {
+      const scheduler = h.container.resolve(h.app.SCHEDULER);
+      const runs = h.container.resolve(h.app.RUN_REPOSITORY);
+      const runInputs = h.container.resolve(h.app.RUN_INPUT_REPOSITORY);
+      const missionRepo = h.container.resolve(h.app.MISSION_REPOSITORY);
+      for (const approval of h.container.resolve(h.app.APPROVAL_REPOSITORY).list({ missionId: m6.id, statuses: ['PENDING'] })) {
+        await h.services.approvals.decide(caller, approval.id, { optionId: D.APPROVE_OPTION }).catch(() => {});
+      }
+      if (missionRepo.get(m6.id).status !== 'EXECUTING') missionRepo.update(m6.id, { status: 'EXECUTING' });
+      const end = Date.now() + 15000;
+      while (Date.now() < end && runs.listByTask(design6.id).length === 0) {
+        await scheduler.tick();
+        await new Promise((r) => setTimeout(r, 40));
+      }
+      const run6 = runs.listByTask(design6.id)[0];
+      check('its run is given the intake spec as an input', run6 !== undefined && runInputs.listByRun(run6.id).includes(intake6?.id), { run: run6?.id, inputs: run6 && runInputs.listByRun(run6.id), intake: intake6?.id, status: tasksOf(m6.id).map((t) => [t.key, t.status, t.statusReason]) });
+      while (Date.now() < end && scheduler.activeTaskIds().length > 0) {
+        await scheduler.tick();
+        await new Promise((r) => setTimeout(r, 40));
+      }
+      missionRepo.update(m6.id, { status: 'CANCELLED' });
+    }
+
     // ---- a project's own workflow never skips
     const m4 = await h.services.missions.create(caller, { workspaceId: ws, goal: 'Run our own flow', title: 'Own flow', successCriteria: ['The page greets the visitor by name'], workflowPreset: 'p3-flow', uploads: [upload] });
     await h.services.planning.plan(m4.id);
@@ -468,12 +553,56 @@ section('daemon: park and hand back');
   // Short: the tool bridge's unix socket lives under HOME, and macOS caps its path near 104 bytes.
   const HOME = mkdtempSync(join(tmpdir(), 'tpk-'));
   const PR = 'https://github.com/acme/app/pull/7';
+  // Known to gh, but its head is nowhere this checkout can fetch it from.
+  const PR_UNFETCHABLE = 'https://github.com/acme/app/pull/8';
+  // The project's checkout and the "GitHub" it fetches from: a local bare
+  // repository holding the pull request's head only as `refs/pull/7/head`,
+  // as GitHub does. The PR's own branch (feat/greet) is never local, as for a
+  // fork, a web edit or another machine's work.
+  const checkout = join(HOME, 'checkout');
+  const remoteRepo = join(HOME, 'remote.git');
+  mkdirSync(checkout, { recursive: true });
+  const gitc = (...args) => execFileSync('git', ['-c', 'user.name=check', '-c', 'user.email=check@example.com', ...args], { cwd: checkout, stdio: 'pipe' }).toString().trim();
+  const commitFile = (name) => { writeFileSync(join(checkout, name), `${name}\n`); gitc('add', name); gitc('commit', '-q', '-m', name); };
+  gitc('init', '-q', '-b', 'main');
+  commitFile('README.md');
+  execFileSync('git', ['init', '-q', '--bare', remoteRepo]);
+  gitc('remote', 'add', 'origin', remoteRepo);
+  gitc('push', '-q', 'origin', 'main');
+  gitc('checkout', '-q', '-b', 'feat/greet');
+  commitFile('greet.txt');
+  const prSha = gitc('rev-parse', 'HEAD');
+  gitc('push', '-q', 'origin', 'HEAD:refs/pull/7/head');
+  gitc('checkout', '-q', 'main');
+  gitc('branch', '-q', '-D', 'feat/greet');
+  // Two agent worktree branches: the one a hand-back replaces, and another step's.
+  for (const [branch, file] of [['agent/build', 'agent.txt'], ['agent/other', 'other.txt']]) {
+    gitc('checkout', '-q', '-b', branch);
+    commitFile(file);
+    gitc('checkout', '-q', 'main');
+  }
   const stub = {
     read: async (url) => (url === PR
-      ? { url: PR, number: 7, repo: 'acme/app', headRefName: 'feat/greet', headRefOid: 'deadbeef', title: 'Add greeting', body: 'Greets people.', diff: 'diff --git a/x b/x\n+hi\n' }
-      : null),
+      ? { url: PR, number: 7, repo: 'acme/app', headRefName: 'feat/greet', headRefOid: prSha, title: 'Add greeting', body: 'Greets people.', diff: 'diff --git a/x b/x\n+hi\n' }
+      : url === PR_UNFETCHABLE
+        ? { url, number: 8, repo: 'acme/app', headRefName: 'feat/elsewhere', headRefOid: 'feedface', title: 'From a fork', body: '', diff: '+fork\n' }
+        : null),
   };
-  const h = await engineHarness(HOME, stub);
+  // Only git runs for real, so fetching a handed-back pull request's head is
+  // exercised end to end; anything else keeps the harness's refusal.
+  const { COMMAND_EXECUTOR } = await import('@tandemise/integrations-core');
+  const { execFile } = await import('node:child_process');
+  const gitOnly = {
+    run: (req) => new Promise((resolve, reject) => {
+      if (req.command !== 'git') { reject(new Error('unused')); return; }
+      const started = Date.now();
+      execFile('git', [...(req.args ?? [])], { cwd: req.cwd, env: { ...process.env, ...(req.env ?? {}) }, timeout: req.timeoutMs }, (error, stdout, stderr) => resolve({
+        exitCode: error ? (typeof error.code === 'number' ? error.code : 1) : 0, stdout, stderr, timedOut: false,
+        durationMs: Date.now() - started, command: ['git', ...(req.args ?? [])].join(' '),
+      }));
+    }),
+  };
+  const h = await engineHarness(HOME, stub, (container) => container.rebind(COMMAND_EXECUTOR, () => gitOnly, { source: 'check' }));
   const scheduler = h.container.resolve(h.app.SCHEDULER);
   const repo = {
     tasks: h.container.resolve(h.app.TASK_REPOSITORY),
@@ -611,17 +740,54 @@ section('daemon: park and hand back');
     // ---- a ChangeSet handed back from a pull request carries its head
     const p = await project('Hand backs');
     // A pull request link is read in one of the project's checkouts.
-    mkdirSync(join(HOME, 'checkout'), { recursive: true });
-    h.repositories.create({ id: 'rep_p3_park', workspaceId: p.ws, name: 'app', path: join(HOME, 'checkout'), defaultBranch: 'main', remoteUrl: null, checks: D.NO_CHECKS });
+    h.repositories.create({ id: 'rep_p3_park', workspaceId: p.ws, name: 'app', path: checkout, defaultBranch: 'main', remoteUrl: null, checks: D.NO_CHECKS });
+    const targetRepo = h.container.resolve(h.app.EXECUTION_TARGET_REPOSITORY);
+    // The worktree an agent's run of a step leaves behind, as the executor records it.
+    const worktreeOf = (missionId, taskId, branch) => targetRepo.create({
+      id: ids.executionTarget(), workspaceId: p.ws, missionId, taskId, kind: 'worktree', name: branch, workingDirectory: checkout,
+      branch, baseBranch: 'main', status: 'READY', detail: null, createdAt: now(), releasedAt: null,
+    });
     const two = await addMission(p, [{ key: 'build', agent: p.quick, expectedOutputs: ['ChangeSet'] }]);
+    const buildTarget = worktreeOf(two.mission.id, two.t.build, 'agent/build');
     await h.services.missions.parkTask(two.t.build, caller, { tool: 'Cursor' });
     check('a READY step can be parked', task(two.t.build).status === 'AWAITING_EXTERNAL' && task(two.t.build).statusReason === 'Continued in Cursor', task(two.t.build));
+    check('the pull request\'s branch is not in the checkout before the hand-back', !gitc('branch', '--list').includes('feat/greet') && !gitc('branch', '--list').includes('tandemise/pr-7'), gitc('branch', '--list'));
+
+    // Fetching fails for a change: refused, and nothing is written.
+    const beforeRefused = h.artifacts.listByMission(two.mission.id).length;
+    const unfetchable = await refusal(() => h.services.missions.handBack(two.t.build, caller, { note: 'From a fork.', contribution: { kind: 'link', url: PR_UNFETCHABLE } }));
+    check('a change whose pull request cannot be fetched is refused', unfetchable?.code === 'VALIDATION' && unfetchable.message === "Couldn't fetch that pull request into app. Fetch or push its branch, then hand it back again.", unfetchable && { code: unfetchable.code, message: unfetchable.message });
+    check('the refusal writes nothing and leaves the step parked', h.artifacts.listByMission(two.mission.id).length === beforeRefused && task(two.t.build).status === 'AWAITING_EXTERNAL' && targetRepo.get(buildTarget.id).status === 'READY',
+      { artifacts: h.artifacts.listByMission(two.mission.id).length, status: task(two.t.build).status, target: targetRepo.get(buildTarget.id).status });
+
     const fromPr = await h.services.missions.handBack(two.t.build, caller, { note: 'Built it in Cursor; the PR is up.', contribution: { kind: 'link', url: PR } });
     const change = fromPr.artifacts[0];
     const ref = (kind) => change?.sourceRefs.find((r) => r.kind === kind)?.value;
-    check('the ChangeSet carries the PR\'s head commit and branch', change?.type === 'ChangeSet' && ref('git.commit') === 'deadbeef' && ref('git.branch') === 'feat/greet' && ref('github.pr') === 'acme/app#7', change?.sourceRefs);
+    check('the pull request\'s head is fetched into tandemise/pr-7 at its head commit', gitc('rev-parse', 'refs/heads/tandemise/pr-7') === prSha, gitc('branch', '--list'));
+    check('the ChangeSet carries the PR\'s head commit and the fetched branch', change?.type === 'ChangeSet' && ref('git.commit') === prSha && ref('git.branch') === 'tandemise/pr-7' && ref('github.pr') === 'acme/app#7', change?.sourceRefs);
     check('its handoff links the pull request', change?.handoff?.links.some((l) => l.kind === 'pr' && l.url === PR), change?.handoff?.links);
     check('task.handed_back says it was a link', eventsOf(two.mission.id, 'task.handed_back')[0]?.body.contribution === 'link');
+    check('the step\'s own worktree is retired', targetRepo.get(buildTarget.id).status === 'RELEASED' && targetRepo.get(buildTarget.id).releasedAt !== null, targetRepo.get(buildTarget.id));
+
+    // Integration merges the pull request's branch for the step, not the agent's.
+    const otherId = repo.tasks.add({ ...task(two.t.build), id: ids.task(), key: 'other', title: 'other', status: 'SUCCEEDED', statusReason: null, round: 1 }).id;
+    worktreeOf(two.mission.id, otherId, 'agent/other');
+    repo.missions.update(two.mission.id, { repositoryId: 'rep_p3_park', baseBranch: 'main' });
+    const integrated = await h.container.resolve(h.app.BRANCH_INTEGRATION_SERVICE).integrate(repo.missions.get(two.mission.id));
+    const merged = integrated.results.map((r) => r.branch).sort();
+    check('integration takes a handed-back change from its pull request branch', eq(merged, ['agent/other', 'tandemise/pr-7']) && integrated.results.every((r) => r.merged), integrated);
+    check('and never merges the agent branch it replaced', !merged.includes('agent/build'), merged);
+    repo.missions.update(two.mission.id, { status: 'CANCELLED' });
+
+    // Fetching fails for anything but a change: handed back, with no branch.
+    {
+      const m = await addMission(p, [{ key: 'design', agent: p.quick }]);
+      await h.services.missions.parkTask(m.t.design, caller, { tool: 'Figma' });
+      const handed = await refusal(() => h.services.missions.handBack(m.t.design, caller, { note: 'Designed on a fork.', contribution: { kind: 'link', url: PR_UNFETCHABLE } }));
+      const [design] = live(m.t.design, 'DesignBrief');
+      check('a design from an unfetchable pull request is handed back without a branch', handed === null && design !== undefined
+        && design.sourceRefs.some((r) => r.kind === 'git.commit' && r.value === 'feedface') && !design.sourceRefs.some((r) => r.kind === 'git.branch'), handed?.message ?? design?.sourceRefs);
+    }
 
     // ---- a cancelled mission takes no hand-back
     const three = await addMission(p, [{ key: 'design', agent: p.quick }]);
@@ -751,6 +917,42 @@ section('daemon: park and hand back');
     const prompt = promptPath !== '' && existsSync(promptPath) ? readFileSync(promptPath, 'utf8') : '';
     check('the round\'s prompt lists the file and the link', prompt.includes('frames.md') && prompt.includes('The greeting, drawn in Figma.') && prompt.includes('https://www.figma.com/file/x'), prompt.slice(0, 1500));
     check('the round\'s previous output is its own DesignBrief, not the attachment', !prompt.includes('Evidence, to edit and write back'), prompt.slice(0, 1500));
+
+    // ---- take it back: the park is called off and the agent runs the step again
+    {
+      const m = await addMission(p, [{ key: 'design', agent: p.quick }]);
+      await until(() => task(m.t.design).status === 'SUCCEEDED');
+      const dependent = repo.tasks.add({
+        id: ids.task(), missionId: m.mission.id, key: 'read', title: 'read', objective: 'o', roleId: 'design',
+        dependsOn: ['design'], requiredCapabilities: [], inputArtifacts: [{ type: 'DesignBrief', required: true }], expectedOutputs: ['ProblemBrief'],
+        executionPolicy: { isolation: 'none', maxWallTimeMs: 60000, capabilities: [] }, approvalPolicy: { beforeStart: false, onCompletion: false },
+        retryPolicy: { maxAttempts: 2, backoffMs: 0, onExhausted: 'block' }, completionGate: null, status: 'READY', statusReason: null, attempts: 0,
+        remediatesTaskId: null, repositoryId: null, executor: 'agent', waitPolicy: null, orderHint: 1, staffingOverride: { assignees: [p.reader] },
+        createdAt: now(), updatedAt: now(), startedAt: null, finishedAt: null,
+      }).id;
+      await h.services.missions.parkTask(m.t.design, caller, { tool: 'Figma' });
+      check('the park holds the dependent', task(dependent).status === 'PENDING' && task(dependent).statusReason === "Waiting for 'design' from Figma.", task(dependent));
+      const runsBefore = runsOf(m.t.design).length;
+      const back = await h.services.missions.unparkTask(m.t.design, caller);
+      check('take it back: the step is READY with no reason, and not parked', back.status === 'READY' && back.parkedExternal === null && task(m.t.design).status === 'READY' && task(m.t.design).statusReason === null, [back.status, back.parkedExternal, task(m.t.design).statusReason]);
+      const unparked = eventsOf(m.mission.id, 'task.unparked');
+      check('task.unparked is recorded with the tool', unparked.length === 1 && unparked[0].body.tool === 'Figma' && unparked[0].taskId === m.t.design, unparked.map((e) => e.body));
+      check('the dependent no longer waits on Figma, only on the step', task(dependent).status === 'PENDING' && task(dependent).statusReason === null, task(dependent));
+      const second = await refusal(() => h.services.missions.unparkTask(m.t.design, caller));
+      check('a second take-back is a 409', second?.code === 'CONFLICT', second && { code: second.code, message: second.message });
+      const artifactsBefore = h.artifacts.listByMission(m.mission.id).length;
+      const late = await refusal(() => h.services.missions.handBack(m.t.design, caller, { note: 'Too late.', contribution: file }));
+      check('a hand-back after a take-back is a 409 and writes nothing', late?.code === 'CONFLICT' && h.artifacts.listByMission(m.mission.id).length === artifactsBefore, late && { code: late.code, message: late.message });
+      await until(() => task(m.t.design).status === 'SUCCEEDED' && runsOf(m.t.design).length === runsBefore + 1);
+      check('the step is dispatched again and succeeds', task(m.t.design).status === 'SUCCEEDED' && runsOf(m.t.design).length === runsBefore + 1, [task(m.t.design).status, runsOf(m.t.design).length]);
+      await until(() => task(dependent).status === 'SUCCEEDED');
+      const [newest] = live(m.t.design, 'DesignBrief');
+      check('then the dependent is released and runs on its newest output', task(dependent).status === 'SUCCEEDED' && runsOf(dependent).length === 1
+        && repo.runInputs.listByRun(runsOf(dependent)[0].id).includes(newest?.id), runsOf(dependent).map((r) => repo.runInputs.listByRun(r.id)));
+      const notParked = await addMission(p, [{ key: 'design', agent: p.quick }]);
+      const never = await refusal(() => h.services.missions.unparkTask(notParked.t.design, caller));
+      check('a step that was never parked cannot be taken back (409)', never?.code === 'CONFLICT', never && { code: never.code, message: never.message });
+    }
 
     // ---- what cannot be parked
     const six = await addMission(p, [{ key: 'watch', executor: 'wait', status: 'PENDING', waitPolicy: { command: 'true', everyMs: 1000, timeoutMs: 5000 } }]);
@@ -949,6 +1151,14 @@ section('http: contributions');
     check('POST park answers with the parked TaskView', parked.status === 200 && parked.body?.status === 'AWAITING_EXTERNAL' && parked.body?.parkedExternal?.tool === 'Figma', parked.body);
 
     const file = { kind: 'file', filename: 'frames.md', mediaType: 'text/markdown', dataBase64: Buffer.from('# Frames\n\nThe greeting, drawn in Figma.\n').toString('base64') };
+
+    // Take it back over HTTP, then park again for the hand-back below.
+    const unparked = await api('POST', `/v1/tasks/${taskId}/unpark`);
+    check('POST unpark answers with the READY TaskView', unparked.status === 200 && unparked.body?.status === 'READY' && unparked.body?.parkedExternal === null, unparked.body);
+    const unparkedAgain = await api('POST', `/v1/tasks/${taskId}/unpark`);
+    check('a second POST unpark is a 409', unparkedAgain.status === 409, unparkedAgain.body);
+    const reparked = await api('POST', `/v1/tasks/${taskId}/park`, { tool: 'Figma' });
+    check('a step taken back can be parked again', reparked.status === 200 && reparked.body?.parkedExternal?.tool === 'Figma', reparked.body);
     const handed = await api('POST', `/v1/tasks/${taskId}/hand-back`, { note: 'Designed in Figma. The frames are attached.', contribution: file });
     check('POST hand-back answers with {task, artifacts}', handed.status === 200 && handed.body?.task?.status === 'SUCCEEDED' && handed.body?.artifacts?.length === 1 && handed.body.artifacts[0].round === 2, handed.body);
 
