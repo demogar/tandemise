@@ -1,0 +1,118 @@
+{
+  "id": "E3",
+  "title": "Setup as code: a fixture folder's \"Try on evals\" prefills the Runs form and applies nothing",
+  "ok": true,
+  "checks": [
+    {
+      "label": "the fixture is the project's exported setup, with the Developer role on \"good\" instead of \"bad\"",
+      "ok": true,
+      "observed": {
+        "files": [
+          ".tandemise/roles/architecture.md",
+          ".tandemise/roles/design.md",
+          ".tandemise/roles/development.md",
+          ".tandemise/roles/finance.md",
+          ".tandemise/roles/product.md",
+          ".tandemise/roles/qa.md",
+          ".tandemise/roles/release.md",
+          ".tandemise/roles/review.md",
+          ".tandemise/routines.yaml",
+          ".tandemise/tandemise.yaml",
+          ".tandemise/workflows/build-only.yaml",
+          ".tandemise/workflows/p0.yaml",
+          ".tandemise/workflows/p10-desk.yaml",
+          ".tandemise/workflows/p12-economy.yaml",
+          ".tandemise/workflows/p12-escalate.yaml",
+          ".tandemise/workflows/p12-models.yaml",
+          ".tandemise/workflows/p12-review.yaml",
+          ".tandemise/workflows/p13-lint.yaml",
+          ".tandemise/workflows/p13-skills.yaml",
+          ".tandemise/workflows/p13-unknown.yaml",
+          ".tandemise/workflows/p2-chain.yaml",
+          ".tandemise/workflows/p2-solo.yaml",
+          ".tandemise/workflows/p3-hold.yaml",
+          ".tandemise/workflows/p3b-evals.yaml",
+          ".tandemise/workflows/p5.yaml",
+          ".tandemise/workflows/p8-steps.yaml",
+          ".tandemise/workflows/p9-implement.yaml"
+        ],
+        "role": [
+          "---",
+          "capabilities:",
+          "  - artifact.write",
+          "  - database",
+          "  - filesystem.read",
+          "  - filesystem.write",
+          "  - git",
+          "  - git.commit"
+        ]
+      }
+    },
+    {
+      "label": "the project is back to its committed files (the fixture lives outside it)",
+      "ok": true,
+      "observed": ""
+    },
+    {
+      "label": "control (daemon log): the log does record setup actions (\"setup.exported\" is there)",
+      "ok": true
+    },
+    {
+      "label": "the preview of the fixture shows the Developer role's model changing to \"good\"",
+      "ok": true,
+      "observed": " so an import never starts work.\n\nImport from a folder…\n\nFrom /tmp/tdm-p3b/setup-fixture/.tandemise: 0 to add · 1 to change · 0 to remove · 28 the same\n\nITEM\tKIND\tCHANGE\tYOUR CHOICE\n\nDeveloper\nmodel: bad → good\n\tRole\tChange\t\nKeep mine\nTake theirs\n\n\nProject settings\n\tProject\tSame\t—\n\nWork-in-progress "
+    },
+    {
+      "label": "the Runs form opens on Setup, prefilled with the fixture folder",
+      "ok": true,
+      "observed": "New run\nSuite\nRuns (1 case)\nTry\nModels\nSkills\nSetup\nSetup folder\n/tmp/tdm-p3b/setup-fixture\nChange…\nA repository, or its .tandemise folder. Its roles are tried as they are there; nothing is applied to this project.\nRepeats\nEach case runs this many times with the setup you have now, and as many with the change. 1 to 10.\nSpend cap ($)\nThe run stops when its trials have spent this much.\nStart run\nCancel"
+    },
+    {
+      "label": "the form is on E1's suite",
+      "ok": true
+    },
+    {
+      "label": "the location is the Evals Runs tab",
+      "ok": true,
+      "observed": "#/evals?tab=runs"
+    },
+    {
+      "label": "proof (API): the project's roles are unchanged (the Developer is still on \"bad\")",
+      "ok": true,
+      "observed": {
+        "model": "bad",
+        "escalate": [],
+        "economyModel": null
+      }
+    },
+    {
+      "label": "proof (API): the setup status is unchanged, so no setup was applied",
+      "ok": true,
+      "observed": {
+        "lastExport": {
+          "hash": "d41e1ad76b11",
+          "repositoryName": "acceptance-project",
+          "files": 27,
+          "at": "2026-09-28T18:20:22.007Z"
+        }
+      }
+    },
+    {
+      "label": "proof (daemon log): no \"setup.applied\" was logged, before or after",
+      "ok": true,
+      "observed": {
+        "before": 0,
+        "after": 0
+      }
+    },
+    {
+      "label": "proof (API): no run was started by opening the form",
+      "ok": true
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise/docs/superpowers/evidence/2026-09-27-p3b/E3-setup-preview.png",
+    "/Users/demogar/projects/tandemise/tandemise/docs/superpowers/evidence/2026-09-27-p3b/E3-runs-form-prefilled.png"
+  ]
+}

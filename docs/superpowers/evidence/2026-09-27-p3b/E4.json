@@ -1,0 +1,68 @@
+{
+  "id": "E4",
+  "title": "A $0.60 spend cap at $0.25 a run stops the run",
+  "ok": true,
+  "checks": [
+    {
+      "label": "proof (API): the run has a $0.60 cap, 2 repeats, Developer on \"good\"",
+      "ok": true,
+      "observed": {
+        "cap": 0.6,
+        "repeats": 2,
+        "candidate": {
+          "kind": "models",
+          "roles": {
+            "development": "good"
+          }
+        }
+      }
+    },
+    {
+      "label": "proof (API): the run stopped at its cap",
+      "ok": true,
+      "observed": {
+        "status": "stopped_at_cap",
+        "reason": "Stopped at your $0.60 cap"
+      }
+    },
+    {
+      "label": "proof (API): its reason is \"Stopped at your $0.60 cap\"",
+      "ok": true,
+      "observed": "Stopped at your $0.60 cap"
+    },
+    {
+      "label": "proof (API): it spent at least the cap, measured, and the trials not yet run were cancelled",
+      "ok": true,
+      "observed": {
+        "spentUsd": 0.75,
+        "progress": {
+          "done": 4,
+          "total": 4
+        },
+        "trials": [
+          "baseline 1 failed",
+          "candidate 1 passed",
+          "baseline 2 cancelled",
+          "candidate 2 cancelled"
+        ]
+      }
+    },
+    {
+      "label": "the window shows \"Stopped at your $0.60 cap\"",
+      "ok": true,
+      "observed": "Stopped at your $0.60 cap"
+    },
+    {
+      "label": "the spend reads \"Spent $… of $0.60\"",
+      "ok": true,
+      "observed": "Spend\nSpent $0.75 of $0.60"
+    }
+  ],
+  "notes": [
+    "run header: \"Stopped at cap\\nStarted Sep 28, 2026, 1:20 PM\\n· finished Sep 28, 2026, 1:21 PM\""
+  ],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise/docs/superpowers/evidence/2026-09-27-p3b/E4-run-form.png",
+    "/Users/demogar/projects/tandemise/tandemise/docs/superpowers/evidence/2026-09-27-p3b/E4-stopped-at-cap.png"
+  ]
+}

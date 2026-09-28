@@ -1,0 +1,143 @@
+{
+  "id": "E1",
+  "title": "Save as eval case on a succeeded build step",
+  "ok": true,
+  "checks": [
+    {
+      "label": "setup (API): the scripted runtime reports NDJSON and takes --model",
+      "ok": true,
+      "observed": {
+        "outputFormat": "ndjson",
+        "modelFlag": "--model"
+      }
+    },
+    {
+      "label": "setup (API): the Developer role is on the model \"good\"",
+      "ok": true,
+      "observed": {
+        "model": "good",
+        "escalate": [],
+        "economyModel": null
+      }
+    },
+    {
+      "label": "proof (API): the mission completed and its build step SUCCEEDED",
+      "ok": true,
+      "observed": {
+        "mission": "COMPLETE",
+        "build": "SUCCEEDED"
+      }
+    },
+    {
+      "label": "proof (API): the build passed on its first run",
+      "ok": true,
+      "observed": [
+        {
+          "id": "run_01m3mktyfs4gtekgnvsq",
+          "status": "SUCCEEDED"
+        }
+      ]
+    },
+    {
+      "label": "the succeeded build card offers \"Save as eval case\"",
+      "ok": true,
+      "observed": "DEVELOPER\nbuild\nDone\njust now\nby\nCoding agent\n·\nresponsible\nYou\nFull doc\nContinue elsewhere\nSave as eval case\nRequest changes\n\nChangeSet ready for the hello page\n\nWritten by the scripted acceptance agent\nNo model was called"
+    },
+    {
+      "label": "with no suite yet, the dialog offers a new suite, and the case name defaults to the step title",
+      "ok": true,
+      "observed": {
+        "suite": "New suite…",
+        "caseName": "build",
+        "newSuite": true,
+        "stepTitle": "build"
+      }
+    },
+    {
+      "label": "the dialog says \"Saved to Runs.\" with a link to Evals",
+      "ok": true,
+      "observed": "Save as eval case\n\nSaved to Runs. Open Evals\n\nDone"
+    },
+    {
+      "label": "proof (API): a suite \"Runs\" with one case, from this mission's build step",
+      "ok": true,
+      "observed": {
+        "suite": {
+          "id": "esu_01m3mkv5k9wwmhs0nd65",
+          "workspaceId": "ws_01m3mktjshky99t38n8j",
+          "name": "Runs",
+          "createdAt": "2026-09-28T18:18:42.665Z",
+          "updatedAt": "2026-09-28T18:18:42.665Z",
+          "cases": 1
+        },
+        "kase": {
+          "name": "Hello banner build",
+          "source": {
+            "missionId": "msn_01m3mktshd1bn3tg2jt8",
+            "missionTitle": "Add a hello banner to the page",
+            "taskId": "tsk_01m3mktsj9nmdy95hn8p",
+            "missionExists": true
+          },
+          "roleId": "development"
+        }
+      }
+    },
+    {
+      "label": "proof (API): the case keeps its base commit (a commit in the project) and its DesignBrief input",
+      "ok": true,
+      "observed": {
+        "baseSha": "ba4a4cd1833d25b6addc3333767b927f9ca240b6",
+        "inputs": [
+          {
+            "type": "DesignBrief",
+            "title": "DesignBrief: Scripted work"
+          }
+        ]
+      }
+    },
+    {
+      "label": "the Suites tab lists \"Runs · 1 case\" and the case row",
+      "ok": true,
+      "observed": [
+        "Hello banner build",
+        "build",
+        "Developer",
+        "ba4a4cd",
+        "DesignBrief: Scripted work (DesignBrief)",
+        "from Add a hello banner to the page",
+        ""
+      ]
+    },
+    {
+      "label": "the row shows the short base commit (7 characters of the case's base)",
+      "ok": true,
+      "observed": {
+        "shown": "ba4a4cd",
+        "baseSha": "ba4a4cd1833d25b6addc3333767b927f9ca240b6"
+      }
+    },
+    {
+      "label": "the row shows its input: the design brief, (DesignBrief)",
+      "ok": true,
+      "observed": "DesignBrief: Scripted work (DesignBrief)"
+    },
+    {
+      "label": "the row names the mission it came from, linked",
+      "ok": true
+    },
+    {
+      "label": "the Evals tab is active in the sidebar",
+      "ok": true
+    }
+  ],
+  "notes": [
+    "the daemon runs with SCRIPTED_FAIL_MODEL=bad and SCRIPTED_COST_USD=0.25: a run on \"bad\" writes nothing, every run reports $0.25",
+    "the case row reads: [\"Hello banner build\",\"build\",\"Developer\",\"ba4a4cd\",\"DesignBrief: Scripted work (DesignBrief)\",\"from Add a hello banner to the page\",\"\"]"
+  ],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise/docs/superpowers/evidence/2026-09-27-p3b/E1-build-card.png",
+    "/Users/demogar/projects/tandemise/tandemise/docs/superpowers/evidence/2026-09-27-p3b/E1-save-dialog.png",
+    "/Users/demogar/projects/tandemise/tandemise/docs/superpowers/evidence/2026-09-27-p3b/E1-saved.png",
+    "/Users/demogar/projects/tandemise/tandemise/docs/superpowers/evidence/2026-09-27-p3b/E1-suites-tab.png"
+  ]
+}

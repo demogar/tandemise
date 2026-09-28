@@ -1,0 +1,85 @@
+{
+  "id": "E6",
+  "title": "No trial worktree or branch is left after the runs",
+  "ok": true,
+  "checks": [
+    {
+      "label": "proof (API): every eval run on the suite has ended",
+      "ok": true,
+      "observed": [
+        {
+          "id": "ern_01m3mkw7jqycwg0a25sa",
+          "status": "completed"
+        },
+        {
+          "id": "ern_01m3mkz91225zn23z5e4",
+          "status": "stopped_at_cap"
+        }
+      ]
+    },
+    {
+      "label": "proof (API): no trial is still running",
+      "ok": true,
+      "observed": [
+        "failed",
+        "passed",
+        "failed",
+        "passed",
+        "failed",
+        "passed",
+        "failed",
+        "passed",
+        "cancelled",
+        "cancelled"
+      ]
+    },
+    {
+      "label": "proof (SQL): the trials did work on tandemise/eval-trial-* branches",
+      "ok": true,
+      "observed": [
+        {
+          "branch": "tandemise/eval-trial-hello-banner-build-baseline-1/eval-trial-hello-banner-build-baseline-1-build-axvwfpev",
+          "path": "/tmp/tdm-p3b/home/workspaces/ws_01m3mktjshky99t38n8j/missions/msn_01m3mkw7jsv97f2p7mbz/worktrees/eval-trial-hello-banner-build-baseline-1-build-axvwfpev",
+          "status": "RELEASED"
+        },
+        {
+          "branch": "tandemise/eval-trial-hello-banner-build-baseline-1/eval-trial-hello-banner-build-baseline-1-build-axvwfpev",
+          "path": "/tmp/tdm-p3b/home/workspaces/ws_01m3mktjshky99t38n8j/missions/msn_01m3mkw7jsv97f2p7mbz/worktrees/eval-trial-hello-banner-build-baseline-1-build-axvwfpev",
+          "status": "RELEASED"
+        },
+        {
+          "branch": "tandemise/eval-trial-hello-banner-build-candidate-1/eval-trial-hello-banner-build-candidate-1-build-zvg7nrvq",
+          "path": "/tmp/tdm-p3b/home/workspaces/ws_01m3mktjshky99t38n8j/missions/msn_01m3mkwe5j790x8q95z8/worktrees/eval-trial-hello-banner-build-candidate-1-build-zvg7nrvq",
+          "status": "RELEASED"
+        },
+        {
+          "branch": "tandemise/eval-trial-hello-banner-build-baseline-2/eval-trial-hello-banner-build-baseline-2-build-grhqkctk",
+          "path": "/tmp/tdm-p3b/home/workspaces/ws_01m3mktjshky99t38n8j/missions/msn_01m3mkwgh0wr87mjnfva/worktrees/eval-trial-hello-banner-build-baseline-2-build-grhqkctk",
+          "status": "RELEASED"
+        }
+      ]
+    },
+    {
+      "label": "`git worktree list` in the project shows no trial worktree",
+      "ok": true,
+      "observed": "/private/var/folders/dh/glpvvh110393gdzjc_v2x1sr0000gn/T/tdm-p3b-run-mulkmanl/project                                                                                                                            ba4a4cd [main]\n/private/var/folders/dh/glpvvh110393gdzjc_v2x1sr0000gn/T/tdm-p3b-run-mulkmanl/home/workspaces/ws_01m3mktjshky99t38n8j/missions/msn_01m3mktshd1bn3tg2jt8/worktrees/add-a-hello-banner-to-the-page-build-dy95hn8p  7643b08 [tandemise/add-a-hello-banner-to-the-page/add-a-hello-banner-to-the-page-build-dy95hn8p]"
+    },
+    {
+      "label": "`git branch --list 'tandemise/eval-trial*'` in the project shows none",
+      "ok": true,
+      "observed": ""
+    },
+    {
+      "label": "no trial worktree folder is left on disk",
+      "ok": true,
+      "observed": []
+    }
+  ],
+  "notes": [
+    "trial execution targets: [{\"branch\":\"tandemise/eval-trial-hello-banner-build-baseline-1/eval-trial-hello-banner-build-baseline-1-build-axvwfpev\",\"path\":\"/tmp/tdm-p3b/home/workspaces/ws_01m3mktjshky99t38n8j/missions/msn_01m3mkw7jsv97f2p7mbz/worktrees/eval-trial-hello-banner-build-baseline-1-build-axvwfpev\",\"status\":\"RELEASED\"},{\"branch\":\"tandemise/eval-trial-hello-banner-build-baseline-1/eval-trial-hello-banner-build-baseline-1-build-axvwfpev\",\"path\":\"/tmp/tdm-p3b/home/workspaces/ws_01m3mktjshky99t38n8j/missions/msn_01m3mkw7jsv97f2p7mbz/worktrees/eval-trial-hello-banner-build-baseline-1-build-axvwfpev\",\"status\":\"RELEASED\"},{\"branch\":\"tandemise/eval-trial-hello-banner-build-candidate-1/eval-trial-hello-banner-build-candidate-1-build-zvg7nrvq\",\"path\":\"/tmp/tdm-p3b/home/workspaces/ws_01m3mktjshky99t38n8j/missions/msn_01m3mkwe5j790x8q95z8/worktrees/eval-trial-hello-banner-build-candidate-1-build-zvg7nrvq\",\"status\":\"RELEASED\"},{\"branch\":\"tandemise/eval-trial-hello-banner-build-baseline-2/eval-trial-hello-banner-build-baseline-2-build-grhqkctk\",\"path\":\"/tmp/tdm-p3b/home/workspaces/ws_01m3mktjshky99t38n8j/missions/msn_01m3mkwgh0wr87mjnfva/worktrees/eval-trial-hello-banner-build-baseline-2-build-grhqkctk\",\"status\":\"RELEASED\"},{\"branch\":\"tandemise/eval-trial-hello-banner-build-baseline-2/eval-trial-hello-banner-build-baseline-2-build-grhqkctk\",\"path\":\"/tmp/tdm-p3b/home/workspaces/ws_01m3mktjshky99t38n8j/missions/msn_01m3mkwgh0wr87mjnfva/worktrees/eval-trial-hello-banner-build-baseline-2-build-grhqkctk\",\"status\":\"RELEASED\"},{\"branch\":\"tandemise/eval-trial-hello-banner-build-candidate-2/eval-trial-hello-banner-build-candidate-2-build-06gwcssw\",\"path\":\"/tmp/tdm-p3b/home/workspaces/ws_01m3mktjshky99t38n8j/missions/msn_01m3mkwpz36s05hk8xw3/worktrees/eval-trial-hello-banner-build-candidate-2-build-06gwcssw\",\"status\":\"RELEASED\"},{\"branch\":\"tandemise/eval-trial-hello-banner-build-baseline-3/eval-trial-hello-banner-build-baseline-3-build-q1wdt2qj\",\"path\":\"/tmp/tdm-p3b/home/workspaces/ws_01m3mktjshky99t38n8j/missions/msn_01m3mkwsac46dq5brbvh/worktrees/eval-trial-hello-banner-build-baseline-3-build-q1wdt2qj\",\"status\":\"RELEASED\"},{\"branch\":\"tandemise/eval-trial-hello-banner-build-baseline-3/eval-trial-hello-banner-build-baseline-3-build-q1wdt2qj\",\"path\":\"/tmp/tdm-p3b/home/workspaces/ws_01m3mktjshky99t38n8j/missions/msn_01m3mkwsac46dq5brbvh/worktrees/eval-trial-hello-banner-build-baseline-3-build-q1wdt2qj\",\"status\":\"RELEASED\"},{\"branch\":\"tandemise/eval-trial-hello-banner-build-candidate-3/eval-trial-hello-banner-build-candidate-3-build-k0szahmh\",\"path\":\"/tmp/tdm-p3b/home/workspaces/ws_01m3mktjshky99t38n8j/missions/msn_01m3mkwzsg7ds3khsnb8/worktrees/eval-trial-hello-banner-build-candidate-3-build-k0szahmh\",\"status\":\"RELEASED\"},{\"branch\":\"tandemise/eval-trial-hello-banner-build-baseline-1/eval-trial-hello-banner-build-baseline-1-build-g92nhkr7\",\"path\":\"/tmp/tdm-p3b/home/workspaces/ws_01m3mktjshky99t38n8j/missions/msn_01m3mkz913ra1c8ywzrw/worktrees/eval-trial-hello-banner-build-baseline-1-build-g92nhkr7\",\"status\":\"RELEASED\"},{\"branch\":\"tandemise/eval-trial-hello-banner-build-baseline-1/eval-trial-hello-banner-build-baseline-1-build-g92nhkr7\",\"path\":\"/tmp/tdm-p3b/home/workspaces/ws_01m3mktjshky99t38n8j/missions/msn_01m3mkz913ra1c8ywzrw/worktrees/eval-trial-hello-banner-build-baseline-1-build-g92nhkr7\",\"status\":\"RELEASED\"},{\"branch\":\"tandemise/eval-trial-hello-banner-build-candidate-1/eval-trial-hello-banner-build-candidate-1-build-rfc4wryv\",\"path\":\"/tmp/tdm-p3b/home/workspaces/ws_01m3mktjshky99t38n8j/missions/msn_01m3mkzfgamp9teqn87t/worktrees/eval-trial-hello-banner-build-candidate-1-build-rfc4wryv\",\"status\":\"RELEASED\"}]",
+    "git worktree list:\n/private/var/folders/dh/glpvvh110393gdzjc_v2x1sr0000gn/T/tdm-p3b-run-mulkmanl/project                                                                                                                            ba4a4cd [main]\n/private/var/folders/dh/glpvvh110393gdzjc_v2x1sr0000gn/T/tdm-p3b-run-mulkmanl/home/workspaces/ws_01m3mktjshky99t38n8j/missions/msn_01m3mktshd1bn3tg2jt8/worktrees/add-a-hello-banner-to-the-page-build-dy95hn8p  7643b08 [tandemise/add-a-hello-banner-to-the-page/add-a-hello-banner-to-the-page-build-dy95hn8p]",
+    "git branch --list 'tandemise/eval-trial*': \"\"",
+    "the project's other tandemise/* branches (real missions): \"+ tandemise/add-a-hello-banner-to-the-page/add-a-hello-banner-to-the-page-build-dy95hn8p\""
+  ],
+  "shots": []
+}
