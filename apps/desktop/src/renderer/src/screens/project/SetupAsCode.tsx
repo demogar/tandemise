@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useLocation } from 'wouter';
 import type { Repository } from '@tandemise/domain';
 import type { SetupApplyView, SetupExportView, SetupItemView, SetupPreviewView, SkillPreviewView } from '@tandemise/api-contract';
 import { Icon } from '../../components/Icon.js';
@@ -6,6 +7,7 @@ import { ErrorState, Segmented, SectionHead } from '../../components/primitives.
 import { useDaemonMutation, useSetupStatus } from '../../lib/queries.js';
 import { showFlash } from '../../lib/notices.js';
 import { SkillPreview } from '../skills/SkillPreview.js';
+import { evalsHref } from '../evals/link.js';
 
 type NeedsImport = NonNullable<SetupItemView['needsImport']>;
 
@@ -34,6 +36,7 @@ export function SetupAsCode({ workspaceId, repositories, defaultRepositoryId }: 
   defaultRepositoryId: string | null;
 }): JSX.Element {
   const status = useSetupStatus();
+  const [, navigate] = useLocation();
   const [repositoryId, setRepositoryId] = useState<string>(defaultRepositoryId ?? repositories[0]?.id ?? '');
   const [exported, setExported] = useState<SetupExportView | null>(null);
   const [preview, setPreview] = useState<{ path: string; view: SetupPreviewView } | null>(null);
@@ -177,6 +180,16 @@ export function SetupAsCode({ workspaceId, repositories, defaultRepositoryId }: 
               {applySetup.isPending ? 'Applying…' : taking === 0 ? 'Apply (nothing to take)' : `Apply ${taking} ${taking === 1 ? 'change' : 'changes'}`}
             </button>
             <button type="button" className="btn btn--ghost" onClick={() => { setPreview(null); setFetching(null); }}>Cancel</button>
+            {/* Tries these files against the project's eval cases first; nothing here is applied. */}
+            <button
+              type="button"
+              className="btn"
+              style={{ marginLeft: 'auto' }}
+              onClick={() => navigate(evalsHref({ tab: 'runs', candidate: { kind: 'setup', folder: preview.path } }))}
+            >
+              <Icon name="target" size={13} />
+              Try on evals
+            </button>
           </div>
         ) : null}
         {applySetup.isError ? <ErrorState error={applySetup.error} /> : null}

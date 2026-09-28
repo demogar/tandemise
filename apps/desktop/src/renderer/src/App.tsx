@@ -15,6 +15,7 @@ import { Artifacts } from './screens/Artifacts.js';
 import { Team, type TeamTab } from './screens/team/Team.js';
 import { Runtimes } from './screens/Runtimes.js';
 import { Skills } from './screens/Skills.js';
+import { Evals } from './screens/evals/Evals.js';
 import { Integrations } from './screens/Integrations.js';
 import { Settings } from './screens/Settings.js';
 import { Project } from './screens/Project.js';
@@ -128,6 +129,7 @@ function ProjectShell(): JSX.Element {
               <Redirect to="/team" replace />
             </Route>
             <Route path="/skills" component={Skills} />
+            <Route path="/evals" component={Evals} />
             <Route path="/runtimes" component={Runtimes} />
             <Route path="/integrations" component={Integrations} />
             <Route path="/project" component={Project} />

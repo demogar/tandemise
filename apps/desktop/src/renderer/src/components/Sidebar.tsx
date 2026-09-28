@@ -31,6 +31,7 @@ const PROJECT: readonly NavEntry[] = [
   { href: '/project', label: 'Repositories', icon: 'folder' },
   { href: '/team', label: 'Team', icon: 'workforce' },
   { href: '/skills', label: 'Skills', icon: 'book' },
+  { href: '/evals', label: 'Evals', icon: 'target' },
   { href: '/runtimes', label: 'Runtimes', icon: 'runtimes' },
   { href: '/integrations', label: 'Integrations', icon: 'integrations' },
 ];

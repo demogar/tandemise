@@ -15,6 +15,7 @@ import { useDaemonMutation } from '../lib/queries.js';
 import { describeError } from '../lib/daemon.js';
 import { showFlash } from '../lib/notices.js';
 import { actorLabel, type Actors } from '../lib/team.js';
+import { SaveCaseDialog } from '../screens/evals/SaveCaseDialog.js';
 
 /** What changed, at most: the handoff contract caps `changed` at three, and a card shows all of them. */
 const CHANGED_SHOWN = 3;
@@ -67,6 +68,9 @@ export function HandoffCard({
   const handoff = card.handoff;
   const workspaceId = useWorkspaceId();
   const [elsewhere, setElsewhere] = useState<'continue' | 'hand_back' | null>(null);
+  const [savingCase, setSavingCase] = useState(false);
+  // Only an agent's finished step with a completion gate can be replayed and scored (spec B2): the gate is the score.
+  const canSaveCase = task?.executor === 'agent' && task.status === 'SUCCEEDED' && task.completionGate !== null;
   const parked = task?.parkedExternal ?? null;
   // "Take it back": the person changed their mind, and the agent runs the step again.
   const takeBack = useDaemonMutation((daemon, taskId: string) => daemon.unparkTask(taskId), ['tasks', 'missions', 'approvals'], missionId);
@@ -142,6 +146,12 @@ export function HandoffCard({
             <button type="button" className="btn btn--ghost feedcard__link" onClick={() => setElsewhere('continue')}>
               <Icon name="externalLink" size={12} />
               Continue elsewhere
+            </button>
+          ) : null}
+          {canSaveCase ? (
+            <button type="button" className="btn btn--ghost feedcard__link" onClick={() => setSavingCase(true)}>
+              <Icon name="target" size={12} />
+              Save as eval case
             </button>
           ) : null}
           {/* A review card on this card already offers Request changes as one of its answers; a second button with the same words would be two ways to say one thing. */}
@@ -242,6 +252,7 @@ export function HandoffCard({
       {elsewhere === 'continue' && task !== undefined ? (
         <ContinueElsewhereDialog task={task} outputs={task.expectedOutputs} missionId={missionId} onClose={() => setElsewhere(null)} />
       ) : null}
+      {savingCase && task !== undefined ? <SaveCaseDialog task={task} onClose={() => setSavingCase(false)} /> : null}
       {elsewhere === 'hand_back' && task !== undefined && parked !== null ? (
         <HandBackDialog task={task} tool={parked.tool} missionId={missionId} onClose={() => setElsewhere(null)} />
       ) : null}
