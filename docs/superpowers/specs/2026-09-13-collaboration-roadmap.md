@@ -172,7 +172,7 @@ owner-reviewed drafts. Its chat and Nostr protocol parts are not used.
 | P0 | Members, team tree and responsibility: people, owned agents, staffing, escalation, attribution | — |
 | P1 | Handoff contract and mission feed | P0 |
 | P2 | Feedback and rounds: tweak anything, notes to running tasks, wake rules, downstream impact | P0, P1 |
-| P3 | Outside contributions: uploads, hand-backs with snapshots | P0, P2 |
+| P3 | Outside contributions (uploads, hand-backs with snapshots) + evals (score every run, try a setup before it goes live) — done | P0, P2 |
 | P4 | Server and team access: Docker image, setup wizard, accounts, invites, permission levels, runners, web client for guests | P0 |
 
 Order: P0 first. P1 → P2 → P3 follow in sequence. P4 can run in parallel
@@ -180,8 +180,8 @@ once P0 has landed.
 
 **Focus (2026-09-16): you plus agents.** P0, P1 and P2 are done. The user chose
 to focus on one person working with agents until that loop feels right:
-- P3 is in progress, proven for a solo owner. Uploads and external hand-backs
-  are the work that matters most now; see the
+- P3 is done, proven for a solo owner: uploads, external hand-backs and evals
+  all shipped; see the
   [P3 design](2026-09-16-p3-outside-contributions-design.md).
 - P4 is parked, with any other new team-only work. Revisit after P3.
 

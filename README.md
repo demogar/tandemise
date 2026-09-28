@@ -201,6 +201,7 @@ Task-oriented, one per concept:
 | [Notifications](docs/guides/notifications.md) | hear about new Inbox items while the window is in the background |
 | [About and diagnostics](docs/guides/about-and-diagnostics.md) | see which app and daemon build is running, and copy diagnostics for a bug report |
 | [Giving your agents your skills](docs/guides/skills.md) | import the skills I already use and pin them to roles and steps |
+| [Score a change before it goes live](docs/guides/evals.md) | save a finished step as a case and try a different model, skill or setup against it |
 | [GitHub issues in and out](docs/guides/github-issues.md) | turn labelled issues into missions and report back on them |
 | [Hand work in and back](docs/guides/outside-contributions.md) | start a mission from a file or link I already have, and take a step to another tool and bring it back |
 | [Your setup as code](docs/guides/setup-as-code.md) | keep roles, workflows, routines, limits, skill pins and issue settings in my repository, and import them |
