@@ -16,14 +16,10 @@
 //   SCRIPTED_FAIL_MODEL=bad  a run on the model "bad" writes nothing, so its gate fails
 // The role is on "good" while the source missions run, then moved to "bad": the baseline replays today's
 // (bad) role and the candidate tries "good" again, so the scorecard has a real difference.
-import { spawn, execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import { freshInstall, repoRoot } from './install.mjs';
 
-const here = dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolve(here, '../../..');
 const LINK = process.env.ACCEPTANCE_LINK ?? '/tmp/tdm-p3b-ui';
 const PORT = Number(process.env.CDP_PORT ?? 9338);
 const SHOTS = resolve(process.env.SHOTS_DIR ?? join(repoRoot, '.superpowers/sdd/2026-09-27-p3b-evals/task-8-shots'));
@@ -31,43 +27,16 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const log = (m) => console.log(`\n### ${m}`);
 
 // ---------------------------------------------------------------- fresh install
-try { execFileSync('pkill', ['-f', `user-data-dir=${LINK}/electron`]); } catch { /* none */ }
-if (existsSync(`${LINK}/env.json`)) { try { process.kill(JSON.parse(readFileSync(`${LINK}/env.json`, 'utf8')).pid); } catch { /* gone */ } }
-await sleep(1500);
-// Socket paths must stay under macOS's 104-byte limit, so the run lives behind a short symlink.
-const real = join(tmpdir(), `tdm-p3b-ui-${Date.now().toString(36)}`);
-mkdirSync(real, { recursive: true });
-rmSync(LINK, { recursive: true, force: true });
-symlinkSync(real, LINK);
 mkdirSync(SHOTS, { recursive: true });
-
 log('setup');
-execFileSync(process.execPath, [join(here, '../p0/setup.mjs'), LINK], {
-  env: { ...process.env, SCRIPTED_DELAY_MS: '700', SCRIPTED_STATE_DIR: `${LINK}/scripted-state` },
-  stdio: ['ignore', 'pipe', 'inherit'],
-});
-// A native folder dialog can't be driven over CDP: the window reads the folder it "picks" from this file.
-const PICK = `${LINK}/pick-directory.txt`;
-writeFileSync(PICK, '');
-// A window behind others stops painting, and a screenshot then never returns: keep it rendering while occluded.
-const desktop = spawn('npx', ['electron-vite', 'dev', '--', `--remote-debugging-port=${PORT}`, `--user-data-dir=${LINK}/electron`, '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding', '--disable-background-timer-throttling'], {
-  cwd: join(repoRoot, 'apps/desktop'),
-  env: { ...process.env, TANDEMISE_HOME: `${LINK}/home`, TANDEMISE_TEST_PICK_DIRECTORY: PICK },
-  stdio: ['ignore', 'ignore', 'ignore'],
-  detached: true,
-});
-desktop.unref();
-
-const stopAll = () => {
-  if (process.argv.includes('--hold')) return;
-  try { process.kill(-desktop.pid, 'SIGTERM'); } catch { /* gone */ }
-  try { execFileSync('pkill', ['-f', `user-data-dir=${LINK}/electron`]); } catch { /* none */ }
-  try { process.kill(JSON.parse(readFileSync(`${LINK}/env.json`, 'utf8')).pid); } catch { /* gone */ }
-};
+const install = await freshInstall({ link: LINK, port: PORT, prefix: 'tdm-p3b-ui', daemonEnv: { SCRIPTED_DELAY_MS: '700' } });
+const PICK = install.pick;
+const stopAll = () => { if (!process.argv.includes('--hold')) install.stop(); };
 
 process.env.ACCEPTANCE_SCRATCH = LINK;
 process.env.CDP_PORT = String(PORT);
 const { context } = await import('../p0/lib/ctx.mjs');
+const { developerOn, measuredRuntime, putRole: putRoleOf, role: roleOf, runsHash, waitRun: waitRunOf, windowOf } = await import('./common.mjs');
 
 const failures = [];
 const check = (label, ok, observed) => {
@@ -81,50 +50,19 @@ try {
   const ws = env.workspaceId;
   await page.send('Emulation.setDeviceMetricsOverride', { width: 1360, height: 900, deviceScaleFactor: 1, mobile: false });
   const shot = async (name) => { await sleep(500); await page.screenshot(join(SHOTS, `${name}.png`)); console.log(`shot ${name}.png`); };
-  const has = (needle, selector = 'main') => page.evaluate(`(document.querySelector(${JSON.stringify(selector)})?.innerText ?? '').includes(${JSON.stringify(needle)})`);
-  const waitFor = (needle, selector = 'main', timeoutMs = 30_000) => page.waitForText(needle, { selector, timeoutMs });
-  /** Clicks an enabled button (or link) whose text is exactly `label`, inside `within`. */
-  const press = async (label, within = 'main') => {
-    const ok = await c.until(() => page.evaluate(`(() => {
-      const root = [...document.querySelectorAll(${JSON.stringify(within)})].pop() ?? document.body;
-      const b = [...root.querySelectorAll('button, a')].find((x) => x.offsetParent !== null && !x.disabled && (x.innerText || x.getAttribute('aria-label') || '').trim() === ${JSON.stringify(label)});
-      if (!b) return false;
-      b.scrollIntoView({ block: 'center' });
-      b.click();
-      return true;
-    })()`), { label: `button "${label}"`, timeoutMs: 20_000, everyMs: 300 });
-    await sleep(500);
-    return ok;
-  };
-  // The app routes on the hash and keeps its query in location.search (wouter's hash navigation), so a
-  // query goes where the app's own links put it, and the hashchange tells the router.
-  const go = async (hash) => {
-    const [path, query = ''] = hash.replace(/^#/, '').split('?');
-    await page.evaluate(`(() => {
-      const url = new URL(location.href);
-      url.search = ${JSON.stringify(query)};
-      url.hash = ${JSON.stringify(path)};
-      history.pushState(null, '', url.href);
-      dispatchEvent(new HashChangeEvent('hashchange'));
-    })()`);
-    await sleep(900);
-  };
+  const { go, press, has, waitFor } = windowOf(c);
 
   // -------------------------------------------------------------- seed
   log('seed: runtime, team, role, skill');
-  const profile = (await api.get(`/v1/runtimes?workspaceId=${ws}`)).map((p) => p.profile ?? p).find((p) => p.id === env.scriptedProfileId);
-  await api.patch(`/v1/runtimes/${env.scriptedProfileId}`, { settings: { ...profile.settings, outputFormat: 'ndjson', modelFlag: '--model' } });
+  await measuredRuntime(c);
   const workspaces = await api.get('/v1/workspaces');
   const wsView = workspaces.map((w) => w.workspace ?? w).find((w) => w.id === ws);
   await api.patch(`/v1/workspaces/${ws}`, { autonomy: { ...wsView.autonomy, planApproval: 'auto' } });
   const coder = (await api.post(`/v1/workspaces/${ws}/members`, { kind: 'agent', name: 'Coding agent', reportsTo: c.me, roleIds: ['development'], runtimeProfileIds: [env.scriptedProfileId] })).id;
   await c.staff({ development: { assignees: [coder], reviews: [] } });
 
-  const role = async () => (await api.get(`/v1/roles?workspaceId=${ws}`)).find((r) => r.id === 'development');
-  const putRole = async (patch) => {
-    const { createdAt, updatedAt, builtIn, workspaceId, ...rest } = await role();
-    return api.put('/v1/roles/development', { ...rest, workspaceId: ws, ...patch });
-  };
+  const role = () => roleOf(c);
+  const putRole = (patch) => putRoleOf(c, patch);
 
   // A skill the development role pins at v1, then updated to v2 at its source: the Skills screen's "Try on evals".
   const skillDir = join(LINK, 'skills', 'house-style');
@@ -159,14 +97,12 @@ try {
   await api.post(`/v1/tasks/${(await buildTask(sidebar)).id}/eval-case`, { suiteId: c1.suiteId, name: 'Sidebar step' });
   const c3 = await api.post(`/v1/tasks/${(await buildTask(footer)).id}/eval-case`, { newSuiteName: 'Unmeasured cost', name: 'Footer step' });
   // Today's role is the bad model; the candidate tries the good one.
-  await putRole({ models: { model: 'bad', escalate: [], economyModel: null } });
+  await developerOn(c, 'bad');
   // v2 of the skill at its source, imported: the role still pins v1.
   writeFileSync(join(skillDir, 'SKILL.md'), skillMd('Keep pages calm, and say what changed.'));
   await api.post(`/v1/skills/${imported.skill.id}/update`);
 
-  const TERMINAL = ['completed', 'stopped_at_cap', 'failed', 'cancelled'];
-  const waitRun = (id, ms = 240_000) => c.until(async () => { const r = await api.get(`/v1/evals/runs/${id}`); return TERMINAL.includes(r.status) && r; }, { label: `eval run ${id} ends`, timeoutMs: ms, everyMs: 1000 });
-  const runsHash = (suite, run) => `#/evals?tab=runs&suite=${suite}${run ? `&run=${run}` : ''}`;
+  const waitRun = (id) => waitRunOf(c, id);
 
   // Seeding wrote roles and skills behind the window's back; a reload reads them fresh.
   await page.evaluate('location.reload()');
