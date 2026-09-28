@@ -24,6 +24,11 @@ await waitFor('Start run');
 ev.check('a suite with no runs opens the new-run form, on Models, prefilled with the role\'s model "bad"',
   await page.evaluate(`document.querySelector('input[aria-label="Model for Developer"]')?.value === 'bad'`),
   await page.evaluate(`document.querySelector('input[aria-label="Model for Developer"]')?.value ?? null`));
+// Left as the role has it today, the candidate would change nothing: refused inline, and no run starts.
+await press('Start run');
+await sleep(500);
+const unchanged = await page.evaluate(`document.querySelector('main [aria-label="New run"] [role=alert]')?.innerText ?? ''`);
+ev.check('starting with every role as it is today is refused: "This candidate changes nothing."', unchanged === 'This candidate changes nothing.' && (await api.get(`/v1/evals/suites/${e1.suiteId}/runs`)).length === 0, unchanged);
 await page.fill('Model for Developer', 'good');
 await page.fill('Repeats', '3');
 await page.fill('Spend cap', '10');
@@ -96,6 +101,10 @@ const first = await scoreRow('First-attempt pass rate');
 const trials = await scoreRow('Trials');
 const cost = await scoreRow('Cost (mean, total)');
 ev.note(`Trials ${JSON.stringify(trials)}; First-attempt ${JSON.stringify(first)}; Cost ${JSON.stringify(cost)}`);
+ev.check('the Trials row reads Baseline "3 ran · 0 passed · 3 failed · 0 blocked", Candidate "3 ran · 3 passed · 0 failed · 0 blocked"',
+  trials[1] === '3 ran · 0 passed · 3 failed · 0 blocked' && trials[2] === '3 ran · 3 passed · 0 failed · 0 blocked', trials);
+const heading = await page.evaluate(`document.querySelector('main [aria-label="Candidate"] h2')?.innerText ?? ''`);
+ev.check('the candidate heading reads "Candidate, against the setup when this run started"', heading === 'Candidate, against the setup when this run started', heading);
 ev.check('no few-repeats note at 3 repeats', !(await has('few repeats, differences may be noise')));
 await page.screenshot(ev.shot('scorecard'));
 await hidden('after');

@@ -37,6 +37,11 @@ const status = await page.evaluate(`document.querySelector('main [aria-label="St
 ev.check('the window shows "Stopped at your $0.60 cap"', status.includes('Stopped at your $0.60 cap') && (await has('Stopped at your $0.60 cap')), status);
 const spend = await page.evaluate(`document.querySelector('[aria-label="Spend"]')?.innerText ?? ''`);
 ev.check('the spend reads "Spent $… of $0.60"', /Spent \$[0-9.]+ of \$0\.60/.test(spend), spend);
+const progress = await page.evaluate(`document.querySelector('[aria-label="Progress"] .stat__value')?.innerText ?? ''`);
+const cancelledCount = done.trials.filter((t) => t.status === 'cancelled').length;
+const total = done.trials.length;
+ev.check('the progress counts cancelled trials apart: "n / total trials · m cancelled"', cancelledCount > 0 && progress === `${total - cancelledCount} / ${total} trials · ${cancelledCount} cancelled` && done.progress.cancelled === cancelledCount, { progress, api: done.progress });
+ev.check('proof (API): the trials the cap stopped say so', done.trials.filter((t) => t.status === 'cancelled').every((t) => t.reason === 'Stopped at your $0.60 cap'), done.trials.map((t) => [t.status, t.reason]));
 const badge = await page.evaluate(`document.querySelector('main [aria-label="Run"] .reader__meta')?.innerText ?? ''`);
 ev.note(`run header: ${JSON.stringify(badge)}`);
 await page.screenshot(ev.shot('stopped-at-cap'));
