@@ -152,12 +152,19 @@ in mind.
 Every run needs its own spend cap; there is no shared or default cap the
 daemon applies for you. A run stops itself once its finished trials have
 spent the cap, with the reason "Stopped at your $5.00 cap" (the cap you set,
-formatted like the Limits screen) — the trials that already finished still
-make a scorecard. If any finished trial in the run reports no cost at all,
-the run's spend is unknown rather than treated as zero, exactly as with a
-[mission or monthly limit](limits.md): an unknown cost can never satisfy a
-cap, so the cap can't stop that run, and it says so: "This runtime doesn't
-report cost, so your cap can't stop this run."
+formatted like the Limits screen). The trials that had not started yet are
+cancelled with that same reason, and the trials that already finished still
+make a scorecard. Progress counts the trials that ran, with the cancelled ones
+beside them ("2 / 4 trials · 2 cancelled"). A run you cancel yourself marks the
+trials it never started "Cancelled before it started."
+
+If a finished trial reports no cost at all, that cost is unknown, never zero,
+exactly as with a [mission or monthly limit](limits.md). The spend shown is
+what was reported, which is a lower bound. The cap still stops the run once
+the reported spend alone reaches it. But the unknown part can't count toward
+the cap, so the run may go past it first, and the run says so: "This runtime
+doesn't report cost, so your cap can't stop this run." When no run reported
+a cost at all, the spend reads "not reported".
 
 Eval spend is real spend. It counts toward the project's monthly total the
 same as any other run, and once any has accrued this month, **Repositories →

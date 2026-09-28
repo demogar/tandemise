@@ -134,7 +134,9 @@ function RunDetail({ id }: { id: string }): JSX.Element {
       <div className="grid grid--2">
         <div className="stat" aria-label="Progress">
           <span className="stat__label">Progress</span>
-          <span className="stat__value">{run.progress.done} / {run.progress.total} trials</span>
+          <span className="stat__value">
+            {run.progress.done} / {run.progress.total} trials{run.progress.cancelled > 0 ? ` · ${run.progress.cancelled} cancelled` : ''}
+          </span>
           <div className="meter" style={{ marginTop: 'var(--s1)' }}>
             <div className="meter__fill" style={{ width: `${run.progress.total === 0 ? 0 : (run.progress.done / run.progress.total) * 100}%` }} />
           </div>
@@ -213,7 +215,7 @@ function CandidateLines({ candidate }: { candidate: EvalCandidate }): JSX.Elemen
         : Object.entries(candidate.roles).map(([roleId, refs]) => `${name(roleId)} with ${refs.map((r) => `${r.name} ${r.version === 'latest' ? 'latest' : `v${r.version}`}`).join(', ')}`);
   return (
     <section aria-label="Candidate" className="stack" style={{ gap: 'var(--s1)' }}>
-      <h2 className="section__title">Candidate, against the setup you have now</h2>
+      <h2 className="section__title">Candidate, against the setup when this run started</h2>
       {lines.map((line) => <p key={line} className="muted" style={{ margin: 0 }}>{line}</p>)}
     </section>
   );

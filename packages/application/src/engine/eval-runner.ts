@@ -17,6 +17,9 @@ import type { TaskAttemptOutcome, TrialContext } from './task-executor.js';
 /** Why a run the daemon stopped in the middle of is failed at the next boot (Global Constraints copy). */
 export const DAEMON_STOPPED_REASON = 'The daemon stopped during this run.';
 
+/** Why a trial a cancel stopped before it ever started is cancelled. */
+export const CANCELLED_BEFORE_START_REASON = 'Cancelled before it started.';
+
 /** The cap copy, with the cap as the Limits screen shows money: two decimals. */
 export function stoppedAtCapReason(capUsd: number): string {
   return `Stopped at your $${capUsd.toFixed(2)} cap`;
@@ -61,14 +64,15 @@ export interface EvalRunnerDeps {
 
 /** What an eval run has spent so far, over the runs of every trial mission it made. */
 export interface EvalSpend {
-  /** Null when any finished run's cost is unknown: an unknown cost is never $0 (Ruling 9). */
-  readonly spentUsd: number | null;
+  /** The sum of every reported cost: a lower bound when `costUnmeasured`, never a guess for the rest. */
+  readonly measuredUsd: number;
+  /** True when a finished run reported no cost (Ruling 9): an unknown cost is never $0. */
   readonly costUnmeasured: boolean;
 }
 
 /** Spend over `trials`' missions: every finished run's reported cost. */
-export function evalSpend(runs: RunRepositoryPort, trials: readonly EvalTrial[]): EvalSpend {
-  let spent = 0;
+export function evalSpend(runs: Pick<RunRepositoryPort, 'listByMission'>, trials: readonly EvalTrial[]): EvalSpend {
+  let measured = 0;
   let unmeasured = false;
   for (const trial of trials) {
     if (trial.missionId === null) continue;
@@ -76,10 +80,10 @@ export function evalSpend(runs: RunRepositoryPort, trials: readonly EvalTrial[])
       if (run.status === 'STARTING' || run.status === 'RUNNING') continue;
       const cost = run.usage?.costUsd;
       if (cost === undefined || cost === null) unmeasured = true;
-      else spent += cost;
+      else measured += cost;
     }
   }
-  return { spentUsd: unmeasured ? null : spent, costUnmeasured: unmeasured };
+  return { measuredUsd: measured, costUnmeasured: unmeasured };
 }
 
 /** The scorecard over a run's trials as they stand: only finished trials count toward it. */
@@ -225,7 +229,7 @@ export class EvalRunner implements LifecycleComponent {
         try {
           const current = this.deps.evals.getRun(run.id);
           if (current !== undefined && (current.status === 'queued' || current.status === 'running')) {
-            this.#cancelQueued(run.id);
+            this.#cancelQueued(run.id, CANCELLED_BEFORE_START_REASON);
             this.#finishRun(current, 'failed', `The eval run stopped: ${errorMessage(e)}`);
           }
         } catch (again) {
@@ -268,11 +272,12 @@ export class EvalRunner implements LifecycleComponent {
       if (ended === 'stopping') return;
 
       const spend = evalSpend(this.deps.runs, this.deps.evals.listTrials(run.id));
-      // An unmeasured cost cannot be held to a cap (Ruling 9); the run says so instead.
-      if (spend.spentUsd !== null && spend.spentUsd >= current.spendCapUsd) {
+      // The measured spend is a lower bound even when some runs reported no cost (Ruling 9): once it
+      // reaches the cap, the cap was reached. What went unmeasured can only make it later; the run says so.
+      if (spend.measuredUsd >= current.spendCapUsd) {
         const still = this.deps.evals.getRun(run.id);
         if (still?.status !== 'running') return;
-        this.#cancelQueued(run.id);
+        this.#cancelQueued(run.id, stoppedAtCapReason(current.spendCapUsd));
         this.#finishRun(still, 'stopped_at_cap', stoppedAtCapReason(current.spendCapUsd));
         return;
       }
@@ -574,9 +579,9 @@ export class EvalRunner implements LifecycleComponent {
     this.deps.evals.updateTrial(id, { status, reason, score, finishedAt: this.deps.clock.now() });
   }
 
-  #cancelQueued(runId: EvalRunId): void {
+  #cancelQueued(runId: EvalRunId, reason: string): void {
     for (const trial of this.deps.evals.listTrials(runId)) {
-      if (trial.status === 'queued') this.#endTrial(trial.id, 'cancelled', null, null);
+      if (trial.status === 'queued') this.#endTrial(trial.id, 'cancelled', reason, null);
     }
   }
 

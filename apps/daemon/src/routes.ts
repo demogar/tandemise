@@ -16,6 +16,7 @@ import {
   parkTaskRequest, handBackRequest, resolveWorkspaceLinkRequest,
   createEvalSuiteRequest, saveEvalCaseRequest, startEvalRunRequest, runScoresQuery,
 } from '@tandemise/api-contract';
+import type { EvalSuiteView } from '@tandemise/api-contract';
 import { normalizeLimits } from '@tandemise/domain';
 import { ContributionError, EvalError } from '@tandemise/application';
 import type { TandemiseServices } from '@tandemise/application';
@@ -179,7 +180,9 @@ export function buildRouter(services: TandemiseServices, options: { readonly tes
   r.get('/v1/workspaces/:id/evals/suites', (ctx) => services.evals.listSuites(asId(ctx.params.id!)));
   r.post('/v1/workspaces/:id/evals/suites', async (ctx) => {
     try {
-      return services.evals.createSuite(asId(ctx.params.id!), ctx.caller, (await ctx.body(createEvalSuiteRequest)).name);
+      const suite = services.evals.createSuite(asId(ctx.params.id!), ctx.caller, (await ctx.body(createEvalSuiteRequest)).name);
+      // The EvalSuiteView the client reads: a suite just made has no cases.
+      return { id: suite.id, name: suite.name, cases: 0, createdAt: suite.createdAt } satisfies EvalSuiteView;
     } catch (e) { throw mapEvalError(e); }
   });
   r.delete('/v1/evals/suites/:id', (ctx) => {
@@ -197,9 +200,11 @@ export function buildRouter(services: TandemiseServices, options: { readonly tes
   r.post('/v1/tasks/:id/eval-case', async (ctx) => {
     try {
       const { suiteId, ...rest } = await ctx.body(saveEvalCaseRequest);
-      return await services.evals.saveCase(asId(ctx.params.id!), ctx.caller, {
+      const kase = await services.evals.saveCase(asId(ctx.params.id!), ctx.caller, {
         ...rest, suiteId: suiteId === undefined ? undefined : asId(suiteId),
       });
+      // The EvalCaseView the client reads, not the stored case with its full snapshot.
+      return services.evals.caseView(kase);
     } catch (e) { throw mapEvalError(e); }
   });
   r.get('/v1/evals/suites/:id/runs', (ctx) =>

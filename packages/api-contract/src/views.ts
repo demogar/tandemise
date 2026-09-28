@@ -1149,12 +1149,16 @@ export interface EvalRunView {
   readonly reason: string | null;
   readonly repeats: number;
   readonly spendCapUsd: number;
-  /** Null when any finished trial's cost is unknown: unknown is never $0. */
+  /**
+   * The measured spend: a lower bound when `costUnmeasured`. Null only when no finished run
+   * reported a cost at all: unknown is never $0.
+   */
   readonly spentUsd: number | null;
-  /** True when a finished trial reported no cost, so the cap could not stop this run. */
+  /** True when a finished trial reported no cost, so the cap may not stop this run in time. */
   readonly costUnmeasured: boolean;
   readonly candidate: EvalCandidate;
-  readonly progress: { readonly done: number; readonly total: number };
+  /** `done` counts trials with an outcome other than cancelled; `cancelled` counts the rest that ended. */
+  readonly progress: { readonly done: number; readonly total: number; readonly cancelled: number };
   readonly trials: readonly EvalTrialView[];
   readonly scorecard: Scorecard | null;
   readonly createdAt: string;

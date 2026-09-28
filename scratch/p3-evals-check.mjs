@@ -726,11 +726,11 @@ try {
       return s;
     };
     let runner;
-    const drive = async (executor, extra = {}) => {
-      const run = queueRun();
+    const drive = async (executor, extra = {}, make = queueRun) => {
+      const run = make();
       runner = new app.EvalRunner({ ...container.resolve(app.EVAL_RUNNER).deps, executor, clock: fakeClock, sleep, ...extra });
       await runner.start();
-      for (const until = Date.now() + 15_000; Date.now() < until && !['completed', 'failed'].includes(evalsRepo.getRun(run.id).status);) {
+      for (const until = Date.now() + 15_000; Date.now() < until && !['completed', 'failed', 'stopped_at_cap'].includes(evalsRepo.getRun(run.id).status);) {
         await new Promise((r) => setTimeout(r, 20));
       }
       await runner.stop();
@@ -786,6 +786,34 @@ try {
     check('a throw after the step settled ends the trial failed with its message', throwing.trial.status === 'failed' && throwing.trial.reason === 'The disk is full.', throwing.trial);
     check('and its worktree is still cleaned up', released.includes(madeTarget?.id), released);
     check('and the run still ends', throwing.run.status === 'completed', throwing.run);
+
+    // Final review, item 2: one run that reports no cost must not switch the cap off. The first trial's
+    // run is unmeasured, the rest cost $0.50 each: measured spend is a lower bound, and at $1.00 it is
+    // past the $0.60 cap, so the run stops there and the last trial is cancelled with the cap reason.
+    {
+      const costs = new Map();
+      const costed = stub(() => ({ kind: 'settled', status: 'SUCCEEDED', reason: null }));
+      const settleCosted = costed.execute;
+      costed.execute = async (taskId) => {
+        costs.set(tasksRepo.get(taskId).missionId, costs.size === 0 ? null : 0.5);
+        return settleCosted(taskId);
+      };
+      const runsStub = { listByMission: (missionId) => (costs.has(missionId) ? [{ status: 'SUCCEEDED', usage: { costUsd: costs.get(missionId) } }] : []) };
+      const fourTrials = () => {
+        const run = evalsRepo.insertRun({ ...fixtureRun(suite.id), repeats: 2, spendCapUsd: 0.6, variants: { baseline: variant('baseline'), candidate: variant('candidate') } });
+        evalsRepo.insertTrials([1, 2, 3, 4].map((seq) => ({
+          ...fixtureTrial(run.id, kase.id, seq <= 2 ? 1 : 2), seq, variant: seq % 2 === 1 ? 'baseline' : 'candidate',
+        })));
+        return run;
+      };
+      const capped = await drive(costed, { runs: runsStub }, fourTrials);
+      const cappedTrials = evalsRepo.listTrials(capped.run.id);
+      check('an unmeasured run does not switch the cap off: measured spend over the cap stops the run', capped.run.status === 'stopped_at_cap' && capped.run.reason === 'Stopped at your $0.60 cap', { run: capped.run.status, trials: cappedTrials.map((t) => t.status) });
+      check('the trial the cap stopped is cancelled with the cap reason', eq(cappedTrials.map((t) => t.status), ['passed', 'passed', 'passed', 'cancelled']) && cappedTrials[3].reason === 'Stopped at your $0.60 cap', cappedTrials.map((t) => [t.status, t.reason]));
+      const spend = app.evalSpend(runsStub, cappedTrials);
+      check('spend: the measured sum, flagged as partly unmeasured', spend.measuredUsd === 1 && spend.costUnmeasured === true, spend);
+      check('spend: nothing measured at all', eq(app.evalSpend({ listByMission: () => [{ status: 'SUCCEEDED', usage: null }] }, cappedTrials.slice(0, 1)), { measuredUsd: 0, costUnmeasured: true }));
+    }
 
     // Fix round 1: boot recovery that throws still fails the run, so the loop never resumes it.
     const stuck = queueRun();
@@ -1069,6 +1097,7 @@ section('daemon: run scores');
         const finished3 = d3.trials.filter((t) => t.status !== 'cancelled');
         check('the rest of the trials are cancelled', d3.trials.some((t) => t.status === 'cancelled') && finished3.length <= 3, d3.trials.map((t) => t.status));
         check('spend reached the cap', typeof d3.spentUsd === 'number' && d3.spentUsd >= 0.6, d3.spentUsd);
+        check('trials the cap stopped carry the cap reason', d3.trials.filter((t) => t.status === 'cancelled').every((t) => t.reason === 'Stopped at your $0.60 cap'), d3.trials.map((t) => [t.status, t.reason]));
         check('a stopped run still has a scorecard', d3.run.scorecard !== null && d3.run.finishedAt !== null);
 
         // Refusals write nothing.
@@ -1162,6 +1191,13 @@ section('daemon: run scores');
         const d5b = E().getRun(r5.id);
         check('the live trial ends cancelled', d5b.trials.find((t) => t.id === live5?.id)?.status === 'cancelled', d5b.trials.map((t) => t.status));
         check('nothing is left queued or running', d5b.trials.every((t) => !['queued', 'running'].includes(t.status)));
+        // Final review, minor: a trial the person's cancel stopped before it started says so, and progress
+        // does not count cancelled trials as done.
+        const notStarted5 = d5b.trials.filter((t) => t.status === 'cancelled' && t.id !== live5?.id);
+        check('trials cancelled before they started say so', notStarted5.length > 0 && notStarted5.every((t) => t.reason === 'Cancelled before it started.'), d5b.trials.map((t) => [t.status, t.reason]));
+        const progress5 = E().runView(r5.id).progress;
+        const cancelled5 = d5b.trials.filter((t) => t.status === 'cancelled').length;
+        check('progress counts cancelled trials apart from done', progress5.cancelled === cancelled5 && progress5.done === d5b.trials.length - cancelled5 && progress5.total === d5b.trials.length, progress5);
         check('the cancelled trial worktree is gone', !git(d.repoPath, 'worktree', 'list').includes('eval-trial'), git(d.repoPath, 'worktree', 'list'));
         await refuses('a finished run cannot be cancelled', async () => E().cancelRun(r5.id, caller), 'not_running');
 
@@ -1223,7 +1259,7 @@ section('daemon: run scores');
           const m5BuildTask = (await d.tasks(m5.id)).find((t) => t.roleId === 'development');
 
           const suiteRes = await d.api('POST', `/v1/workspaces/${ws}/evals/suites`, { name: 'HTTP suite' });
-          check('create suite: 200', suiteRes.status === 200, suiteRes);
+          check('create suite: 200, an EvalSuiteView', suiteRes.status === 200 && eq(Object.keys(suiteRes.body).sort(), ['cases', 'createdAt', 'id', 'name']) && suiteRes.body.cases === 0 && suiteRes.body.name === 'HTTP suite', suiteRes);
           const httpSuiteId = suiteRes.body.id;
           check('list suites includes it', (await d.api('GET', `/v1/workspaces/${ws}/evals/suites`)).body.some((s) => s.id === httpSuiteId));
 
@@ -1234,6 +1270,7 @@ section('daemon: run scores');
           const casesRes = await d.api('GET', `/v1/evals/suites/${httpSuiteId}/cases`);
           check('list cases: 200', casesRes.status === 200 && Array.isArray(casesRes.body), casesRes);
           const caseView = casesRes.body.find((c) => c.id === httpCaseId);
+          check('save case returns the EvalCaseView the list shows, not the stored case', eq(caseRes.body, caseView) && caseRes.body.snapshot === undefined, Object.keys(caseRes.body));
           check(
             'case view shape',
             caseView?.suiteId === httpSuiteId && caseView.name === 'HTTP case' && typeof caseView.baseSha === 'string'
@@ -1276,7 +1313,7 @@ section('daemon: run scores');
           check(
             'run view once finished: scorecard, spend, done progress',
             runView.scorecard !== null && typeof runView.spentUsd === 'number' && runView.costUnmeasured === false
-              && runView.progress.done === runView.progress.total,
+              && runView.progress.done === runView.progress.total && runView.progress.cancelled === 0,
             runView,
           );
           check('run view trials carry the case name', runView.trials.length > 0 && runView.trials.every((t) => t.caseName === 'HTTP case'), runView.trials);

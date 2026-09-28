@@ -7,11 +7,11 @@ import type {
 } from '@tandemise/domain';
 import { EMPTY_KNOWLEDGE, NO_ROLE_MODELS } from '@tandemise/domain';
 import type { EvalCaseView, EvalRunView, EvalTrialView } from '@tandemise/api-contract';
-import { summarizeRunScores, type RoleModelSummary } from '@tandemise/evaluation';
+import { summarizeRunScores, type RoleModelSummary, type Scorecard } from '@tandemise/evaluation';
 import type { CommandExecutor } from '@tandemise/integrations-core';
 import type { Clock, EvalCaseId, EvalRunId, EvalSuiteId, TaskId, WorkspaceId } from '@tandemise/shared';
 import { TandemiseError, errorMessage, ids } from '@tandemise/shared';
-import { evalSpend, scorecardFor } from '../engine/eval-runner.js';
+import { CANCELLED_BEFORE_START_REASON, evalSpend, scorecardFor } from '../engine/eval-runner.js';
 import { readSetup } from '../setup/codec.js';
 import type { Caller } from '../support/identity.js';
 import { liveArtifacts, upstreamTaskIds } from '../support/lineage.js';
@@ -49,11 +49,22 @@ const MAX_REPEATS = 10;
 export interface EvalRunDetail {
   readonly run: EvalRun;
   readonly trials: readonly EvalTrial[];
-  /** Null when any finished trial's cost is unknown: unknown is never $0. */
+  /**
+   * The measured spend, a lower bound when `costUnmeasured`. Null only when nothing at all was
+   * measured: an unknown cost is never $0.
+   */
   readonly spentUsd: number | null;
-  /** True when a finished trial reported no cost, so the cap cannot stop this run. */
+  /** True when a finished trial reported no cost, so the cap may not stop this run in time. */
   readonly costUnmeasured: boolean;
 }
+
+/**
+ * Compile-time guard: `@tandemise/evaluation` sits above `api-contract`, so the contract restates the
+ * scorecard structurally. The two must stay the same shape both ways, or this fails to typecheck.
+ */
+type SameShape<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+const scorecardMatchesContract: SameShape<Scorecard, NonNullable<EvalRunView['scorecard']>> = true;
+void scorecardMatchesContract;
 
 /** What the service asks of the eval runner; resolved lazily, since the runner is composed from the executor. */
 export interface EvalRunnerControl {
@@ -195,10 +206,11 @@ export class EvalService {
 
   /** The suite's cases as the Evals screen reads them: what a case replays, without its full snapshot. */
   caseViews(suiteId: EvalSuiteId): readonly EvalCaseView[] {
-    return this.deps.evals.listCases(suiteId).map((kase) => this.#caseView(kase));
+    return this.deps.evals.listCases(suiteId).map((kase) => this.caseView(kase));
   }
 
-  #caseView(kase: EvalCase): EvalCaseView {
+  /** One case as the Evals screen reads it (what saving a case answers with, too). */
+  caseView(kase: EvalCase): EvalCaseView {
     return {
       id: kase.id,
       suiteId: kase.suiteId,
@@ -300,16 +312,21 @@ export class EvalService {
     const run = this.deps.evals.getRun(runId);
     if (run === undefined) throw TandemiseError.notFound('Eval run', runId);
     const trials = this.deps.evals.listTrials(runId);
-    return { run, trials, ...evalSpend(this.deps.runs, trials) };
+    const { measuredUsd, costUnmeasured } = evalSpend(this.deps.runs, trials);
+    // Nothing measured is not $0 spent. (Measured runs that all cost exactly $0 alongside an unmeasured
+    // one read the same; evalSpend's two fields cannot tell them apart.)
+    const nothingMeasured = costUnmeasured && measuredUsd === 0;
+    return { run, trials, spentUsd: nothingMeasured ? null : measuredUsd, costUnmeasured };
   }
 
   /** A run as the Evals screen reads it: its trials named by case, its progress, and its scorecard once it has one. */
   runView(runId: EvalRunId): EvalRunView {
     const { run, trials, spentUsd, costUnmeasured } = this.getRun(runId);
     const caseNames = new Map(this.deps.evals.listCases(run.suiteId).map((kase) => [kase.id, kase.name] as const));
-    // A trial not yet done is still queued or mid-run; every other status is an outcome.
-    const notDone = new Set<EvalTrialStatus>(['queued', 'running']);
+    // A trial still queued or mid-run is not done, and a cancelled one never ran to an outcome.
+    const notDone = new Set<EvalTrialStatus>(['queued', 'running', 'cancelled']);
     const done = trials.filter((t) => !notDone.has(t.status)).length;
+    const cancelled = trials.filter((t) => t.status === 'cancelled').length;
     return {
       id: run.id,
       suiteId: run.suiteId,
@@ -320,7 +337,7 @@ export class EvalService {
       spentUsd,
       costUnmeasured,
       candidate: run.candidate,
-      progress: { done, total: trials.length },
+      progress: { done, total: trials.length, cancelled },
       trials: trials.map((t): EvalTrialView => ({
         id: t.id,
         caseId: t.caseId,
@@ -331,7 +348,8 @@ export class EvalService {
         status: t.status,
         reason: t.reason,
       })),
-      scorecard: run.scorecard as EvalRunView['scorecard'],
+      // Written by `scorecardFor`; stored untyped, so the one cast is to the evaluation type the guard above checks.
+      scorecard: run.scorecard as Scorecard | null,
       createdAt: run.createdAt,
       startedAt: run.startedAt,
       finishedAt: run.finishedAt,
@@ -353,7 +371,9 @@ export class EvalService {
     if (run.status !== 'queued' && run.status !== 'running') throw new EvalError('not_running', 'This run has already finished.');
     const now = this.deps.clock.now();
     for (const trial of this.deps.evals.listTrials(runId)) {
-      if (trial.status === 'queued') this.deps.evals.updateTrial(trial.id, { status: 'cancelled', finishedAt: now });
+      if (trial.status === 'queued') {
+        this.deps.evals.updateTrial(trial.id, { status: 'cancelled', reason: CANCELLED_BEFORE_START_REASON, finishedAt: now });
+      }
     }
     this.deps.runner().cancel(runId);
     this.deps.evals.updateRun(runId, { status: 'cancelled', scorecard: scorecardFor(this.deps.evals, run), finishedAt: now });
