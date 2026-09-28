@@ -1,6 +1,6 @@
 import type {
   ArtifactRepositoryPort, ArtifactStorePort, EvalBlobPort, EvalCase, EvalRepositoryPort, EvalRun, EvalRunStatus, EvalTrial,
-  EvalTrialStatus, ExecutionTargetRepositoryPort, Mission, MissionCriteriaRepositoryPort, MissionRepositoryPort, MissionStatus,
+  EvalTrialStatus, ExecutionTargetRecord, ExecutionTargetRepositoryPort, Mission, MissionCriteriaRepositoryPort, MissionRepositoryPort, MissionStatus,
   MissionTask, ModelPolicy, RepoRepositoryPort, RunRepositoryPort, RunScoreRepositoryPort, SkillPin, TaskRepositoryPort,
   TaskStatus, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
@@ -194,6 +194,13 @@ export class EvalRunner implements LifecycleComponent {
         this.deps.log.warn('eval.run_interrupted', { runId: run.id });
       } catch (e) {
         this.deps.log.error('eval.recovery_failed', { runId: run.id, error: errorMessage(e) });
+        // Left `running`, the loop would resume a run whose trial state is unknown. It is failed
+        // with no scorecard rather than not at all.
+        try {
+          this.deps.evals.updateRun(run.id, { status: 'failed', reason: DAEMON_STOPPED_REASON, finishedAt: this.deps.clock.now() });
+        } catch (again) {
+          this.deps.log.error('eval.recovery_failed', { runId: run.id, error: errorMessage(again) });
+        }
       }
     }
   }
@@ -214,10 +221,17 @@ export class EvalRunner implements LifecycleComponent {
         // A run that throws is ended, not retried: looping on it would spin forever.
         this.deps.log.error('eval.run_failed', { runId: run.id, error: errorMessage(e) });
         if (!this.#running) return;
-        const current = this.deps.evals.getRun(run.id);
-        if (current !== undefined && (current.status === 'queued' || current.status === 'running')) {
-          this.#cancelQueued(run.id);
-          this.#finishRun(current, 'failed', `The eval run stopped: ${errorMessage(e)}`);
+        // Its own guard: a throw here would reject the loop and leave the runner dead with nobody told.
+        try {
+          const current = this.deps.evals.getRun(run.id);
+          if (current !== undefined && (current.status === 'queued' || current.status === 'running')) {
+            this.#cancelQueued(run.id);
+            this.#finishRun(current, 'failed', `The eval run stopped: ${errorMessage(e)}`);
+          }
+        } catch (again) {
+          this.deps.log.error('eval.run_end_failed', { runId: run.id, error: errorMessage(again) });
+          // Not idle-free: a run that can be neither driven nor ended would otherwise spin the loop.
+          await this.#idle();
         }
       }
     }
@@ -300,17 +314,28 @@ export class EvalRunner implements LifecycleComponent {
       }
       if (end.kind === 'stopping') return 'stopping';
 
-      const score = stepTaskId === null ? null : trialScoreFrom(this.deps.runScores.listByTask(stepTaskId));
-      const [status, reason, missionStatus] = trialOutcome(end);
-      // A step the trial ended while it still waited (cancelled between attempts, say) is closed
-      // with it, so no hidden task is left looking like work to do.
-      const step = stepTaskId === null ? undefined : this.deps.tasks.get(stepTaskId);
-      if (step !== undefined && !ENDED_TASK_STATUSES.includes(step.status)) {
-        this.deps.tasks.update(step.id, { status: 'CANCELLED', statusReason: reason ?? 'The eval trial ended.' });
+      // Every write from here on is guarded: a throw must still end the trial and remove its
+      // worktree, or the trial would read `running` forever and the run could never finish.
+      let cleaned = false;
+      try {
+        const score = stepTaskId === null ? null : trialScoreFrom(this.deps.runScores.listByTask(stepTaskId));
+        const [status, reason, missionStatus] = trialOutcome(end);
+        // A step the trial ended while it still waited (cancelled between attempts, say) is closed
+        // with it, so no hidden task is left looking like work to do.
+        const step = stepTaskId === null ? undefined : this.deps.tasks.get(stepTaskId);
+        if (step !== undefined && !ENDED_TASK_STATUSES.includes(step.status)) {
+          this.deps.tasks.update(step.id, { status: 'CANCELLED', statusReason: reason ?? 'The eval trial ended.' });
+        }
+        if (missionId !== null) this.deps.missions.update(missionId, { status: missionStatus, statusReason: reason });
+        // Before the trial is marked ended, so whoever sees it ended also sees its worktree gone.
+        cleaned = true;
+        if (missionId !== null) await this.#cleanUp(missionId);
+        this.#endTrial(trial.id, status, reason, score);
+      } catch (e) {
+        this.deps.log.error('eval.trial_end_failed', { runId: run.id, trialId: trial.id, error: errorMessage(e) });
+        if (!cleaned && missionId !== null) await this.#cleanUpQuietly(missionId);
+        this.#endTrial(trial.id, 'failed', errorMessage(e), null);
       }
-      if (missionId !== null) this.deps.missions.update(missionId, { status: missionStatus, statusReason: reason });
-      if (missionId !== null) await this.#cleanUp(missionId);
-      this.#endTrial(trial.id, status, reason, score);
       return 'done';
     } finally {
       this.#contexts.delete(trial.id);
@@ -470,10 +495,15 @@ export class EvalRunner implements LifecycleComponent {
     const mission = this.deps.missions.get(missionId);
     const repository = mission?.repositoryId === null || mission === undefined ? undefined : this.deps.repositories.get(mission.repositoryId);
     const branches = new Set<string>();
-    for (const record of this.deps.targets.listByMission(missionId)) {
-      // A target with no branch never got as far as a worktree (its working directory is still the
-      // repository itself), so there is nothing of the trial's to remove.
-      if (record.kind !== 'worktree' || record.branch === null) continue;
+    for (const found of this.deps.targets.listByMission(missionId)) {
+      if (found.kind !== 'worktree' || found.status === 'RELEASED' && found.branch === null) continue;
+      // The executor records the branch only after `git worktree add` returns, so a daemon that died
+      // in between left a worktree on disk under a row with no branch. It is found by the branch
+      // the worktree factory names, which only this task's target uses.
+      const record = found.branch !== null || mission === undefined || repository === undefined
+        ? found
+        : await this.#provisionedWorktree(found, mission, repository.path);
+      if (record === null || record.branch === null) continue;
       branches.add(record.branch);
       if (record.status === 'RELEASED') continue;
       try {
@@ -499,6 +529,39 @@ export class EvalRunner implements LifecycleComponent {
       } catch (e) {
         this.deps.log.warn('eval.cleanup_failed', { missionId, branch, error: errorMessage(e) });
       }
+    }
+  }
+
+  /** `#cleanUp` for a path that is already handling a failure: nothing it throws may hide that failure. */
+  async #cleanUpQuietly(missionId: MissionId): Promise<void> {
+    try {
+      await this.#cleanUp(missionId);
+    } catch (e) {
+      this.deps.log.warn('eval.cleanup_failed', { missionId, error: errorMessage(e) });
+    }
+  }
+
+  /**
+   * A worktree target left without a branch: the worktree the factory would have made for it,
+   * if git has one registered - `tandemise/<mission slug>/<target name slug>-<task id tail>` - or null.
+   */
+  async #provisionedWorktree(record: ExecutionTargetRecord, mission: Mission, repositoryPath: string): Promise<ExecutionTargetRecord | null> {
+    if (this.deps.exec === null || record.taskId === null) return null;
+    const branch = `tandemise/${slugify(mission.title)}/${slugify(record.name)}-${record.taskId.slice(-8)}`;
+    try {
+      const listed = await this.deps.exec.run({
+        command: 'git', args: ['worktree', 'list', '--porcelain'], cwd: repositoryPath, timeoutMs: GIT_TIMEOUT_MS, env: { GIT_TERMINAL_PROMPT: '0' },
+      });
+      if (listed.exitCode !== 0) return null;
+      for (const entry of listed.stdout.split(/\n\s*\n/)) {
+        const path = /^worktree (.+)$/m.exec(entry)?.[1];
+        if (path !== undefined && entry.includes(`branch refs/heads/${branch}`)) return { ...record, workingDirectory: path, branch };
+      }
+      // No worktree, but `worktree add -b` may still have created the branch before it failed.
+      return { ...record, branch, status: 'RELEASED' };
+    } catch (e) {
+      this.deps.log.warn('eval.cleanup_failed', { missionId: mission.id, targetId: record.id, error: errorMessage(e) });
+      return null;
     }
   }
 

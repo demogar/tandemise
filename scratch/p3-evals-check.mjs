@@ -21,7 +21,7 @@
 // fails and nothing is requeued), and a runtime that reports no cost.
 //
 //   npm run build && node scratch/p3-evals-check.mjs
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import {
   copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync,
 } from 'node:fs';
@@ -703,9 +703,9 @@ try {
       return s;
     };
     let runner;
-    const drive = async (executor) => {
+    const drive = async (executor, extra = {}) => {
       const run = queueRun();
-      runner = new app.EvalRunner({ ...container.resolve(app.EVAL_RUNNER).deps, executor, clock: fakeClock, sleep });
+      runner = new app.EvalRunner({ ...container.resolve(app.EVAL_RUNNER).deps, executor, clock: fakeClock, sleep, ...extra });
       await runner.start();
       for (const until = Date.now() + 15_000; Date.now() < until && !['completed', 'failed'].includes(evalsRepo.getRun(run.id).status);) {
         await new Promise((r) => setTimeout(r, 20));
@@ -732,6 +732,84 @@ try {
     check('it gave up after ten minutes, not before', forever.calls >= 10 && forever.calls <= 12, forever.calls);
     check('the blocked trial task says why', tasksRepo.listByMission(blocked.trial.missionId).find((t) => t.key === 'design')?.status === 'BLOCKED');
     check('the run still completes', blocked.run.status === 'completed', blocked.run);
+
+    // Fix round 1: a write that throws after the step settled still ends the trial and cleans it up.
+    const targetsRepo = container.resolve(app.EXECUTION_TARGET_REPOSITORY);
+    const guarded = (repo, method, when, message) => new Proxy(repo, {
+      get(target, key) {
+        if (key === method) return (...args) => { if (when(...args)) throw new Error(message); return target[key](...args); };
+        const value = target[key];
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    const released = [];
+    const stubTargets = { release: async (record) => { released.push(record.id); return { targetId: record.id, released: true, workingDirectory: record.workingDirectory, retainedReason: null, commit: null }; } };
+    let madeTarget;
+    const withTarget = stub(() => ({ kind: 'settled', status: 'SUCCEEDED', reason: null }));
+    const settle = withTarget.execute;
+    withTarget.execute = async (taskId) => {
+      const task = tasksRepo.get(taskId);
+      madeTarget = targetsRepo.create({
+        id: S.ids.executionTarget(), workspaceId: ws.id, missionId: task.missionId, taskId, kind: 'worktree', name: 'trial',
+        workingDirectory: join(tmp, 'no-such-worktree'), branch: 'tandemise/trial/x', baseBranch: null, status: 'READY',
+        detail: null, createdAt: now(), releasedAt: null,
+      });
+      return settle(taskId);
+    };
+    const throwing = await drive(withTarget, {
+      targetManager: stubTargets,
+      missions: guarded(missionsRepo, 'update', (_id, patch) => patch.status === 'COMPLETE', 'The disk is full.'),
+    });
+    check('a throw after the step settled ends the trial failed with its message', throwing.trial.status === 'failed' && throwing.trial.reason === 'The disk is full.', throwing.trial);
+    check('and its worktree is still cleaned up', released.includes(madeTarget?.id), released);
+    check('and the run still ends', throwing.run.status === 'completed', throwing.run);
+
+    // Fix round 1: boot recovery that throws still fails the run, so the loop never resumes it.
+    const stuck = queueRun();
+    evalsRepo.updateRun(stuck.id, { status: 'running' });
+    const brokenRecovery = new app.EvalRunner({
+      ...container.resolve(app.EVAL_RUNNER).deps,
+      evals: guarded(evalsRepo, 'listTrials', () => true, 'The database is locked.'),
+    });
+    await brokenRecovery.recoverInterrupted();
+    const stuckAfter = evalsRepo.getRun(stuck.id);
+    check('recovery that throws still fails the run', stuckAfter.status === 'failed' && stuckAfter.reason === 'The daemon stopped during this run.' && stuckAfter.finishedAt !== null, stuckAfter);
+    evalsRepo.updateTrial(evalsRepo.listTrials(stuck.id)[0].id, { status: 'cancelled' });
+
+    // Fix round 1: a worktree whose target row never got its branch (the daemon died between
+    // `git worktree add` and recording it) is found by the branch the factory names, and removed.
+    {
+      const repoDir = join(tmp, 'leftover-repo');
+      execFileSync('git', ['init', '-q', '-b', 'main', repoDir]);
+      execFileSync('git', ['-C', repoDir, '-c', 'user.name=check', '-c', 'user.email=check@example.com', 'commit', '-q', '--allow-empty', '-m', 'init']);
+      const repo2 = container.resolve(app.REPO_REPOSITORY).create({
+        id: S.ids.repository(), workspaceId: ws.id, name: 'leftover', path: repoDir, defaultBranch: 'main', remoteUrl: null, checks: D.NO_CHECKS,
+      });
+      const run = evalsRepo.insertRun({ ...fixtureRun(suite.id), status: 'running', variants: { baseline: variant('baseline'), candidate: variant('candidate') } });
+      const trialId = S.ids.evalTrial();
+      const title = 'Eval trial Leftover baseline 1';
+      const mission = missionsRepo.create({
+        id: S.ids.mission(), workspaceId: ws.id, repositoryId: repo2.id, title, goal: title, successCriteria: [], rank: 0, evalTrialId: trialId,
+      });
+      evalsRepo.insertTrials([{ ...fixtureTrial(run.id, kase.id, 1), id: trialId, seq: 1, status: 'running', missionId: mission.id }]);
+      const task = trialTaskOn(container, mission.id, { status: 'READY' });
+      const name = `${S.slugify(title)}-${task.key}`;
+      const branch = `tandemise/${S.slugify(title)}/${S.slugify(name)}-${task.id.slice(-8)}`;
+      execFileSync('git', ['-C', repoDir, 'worktree', 'add', '-q', '-b', branch, join(tmp, 'leftover-wt'), 'main']);
+      targetsRepo.create({
+        id: S.ids.executionTarget(), workspaceId: ws.id, missionId: mission.id, taskId: task.id, kind: 'worktree', name,
+        workingDirectory: repoDir, branch: null, baseBranch: 'main', status: 'FAILED', detail: 'Provisioning was interrupted by a daemon restart.',
+        createdAt: now(), releasedAt: null,
+      });
+      const git = { run: async ({ command, args, cwd }) => {
+        const r = spawnSync(command, args, { cwd, encoding: 'utf8' });
+        return { exitCode: r.status ?? 1, stdout: r.stdout, stderr: r.stderr, timedOut: false, durationMs: 0, command: [command, ...args].join(' ') };
+      } };
+      await new app.EvalRunner({ ...container.resolve(app.EVAL_RUNNER).deps, exec: git }).recoverInterrupted();
+      check('a branchless worktree left by a crash is removed', !execFileSync('git', ['-C', repoDir, 'worktree', 'list']).toString().includes('leftover-wt'));
+      check('and so is its branch', execFileSync('git', ['-C', repoDir, 'branch', '--list', branch]).toString().trim() === '');
+      check('and the run is failed', evalsRepo.getRun(run.id).status === 'failed' && evalsRepo.getTrial(trialId).status === 'cancelled');
+    }
   }
 } finally {
   container?.resolve(P.DATABASE)?.close?.();
@@ -901,6 +979,10 @@ section('daemon: run scores');
         process.env.SCRIPTED_FAIL_MODEL = 'bad';
         process.env.SCRIPTED_COST_USD = '0.25';
 
+        // A suite of its own rather than "Smoke": the Header case there has a ChangeSet input, and the
+        // build gate only asks that a ChangeSet exists. A gate that only checks an artifact type the step
+        // also receives can't tell variants apart - the seeded input satisfies it - exactly as it can't
+        // in a real mission, and trials keep gate facts identical to real missions (coordinator ruling).
         // Two cases from two missions that passed on a good model, then the role is switched to the bad one:
         // the baseline replays today's (bad) role, the candidate tries the good model again.
         check('the role runs on a good model', (await setRoleModels('development', { model: 'good', escalate: [], economyModel: null })).status === 200);
