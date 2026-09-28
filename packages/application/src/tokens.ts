@@ -196,6 +196,11 @@ export const GIT_CREDENTIAL_ENV = token<() => Readonly<Record<string, string>>>(
 export const SETUP_SERVICE = token<import('./services/setup-service.js').SetupService>('application.SetupService');
 /** Eval suites, saved cases and the run-score summary (P3b). */
 export const EVAL_SERVICE = token<import('./services/eval-service.js').EvalService>('application.EvalService');
+/**
+ * Runs eval trials one at a time (P3b), as a `LifecycleComponent` the daemon
+ * registers after the scheduler; its boot recovery runs before either starts.
+ */
+export const EVAL_RUNNER = token<import('./engine/eval-runner.js').EvalRunner>('application.EvalRunner');
 
 export const TANDEMISE_SERVICES = token<TandemiseServices>('application.TandemiseServices');
 

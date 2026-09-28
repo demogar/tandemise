@@ -13,6 +13,12 @@
 // sha, inputs copied into the blob store, the step and mission context frozen,
 // criteria copied), and every refusal (not succeeded, no gate, no run, base
 // unresolved).
+// Task 6: eval runs - the runner's deferral path against a stub executor, then
+// real runs on the daemon: baseline vs a models candidate scored as a
+// scorecard, trials hidden and cleaned up (no worktree, no branch), pinned
+// models under economy pressure, the spend cap, every startRun refusal, a
+// setup-folder candidate, cancel mid-trial, a restart mid-trial (the run
+// fails and nothing is requeued), and a runtime that reports no cost.
 //
 //   npm run build && node scratch/p3-evals-check.mjs
 import { execFileSync } from 'node:child_process';
@@ -252,8 +258,9 @@ async function daemonHarness() {
 
   globalThis.__sqlite = await import('node:sqlite');
   const { startDaemon } = await import('../apps/daemon/dist/main.js');
-  const daemon = await startDaemon({ home, logLevel: 'error', tickIntervalMs: 200 });
-  const token = JSON.parse(readFileSync(join(home, 'daemon.json'), 'utf8')).token;
+  // `let`: restart() replaces the daemon on the same home, and with it the url and container.
+  let daemon = await startDaemon({ home, logLevel: 'error', tickIntervalMs: 200 });
+  let token = JSON.parse(readFileSync(join(home, 'daemon.json'), 'utf8')).token;
   const api = async (method, path, body) => {
     const res = await fetch(`${daemon.url}${path}`, {
       method,
@@ -301,7 +308,8 @@ async function daemonHarness() {
   return {
     api,
     sql,
-    container: daemon.container,
+    /** A getter: after restart() it is the new daemon's container. */
+    get container() { return daemon.container; },
     workspaceId: wsId,
     /** The fixture repository's checkout on disk, for the eval-cases section's own git plumbing. */
     repoPath: repo,
@@ -323,6 +331,12 @@ async function daemonHarness() {
     async tasks(id) {
       const t = (await api('GET', `/v1/missions/${id}/tasks`)).body;
       return t.tasks ?? t;
+    },
+    /** Stops the daemon and starts a new one on the same home, as a machine restart would (boot recovery runs). */
+    async restart() {
+      await daemon.stop();
+      daemon = await startDaemon({ home, logLevel: 'error', tickIntervalMs: 200 });
+      token = JSON.parse(readFileSync(join(home, 'daemon.json'), 'utf8')).token;
     },
     async stop() {
       await daemon.stop();
@@ -645,6 +659,79 @@ try {
     await container.resolve(app.RECOVERY_SERVICE).run();
     check('recovery does not requeue a trial task', tasks.get(recovering.taskId).status !== 'READY', tasks.get(recovering.taskId).status);
     check('recovery still requeues a real task', tasks.get(real.taskId).status === 'READY', tasks.get(real.taskId).status);
+    // Task 6: the trial's own timeline must not say its work "was returned to the queue" - it was not.
+    const restartNote = (missionId) => container.resolve(app.EVENT_REPOSITORY).listByMission(missionId)
+      .some((e) => e.body.type === 'note' && /Tandemise restarted while this mission was running/.test(e.body.text));
+    check('recovery leaves no restart note on a trial mission', !restartNote(recovering.missionId));
+    check('recovery still notes a real mission', restartNote(real.missionId));
+  }
+
+  section('harness: eval runner deferral');
+  {
+    // A stub executor stands in for the real one, and the runner's clock is moved by its own sleep,
+    // so ten minutes of deferral pass without waiting for them.
+    const evalsRepo = container.resolve(app.EVAL_REPOSITORY);
+    const tasksRepo = container.resolve(app.TASK_REPOSITORY);
+    const missionsRepo = container.resolve(app.MISSION_REPOSITORY);
+    // Only the run under test is active: earlier sections left fixture runs queued.
+    for (const r of evalsRepo.activeRuns()) evalsRepo.updateRun(r.id, { status: 'cancelled' });
+    const repo = container.resolve(app.REPO_REPOSITORY).create({
+      id: S.ids.repository(), workspaceId: ws.id, name: 'deferral', path: tmp, defaultBranch: 'main', remoteUrl: null, checks: D.NO_CHECKS,
+    });
+    const suite = evalsRepo.createSuite({ id: S.ids.evalSuite(), workspaceId: ws.id, name: 'Deferral', createdAt: now(), updatedAt: now() });
+    const base = fixtureCase(suite.id);
+    const kase = evalsRepo.insertCase({ ...base, snapshot: { ...base.snapshot, repositoryId: repo.id, inputs: [] } });
+    const design = container.resolve(app.ROLE_REPOSITORY).get('design', ws.id);
+    const variant = (label) => ({ label, roles: { design: { role: { ...design, instructions: `FROZEN-${label}` }, pins: [] } } });
+    const queueRun = () => {
+      const run = evalsRepo.insertRun({ ...fixtureRun(suite.id), repeats: 1, variants: { baseline: variant('baseline'), candidate: variant('candidate') } });
+      evalsRepo.insertTrials([{ ...fixtureTrial(run.id, kase.id, 1), seq: 1 }]);
+      return run;
+    };
+    let fakeMs = Date.parse('2026-01-01T00:00:00.000Z');
+    const fakeClock = { now: () => new Date(fakeMs).toISOString(), epochMs: () => fakeMs };
+    const sleep = async (ms) => { fakeMs += ms; };
+    const stub = (script) => {
+      const s = { calls: 0, seen: [] };
+      s.execute = async (taskId) => {
+        const out = script(s.calls++);
+        const task = tasksRepo.get(taskId);
+        s.seen.push(runner.contextFor(missionsRepo.get(task.missionId)));
+        if (out.kind === 'settled') tasksRepo.update(taskId, { status: out.status, statusReason: out.reason });
+        return out;
+      };
+      return s;
+    };
+    let runner;
+    const drive = async (executor) => {
+      const run = queueRun();
+      runner = new app.EvalRunner({ ...container.resolve(app.EVAL_RUNNER).deps, executor, clock: fakeClock, sleep });
+      await runner.start();
+      for (const until = Date.now() + 15_000; Date.now() < until && !['completed', 'failed'].includes(evalsRepo.getRun(run.id).status);) {
+        await new Promise((r) => setTimeout(r, 20));
+      }
+      await runner.stop();
+      return { run: evalsRepo.getRun(run.id), trial: evalsRepo.listTrials(run.id)[0] };
+    };
+
+    const twice = stub((n) => (n < 2 ? { kind: 'deferred', reason: 'Waiting for a runtime slot.' } : { kind: 'settled', status: 'SUCCEEDED', reason: null }));
+    const passed = await drive(twice);
+    check('two deferrals, then it runs', twice.calls === 3 && passed.trial.status === 'passed', { calls: twice.calls, trial: passed.trial });
+    check('the run completes after deferrals', passed.run.status === 'completed' && passed.run.scorecard !== null, passed.run);
+    check('the executor was given the frozen role', twice.seen.every((c) => c?.role.instructions === 'FROZEN-baseline'), twice.seen.map((c) => c?.role.instructions));
+    check('a real mission has no trial context', runner.contextFor(missionsRepo.get(createMission('Not a trial').id)) === null);
+    const trialMission = missionsRepo.get(passed.trial.missionId);
+    check('the trial mission is hidden, ranked 0, on the case base', trialMission.evalTrialId === passed.trial.id && trialMission.rank === 0 && trialMission.baseBranch === 'deadbeef' && trialMission.status === 'COMPLETE', trialMission);
+    const stepTask = tasksRepo.listByMission(trialMission.id).find((t) => t.key === 'design');
+    check('the step task is written for a trial', stepTask.approvalPolicy.beforeStart === false && stepTask.approvalPolicy.onCompletion === false
+      && stepTask.retryPolicy.onExhausted === 'fail' && stepTask.executionPolicy.isolation === 'worktree' && stepTask.staffing === null, stepTask);
+
+    const forever = stub(() => ({ kind: 'deferred', reason: 'Waiting for a runtime slot.', retryAfterMs: 60_000 }));
+    const blocked = await drive(forever);
+    check('ten minutes of deferral blocks the trial with the reason', blocked.trial.status === 'blocked' && blocked.trial.reason === 'Waiting for a runtime slot.', blocked.trial);
+    check('it gave up after ten minutes, not before', forever.calls >= 10 && forever.calls <= 12, forever.calls);
+    check('the blocked trial task says why', tasksRepo.listByMission(blocked.trial.missionId).find((t) => t.key === 'design')?.status === 'BLOCKED');
+    check('the run still completes', blocked.run.status === 'completed', blocked.run);
   }
 } finally {
   container?.resolve(P.DATABASE)?.close?.();
@@ -765,6 +852,238 @@ section('daemon: run scores');
       const kase4 = await evals.saveCase(m4Build.id, caller, { suiteId: kase.suiteId, name: 'Header' });
       check('a saved case writes its input blob to disk', existsSync(blobPath));
       check('the saved case records the same hash', kase4.snapshot.inputs.some((i) => i.sha256 === changeSet.sha256));
+
+      section('daemon: eval runs');
+      {
+        // Everything is resolved per call: `d.restart()` below replaces the container.
+        const E = () => d.container.resolve(app.EVAL_SERVICE);
+        const R = (tok) => d.container.resolve(tok);
+        const ws = d.workspaceId;
+        const TERMINAL = ['completed', 'stopped_at_cap', 'failed', 'cancelled'];
+        const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+        const waitEvalRun = async (id, statuses, ms = 240_000) => {
+          for (const until = Date.now() + ms; Date.now() < until; await pause(200)) {
+            if (statuses.includes(E().getRun(id).run.status)) break;
+          }
+          return E().getRun(id);
+        };
+        /**
+         * Until a candidate trial has an agent run in flight, so a stop or cancel lands mid-run. The
+         * candidate's good model is the one SCRIPTED_DELAY_MS holds; a bad-model run ends at once.
+         */
+        const waitTrialRunning = async (id, ms = 120_000) => {
+          for (const until = Date.now() + ms; Date.now() < until; await pause(100)) {
+            const live = E().getRun(id).trials.find((t) => t.status === 'running' && t.variant === 'candidate' && t.missionId !== null);
+            // STARTING until the agent's first output, which the delay holds back; a moment more so it is mid-delay.
+            if (live !== undefined && d.sql(`SELECT 1 FROM runs WHERE mission_id = ? AND status IN ('STARTING', 'RUNNING')`, live.missionId).length > 0) {
+              await pause(1000);
+              return live;
+            }
+          }
+          return undefined;
+        };
+        const runsOf = (detail, variant) => detail.trials
+          .filter((t) => t.variant === variant && t.missionId !== null)
+          .flatMap((t) => d.sql('SELECT model, status FROM runs WHERE mission_id = ?', t.missionId));
+        const candidateRuns = (detail) => runsOf(detail, 'candidate');
+        const trialTasks = (detail) => detail.trials
+          .filter((t) => t.missionId !== null)
+          .flatMap((t) => d.sql('SELECT key, status FROM mission_tasks WHERE mission_id = ?', t.missionId));
+        const git = (cwd, ...args) => execFileSync('git', args, { cwd, stdio: 'pipe' }).toString();
+        const roleOf = async (id) => (await d.api('GET', `/v1/roles?workspaceId=${ws}`)).body.find((r) => r.id === id);
+        const setRoleModels = async (id, models) => {
+          const { createdAt, updatedAt, builtIn, workspaceId, ...rest } = await roleOf(id);
+          return d.api('PUT', `/v1/roles/${id}`, { ...rest, workspaceId: ws, models });
+        };
+        const blobPathOf = (sha) => join(d.home, 'evals', 'blobs', sha.slice(0, 2), sha);
+
+        // The scripted model: "bad" writes nothing (its gate fails every time), and every run costs $0.25.
+        process.env.SCRIPTED_FAIL_MODEL = 'bad';
+        process.env.SCRIPTED_COST_USD = '0.25';
+
+        // Two cases from two missions that passed on a good model, then the role is switched to the bad one:
+        // the baseline replays today's (bad) role, the candidate tries the good model again.
+        check('the role runs on a good model', (await setRoleModels('development', { model: 'good', escalate: [], economyModel: null })).status === 200);
+        const m5 = await d.missionWith({ goal: 'Add a banner', workflow: 'build-only' });
+        const m6 = await d.missionWith({ goal: 'Add a sidebar', workflow: 'build-only' });
+        check('both source missions complete', await d.waitMission(m5.id, 'COMPLETE') === 'COMPLETE' && await d.waitMission(m6.id, 'COMPLETE') === 'COMPLETE');
+        const c5 = await E().saveCase((await d.tasks(m5.id)).find((t) => t.roleId === 'development').id, caller, { newSuiteName: 'Runs', name: 'Banner step' });
+        await E().saveCase((await d.tasks(m6.id)).find((t) => t.roleId === 'development').id, caller, { suiteId: c5.suiteId, name: 'Sidebar step' });
+        const suite = { id: c5.suiteId };
+        check('the role now runs on the bad model', (await setRoleModels('development', { model: 'bad', escalate: [], economyModel: null })).status === 200);
+
+        const run = await E().startRun(suite.id, caller, { candidate: { kind: 'models', roles: { development: 'good' } }, repeats: 2, spendCapUsd: 5 });
+        check('a run starts queued', run.status === 'queued' && run.repeats === 2 && run.spendCapUsd === 5, run);
+        check('the baseline froze the role as it is today', run.variants.baseline.roles.development?.role.models?.model === 'bad', run.variants.baseline);
+        check('the candidate carries the model', run.variants.candidate.roles.development?.role.models?.model === 'good', run.variants.candidate);
+        const done = await waitEvalRun(run.id, TERMINAL);
+        check('the run completes', done.run.status === 'completed', done.run);
+        check('2 cases × 2 variants × 2 repeats', done.trials.length === 8, done.trials.length);
+        check('trials alternate baseline and candidate per case', eq(done.trials.slice(0, 4).map((t) => t.variant), ['baseline', 'candidate', 'baseline', 'candidate']));
+        check('trials are taken case by case, repeat by repeat', eq(done.trials.slice(0, 4).map((t) => t.repeat), [1, 1, 2, 2]) && done.trials.slice(0, 4).every((t) => t.caseId === c5.id));
+        const card = done.run.scorecard;
+        check('baseline fails, candidate passes', card?.baseline.gatePassRate === 0 && card?.candidate.gatePassRate === 1, card);
+        check('difference is +1', card?.difference.gatePassRate === 1, card?.difference);
+        check('few repeats is flagged', card?.fewRepeats === true);
+        check('trial statuses follow the gate', done.trials.every((t) => t.status === (t.variant === 'baseline' ? 'failed' : 'passed')), done.trials.map((t) => t.status));
+        check('every finished trial has a score', done.trials.every((t) => t.score !== null && t.finishedAt !== null));
+        check('spend is measured', done.costUnmeasured === false && typeof done.spentUsd === 'number' && done.spentUsd > 0, { spent: done.spentUsd, unmeasured: done.costUnmeasured });
+        const missionsBody = (await d.api('GET', `/v1/missions?workspaceId=${ws}`)).body;
+        check('no trial in missions list', !JSON.stringify(missionsBody).includes('Eval trial'));
+        check('trial missions are hidden, finished missions', done.trials.every((t) => ['COMPLETE', 'FAILED'].includes(d.sql('SELECT status FROM missions WHERE id = ?', t.missionId)[0]?.status)));
+        check('trial missions take no backlog rank', done.trials.every((t) => d.sql('SELECT rank FROM missions WHERE id = ?', t.missionId)[0]?.rank === 0));
+        check('each trial replays the case criteria', done.trials.every((t) => d.sql('SELECT COUNT(*) n FROM mission_criteria WHERE mission_id = ?', t.missionId)[0].n === c5.snapshot.criteria.length));
+        check('no trial worktrees left', !git(d.repoPath, 'worktree', 'list').includes('eval-trial'), git(d.repoPath, 'worktree', 'list'));
+        check('no trial branches left', git(d.repoPath, 'branch', '--list', 'tandemise/eval-trial*').trim() === '', git(d.repoPath, 'branch', '--list', 'tandemise/eval-trial*'));
+        check('candidate trials ran the candidate model', candidateRuns(done).length >= 4 && candidateRuns(done).every((r) => r.model === 'good'), candidateRuns(done));
+        check('baseline trials ran the role model', runsOf(done, 'baseline').length >= 4 && runsOf(done, 'baseline').every((r) => r.model === 'bad'), runsOf(done, 'baseline'));
+        check('trial scores are kept as trials', d.sql('SELECT COUNT(*) n FROM run_scores WHERE eval_trial = 1')[0].n >= 8);
+        const realRunsFor = (s) => d.sql(
+          `SELECT COUNT(*) n FROM run_scores WHERE workspace_id = ? AND eval_trial = 0 AND role_id = ? AND COALESCE(model, '') = ?`,
+          ws, s.roleId, s.model ?? '',
+        )[0].n;
+        const summary = E().runScoreSummary(ws, 30);
+        check('real-run summary leaves trials out', summary.length > 0 && summary.every((s) => s.runs === realRunsFor(s)) && !summary.some((s) => s.model === 'bad'), summary);
+        check('runs are listed for the suite', E().listRuns(suite.id).some((r) => r.id === run.id));
+
+        // Economy pressure does not move a pinned trial model.
+        check('economy model set', (await setRoleModels('development', { model: 'bad', escalate: [], economyModel: 'cheap' })).status === 200);
+        check('a month limit is set', (await d.api('PATCH', `/v1/workspaces/${ws}`, { monthlyLimits: [{ metric: 'usd', amount: 100, warnPercent: 1 }] })).status === 200);
+        check('the month is under pressure', R(app.LIMIT_SERVICE).pressure(m5.id) !== null, R(app.LIMIT_SERVICE).pressure(m5.id));
+        const r2 = await E().startRun(suite.id, caller, { candidate: { kind: 'models', roles: { development: 'good' } }, repeats: 1, spendCapUsd: 5 });
+        const d2 = await waitEvalRun(r2.id, TERMINAL);
+        check('the pressured run completes', d2.run.status === 'completed', d2.run);
+        check('trials ignore economy mode', candidateRuns(d2).length > 0 && candidateRuns(d2).every((r) => r.model === 'good') && runsOf(d2, 'baseline').every((r) => r.model === 'bad'), [candidateRuns(d2), runsOf(d2, 'baseline')]);
+        await d.api('PATCH', `/v1/workspaces/${ws}`, { monthlyLimits: [] });
+        await setRoleModels('development', { model: 'bad', escalate: [], economyModel: null });
+
+        // The cap: every run costs $0.25 and a bad-model trial runs twice, so a $0.60 cap stops the run early.
+        const r3 = await E().startRun(suite.id, caller, { candidate: { kind: 'models', roles: { development: 'good' } }, repeats: 2, spendCapUsd: 0.6 });
+        const d3 = await waitEvalRun(r3.id, TERMINAL);
+        check('stopped at the cap', d3.run.status === 'stopped_at_cap' && d3.run.reason === 'Stopped at your $0.60 cap', d3.run);
+        const finished3 = d3.trials.filter((t) => t.status !== 'cancelled');
+        check('the rest of the trials are cancelled', d3.trials.some((t) => t.status === 'cancelled') && finished3.length <= 3, d3.trials.map((t) => t.status));
+        check('spend reached the cap', typeof d3.spentUsd === 'number' && d3.spentUsd >= 0.6, d3.spentUsd);
+        check('a stopped run still has a scorecard', d3.run.scorecard !== null && d3.run.finishedAt !== null);
+
+        // Refusals write nothing.
+        const runsBefore = E().listRuns(suite.id).length;
+        await refuses('no cap', () => E().startRun(suite.id, caller, { candidate: { kind: 'models', roles: {} } }), 'cap_required');
+        await refuses('a zero cap', () => E().startRun(suite.id, caller, { candidate: { kind: 'models', roles: {} }, spendCapUsd: 0 }), 'cap_required');
+        await refuses('repeats out of range', () => E().startRun(suite.id, caller, { candidate: { kind: 'models', roles: {} }, repeats: 11, spendCapUsd: 1 }), 'repeats_range');
+        await refuses('fractional repeats', () => E().startRun(suite.id, caller, { candidate: { kind: 'models', roles: {} }, repeats: 1.5, spendCapUsd: 1 }), 'repeats_range');
+        const empty = E().createSuite(ws, caller, 'Empty');
+        await refuses('an empty suite', () => E().startRun(empty.id, caller, { candidate: { kind: 'models', roles: {} }, spendCapUsd: 1 }), 'suite_empty');
+        await refuses('an unknown skill', () => E().startRun(suite.id, caller, { candidate: { kind: 'skills', roles: { development: [{ name: 'ghost', version: 'latest' }] } }, spendCapUsd: 1 }), 'skill_unknown');
+        // The Header case (from "eval cases" above) has an input; without its blob no trial can seed it.
+        const headerSha = kase4.snapshot.inputs[0].sha256;
+        const blobCopy = join(d.home, 'blob-aside');
+        copyFileSync(blobPathOf(headerSha), blobCopy);
+        rmSync(blobPathOf(headerSha));
+        let missing;
+        try { await E().startRun(kase4.suiteId, caller, { candidate: { kind: 'models', roles: {} }, spendCapUsd: 1 }); } catch (e) { missing = e; }
+        check('missing input names the case', missing?.code === 'input_missing' && missing.message === 'An input of case Header is missing from the eval store.', missing?.message);
+        copyFileSync(blobCopy, blobPathOf(headerSha));
+        // A case whose role was deleted: a custom role runs a gated step, the step is saved, the role is deleted.
+        writeFileSync(join(d.repoPath, '.tandemise/workflows/copy-only.yaml'), [
+          'name: Copy only', 'description: One copywriting step, gated, on a custom role.', 'steps:',
+          '  - key: copy', '    role: copywriter', '    objective: Write the hello page copy.', '    outputs: [ChangeSet]',
+          '    gate: artifact.ChangeSet.exists', '',
+        ].join('\n'));
+        const dev = await roleOf('development');
+        const { createdAt: _c, updatedAt: _u, builtIn: _b, workspaceId: _w, ...devRest } = dev;
+        check('a custom role is created', (await d.api('PUT', '/v1/roles/copywriter', { ...devRest, id: 'copywriter', name: 'Copywriter', workspaceId: ws, models: { model: 'good', escalate: [], economyModel: null } })).status === 200);
+        const m7 = await d.missionWith({ goal: 'Write the copy', workflow: 'copy-only' });
+        check('the custom-role mission completes', await d.waitMission(m7.id, 'COMPLETE') === 'COMPLETE');
+        const orphan = await E().saveCase((await d.tasks(m7.id)).find((t) => t.roleId === 'copywriter').id, caller, { suiteId: suite.id, name: 'Copy step' });
+        check('the custom role is deleted', (await d.api('DELETE', `/v1/roles/copywriter?workspaceId=${ws}`)).status < 300);
+        let orphaned;
+        try { await E().startRun(suite.id, caller, { candidate: { kind: 'models', roles: {} }, spendCapUsd: 1 }); } catch (e) { orphaned = e; }
+        check('a deleted role names the case', orphaned?.code === 'role_missing' && orphaned.message === 'The role copywriter used by case Copy step no longer exists.', orphaned?.message);
+        E().deleteCase(orphan.id, caller);
+        check('no refusal wrote a run', E().listRuns(suite.id).length === runsBefore && E().listRuns(kase4.suiteId).length === 0 && E().listRuns(empty.id).length === 0);
+
+        // Setup candidate: role instructions from a folder reach the prompt; the project is untouched.
+        // The Smoke suite has the Header case, whose ChangeSet input each trial must seed.
+        const promptDir = join(d.home, 'r4-prompts');
+        const argsDir = join(d.home, 'r4-args');
+        process.env.SCRIPTED_PROMPT_DIR = promptDir;
+        const argsBefore = process.env.SCRIPTED_ARGS_DIR;
+        process.env.SCRIPTED_ARGS_DIR = argsDir;
+        const folder = join(d.home, 'candidate-setup');
+        mkdirSync(join(folder, '.tandemise', 'roles'), { recursive: true });
+        writeFileSync(join(folder, '.tandemise', app.roleFileName('development')), app.renderRole({
+          id: 'development', name: dev.name, summary: dev.summary, instructions: 'EVAL-ROLE-MARK: write like the candidate.',
+          capabilities: dev.defaultCapabilities, produces: dev.producesArtifacts, consumes: dev.consumesArtifacts,
+          isolation: dev.defaultIsolation, outputContract: dev.outputContract,
+          model: 'good', escalate: [], economyModel: null, runtime: [], skills: [],
+        }));
+        const r4 = await E().startRun(kase4.suiteId, caller, { candidate: { kind: 'setup', folder }, repeats: 1, spendCapUsd: 5 });
+        const d4 = await waitEvalRun(r4.id, TERMINAL);
+        process.env.SCRIPTED_ARGS_DIR = argsBefore;
+        delete process.env.SCRIPTED_PROMPT_DIR;
+        check('the setup run completes', d4.run.status === 'completed', d4.run);
+        // A prompt and its argv are written by the same process: pair them by pid to learn each prompt's model.
+        const byPid = (dir, ext) => new Map((existsSync(dir) ? readdirSync(dir) : []).filter((f) => f.endsWith(ext))
+          .map((f) => [f.slice(f.indexOf('-') + 1, -ext.length), readFileSync(join(dir, f), 'utf8')]));
+        const promptsByPid = byPid(promptDir, '.txt');
+        const pairs = [...byPid(argsDir, '.json')].map(([pid, args]) => ({ model: JSON.parse(args).model, prompt: promptsByPid.get(pid) ?? '' }));
+        const candidateArgs = pairs.filter((p) => p.model === 'good');
+        const baselineArgs = pairs.filter((p) => p.model === 'bad');
+        check('setup candidate instructions reach the prompt', candidateArgs.length >= 2 && candidateArgs.every((a) => a.prompt.includes('EVAL-ROLE-MARK')), candidateArgs.length);
+        check('baseline trials did not see them', baselineArgs.length >= 2 && baselineArgs.every((a) => a.prompt !== '' && !a.prompt.includes('EVAL-ROLE-MARK')), baselineArgs.length);
+        check('the project role is unchanged', !R(app.ROLE_REPOSITORY).get('development', ws).instructions.includes('EVAL-ROLE-MARK'));
+        const headerTrials = d4.trials.filter((t) => t.caseId === kase4.id);
+        const seeded = headerTrials.flatMap((t) => d.sql(
+          `SELECT a.sha256 FROM artifacts a JOIN mission_tasks t ON t.id = a.task_id WHERE a.mission_id = ? AND t.key = 'input-changeset'`, t.missionId,
+        ).map((row) => row.sha256));
+        check('each trial seeds the case input by hash', headerTrials.length === 2 && seeded.length === 2 && seeded.every((sha) => sha === headerSha), seeded);
+        let badSetup;
+        try { await E().startRun(kase4.suiteId, caller, { candidate: { kind: 'setup', folder: join(d.home, 'nowhere') }, spendCapUsd: 5 }); } catch (e) { badSetup = e; }
+        check('a folder with no setup is refused', badSetup?.code === 'setup_invalid', badSetup?.message);
+
+        // Deleting a suite while its run is running. The delay keeps the good model's runs going long enough.
+        process.env.SCRIPTED_DELAY_MS = '4000';
+        const r5 = await E().startRun(suite.id, caller, { candidate: { kind: 'models', roles: { development: 'good' } }, repeats: 1, spendCapUsd: 5 });
+        const live5 = await waitTrialRunning(r5.id);
+        check('a trial is mid-run', live5 !== undefined, E().getRun(r5.id).trials.map((t) => t.status));
+        await refuses('delete suite during a run', async () => E().deleteSuite(suite.id, caller), 'already_running');
+        await refuses('a second run in the project', () => E().startRun(kase4.suiteId, caller, { candidate: { kind: 'models', roles: {} }, spendCapUsd: 1 }), 'already_running');
+        E().cancelRun(r5.id, caller);
+        const d5 = await waitEvalRun(r5.id, TERMINAL);
+        check('cancel ends the run', d5.run.status === 'cancelled' && d5.run.scorecard !== null, d5.run);
+        // The runner writes the live trial's end once its attempt unwinds.
+        for (const until = Date.now() + 30_000; Date.now() < until && E().getRun(r5.id).trials.some((t) => t.status === 'running'); await pause(100));
+        const d5b = E().getRun(r5.id);
+        check('the live trial ends cancelled', d5b.trials.find((t) => t.id === live5?.id)?.status === 'cancelled', d5b.trials.map((t) => t.status));
+        check('nothing is left queued or running', d5b.trials.every((t) => !['queued', 'running'].includes(t.status)));
+        check('the cancelled trial worktree is gone', !git(d.repoPath, 'worktree', 'list').includes('eval-trial'), git(d.repoPath, 'worktree', 'list'));
+        await refuses('a finished run cannot be cancelled', async () => E().cancelRun(r5.id, caller), 'not_running');
+
+        // Restart mid-trial.
+        const r6 = await E().startRun(suite.id, caller, { candidate: { kind: 'models', roles: { development: 'good' } }, repeats: 1, spendCapUsd: 5 });
+        check('a trial is mid-run before the restart', (await waitTrialRunning(r6.id)) !== undefined);
+        await d.restart();
+        process.env.SCRIPTED_DELAY_MS = '0';
+        const d6 = E().getRun(r6.id);
+        check('a restart fails the run with the reason', d6.run.status === 'failed' && d6.run.reason === 'The daemon stopped during this run.', d6.run);
+        check('the interrupted trial task is not requeued', d6.trials.every((t) => t.status !== 'running' && t.status !== 'queued') && trialTasks(d6).length > 0 && trialTasks(d6).every((t) => t.status !== 'READY'), [d6.trials.map((t) => t.status), trialTasks(d6)]);
+        check('its worktree is gone', !git(d.repoPath, 'worktree', 'list').includes('eval-trial'), git(d.repoPath, 'worktree', 'list'));
+        check('no trial branch is left after the restart', git(d.repoPath, 'branch', '--list', 'tandemise/eval-trial*').trim() === '');
+        check('a failed run still has a scorecard', d6.run.scorecard !== null && d6.run.finishedAt !== null);
+
+        // A runtime that reports no cost: a text profile never reads the usage line.
+        const runtime = (await d.api('GET', '/v1/runtimes')).body.map((v) => v.profile).find((p) => p.name === 'Scripted agent');
+        const asText = await d.api('PATCH', `/v1/runtimes/${runtime.id}`, { settings: { ...runtime.settings, outputFormat: 'text' } });
+        check('the runtime reports no cost now', asText.status === 200, asText.body);
+        const r7 = await E().startRun(suite.id, caller, { candidate: { kind: 'models', roles: { development: 'good' } }, repeats: 1, spendCapUsd: 0.01 });
+        const d7 = await waitEvalRun(r7.id, TERMINAL);
+        check('unmeasured cost is flagged, never zero', d7.costUnmeasured === true && d7.spentUsd === null, { unmeasured: d7.costUnmeasured, spent: d7.spentUsd });
+        check('an unmeasured run is not stopped at the cap', d7.run.status === 'completed', d7.run);
+        await d.api('PATCH', `/v1/runtimes/${runtime.id}`, { settings: runtime.settings });
+        delete process.env.SCRIPTED_FAIL_MODEL;
+        delete process.env.SCRIPTED_COST_USD;
+      }
     }
   } finally {
     await d.stop();

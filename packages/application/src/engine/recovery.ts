@@ -92,14 +92,17 @@ export class RecoveryService {
           : 'The daemon exited mid-run and the worker process is gone.',
       });
       (status === 'RESUMABLE' ? resumable : interrupted).push(run.id);
-      touched.add(run.missionId);
 
       // The attempt count is preserved on purpose: an interrupted attempt was
       // an attempt, and pretending otherwise would let a task that fails by
       // crashing loop past its retry budget.
       // An eval trial's task is never requeued: the run is classified as any
       // other, and the eval runner's own boot recovery cancels the trial (P3b).
-      const task = this.#isTrial(run.missionId) ? undefined : this.tasks.get(run.taskId);
+      // Nor is its mission noted as touched, because the note says its tasks
+      // "were returned to the queue", which for a trial is untrue.
+      const trial = this.#isTrial(run.missionId);
+      if (!trial) touched.add(run.missionId);
+      const task = trial ? undefined : this.tasks.get(run.taskId);
       // A task parked on a question is still an in-flight run: the worker was
       // blocked inside `ask_human`, and that process is gone now. Left alone it
       // would sit in AWAITING_INPUT forever, and its question would stay in the
@@ -233,7 +236,8 @@ export class RecoveryService {
         status: 'FAILED',
         detail: 'Provisioning was interrupted by a daemon restart.',
       });
-      if (target.missionId !== null) touched.add(target.missionId);
+      // A trial's target is the eval runner's to clean up, and its mission gets no restart note.
+      if (target.missionId !== null && !this.#isTrial(target.missionId)) touched.add(target.missionId);
       failed += 1;
     }
     if (failed > 0) this.recorder.invalidate('targets');

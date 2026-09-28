@@ -12,7 +12,7 @@ import {
 } from './http/identity.js';
 import { installShutdownHandlers } from './lifecycle.js';
 import { adoptGitName, gitUserName } from './local-person.js';
-import { RECOVERY_SERVICE } from '@tandemise/application';
+import { EVAL_RUNNER, RECOVERY_SERVICE } from '@tandemise/application';
 import type { Container } from '@tandemise/kernel';
 
 /**
@@ -45,6 +45,8 @@ export async function startDaemon(overrides: Parameters<typeof loadConfig>[0] = 
   // Recovery reconciles whatever the last daemon left behind, and must complete
   // before the scheduler can dispatch anything (MVP.md §21.2).
   await container.resolve(RECOVERY_SERVICE).run();
+  // An eval run the last daemon stopped mid-way is failed, never resumed, and its trial cleaned up (P3b).
+  await container.resolve(EVAL_RUNNER).recoverInterrupted();
 
   // Before anything is planned or dispatched: a task is granted from its role,
   // so a stale built-in would withhold capabilities the shipped role now has.

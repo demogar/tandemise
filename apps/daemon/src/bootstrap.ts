@@ -31,7 +31,7 @@ import {
 import { GhIssueTracker, GhPullRequestSnapshots, githubIntegrationModule } from '@tandemise/integration-github';
 import { mcpIntegrationModule } from '@tandemise/integration-mcp';
 import { browserIntegrationModule } from '@tandemise/browser';
-import { createApplicationModule, createServices, SCHEDULER, type TandemiseServices,
+import { createApplicationModule, createServices, EVAL_RUNNER, SCHEDULER, type TandemiseServices,
   WORKFLOW_SOURCE,
   SKILL_FILES,
   ISSUE_TRACKER,
@@ -178,6 +178,8 @@ export function bootstrap(config: DaemonConfig, options: { readonly localPersonN
   // gives shutdown its ordering - `stop()` aborts in-flight runs before the
   // database and process supervisor are disposed.
   lifecycle.add(container.resolve(SCHEDULER));
+  // Added after the scheduler, so shutdown stops the runner first; its live trial is left for boot recovery (P3b).
+  lifecycle.add(container.resolve(EVAL_RUNNER));
 
   return { container, services, lifecycle, events, projections, log, testClock };
 }

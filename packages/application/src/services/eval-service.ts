@@ -1,16 +1,20 @@
 import type {
-  ArtifactManifest, ArtifactRepositoryPort, ArtifactStorePort, DecisionRepositoryPort, EvalBlobPort, EvalCase, EvalCaseCriterion,
-  EvalCaseInput, EvalCaseProvenance, EvalCaseSnapshot, EvalRepositoryPort, EvalSuite, GateExpression, Mission,
-  MissionCriteriaRepositoryPort, MissionQuestionRepositoryPort, MissionRepositoryPort, MissionTask, RepoRepositoryPort,
-  Repository, Run, RunInputRepositoryPort, RunRepositoryPort, RunScoreRepositoryPort, TaskRepositoryPort, WorkspaceRepositoryPort,
+  ArtifactManifest, ArtifactRepositoryPort, ArtifactStorePort, DecisionRepositoryPort, EvalBlobPort, EvalCandidate, EvalCase,
+  EvalCaseCriterion, EvalCaseInput, EvalCaseProvenance, EvalCaseSnapshot, EvalRepositoryPort, EvalRoleVariant, EvalRun, EvalSuite,
+  EvalTrial, GateExpression, Mission, MissionCriteriaRepositoryPort, MissionQuestionRepositoryPort, MissionRepositoryPort,
+  MissionTask, RepoRepositoryPort, Repository, RoleRepositoryPort, Run, RunInputRepositoryPort, RunRepositoryPort,
+  RunScoreRepositoryPort, SkillPin, SkillRef, TaskRepositoryPort, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
-import { EMPTY_KNOWLEDGE } from '@tandemise/domain';
+import { EMPTY_KNOWLEDGE, NO_ROLE_MODELS } from '@tandemise/domain';
 import { summarizeRunScores, type RoleModelSummary } from '@tandemise/evaluation';
 import type { CommandExecutor } from '@tandemise/integrations-core';
-import type { Clock, EvalCaseId, EvalSuiteId, TaskId, WorkspaceId } from '@tandemise/shared';
-import { TandemiseError, ids } from '@tandemise/shared';
+import type { Clock, EvalCaseId, EvalRunId, EvalSuiteId, TaskId, WorkspaceId } from '@tandemise/shared';
+import { TandemiseError, errorMessage, ids } from '@tandemise/shared';
+import { evalSpend, scorecardFor } from '../engine/eval-runner.js';
+import { readSetup } from '../setup/codec.js';
 import type { Caller } from '../support/identity.js';
 import { liveArtifacts, upstreamTaskIds } from '../support/lineage.js';
+import type { SkillService } from './skill-service.js';
 
 /** Eval-specific refusals (P3b spec Part B). `EvalErrorCode`s beyond this task's own belong to later work (runs, trials). */
 export type EvalErrorCode =
@@ -36,6 +40,26 @@ const NO_GATE_MESSAGE = 'Only a step with a completion gate can be an eval case,
 const BASE_UNRESOLVED_MESSAGE = "The branch this step started from no longer exists, so this step can't be saved as a case.";
 const ALREADY_RUNNING_MESSAGE = 'A run on this suite is still going. Cancel it first.';
 
+/** Repeats when the person names none, and the range they may name (Global Constraints). */
+const DEFAULT_REPEATS = 3;
+const MAX_REPEATS = 10;
+
+/** A run as the Evals screen reads it: its trials, and what it has spent so far. */
+export interface EvalRunDetail {
+  readonly run: EvalRun;
+  readonly trials: readonly EvalTrial[];
+  /** Null when any finished trial's cost is unknown: unknown is never $0. */
+  readonly spentUsd: number | null;
+  /** True when a finished trial reported no cost, so the cap cannot stop this run. */
+  readonly costUnmeasured: boolean;
+}
+
+/** What the service asks of the eval runner; resolved lazily, since the runner is composed from the executor. */
+export interface EvalRunnerControl {
+  wake(): void;
+  cancel(runId: EvalRunId): void;
+}
+
 export interface EvalServiceDeps {
   readonly evals: EvalRepositoryPort;
   readonly runScores: RunScoreRepositoryPort;
@@ -55,6 +79,13 @@ export interface EvalServiceDeps {
   /** Raw git, the way `ContributionDeps.exec` runs it; null in a build without one. */
   readonly exec?: CommandExecutor | null;
   readonly clock: Clock;
+  /** Today's roles, frozen into a run's baseline. */
+  readonly roles: RoleRepositoryPort;
+  /** Role pins for the baseline, the library for a skills candidate, and the store a setup's pins must be in. */
+  readonly skills: Pick<SkillService, 'catalog' | 'pinsFor' | 'missing'>;
+  /** A `.tandemise` folder's files, for a setup candidate (`SetupService.readFolder`). */
+  readonly readSetupFolder: (path: string) => Promise<{ readonly files: Readonly<Record<string, string>> }>;
+  readonly runner: () => EvalRunnerControl;
 }
 
 /**
@@ -166,6 +197,162 @@ export class EvalService {
     if (kase === undefined) throw TandemiseError.notFound('Eval case', caseId);
     this.#refuseIfActive(kase.suiteId);
     this.deps.evals.deleteCase(caseId);
+  }
+
+  // ------------------------------------------------------------------- runs
+
+  /**
+   * Starts trying a suite against a candidate (spec B4): the baseline is
+   * today's setup for every role the suite's cases use, frozen now, and the
+   * candidate is that baseline with the person's change applied. Every
+   * refusal is checked before the run or any trial is written.
+   */
+  async startRun(
+    suiteId: EvalSuiteId,
+    caller: Caller,
+    req: { readonly candidate: EvalCandidate; readonly repeats?: number; readonly spendCapUsd?: number },
+  ): Promise<EvalRun> {
+    const cap = req.spendCapUsd;
+    if (cap === undefined || !Number.isFinite(cap) || cap <= 0) throw new EvalError('cap_required', 'Set a spend cap for this run.');
+    const repeats = req.repeats ?? DEFAULT_REPEATS;
+    if (!Number.isInteger(repeats) || repeats < 1 || repeats > MAX_REPEATS) {
+      throw new EvalError('repeats_range', `Repeats must be between 1 and ${MAX_REPEATS}.`);
+    }
+    const suite = this.#requireSuite(suiteId);
+    const workspaceId = suite.workspaceId;
+    const cases = this.deps.evals.listCases(suiteId);
+    if (cases.length === 0) throw new EvalError('suite_empty', 'This suite has no cases yet.');
+    // One run per project at a time: trials share its runtimes, and two runs' spend would blur.
+    if (this.deps.evals.activeRuns().some((r) => r.workspaceId === workspaceId)) {
+      throw new EvalError('already_running', 'Another eval run is still going in this project.');
+    }
+
+    const baseline: Record<string, EvalRoleVariant> = {};
+    for (const kase of cases) {
+      const roleId = kase.snapshot.step.roleId;
+      const role = this.deps.roles.get(roleId, workspaceId);
+      if (role === undefined) throw new EvalError('role_missing', `The role ${roleId} used by case ${kase.name} no longer exists.`);
+      for (const input of kase.snapshot.inputs) {
+        if (!(await this.deps.blobs.has(input.sha256))) {
+          throw new EvalError('input_missing', `An input of case ${kase.name} is missing from the eval store.`);
+        }
+      }
+      if (baseline[roleId] !== undefined) continue;
+      // No step refs: only the role's own pins belong to the role; a step's pins travel with its case.
+      const pins = this.deps.skills.pinsFor(workspaceId, role, { key: '' }).pins.filter((p) => p.from !== 'step');
+      baseline[roleId] = { role: structuredClone(role), pins };
+    }
+    const candidate = await this.#candidateRoles(workspaceId, baseline, req.candidate);
+
+    const now = this.deps.clock.now();
+    const run = this.deps.evals.insertRun({
+      id: ids.evalRun(), suiteId, workspaceId, status: 'queued', reason: null, repeats, spendCapUsd: cap,
+      candidate: req.candidate,
+      variants: { baseline: { label: 'baseline', roles: baseline }, candidate: { label: 'candidate', roles: candidate } },
+      scorecard: null, startedBy: caller.personId, createdAt: now, startedAt: null, finishedAt: null,
+    });
+    // Case by case, repeat by repeat, baseline then candidate: a run stopped early still holds pairs.
+    const trials: EvalTrial[] = [];
+    for (const kase of cases) {
+      for (let repeat = 1; repeat <= repeats; repeat += 1) {
+        for (const variant of ['baseline', 'candidate'] as const) {
+          trials.push({
+            id: ids.evalTrial(), runId: run.id, caseId: kase.id, variant, repeat, seq: trials.length + 1,
+            missionId: null, status: 'queued', reason: null, score: null, startedAt: null, finishedAt: null,
+          });
+        }
+      }
+    }
+    this.deps.evals.insertTrials(trials);
+    this.deps.runner().wake();
+    return run;
+  }
+
+  getRun(runId: EvalRunId): EvalRunDetail {
+    const run = this.deps.evals.getRun(runId);
+    if (run === undefined) throw TandemiseError.notFound('Eval run', runId);
+    const trials = this.deps.evals.listTrials(runId);
+    return { run, trials, ...evalSpend(this.deps.runs, trials) };
+  }
+
+  listRuns(suiteId: EvalSuiteId): readonly EvalRun[] {
+    return this.deps.evals.listRuns(suiteId);
+  }
+
+  /**
+   * Ends a run now. Trials not yet started are cancelled, the live one is
+   * aborted (the runner ends it cancelled and cleans it up), and the
+   * scorecard is written over the trials that did finish.
+   */
+  cancelRun(runId: EvalRunId, caller: Caller): void {
+    const run = this.deps.evals.getRun(runId);
+    if (run === undefined) throw TandemiseError.notFound('Eval run', runId);
+    if (run.status !== 'queued' && run.status !== 'running') throw new EvalError('not_running', 'This run has already finished.');
+    const now = this.deps.clock.now();
+    for (const trial of this.deps.evals.listTrials(runId)) {
+      if (trial.status === 'queued') this.deps.evals.updateTrial(trial.id, { status: 'cancelled', finishedAt: now });
+    }
+    this.deps.runner().cancel(runId);
+    this.deps.evals.updateRun(runId, { status: 'cancelled', scorecard: scorecardFor(this.deps.evals, run), finishedAt: now });
+  }
+
+  /** The baseline with the person's change applied; roles the suite does not use are ignored. */
+  async #candidateRoles(
+    workspaceId: WorkspaceId,
+    baseline: Readonly<Record<string, EvalRoleVariant>>,
+    candidate: EvalCandidate,
+  ): Promise<Record<string, EvalRoleVariant>> {
+    const roles: Record<string, EvalRoleVariant> = structuredClone(baseline);
+    if (candidate.kind === 'models') {
+      for (const [roleId, model] of Object.entries(candidate.roles)) {
+        const current = roles[roleId];
+        if (current === undefined) continue;
+        roles[roleId] = { ...current, role: { ...current.role, models: { ...(current.role.models ?? NO_ROLE_MODELS), model } } };
+      }
+      return roles;
+    }
+    if (candidate.kind === 'skills') {
+      const catalog = this.deps.skills.catalog(workspaceId);
+      for (const [roleId, refs] of Object.entries(candidate.roles)) {
+        const current = roles[roleId];
+        if (current === undefined) continue;
+        const pins = refs.map((ref) => resolveRef(ref, catalog.versionsOf(ref.name)));
+        roles[roleId] = { role: { ...current.role, skills: pins.map((p) => ({ name: p.name, version: p.version })) }, pins };
+      }
+      return roles;
+    }
+
+    let files: Readonly<Record<string, string>>;
+    try {
+      files = (await this.deps.readSetupFolder(candidate.folder)).files;
+    } catch (e) {
+      throw new EvalError('setup_invalid', errorMessage(e));
+    }
+    const { snapshot, problems } = readSetup(files);
+    const problem = problems[0];
+    if (problem !== undefined) throw new EvalError('setup_invalid', problem.message);
+    for (const setup of snapshot.roles ?? []) {
+      const current = roles[setup.id];
+      if (current === undefined) continue;
+      const pins: SkillPin[] = setup.skills.map((p) => ({ name: p.name, version: p.version, hash: p.hash, from: 'role' }));
+      const missing = (await this.deps.skills.missing(pins))[0];
+      if (missing !== undefined) {
+        throw new EvalError('skill_unknown', `This setup pins ${missing.name} v${missing.version}, which isn't in your skill library yet.`);
+      }
+      roles[setup.id] = {
+        role: {
+          ...current.role,
+          instructions: setup.instructions,
+          defaultCapabilities: setup.capabilities,
+          outputContract: setup.outputContract,
+          defaultIsolation: setup.isolation,
+          models: { model: setup.model, escalate: setup.escalate, economyModel: setup.economyModel },
+          skills: setup.skills.map((p) => ({ name: p.name, version: p.version })),
+        },
+        pins,
+      };
+    }
+    return roles;
   }
 
   runScoreSummary(workspaceId: WorkspaceId, windowDays: 7 | 30 | 90): readonly RoleModelSummary[] {
@@ -317,4 +504,17 @@ export class EvalService {
       .flatMap((type) => liveArtifacts(this.deps.artifacts, mission.id, type).filter((a) => a.taskId === task.id))
       .map((a) => ({ type: a.type, sha256: a.sha256 }));
   }
+}
+
+/** A skills candidate's ref made concrete against the library: `latest` is the highest version. */
+function resolveRef(ref: SkillRef, versions: readonly { readonly version: number; readonly hash: string }[] | undefined): SkillPin {
+  const found = ref.version === 'latest'
+    ? [...(versions ?? [])].sort((a, b) => b.version - a.version)[0]
+    : versions?.find((v) => v.version === ref.version);
+  if (found === undefined) {
+    throw new EvalError('skill_unknown', ref.version === 'latest'
+      ? `No skill ${ref.name} in your library.`
+      : `No skill ${ref.name} v${ref.version} in your library.`);
+  }
+  return { name: ref.name, version: found.version, hash: found.hash, from: 'role' };
 }
