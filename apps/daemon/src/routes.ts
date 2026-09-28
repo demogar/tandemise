@@ -14,9 +14,10 @@ import {
   updateIssueSettingsRequest,
   applySetupRequest, exportSetupRequest, previewSetupRequest,
   parkTaskRequest, handBackRequest, resolveWorkspaceLinkRequest,
+  createEvalSuiteRequest, saveEvalCaseRequest, startEvalRunRequest, runScoresQuery,
 } from '@tandemise/api-contract';
 import { normalizeLimits } from '@tandemise/domain';
-import { ContributionError } from '@tandemise/application';
+import { ContributionError, EvalError } from '@tandemise/application';
 import type { TandemiseServices } from '@tandemise/application';
 import type { AdjustableClock } from '@tandemise/shared';
 import { CONTRIBUTION_BODY, Router, formatZodIssues, type RequestContext } from './http/router.js';
@@ -49,6 +50,20 @@ export function buildRouter(services: TandemiseServices, options: { readonly tes
     const value = ctx.query.get(name);
     if (!value) throw TandemiseError.validation(`Query parameter '${name}' is required.`);
     return value;
+  };
+
+  /**
+   * Maps an `EvalError` (spec Part B) the way `ContributionError` is mapped
+   * below: `already_running` is a 409, so the client can offer to cancel the
+   * run in the way; every other refusal is a 400 carrying the service's own
+   * message, with the code kept on `details` for a client that wants to react
+   * to it (e.g. re-show the spend cap field on `cap_required`).
+   */
+  const mapEvalError = (e: unknown): unknown => {
+    if (!(e instanceof EvalError)) return e;
+    return e.code === 'already_running'
+      ? new TandemiseError('CONFLICT', e.message, { details: { code: e.code } })
+      : TandemiseError.validation(e.message, { code: e.code });
   };
 
   // ---------------------------------------------------------------- system
@@ -157,6 +172,53 @@ export function buildRouter(services: TandemiseServices, options: { readonly tes
     services.setup.preview(asId(ctx.params.id!), (await ctx.body(previewSetupRequest)).path));
   r.post('/v1/workspaces/:id/setup/apply', async (ctx) =>
     services.setup.apply(ctx.caller, asId(ctx.params.id!), await ctx.body(applySetupRequest)));
+
+  // -------------------------------------------------------------- evals (P3b)
+  // Suites of frozen cases, saving a finished gated step as one, and trying a
+  // candidate role/skills/setup against a suite (spec Part B).
+  r.get('/v1/workspaces/:id/evals/suites', (ctx) => services.evals.listSuites(asId(ctx.params.id!)));
+  r.post('/v1/workspaces/:id/evals/suites', async (ctx) => {
+    try {
+      return services.evals.createSuite(asId(ctx.params.id!), ctx.caller, (await ctx.body(createEvalSuiteRequest)).name);
+    } catch (e) { throw mapEvalError(e); }
+  });
+  r.delete('/v1/evals/suites/:id', (ctx) => {
+    try {
+      return services.evals.deleteSuite(asId(ctx.params.id!), ctx.caller);
+    } catch (e) { throw mapEvalError(e); }
+  });
+  r.get('/v1/evals/suites/:id/cases', (ctx) => services.evals.caseViews(asId(ctx.params.id!)));
+  r.delete('/v1/evals/cases/:id', (ctx) => {
+    try {
+      return services.evals.deleteCase(asId(ctx.params.id!), ctx.caller);
+    } catch (e) { throw mapEvalError(e); }
+  });
+  // A finished, gated step saved as a replayable case; the task the step ran as.
+  r.post('/v1/tasks/:id/eval-case', async (ctx) => {
+    try {
+      const { suiteId, ...rest } = await ctx.body(saveEvalCaseRequest);
+      return await services.evals.saveCase(asId(ctx.params.id!), ctx.caller, {
+        ...rest, suiteId: suiteId === undefined ? undefined : asId(suiteId),
+      });
+    } catch (e) { throw mapEvalError(e); }
+  });
+  r.get('/v1/evals/suites/:id/runs', (ctx) =>
+    services.evals.listRuns(asId(ctx.params.id!)).map((run) => services.evals.runView(run.id)));
+  r.post('/v1/evals/suites/:id/runs', async (ctx) => {
+    try {
+      const run = await services.evals.startRun(asId(ctx.params.id!), ctx.caller, await ctx.body(startEvalRunRequest));
+      return services.evals.runView(run.id);
+    } catch (e) { throw mapEvalError(e); }
+  });
+  r.get('/v1/evals/runs/:id', (ctx) => services.evals.runView(asId(ctx.params.id!)));
+  r.post('/v1/evals/runs/:id/cancel', (ctx) => {
+    try {
+      return services.evals.cancelRun(asId(ctx.params.id!), ctx.caller);
+    } catch (e) { throw mapEvalError(e); }
+  });
+  // "From your runs" (spec B1): real-run summaries by role and model, over the last 7/30/90 days.
+  r.get('/v1/workspaces/:id/evals/run-scores', (ctx) =>
+    services.evals.runScoreSummary(asId(ctx.params.id!), Number(query(ctx, runScoresQuery).days) as 7 | 30 | 90));
 
   // The test clock (P11): registered only under TANDEMISE_CLOCK_OFFSET_MS, so a
   // normal daemon answers 404 and nothing can move its time.

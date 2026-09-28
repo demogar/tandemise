@@ -72,6 +72,13 @@ import type {
   TaskFeedbackView,
   ParkTaskRequest,
   HandBackRequest,
+  EvalSuiteView,
+  EvalCaseView,
+  EvalRunView,
+  RoleModelSummaryView,
+  CreateEvalSuiteRequest,
+  SaveEvalCaseRequest,
+  StartEvalRunRequest,
 } from '@tandemise/api-contract';
 import { API_VERSION, API_VERSION_HEADER, STREAM_PATH } from './domain.js';
 import type {
@@ -659,6 +666,55 @@ export class DaemonClient {
 
   updateNotificationPreferences(body: UpdateNotificationPreferencesRequest): Promise<NotificationPreferencesView> {
     return this.#request('PUT', '/notifications/preferences', body);
+  }
+
+  // -------------------------------------------------------------------- evals (P3b)
+
+  evalSuites(workspaceId: string): Promise<readonly EvalSuiteView[]> {
+    return this.#get(`/workspaces/${workspaceId}/evals/suites`);
+  }
+
+  createEvalSuite(workspaceId: string, name: string): Promise<EvalSuiteView> {
+    return this.#request('POST', `/workspaces/${workspaceId}/evals/suites`, { name } satisfies CreateEvalSuiteRequest);
+  }
+
+  deleteEvalSuite(id: string): Promise<void> {
+    return this.#request('DELETE', `/evals/suites/${id}`);
+  }
+
+  evalCases(suiteId: string): Promise<readonly EvalCaseView[]> {
+    return this.#get(`/evals/suites/${suiteId}/cases`);
+  }
+
+  deleteEvalCase(id: string): Promise<void> {
+    return this.#request('DELETE', `/evals/cases/${id}`);
+  }
+
+  /** Freezes a finished, gated step as a replayable case (spec B2). */
+  saveEvalCase(taskId: string, body: SaveEvalCaseRequest): Promise<EvalCaseView> {
+    return this.#request('POST', `/tasks/${taskId}/eval-case`, body);
+  }
+
+  evalRuns(suiteId: string): Promise<readonly EvalRunView[]> {
+    return this.#get(`/evals/suites/${suiteId}/runs`);
+  }
+
+  /** Starts trying a candidate against a suite's cases (spec B4). */
+  startEvalRun(suiteId: string, body: StartEvalRunRequest): Promise<EvalRunView> {
+    return this.#request('POST', `/evals/suites/${suiteId}/runs`, body);
+  }
+
+  evalRun(id: string): Promise<EvalRunView> {
+    return this.#get(`/evals/runs/${id}`);
+  }
+
+  cancelEvalRun(id: string): Promise<void> {
+    return this.#request('POST', `/evals/runs/${id}/cancel`);
+  }
+
+  /** "From your runs" (spec B1): real-run summaries by role and model, over the last `days` days. */
+  runScoreSummary(workspaceId: string, days: 7 | 30 | 90): Promise<readonly RoleModelSummaryView[]> {
+    return this.#get(`/workspaces/${workspaceId}/evals/run-scores`, { days });
   }
 }
 

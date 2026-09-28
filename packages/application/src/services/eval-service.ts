@@ -1,11 +1,12 @@
 import type {
   ArtifactManifest, ArtifactRepositoryPort, ArtifactStorePort, DecisionRepositoryPort, EvalBlobPort, EvalCandidate, EvalCase,
   EvalCaseCriterion, EvalCaseInput, EvalCaseProvenance, EvalCaseSnapshot, EvalRepositoryPort, EvalRoleVariant, EvalRun, EvalSuite,
-  EvalTrial, GateExpression, Mission, MissionCriteriaRepositoryPort, MissionQuestionRepositoryPort, MissionRepositoryPort,
+  EvalTrial, EvalTrialStatus, GateExpression, Mission, MissionCriteriaRepositoryPort, MissionQuestionRepositoryPort, MissionRepositoryPort,
   MissionTask, RepoRepositoryPort, Repository, RoleRepositoryPort, Run, RunInputRepositoryPort, RunRepositoryPort,
   RunScoreRepositoryPort, SkillPin, SkillRef, TaskRepositoryPort, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
 import { EMPTY_KNOWLEDGE, NO_ROLE_MODELS } from '@tandemise/domain';
+import type { EvalCaseView, EvalRunView, EvalTrialView } from '@tandemise/api-contract';
 import { summarizeRunScores, type RoleModelSummary } from '@tandemise/evaluation';
 import type { CommandExecutor } from '@tandemise/integrations-core';
 import type { Clock, EvalCaseId, EvalRunId, EvalSuiteId, TaskId, WorkspaceId } from '@tandemise/shared';
@@ -192,6 +193,33 @@ export class EvalService {
     return this.deps.evals.listCases(suiteId);
   }
 
+  /** The suite's cases as the Evals screen reads them: what a case replays, without its full snapshot. */
+  caseViews(suiteId: EvalSuiteId): readonly EvalCaseView[] {
+    return this.deps.evals.listCases(suiteId).map((kase) => this.#caseView(kase));
+  }
+
+  #caseView(kase: EvalCase): EvalCaseView {
+    return {
+      id: kase.id,
+      suiteId: kase.suiteId,
+      name: kase.name,
+      baseSha: kase.snapshot.baseSha,
+      repositoryId: kase.snapshot.repositoryId,
+      roleId: kase.snapshot.step.roleId,
+      stepTitle: kase.snapshot.step.title,
+      inputs: kase.snapshot.inputs.map((i) => ({ type: i.type, title: i.title })),
+      criteria: kase.snapshot.criteria.length,
+      source: {
+        missionId: kase.provenance.missionId,
+        missionTitle: kase.provenance.missionTitle,
+        taskId: kase.provenance.taskId,
+        // A case is frozen at save time and outlives its mission; this says whether that mission is still around to look at.
+        missionExists: this.deps.missions.get(kase.provenance.missionId) !== undefined,
+      },
+      createdAt: kase.createdAt,
+    };
+  }
+
   deleteCase(caseId: EvalCaseId, caller: Caller): void {
     const kase = this.deps.evals.getCase(caseId);
     if (kase === undefined) throw TandemiseError.notFound('Eval case', caseId);
@@ -273,6 +301,41 @@ export class EvalService {
     if (run === undefined) throw TandemiseError.notFound('Eval run', runId);
     const trials = this.deps.evals.listTrials(runId);
     return { run, trials, ...evalSpend(this.deps.runs, trials) };
+  }
+
+  /** A run as the Evals screen reads it: its trials named by case, its progress, and its scorecard once it has one. */
+  runView(runId: EvalRunId): EvalRunView {
+    const { run, trials, spentUsd, costUnmeasured } = this.getRun(runId);
+    const caseNames = new Map(this.deps.evals.listCases(run.suiteId).map((kase) => [kase.id, kase.name] as const));
+    // A trial not yet done is still queued or mid-run; every other status is an outcome.
+    const notDone = new Set<EvalTrialStatus>(['queued', 'running']);
+    const done = trials.filter((t) => !notDone.has(t.status)).length;
+    return {
+      id: run.id,
+      suiteId: run.suiteId,
+      status: run.status,
+      reason: run.reason,
+      repeats: run.repeats,
+      spendCapUsd: run.spendCapUsd,
+      spentUsd,
+      costUnmeasured,
+      candidate: run.candidate,
+      progress: { done, total: trials.length },
+      trials: trials.map((t): EvalTrialView => ({
+        id: t.id,
+        caseId: t.caseId,
+        // A case deleted after this run finished leaves its old trials nameless; the run itself still reads fine.
+        caseName: caseNames.get(t.caseId) ?? '',
+        variant: t.variant,
+        repeat: t.repeat,
+        status: t.status,
+        reason: t.reason,
+      })),
+      scorecard: run.scorecard as EvalRunView['scorecard'],
+      createdAt: run.createdAt,
+      startedAt: run.startedAt,
+      finishedAt: run.finishedAt,
+    };
   }
 
   listRuns(suiteId: EvalSuiteId): readonly EvalRun[] {

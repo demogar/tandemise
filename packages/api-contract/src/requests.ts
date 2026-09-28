@@ -573,3 +573,41 @@ export const importSkillRequest = z.object({
   hash: z.string().regex(/^[0-9a-f]{64}$/, 'the hash the preview showed'),
 });
 export type ImportSkillRequest = z.infer<typeof importSkillRequest>;
+
+// -------------------------------------------------------------------- evals (P3b)
+
+export const createEvalSuiteRequest = z.object({ name: z.string().trim().min(1).max(80) });
+export type CreateEvalSuiteRequest = z.infer<typeof createEvalSuiteRequest>;
+
+export const saveEvalCaseRequest = z.object({
+  suiteId: z.string().optional(),
+  newSuiteName: z.string().trim().min(1).max(80).optional(),
+  name: z.string().trim().min(1).max(80),
+});
+export type SaveEvalCaseRequest = z.infer<typeof saveEvalCaseRequest>;
+
+const skillRef = z.object({ name: z.string().min(1), version: z.union([z.number().int().positive(), z.literal('latest')]) });
+
+/** A candidate to try against a suite's baseline (spec B4): a model swap, a skills swap, or a whole `.tandemise` folder. */
+export const evalCandidateSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('models'), roles: z.record(z.string(), z.string().min(1)) }),
+  z.object({ kind: z.literal('skills'), roles: z.record(z.string(), z.array(skillRef)) }),
+  z.object({ kind: z.literal('setup'), folder: z.string().min(1) }),
+]);
+export type EvalCandidateRequest = z.infer<typeof evalCandidateSchema>;
+
+/**
+ * Repeats (1-10, default 3) and the spend cap (required, > 0) are range-checked
+ * in `EvalService`, not here, so a refusal carries the service's own message
+ * rather than a generic zod one.
+ */
+export const startEvalRunRequest = z.object({
+  candidate: evalCandidateSchema,
+  repeats: z.number().int().optional(),
+  spendCapUsd: z.number().optional(),
+});
+export type StartEvalRunRequest = z.infer<typeof startEvalRunRequest>;
+
+/** `GET /v1/workspaces/:id/evals/run-scores?days=30`. */
+export const runScoresQuery = z.object({ days: z.enum(['7', '30', '90']).default('30') });
+export type RunScoresQuery = z.infer<typeof runScoresQuery>;

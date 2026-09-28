@@ -1165,6 +1165,98 @@ section('daemon: run scores');
         await d.api('PATCH', `/v1/runtimes/${runtime.id}`, { settings: runtime.settings });
         delete process.env.SCRIPTED_FAIL_MODEL;
         delete process.env.SCRIPTED_COST_USD;
+
+        section('http: evals');
+        {
+          // Task 7's HTTP surface, round-tripped over the daemon's own bearer
+          // token: a suite made from scratch, a case saved from m5's finished
+          // build step (already SUCCEEDED above), a run started and watched to
+          // a terminal state, every view's shape, and the two refusals that
+          // only show up over HTTP (no cap, a second run while one is active).
+          const m5BuildTask = (await d.tasks(m5.id)).find((t) => t.roleId === 'development');
+
+          const suiteRes = await d.api('POST', `/v1/workspaces/${ws}/evals/suites`, { name: 'HTTP suite' });
+          check('create suite: 200', suiteRes.status === 200, suiteRes);
+          const httpSuiteId = suiteRes.body.id;
+          check('list suites includes it', (await d.api('GET', `/v1/workspaces/${ws}/evals/suites`)).body.some((s) => s.id === httpSuiteId));
+
+          const caseRes = await d.api('POST', `/v1/tasks/${m5BuildTask.id}/eval-case`, { suiteId: httpSuiteId, name: 'HTTP case' });
+          check('save case: 200', caseRes.status === 200, caseRes);
+          const httpCaseId = caseRes.body.id;
+
+          const casesRes = await d.api('GET', `/v1/evals/suites/${httpSuiteId}/cases`);
+          check('list cases: 200', casesRes.status === 200 && Array.isArray(casesRes.body), casesRes);
+          const caseView = casesRes.body.find((c) => c.id === httpCaseId);
+          check(
+            'case view shape',
+            caseView?.suiteId === httpSuiteId && caseView.name === 'HTTP case' && typeof caseView.baseSha === 'string'
+              && typeof caseView.repositoryId === 'string' && caseView.roleId === 'development' && typeof caseView.stepTitle === 'string'
+              && Array.isArray(caseView.inputs) && typeof caseView.criteria === 'number',
+            caseView,
+          );
+          check(
+            'case view names its live source mission',
+            caseView?.source?.missionId === m5.id && caseView.source.missionExists === true,
+            caseView?.source,
+          );
+
+          const noCap = await d.api('POST', `/v1/evals/suites/${httpSuiteId}/runs`, { candidate: { kind: 'models', roles: {} } });
+          check('starting a run with no cap: 400, the service message', noCap.status === 400 && noCap.body.error.message === 'Set a spend cap for this run.', noCap);
+
+          process.env.SCRIPTED_COST_USD = '0.25';
+          const startRes = await d.api('POST', `/v1/evals/suites/${httpSuiteId}/runs`, {
+            candidate: { kind: 'models', roles: { development: 'good' } }, repeats: 1, spendCapUsd: 5,
+          });
+          check('start run: 200, a run view', startRes.status === 200, startRes);
+          const httpRunId = startRes.body.id;
+          check(
+            'run view at start: suite, trials, progress',
+            startRes.body.suiteId === httpSuiteId && Array.isArray(startRes.body.trials)
+              && startRes.body.progress?.total === startRes.body.trials.length,
+            startRes.body,
+          );
+
+          const second = await d.api('POST', `/v1/evals/suites/${httpSuiteId}/runs`, { candidate: { kind: 'models', roles: {} }, spendCapUsd: 1 });
+          check('a second run while one is active: 409', second.status === 409, second);
+
+          let runView;
+          for (const until = Date.now() + 120_000; Date.now() < until; ) {
+            runView = (await d.api('GET', `/v1/evals/runs/${httpRunId}`)).body;
+            if (TERMINAL.includes(runView.status)) break;
+            await pause(200);
+          }
+          check('get run: reaches a terminal state', TERMINAL.includes(runView?.status), runView);
+          check(
+            'run view once finished: scorecard, spend, done progress',
+            runView.scorecard !== null && typeof runView.spentUsd === 'number' && runView.costUnmeasured === false
+              && runView.progress.done === runView.progress.total,
+            runView,
+          );
+          check('run view trials carry the case name', runView.trials.length > 0 && runView.trials.every((t) => t.caseName === 'HTTP case'), runView.trials);
+
+          const runsRes = await d.api('GET', `/v1/evals/suites/${httpSuiteId}/runs`);
+          check('list runs: includes it', runsRes.status === 200 && runsRes.body.some((r) => r.id === httpRunId), runsRes.body);
+
+          const scoresRes = await d.api('GET', `/v1/workspaces/${ws}/evals/run-scores?days=30`);
+          check('run-scores: 200, an array', scoresRes.status === 200 && Array.isArray(scoresRes.body), scoresRes);
+
+          const cancelFinished = await d.api('POST', `/v1/evals/runs/${httpRunId}/cancel`);
+          check(
+            'cancel a finished run: 400 not_running',
+            cancelFinished.status === 400 && cancelFinished.body.error.details?.code === 'not_running',
+            cancelFinished,
+          );
+
+          const usage = await d.api('GET', `/v1/workspaces/${ws}/usage`);
+          check('workspace usage names an eval share after these runs', typeof usage.body.evalCostUsd === 'number' && usage.body.evalCostUsd > 0, usage.body.evalCostUsd);
+
+          const delCase = await d.api('DELETE', `/v1/evals/cases/${httpCaseId}`);
+          check('delete case: 204', delCase.status === 204, delCase);
+          const delSuite = await d.api('DELETE', `/v1/evals/suites/${httpSuiteId}`);
+          check('delete suite: 204', delSuite.status === 204, delSuite);
+
+          delete process.env.SCRIPTED_COST_USD;
+        }
       }
     }
   } finally {
