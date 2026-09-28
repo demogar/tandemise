@@ -123,7 +123,7 @@ one row per case that expands to the same table.
 
 | Measure | What it means |
 |---|---|
-| Trials | how many finished completed / were blocked / failed, among this variant's trials |
+| Trials | "N ran · P passed · F failed · B blocked": N trials ran to a score (the rates below are over these), P of them passed their gate and F didn't. B were blocked. "· E errored" is added when E trials failed with no score, from a setup or infrastructure error |
 | Gate pass rate | share of completed trials whose gate passed |
 | First-attempt pass rate | share of completed trials that passed with no retry |
 | Criteria | verified / failed / unverified, summed over completed trials |

@@ -20,7 +20,9 @@ const count = (value: number): string => new Intl.NumberFormat().format(Math.rou
 const ROWS: readonly Row[] = [
   {
     label: 'Trials',
-    value: (s) => `${s.trials.completed} completed / ${s.trials.blocked} blocked / ${s.trials.failed} failed`,
+    // "Ran" is the rates' denominator (every scored trial); passed and failed split it; errored trials never scored.
+    value: ({ trials: t }) =>
+      `${t.completed} ran · ${t.completed - t.failed} passed · ${t.failed} failed · ${t.blocked} blocked${t.errored > 0 ? ` · ${t.errored} errored` : ''}`,
   },
   { label: 'Gate pass rate', value: (s) => percent(s.gatePassRate), difference: { of: (d) => d.gatePassRate, better: 'higher', format: points } },
   {

@@ -1104,7 +1104,8 @@ export interface EvalTrialView {
 
 /** Structural copy of `@tandemise/evaluation`'s `VariantScore`. */
 export interface VariantScoreView {
-  readonly trials: { readonly completed: number; readonly blocked: number; readonly failed: number };
+  /** `failed` is completed trials whose gate did not pass; `errored` is failed trials with no score. */
+  readonly trials: { readonly completed: number; readonly blocked: number; readonly failed: number; readonly errored: number };
   readonly gatePassRate: number | null;
   readonly firstAttemptPassRate: number | null;
   readonly criteria: CriteriaCounts | null;

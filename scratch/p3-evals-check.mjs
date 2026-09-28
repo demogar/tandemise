@@ -535,7 +535,17 @@ try {
     { caseId: 'c2', caseName: 'Two', variant: 'baseline', status: 'blocked', score: null },
     { caseId: 'c2', caseName: 'Two', variant: 'candidate', status: 'passed', score: score({ costUsd: null }) },
   ], 2);
-  check('baseline counts', eq(card.baseline.trials, { completed: 1, blocked: 1, failed: 1 }));
+  check('baseline counts', eq(card.baseline.trials, { completed: 1, blocked: 1, failed: 1, errored: 0 }), card.baseline.trials);
+  check('candidate counts: nothing failed', eq(card.candidate.trials, { completed: 2, blocked: 0, failed: 0, errored: 0 }), card.candidate.trials);
+  // Final review, item 4: "failed" is only a completed trial whose gate failed; a failed trial with no score is "errored".
+  {
+    const errored = E.scoreEvalRun([
+      { caseId: 'c1', caseName: 'One', variant: 'baseline', status: 'failed', score: null },
+      { caseId: 'c1', caseName: 'One', variant: 'baseline', status: 'failed', score: score({ gatePassed: false, firstAttemptPassed: false }) },
+      { caseId: 'c1', caseName: 'One', variant: 'baseline', status: 'passed', score: score({}) },
+    ], 3);
+    check('a failed trial with no score is errored, not failed', eq(errored.baseline.trials, { completed: 2, blocked: 0, failed: 1, errored: 1 }), errored.baseline.trials);
+  }
   check('gate pass rates', card.baseline.gatePassRate === 0 && card.candidate.gatePassRate === 1);
   check('difference is candidate minus baseline', card.difference.gatePassRate === 1 && card.difference.meanAttempts === -1);
   check('an unknown cost makes the variant cost unknown', card.candidate.costUsd.total === null && card.difference.meanCostUsd === null);

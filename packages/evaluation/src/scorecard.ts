@@ -139,7 +139,11 @@ export function trialScoreFrom(scores: readonly RunScore[]): TrialScore | null {
 // -------------------------------------------------------------- scoreEvalRun
 
 export interface VariantScore {
-  readonly trials: { readonly completed: number; readonly blocked: number; readonly failed: number };
+  /**
+   * `completed`: trials that ran to a score (the rates' denominator); `failed`: completed trials whose
+   * gate did not pass; `errored`: failed trials with no score (a setup or infrastructure error).
+   */
+  readonly trials: { readonly completed: number; readonly blocked: number; readonly failed: number; readonly errored: number };
   readonly gatePassRate: number | null;
   readonly firstAttemptPassRate: number | null;
   readonly criteria: CriteriaCounts | null;
@@ -185,8 +189,9 @@ export interface ScoredTrial {
 function scoreVariant(trials: readonly ScoredTrial[]): VariantScore {
   const completed = trials.filter((t) => (t.status === 'passed' || t.status === 'failed') && t.score !== null);
   const blocked = trials.filter((t) => t.status === 'blocked').length;
-  const failed = trials.filter((t) => t.status === 'failed').length;
+  const errored = trials.filter((t) => t.status === 'failed' && t.score === null).length;
   const scores = completed.map((t) => t.score as TrialScore);
+  const failed = scores.filter((s) => !s.gatePassed).length;
 
   const gatePasses = scores.filter((s) => s.gatePassed).length;
   const firstAttemptPasses = scores.filter((s) => s.firstAttemptPassed).length;
@@ -208,7 +213,7 @@ function scoreVariant(trials: readonly ScoredTrial[]): VariantScore {
   const wallTimeTotal = sumOrNullIfAnyNull(scores.map((s) => s.wallTimeMs));
 
   return {
-    trials: { completed: completed.length, blocked, failed },
+    trials: { completed: completed.length, blocked, failed, errored },
     gatePassRate: rate(gatePasses, completed.length),
     firstAttemptPassRate: rate(firstAttemptPasses, completed.length),
     criteria,
