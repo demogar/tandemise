@@ -1,6 +1,6 @@
 import type {
   ApprovalId, ArtifactId, CriterionId, EventId, QuestionId, FeedbackId, MemberId, MissionId, PersonId, RepositoryId, RunId, RuntimeProfileId,
-  ExecutionTargetId, IntegrationId, IssueLinkId, RoutineId, SkillId, TaskId, Timestamp, WorkerAssignmentId, WorkspaceId,
+  ExecutionTargetId, EvalCaseId, EvalRunId, EvalSuiteId, EvalTrialId, IntegrationId, IssueLinkId, RoutineId, SkillId, TaskId, Timestamp, WorkerAssignmentId, WorkspaceId,
 } from '@tandemise/shared';
 import type { Mission, MissionDraft, MissionProgress, MissionStatus } from '../entities/mission.js';
 import type {
@@ -26,6 +26,9 @@ import type { MissionQuestion, QuestionInput } from '../entities/refinement.js';
 import type { LimitIncident, LimitIncidentStatus, LimitMetric, LimitThreshold, UsageTotals } from '../entities/limits.js';
 import type { Routine, RoutineDraft, RoutineRun } from '../entities/routine.js';
 import type { Skill, SkillVersion } from '../entities/skill.js';
+import type {
+  EvalCase, EvalCaseCriterion, EvalRun, EvalSuite, EvalTrial, RunScore,
+} from '../entities/eval.js';
 
 /**
  * Persistence ports.
@@ -293,6 +296,8 @@ export interface MissionCriteriaRepositoryPort {
    * planning replaces only the lines that came from the issue).
    */
   replaceUserCriteriaBy(missionId: MissionId, decidedBy: string, statements: readonly string[]): readonly MissionCriterion[];
+  /** Writes accepted rows verbatim (keys kept), for an eval trial's ledger. Only for a mission with no criteria. */
+  seed(missionId: MissionId, rows: readonly EvalCaseCriterion[]): readonly MissionCriterion[];
 }
 
 /** Questions a refinement pass asked, and their answers (P6). */
@@ -318,6 +323,8 @@ export interface LimitRepositoryPort {
   usageForWorkspace(workspaceId: WorkspaceId, start: string, end: string): UsageTotals;
   /** Per mission, the same window: for the usage view. */
   usageByMission(workspaceId: WorkspaceId, start: string, end: string): readonly { missionId: MissionId; totals: UsageTotals }[];
+  /** The same window, restricted to eval trial missions (P3b): what evals themselves have spent. */
+  evalUsageForWorkspace(workspaceId: WorkspaceId, start: Timestamp, end: Timestamp): UsageTotals;
   /** The incident for this scope, metric, window, threshold and limit amount, whatever its status. */
   find(key: LimitIncidentKey): LimitIncident | undefined;
   get(id: LimitIncident['id']): LimitIncident | undefined;
@@ -400,4 +407,34 @@ export interface IssueRepositoryPort {
   saveComment(linkId: IssueLinkId, kind: IssueCommentKind, commentId: string, body: string): IssueComment;
   /** Forgets a stored comment (tests use it to simulate a crash between posting and storing). */
   dropComment(linkId: IssueLinkId, kind: IssueCommentKind): void;
+}
+
+/** One row of measured facts per assessed run (P3b spec Part B, §B1). A record: the engine never reads it. */
+export interface RunScoreRepositoryPort {
+  /** Idempotent on runId: a second insert for the same run is ignored. */
+  insert(score: RunScore): void;
+  list(workspaceId: WorkspaceId, since: Timestamp, opts?: { readonly includeTrials?: boolean }): readonly RunScore[];
+  listByTask(taskId: TaskId): readonly RunScore[];
+}
+
+/** Eval suites, saved cases, and the runs and trials tried against them (P3b spec Part B, §B6). */
+export interface EvalRepositoryPort {
+  createSuite(suite: EvalSuite): EvalSuite;
+  getSuite(id: EvalSuiteId): EvalSuite | undefined;
+  listSuites(workspaceId: WorkspaceId): readonly (EvalSuite & { readonly cases: number })[];
+  deleteSuite(id: EvalSuiteId): void;
+  insertCase(c: EvalCase): EvalCase;
+  getCase(id: EvalCaseId): EvalCase | undefined;
+  listCases(suiteId: EvalSuiteId): readonly EvalCase[];
+  deleteCase(id: EvalCaseId): void;
+  insertRun(run: EvalRun): EvalRun;
+  getRun(id: EvalRunId): EvalRun | undefined;
+  updateRun(id: EvalRunId, patch: Partial<Pick<EvalRun, 'status' | 'reason' | 'scorecard' | 'startedAt' | 'finishedAt'>>): EvalRun;
+  listRuns(suiteId: EvalSuiteId): readonly EvalRun[];
+  /** Runs in `queued` or `running`, oldest first, across workspaces. */
+  activeRuns(): readonly EvalRun[];
+  insertTrials(trials: readonly EvalTrial[]): void;
+  getTrial(id: EvalTrialId): EvalTrial | undefined;
+  updateTrial(id: EvalTrialId, patch: Partial<Pick<EvalTrial, 'status' | 'reason' | 'score' | 'missionId' | 'startedAt' | 'finishedAt'>>): EvalTrial;
+  listTrials(runId: EvalRunId): readonly EvalTrial[];
 }

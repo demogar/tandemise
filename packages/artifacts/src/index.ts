@@ -24,3 +24,5 @@ export type { ArtifactStoreOptions } from './store.js';
 
 export { ARTIFACT_PATHS, ARTIFACT_STORE, artifactsModule, createArtifactsModule } from './module.js';
 export type { ArtifactsModuleOptions } from './module.js';
+
+export { FileEvalBlobs } from './eval-blobs.js';

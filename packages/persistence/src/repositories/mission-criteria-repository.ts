@@ -1,6 +1,6 @@
 import { TandemiseError, asId, ids, type ArtifactId, type Clock, type CriterionId, type MissionId } from '@tandemise/shared';
 import type {
-  CriterionSource, CriterionStatus, MissionCriteriaRepositoryPort, MissionCriterion, SpecCriterionInput,
+  CriterionSource, CriterionStatus, EvalCaseCriterion, MissionCriteriaRepositoryPort, MissionCriterion, SpecCriterionInput,
 } from '@tandemise/domain';
 import { CRITERION_STATEMENT_MAX, proposalKey, userCriterionKey } from '@tandemise/domain';
 import type { TandemiseDatabase } from '../database.js';
@@ -223,6 +223,21 @@ export class SqliteMissionCriteriaRepository implements MissionCriteriaRepositor
         id: ids.criterion(), mission_id: missionId, key: c.key.trim(), statement: clampStatement(c.statement), source: 'spec',
         covers: toJson([...new Set(c.covers.map((k) => k.trim()).filter((k) => k.length > 0))]),
         spec_artifact_id: specArtifactId, position: i, superseded_at: null, created_at: now, ...ACCEPTED,
+      }));
+    });
+  }
+
+  /** An eval trial's ledger (P3b): the case's criteria, written verbatim - only for a mission with none yet. */
+  seed(missionId: MissionId, rows: readonly EvalCaseCriterion[]): readonly MissionCriterion[] {
+    return this.#db.transaction(() => {
+      if (this.listAll(missionId).length > 0) {
+        throw new TandemiseError('CONFLICT', 'This mission already has criteria.', { details: { missionId } });
+      }
+      const now = this.#clock.now();
+      return rows.map((row, i) => this.#write({
+        id: ids.criterion(), mission_id: missionId, key: row.key, statement: row.statement, source: row.source,
+        covers: toJson(row.covers), spec_artifact_id: null, position: i, superseded_at: null, created_at: now,
+        ...ACCEPTED,
       }));
     });
   }

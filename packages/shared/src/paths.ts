@@ -21,6 +21,8 @@ export interface TandemisePaths {
   browserProfiles(workspaceId: string): string;
   /** The skills content store (P13), shared by every project: one folder per content hash. */
   readonly skills: string;
+  /** The eval case blob store (P3b), shared by every project: content-addressed by sha256. */
+  readonly evalBlobs: string;
 }
 
 export function createPaths(root = defaultRoot()): TandemisePaths {
@@ -42,6 +44,7 @@ export function createPaths(root = defaultRoot()): TandemisePaths {
     missionLogs: (w, m) => join(mission(w, m), 'logs'),
     browserProfiles: (w) => join(ws(w), 'browser-profiles'),
     skills: join(abs, 'skills'),
+    evalBlobs: join(abs, 'evals', 'blobs'),
   };
 }
 

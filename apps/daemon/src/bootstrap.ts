@@ -10,6 +10,7 @@ import * as persistenceTokens from '@tandemise/persistence';
 import {
   createArtifactsModule, ARTIFACT_STORE as ARTIFACTS_STORE_TOKEN,
   renderArtifactTemplate, parseArtifact, measureArtifact, deriveHandoff, splitAppendix,
+  FileEvalBlobs,
 } from '@tandemise/artifacts';
 import { policyModule } from '@tandemise/policy';
 import { contextModule } from '@tandemise/context';
@@ -36,6 +37,7 @@ import { createApplicationModule, createServices, SCHEDULER, type TandemiseServi
   ISSUE_TRACKER,
   PULL_REQUEST_SNAPSHOTS, GIT_CREDENTIAL_ENV, pickGitCredentialEnv,
   SETUP_FOLDER,
+  EVAL_BLOBS,
 } from '@tandemise/application';
 import * as applicationTokens from '@tandemise/application';
 
@@ -152,6 +154,9 @@ export function bootstrap(config: DaemonConfig, options: { readonly localPersonN
   // daemon; the application only ever sees bytes and hashes.
   container.rebind(SKILL_FILES, (r) =>
     new DaemonSkillFiles(config.paths.skills, config.skillsDiscoverRoot, r.resolve(LOGGER).child({ component: 'skills' })), { source: 'bootstrap' });
+
+  // Eval case inputs (P3b) are content-addressed bytes on disk, the same shape as the skills store.
+  container.bind(EVAL_BLOBS, () => new FileEvalBlobs(config.paths.evalBlobs), { source: 'bootstrap' });
 
   // GitHub issues (P14) go through the same `gh` and command executor as the
   // GitHub tools, so `gh` is found on the daemon's own PATH.

@@ -10,7 +10,7 @@
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { SCHEMA_VERSION } from '@tandemise/persistence';
+import { MIGRATIONS } from '@tandemise/persistence';
 
 let passed = 0;
 const failures = [];
@@ -84,7 +84,7 @@ check('an acronym stays together', D.outputTypeLabel('QAPlan') === 'QA plan' && 
   check('only the git credential variables that are set are passed to a PR fetch', eq(picked, { SSH_AUTH_SOCK: '/tmp/agent.sock', GIT_ASKPASS: '/bin/askpass' }), picked);
 }
 
-check('P3a adds no migration: SCHEMA_VERSION is still 19', SCHEMA_VERSION === 19, SCHEMA_VERSION);
+check('P3a added no migration: nothing between 019 and P3b\'s 020', MIGRATIONS.filter((m) => m.version > 19).every((m) => m.version === 20), MIGRATIONS.map((m) => m.version));
 
 // ------------------------------------------------------ the gh PR resolver
 // The real GhPullRequestSnapshots over a scripted executor: which URLs reach
