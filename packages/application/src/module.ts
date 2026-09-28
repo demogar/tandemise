@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { defineModule, type Container, type Resolver, type TandemiseModule } from '@tandemise/kernel';
 import type { Clock, Logger, TandemisePaths } from '@tandemise/shared';
 import { TandemiseError, asId, createPaths, nullLogger, systemClock } from '@tandemise/shared';
@@ -58,6 +59,7 @@ import { SkillInstaller } from './engine/skill-installer.js';
 import { DEFAULT_QUIET_AFTER_MS, reachedReason, type IssueTrackerPort, type PullRequestSnapshotPort } from '@tandemise/domain';
 import { SetupService } from './services/setup-service.js';
 import { RefinementServiceImpl } from './services/refinement-service.js';
+import { EvalService } from './services/eval-service.js';
 import { PlanningServiceImpl } from './services/planning-service.js';
 import { ProjectionServiceImpl } from './services/projection-service.js';
 import { RoleServiceImpl } from './services/role-service.js';
@@ -854,6 +856,48 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       gates: r.resolve(t.GATE_SERVICE),
     }), { source: SOURCE });
 
+    // Default: in memory. Content-addressed eval case inputs (P3b) are really
+    // disk under the daemon, which rebinds this the way it rebinds WORKFLOW_SOURCE
+    // and SETUP_FOLDER; a harness without a filesystem still composes.
+    bind(t.EVAL_BLOBS, () => {
+      const store = new Map<string, Uint8Array>();
+      return {
+        async put(bytes: Uint8Array): Promise<string> {
+          const sha256 = createHash('sha256').update(bytes).digest('hex');
+          if (!store.has(sha256)) store.set(sha256, bytes);
+          return sha256;
+        },
+        async get(sha256: string): Promise<Uint8Array | null> {
+          const bytes = store.get(sha256);
+          if (bytes === undefined) return null;
+          return createHash('sha256').update(bytes).digest('hex') === sha256 ? bytes : null;
+        },
+        async has(sha256: string): Promise<boolean> {
+          return store.has(sha256);
+        },
+      };
+    }, { source: SOURCE });
+
+    bind(t.EVAL_SERVICE, (r) => new EvalService({
+      evals: r.resolve(t.EVAL_REPOSITORY),
+      runScores: r.resolve(t.RUN_SCORE_REPOSITORY),
+      blobs: r.resolve(t.EVAL_BLOBS),
+      artifacts: r.resolve(t.ARTIFACT_REPOSITORY),
+      artifactStore: r.resolve(t.ARTIFACT_STORE),
+      runs: r.resolve(t.RUN_REPOSITORY),
+      runInputs: r.resolve(t.RUN_INPUT_REPOSITORY),
+      tasks: r.resolve(t.TASK_REPOSITORY),
+      missions: r.resolve(t.MISSION_REPOSITORY),
+      repositories: r.resolve(t.REPO_REPOSITORY),
+      workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
+      decisions: r.resolve(t.DECISION_REPOSITORY),
+      questions: r.resolve(t.MISSION_QUESTION_REPOSITORY),
+      criteria: r.resolve(t.MISSION_CRITERIA_REPOSITORY),
+      // The same runner as contributions, so a case's base commit is resolved with the daemon's own git.
+      exec: r.tryResolve(INTEGRATION_COMMAND_EXECUTOR) ?? null,
+      clock: clock(r),
+    }), { source: SOURCE });
+
     bind(t.TANDEMISE_SERVICES, (r): TandemiseServices => ({
       system: r.resolve(t.SYSTEM_SERVICE),
       workspaces: r.resolve(t.WORKSPACE_SERVICE),
@@ -882,6 +926,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       issues: r.resolve(t.ISSUE_SERVICE),
       setup: r.resolve(t.SETUP_SERVICE),
       contributions: r.resolve(t.CONTRIBUTION_SERVICE),
+      evals: r.resolve(t.EVAL_SERVICE),
     }), { source: SOURCE });
   });
 }

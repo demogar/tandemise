@@ -68,6 +68,8 @@ export interface TandemiseServices {
   readonly setup: import('./services/setup-service.js').SetupService;
   /** Files and links handed in from outside a mission, pinned as Evidence (P3). */
   readonly contributions: ContributionService;
+  /** Eval suites, saving a finished step as a case, and the run-score summary (P3b). */
+  readonly evals: import('./services/eval-service.js').EvalService;
 }
 
 /** One contribution pinned as Evidence, with what a caller needs to type it next. */

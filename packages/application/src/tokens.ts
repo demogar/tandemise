@@ -194,6 +194,8 @@ export const PULL_REQUEST_SNAPSHOTS = token<PullRequestSnapshotPort>('port.PullR
 /** The git credential variables (ssh-agent, askpass) a pull request fetch may pass to git; see `pickGitCredentialEnv`. */
 export const GIT_CREDENTIAL_ENV = token<() => Readonly<Record<string, string>>>('port.GitCredentialEnv');
 export const SETUP_SERVICE = token<import('./services/setup-service.js').SetupService>('application.SetupService');
+/** Eval suites, saved cases and the run-score summary (P3b). */
+export const EVAL_SERVICE = token<import('./services/eval-service.js').EvalService>('application.EvalService');
 
 export const TANDEMISE_SERVICES = token<TandemiseServices>('application.TandemiseServices');
 

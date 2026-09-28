@@ -9,6 +9,10 @@
 // frozen role on the pinned model, blocks on a missing skill without a card,
 // answers ask_human with "nobody", denies tool approvals, is left alone by
 // recovery, and is hidden from every list, the Desk, the Inbox and the scheduler.
+// Task 5: EvalService - suites, saving a finished gated step as a case (base
+// sha, inputs copied into the blob store, the step and mission context frozen,
+// criteria copied), and every refusal (not succeeded, no gate, no run, base
+// unresolved).
 //
 //   npm run build && node scratch/p3-evals-check.mjs
 import { execFileSync } from 'node:child_process';
@@ -283,21 +287,29 @@ async function daemonHarness() {
 
   const status = (id) => sql('SELECT status FROM missions WHERE id = ?', id)[0]?.status;
   const TERMINAL = ['COMPLETE', 'BLOCKED', 'FAILED', 'CANCELLED'];
+  /** Creates and plans a mission but never starts it, so its root tasks stay READY. */
+  const planOnly = async ({ goal, workflow, ...extra }) => {
+    const body = (await api('POST', '/v1/missions', {
+      workspaceId: wsId, goal, workflowPreset: workflow, successCriteria: ['The steps finish'], planNow: true, ...extra,
+    })).body;
+    const id = body?.mission?.id;
+    if (id !== undefined) {
+      await poll(() => /Ready to start/.test(sql('SELECT status_reason AS r FROM missions WHERE id = ?', id)[0]?.r ?? '') || status(id) !== 'PLANNING', 20_000);
+    }
+    return { id };
+  };
   return {
     api,
     sql,
     container: daemon.container,
     workspaceId: wsId,
+    /** The fixture repository's checkout on disk, for the eval-cases section's own git plumbing. */
+    repoPath: repo,
+    planOnly,
     /** Creates and starts a mission on the harness workspace; `workflow` names a fixture in acceptance/p0/workflows. */
     async missionWith({ goal, workflow, ...extra }) {
-      const body = (await api('POST', '/v1/missions', {
-        workspaceId: wsId, goal, workflowPreset: workflow, successCriteria: ['The steps finish'], planNow: true, ...extra,
-      })).body;
-      const id = body?.mission?.id;
-      if (id !== undefined) {
-        await poll(() => /Ready to start/.test(sql('SELECT status_reason AS r FROM missions WHERE id = ?', id)[0]?.r ?? '') || status(id) !== 'PLANNING', 20_000);
-        await api('POST', `/v1/missions/${id}/start`);
-      }
+      const { id } = await planOnly({ goal, workflow, ...extra });
+      if (id !== undefined) await api('POST', `/v1/missions/${id}/start`);
       return { id };
     },
     /** Polls until the mission reaches `want`, or any terminal status; returns the status it stopped on. */
@@ -371,7 +383,8 @@ async function engineHarness(HOME, prStub = { read: async () => null }, configur
   container.bind(app.PROCESS_LIVENESS, () => app.osProcessLiveness, { source: 'check' });
   container.rebind(app.PULL_REQUEST_SNAPSHOTS, () => prStub, { source: 'check' });
   // Eval case inputs (P3b): content-addressed, so a case outlives its mission.
-  container.bind(app.EVAL_BLOBS, () => new A.FileEvalBlobs(join(HOME, 'eval-blobs')), { source: 'check' });
+  // The application module binds an in-memory default; this replaces it with a real one on disk.
+  container.rebind(app.EVAL_BLOBS, () => new A.FileEvalBlobs(join(HOME, 'eval-blobs')), { source: 'check' });
   configure(container, app);
   const services = app.createServices(container);
   return { app, container, services, paths };
@@ -675,6 +688,58 @@ section('daemon: run scores');
     // Month usage includes a trial's spend, shown as the eval share.
     const u = (await d.api('GET', `/v1/workspaces/${ws}/usage`)).body;
     check('usage reports the eval share', typeof u.evalCostUsd === 'number' || u.evalCostUsd === null, u);
+
+    section('daemon: eval cases');
+    {
+      // EvalService and the repositories it reads, resolved through the real
+      // daemon's own container - no HTTP route exists yet (Task 7).
+      const evals = d.container.resolve(app.EVAL_SERVICE);
+      const runsRepo = d.container.resolve(app.RUN_REPOSITORY);
+      const runInputsRepo = d.container.resolve(app.RUN_INPUT_REPOSITORY);
+      const artifactsRepo = d.container.resolve(app.ARTIFACT_REPOSITORY);
+      const blobsRepo = d.container.resolve(app.EVAL_BLOBS);
+      const criteriaRepo = d.container.resolve(app.MISSION_CRITERIA_REPOSITORY);
+      const missionsRepo = d.container.resolve(app.MISSION_REPOSITORY);
+      const caller = { personId: d.container.resolve(app.IDENTITY).localPerson().id };
+      const gitc = (cwd, ...args) => execFileSync('git', args, { cwd, stdio: 'pipe' }).toString().trim();
+      const refuses = async (label, fn, code) => {
+        let err;
+        try { await fn(); } catch (e) { err = e; }
+        check(label, err?.code === code, err === undefined ? 'did not throw' : { code: err.code, message: err.message });
+      };
+
+      // The gated build step from "daemon: run scores" above, already SUCCEEDED.
+      const kase = await evals.saveCase(buildTask.id, caller, { newSuiteName: 'Smoke', name: 'Banner' });
+      check('base sha is the fixture main', kase.snapshot.baseSha === gitc(d.repoPath, 'rev-parse', 'main'), kase.snapshot.baseSha);
+      const firstRun = runsRepo.listByTask(buildTask.id).sort((a, b) => a.attempt - b.attempt)[0];
+      const inputHashes = runInputsRepo.listByRun(firstRun.id).map((id) => artifactsRepo.get(id).sha256).sort();
+      check('inputs are the run inputs, by hash', eq(kase.snapshot.inputs.map((i) => i.sha256).sort(), inputHashes));
+      check('every input is in the blob store', (await Promise.all(kase.snapshot.inputs.map((i) => blobsRepo.has(i.sha256)))).every(Boolean));
+      check('criteria keys copied', eq(kase.snapshot.criteria.map((x) => x.key), criteriaRepo.listActive(m1.id).map((x) => x.key)));
+
+      missionsRepo.remove(m1.id);
+      const again = evals.listCases(kase.suiteId).find((x) => x.id === kase.id);
+      check('a case survives deleting its mission', again !== undefined && eq(again.snapshot, kase.snapshot));
+
+      // A step that never started: planned but the mission was never started.
+      const { id: readyMissionId } = await d.planOnly({ goal: 'Add a widget', workflow: 'build-only' });
+      const readyTask = (await d.tasks(readyMissionId)).find((t) => t.roleId === 'development');
+      await refuses('a READY step is refused', () => evals.saveCase(readyTask.id, caller, { suiteId: kase.suiteId, name: 'x' }), 'not_succeeded');
+      await refuses('an ungated step is refused', () => evals.saveCase(ungated[0].id, caller, { suiteId: kase.suiteId, name: 'x' }), 'no_gate');
+
+      // A mission based on a branch that is then deleted; build is the first
+      // gated step, so no upstream ChangeSet ref masks the branch resolution.
+      execFileSync('git', ['branch', 'feature/gone'], { cwd: d.repoPath, stdio: 'ignore' });
+      const m3 = await d.missionWith({ goal: 'On a branch', baseBranch: 'feature/gone', workflow: 'build-only' });
+      check('the branch mission completes', await d.waitMission(m3.id, 'COMPLETE') === 'COMPLETE');
+      const m3Build = (await d.tasks(m3.id)).find((t) => t.roleId === 'development');
+      // The gated step's worktree remains after completion (it is the reviewable
+      // artifact); it must go before its base branch can be deleted.
+      const worktree = d.sql('SELECT working_directory AS d FROM execution_targets WHERE task_id = ?', m3Build.id)[0]?.d;
+      if (worktree !== undefined) execFileSync('git', ['worktree', 'remove', '--force', worktree], { cwd: d.repoPath, stdio: 'ignore' });
+      execFileSync('git', ['branch', '-D', 'feature/gone'], { cwd: d.repoPath, stdio: 'ignore' });
+      await refuses('a deleted base branch is refused', () => evals.saveCase(m3Build.id, caller, { suiteId: kase.suiteId, name: 'y' }), 'base_unresolved');
+    }
   } finally {
     await d.stop();
   }

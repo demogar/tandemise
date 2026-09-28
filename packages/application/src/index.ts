@@ -92,6 +92,8 @@ export { SkillService } from './services/skill-service.js';
 export { IssueService } from './services/issue-service.js';
 export { ContributionError, ContributionServiceImpl, pickGitCredentialEnv } from './services/contribution-service.js';
 export type { ContributionDeps, ContributionErrorCode } from './services/contribution-service.js';
+export { EvalError, EvalService } from './services/eval-service.js';
+export type { EvalErrorCode, EvalServiceDeps } from './services/eval-service.js';
 export type { IssueDeps } from './services/issue-service.js';
 export type { SkillDeps } from './services/skill-service.js';
 export { SkillInstaller, INSTALLED_MARKER } from './engine/skill-installer.js';
