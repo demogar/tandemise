@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/demogar/tandemise/compare/v0.6.0...v0.7.0) (2026-09-28)
+
+
+### Features
+
+* hand work in and back, pinned as a snapshot ([#32](https://github.com/demogar/tandemise/issues/32)) ([25242c0](https://github.com/demogar/tandemise/commit/25242c05d25100e7dc9682956efa001ce8572978))
+
 ## [0.6.0](https://github.com/demogar/tandemise/compare/v0.5.0...v0.6.0) (2026-09-27)
 
 
