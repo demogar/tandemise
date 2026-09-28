@@ -22,7 +22,7 @@ export type { SchedulerDeps } from './engine/scheduler.js';
 export { McpGatewayProvisioner, NO_TOOL_SURFACE } from './engine/mcp-gateway.js';
 export type { RunToolSurface, McpGatewayProvisionerDeps, ProvisionToolSurfaceRequest } from './engine/mcp-gateway.js';
 export { TaskExecutor } from './engine/task-executor.js';
-export type { TaskAttemptOutcome, TaskExecutorDeps } from './engine/task-executor.js';
+export type { TaskAttemptOutcome, TaskExecutorDeps, TrialContext } from './engine/task-executor.js';
 export { ARTIFACT_OUT_DIR, ArtifactHarvester } from './engine/harvester.js';
 export type { HarvestRequest, HarvestResult } from './engine/harvester.js';
 export { CheckService } from './engine/checks.js';

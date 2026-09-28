@@ -3,7 +3,7 @@ import type {
   RunRepositoryPort, TaskRepositoryPort, WatchThresholds,
 } from '@tandemise/domain';
 import {
-  LIVE_RUN_STATUSES, TERMINAL_MISSION_STATUSES, classifyLiveness, livenessFacts, quietNote, watchLevel, watchThresholds,
+  LIVE_RUN_STATUSES, TERMINAL_MISSION_STATUSES, classifyLiveness, isTrialMission, livenessFacts, quietNote, watchLevel, watchThresholds,
 } from '@tandemise/domain';
 import type { InboxSilentRunView, InboxStalledView, TaskWatchView } from '@tandemise/api-contract';
 import type { Clock, Logger, MissionId, RunId, WorkspaceId } from '@tandemise/shared';
@@ -230,6 +230,8 @@ export class LivenessService {
       if (!missions.has(run.missionId)) missions.set(run.missionId, this.deps.missions.get(run.missionId));
       const mission = missions.get(run.missionId);
       if (mission === undefined || TERMINAL_MISSION_STATUSES.includes(mission.status)) return [];
+      // An eval trial's run is watched by its eval run, never raised to a person (P3b).
+      if (isTrialMission(mission)) return [];
       return [{ run, task, mission }];
     });
   }

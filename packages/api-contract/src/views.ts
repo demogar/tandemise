@@ -866,6 +866,8 @@ export interface WorkspaceUsageView {
   readonly usage: UsageView;
   readonly limits: readonly LimitStatusView[];
   readonly defaultMissionLimits: readonly Limit[];
+  /** What eval trials spent this month, already inside `usage`; null when their runtime reported no cost (P3b). */
+  readonly evalCostUsd: number | null;
   readonly missions: readonly { readonly missionId: string; readonly title: string; readonly usage: UsageView }[];
 }
 

@@ -3,6 +3,7 @@ import type {
   ExecutionTargetRepositoryPort, LeaseRepositoryPort, MissionRepositoryPort, Run,
   RunRepositoryPort, RunStatus, RuntimeProfileRepositoryPort, TaskRepositoryPort,
 } from '@tandemise/domain';
+import { isTrialMission } from '@tandemise/domain';
 import type { RuntimeRegistry } from '@tandemise/runtimes-core';
 import { asId, type Clock, type Logger, type MissionId, type RunId } from '@tandemise/shared';
 import type { ProcessLivenessPort } from '../ports.js';
@@ -54,6 +55,12 @@ export class RecoveryService {
     private readonly approvals: ApprovalRepositoryPort,
   ) {}
 
+  /** An eval trial's mission, whose tasks the eval runner recovers, not this (P3b). */
+  #isTrial(missionId: MissionId): boolean {
+    const mission = this.missions.get(missionId);
+    return mission !== undefined && isTrialMission(mission);
+  }
+
   /**
    * Asynchronous although every step is a synchronous repository call: the
    * daemon awaits this before the scheduler starts, and a future step that has
@@ -90,7 +97,9 @@ export class RecoveryService {
       // The attempt count is preserved on purpose: an interrupted attempt was
       // an attempt, and pretending otherwise would let a task that fails by
       // crashing loop past its retry budget.
-      const task = this.tasks.get(run.taskId);
+      // An eval trial's task is never requeued: the run is classified as any
+      // other, and the eval runner's own boot recovery cancels the trial (P3b).
+      const task = this.#isTrial(run.missionId) ? undefined : this.tasks.get(run.taskId);
       // A task parked on a question is still an in-flight run: the worker was
       // blocked inside `ask_human`, and that process is gone now. Left alone it
       // would sit in AWAITING_INPUT forever, and its question would stay in the
@@ -114,7 +123,7 @@ export class RecoveryService {
     // RUNNING task. With no live, adopted run it goes back to the queue.
     const liveTasks = new Set(this.runs.listByStatus(['STARTING', 'RUNNING']).map((r) => r.taskId as string));
     for (const task of this.tasks.listByStatus(['RUNNING'])) {
-      if (liveTasks.has(task.id)) continue;
+      if (liveTasks.has(task.id) || this.#isTrial(task.missionId)) continue;
       this.tasks.update(task.id, {
         status: 'READY',
         statusReason: 'Found marked running with no run behind it; returned to the queue.',

@@ -5,7 +5,7 @@ import type {
   MemberRepositoryPort, PlanValidationIssue, RepoRepositoryPort, RoleRepositoryPort, RunEventRecord, RunRepositoryPort,
   RuntimeProfileRepositoryPort, Run, TaskRepositoryPort, TaskStatus, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
-import { PENDING_FEEDBACK_STATUSES, planLevels } from '@tandemise/domain';
+import { PENDING_FEEDBACK_STATUSES, isTrialMission, planLevels } from '@tandemise/domain';
 import type {
   ActorRef, FeedCard, HomeView, InboxView, MissionDetail, MissionFeedView, MissionLimitsView, MissionSummary, RuntimeView, TaskView,
 } from '@tandemise/api-contract';
@@ -133,9 +133,14 @@ export class ProjectionServiceImpl implements ProjectionService {
       if (!missions.has(id)) missions.set(id, this.deps.missions.get(id));
       return missions.get(id);
     };
+    // An eval trial is never shown to a person (P3b): its steps, parks and cards are left out.
+    const isTrialOf = (id: MissionId): boolean => {
+      const mission = missionOf(id);
+      return mission !== undefined && isTrialMission(mission);
+    };
     const tasks = this.deps.tasks.listByStatus(['AWAITING_HUMAN']).flatMap((task) => {
       const mission = missionOf(task.missionId);
-      if (mission === undefined || mission.workspaceId !== workspaceId) return [];
+      if (mission === undefined || mission.workspaceId !== workspaceId || isTrialMission(mission)) return [];
       return [{
         id: task.id,
         key: task.key,
@@ -169,7 +174,7 @@ export class ProjectionServiceImpl implements ProjectionService {
     // Parked agent steps (spec A4); the log is read only for missions that have one.
     const parked = this.deps.tasks.listByStatus(['AWAITING_EXTERNAL']).flatMap((task) => {
       const mission = missionOf(task.missionId);
-      if (mission === undefined || mission.workspaceId !== workspaceId || task.executor !== 'agent') return [];
+      if (mission === undefined || mission.workspaceId !== workspaceId || isTrialMission(mission) || task.executor !== 'agent') return [];
       const park = parkedExternalOf(task, this.deps.events.listByMission(mission.id, { semanticOnly: true }));
       if (park === null) return [];
       return [{
@@ -186,7 +191,9 @@ export class ProjectionServiceImpl implements ProjectionService {
       }];
     });
     return {
-      approvals: toApprovalViews(named, this.deps.approvals.list({ workspaceId, statuses: ['PENDING'] })),
+      // Trials raise no cards; this is the safety net should one ever slip through.
+      approvals: toApprovalViews(named, this.deps.approvals.list({ workspaceId, statuses: ['PENDING'] })
+        .filter((a) => a.missionId === null || !isTrialOf(a.missionId))),
       tasks,
       refinements,
       parked,

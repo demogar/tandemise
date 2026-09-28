@@ -161,6 +161,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       approvals: r.resolve(t.APPROVAL_REPOSITORY),
       approvalFactory: r.resolve(APPROVAL_FACTORY),
       tasks: r.resolve(t.TASK_REPOSITORY),
+      missions: r.resolve(t.MISSION_REPOSITORY),
       runs: r.resolve(t.RUN_REPOSITORY),
       address: (task, workspaceId) => r.resolve(t.REVIEW_PIPELINE).questionAddressFor(task, workspaceId),
       waiter: r.resolve(t.APPROVAL_WAITER),

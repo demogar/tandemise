@@ -5,11 +5,15 @@
 // hidden eval trial mission, excluded from every list but reachable by id;
 // seeding a trial's Done-when ledger once; the content-addressed eval blob
 // store; and eval spend split out of workspace usage.
+// Task 4: trial missions - a pinned model beats economy mode; a trial runs its
+// frozen role on the pinned model, blocks on a missing skill without a card,
+// answers ask_human with "nobody", denies tool approvals, is left alone by
+// recovery, and is hidden from every list, the Desk, the Inbox and the scheduler.
 //
 //   npm run build && node scratch/p3-evals-check.mjs
 import { execFileSync } from 'node:child_process';
 import {
-  copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync,
+  copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -169,6 +173,36 @@ function seedUsage({ realCost, trialCost }) {
   runs.recordUsage(trial.id, { costUsd: trialCost, wallTimeMs: 1000 });
   // Wide enough to hold whatever `recordUsage` (real clock) actually stamped.
   return { month: { start: '1970-01-01T00:00:00.000Z', end: '2999-01-01T00:00:00.000Z' } };
+}
+
+/**
+ * A hand-made eval trial (the runner comes in Task 6): a hidden mission and one
+ * agent task written the way the runner writes trial tasks - NO_APPROVAL, no
+ * staffing, failing on exhaustion, isolation per the workflow default (none).
+ * `c` is the container to write through, the in-process one or the daemon's.
+ */
+function handTrial(c, workspaceId, taskOverrides = {}) {
+  const mission = c.resolve(app.MISSION_REPOSITORY).create({
+    workspaceId, repositoryId: null, title: 'Hidden', goal: 'Hidden', successCriteria: [],
+    id: S.ids.mission(), evalTrialId: S.ids.evalTrial(),
+  });
+  const task = trialTaskOn(c, mission.id, taskOverrides);
+  return { missionId: mission.id, taskId: task.id, evalTrialId: mission.evalTrialId };
+}
+
+function trialTaskOn(c, missionId, overrides = {}) {
+  return c.resolve(app.TASK_REPOSITORY).add({
+    id: S.ids.task(), missionId, repositoryId: null, executor: 'agent', waitPolicy: null,
+    key: 'design', title: 'Design', objective: 'Design the greeting.', roleId: 'design',
+    dependsOn: [], requiredCapabilities: [], inputArtifacts: [], expectedOutputs: ['DesignBrief'],
+    executionPolicy: { isolation: 'none', maxWallTimeMs: 60000, capabilities: [] },
+    approvalPolicy: D.NO_APPROVAL,
+    retryPolicy: { maxAttempts: 1, backoffMs: 0, onExhausted: 'fail' },
+    completionGate: 'artifact.DesignBrief.exists', status: 'READY', statusReason: null, attempts: 0,
+    remediatesTaskId: null, orderHint: 0, createdAt: now(), updatedAt: now(), startedAt: null, finishedAt: null,
+    modelPolicy: { model: 'good', pinned: true }, staffing: null,
+    ...overrides,
+  });
 }
 
 /** The minimal missions row a version-019 database needs, copying rounds-check.mjs:50-53's raw insert. */
@@ -466,6 +500,137 @@ try {
   check('per case, in first-seen order', eq(card.perCase.map((c) => c.caseId), ['c1', 'c2']));
   check('few repeats under 3', card.fewRepeats === true && E.scoreEvalRun([], 3).fewRepeats === false);
   check('no completed trials gives null rates', E.scoreEvalRun([], 3).baseline.gatePassRate === null);
+
+  section('pure: pinned model');
+  {
+    const ctx = (step, pressure) => ({ step, role: { model: 'role-model', escalate: [], economyModel: 'cheap' }, profileModel: null, attempt: 1, pressure, runtimeTakesModel: true });
+    const pressure = { percent: 90, scope: 'month' };
+    check('unpinned under pressure goes economy', D.resolveModel(ctx({ model: 'good' }, pressure)).model === 'cheap');
+    check('pinned beats economy', D.resolveModel(ctx({ model: 'good', pinned: true }, pressure)).model === 'good');
+    const pinned = D.resolveModel(ctx({ model: 'good', pinned: true }, pressure));
+    check('pinned reason and source', pinned.source === 'pinned' && pinned.reason === 'pinned step model (eval trial)', pinned);
+    check('escalation still beats pinned on retry', D.resolveModel({ ...ctx({ model: 'good', pinned: true, escalate: ['big'] }, null), attempt: 2 }).model === 'big');
+    check('pinned with no step model falls through', D.resolveModel(ctx({ pinned: true }, pressure)).source === 'economy');
+  }
+
+  section('harness: trial missions');
+  {
+    const roles = container.resolve(app.ROLE_REPOSITORY);
+    const runs = container.resolve(app.RUN_REPOSITORY);
+    const tasks = container.resolve(app.TASK_REPOSITORY);
+    const approvals = container.resolve(app.APPROVAL_REPOSITORY);
+    const limits = container.resolve(app.LIMIT_SERVICE);
+    // The scripted stand-in for a model, as a Generic CLI runtime that takes `--model`
+    // and saves every prompt it is given.
+    const promptDir = join(tmp, 'prompts');
+    process.env.SCRIPTED_PROMPT_DIR = promptDir;
+    process.env.SCRIPTED_DELAY_MS = '0';
+    container.resolve(app.RUNTIME_PROFILE_REPOSITORY).create({
+      id: S.ids.runtimeProfile(), workspaceId: null, adapterId: 'generic-cli', name: 'Scripted agent', executablePath: null, args: [],
+      settings: {
+        command: process.execPath, args: [resolve(here, 'acceptance/p0/scripted-agent.mjs')], promptVia: 'stdin',
+        outputFormat: 'ndjson', modelFlag: '--model', capabilities: ['reasoning', 'tool_calling', 'shell', 'git', 'filesystem', 'mcp'],
+      },
+      capabilities: [], enabled: true, maxConcurrent: 4, createdAt: now(), updatedAt: now(),
+    });
+    const prompts = () => (!existsSync(promptDir) ? [] : readdirSync(promptDir, { withFileTypes: true }).filter((e) => e.isFile()).map((e) => readFileSync(join(promptDir, e.name), 'utf8')));
+
+    // The trial's frozen role: the design role with its own instructions and an economy model
+    // that a limit under pressure would otherwise switch to.
+    const live = roles.get('design', ws.id);
+    const frozenRole = { ...live, instructions: 'EVAL-ROLE-MARK', models: { model: 'role-model', escalate: [], economyModel: 'cheap' } };
+    const lost = new Set();
+    const trialContext = (m) => (D.isTrialMission(m) && !lost.has(m.id)
+      ? { role: frozenRole, knowledge: D.EMPTY_KNOWLEDGE, decisions: [], answers: [] }
+      : null);
+    // Built as the module builds it, plus the seam the eval runner will supply and a
+    // month limit under pressure, so the economy rule would fire if the pin did not win.
+    const base = container.resolve(app.TASK_EXECUTOR);
+    const pressured = { admit: (id) => limits.admit(id), afterUsage: (id, run) => limits.afterUsage(id, run), pressure: () => ({ percent: 90, scope: 'month' }) };
+    // No tool surface: its socket would sit under this harness's long temp path,
+    // past macOS's socket-path limit, and nothing here calls a tool.
+    const noTools = { provision: async () => app.NO_TOOL_SURFACE };
+    const executor = new app.TaskExecutor({ ...base.deps, limits: pressured, mcpGateway: noTools, trialContext });
+    const workIn = (missionId) => {
+      const dir = h.paths.mission(ws.id, missionId);
+      mkdirSync(dir, { recursive: true });
+      execFileSync('git', ['init', '-q', '-b', 'main', dir]);
+      execFileSync('git', ['-C', dir, '-c', 'user.name=check', '-c', 'user.email=check@example.com', 'commit', '-q', '--allow-empty', '-m', 'init']);
+    };
+
+    const t = handTrial(container, ws.id);
+    workIn(t.missionId);
+    const ran = await executor.execute(t.taskId, new AbortController().signal);
+    const captured = prompts().join('\n');
+    check('the trial ran', ran.kind === 'settled' && runs.listByTask(t.taskId).length === 1, ran);
+    check('the trial role reaches the prompt', captured.includes('EVAL-ROLE-MARK'), captured.slice(0, 400));
+    const lastRun = runs.listByTask(t.taskId).at(-1);
+    check('the pinned model ran under pressure', lastRun?.model === 'good', lastRun?.model);
+    check('and says it was pinned', lastRun?.modelReason === 'pinned step model (eval trial)', lastRun?.modelReason);
+
+    // Missing skill: a trial task pinned to a hash that is not in the store.
+    const miss = handTrial(container, ws.id, { skills: [{ name: 'ghost', version: 1, hash: 'f'.repeat(64) }] });
+    const out = await executor.execute(miss.taskId, new AbortController().signal);
+    check('a missing skill blocks the trial', out.kind === 'settled' && out.status === 'BLOCKED' && /Missing skill: ghost/.test(out.reason), out);
+    check('and creates no approval', approvals.list({ missionId: miss.missionId }).length === 0);
+    check('limits admit a trial', limits.admit(miss.missionId) === null);
+    // seedUsage above recorded a $2 trial run this month.
+    const evalShare = limits.usage(ws.id).evalCostUsd;
+    check('the month usage names the eval share', typeof evalShare === 'number' && evalShare >= 2, evalShare);
+
+    // A trial whose setup is gone is a runner bug: it stops rather than run on the live role.
+    const orphan = handTrial(container, ws.id);
+    lost.add(orphan.missionId);
+    const orphaned = await executor.execute(orphan.taskId, new AbortController().signal);
+    check('a trial that lost its setup blocks', orphaned.kind === 'settled' && orphaned.status === 'BLOCKED' && orphaned.reason === 'This eval trial lost its setup.', orphaned);
+
+    // Nobody can answer a trial: a question hears so at once, a tool needing approval is denied.
+    {
+      const I = await import('@tandemise/integrations-core');
+      const asking = handTrial(container, ws.id, { status: 'RUNNING', attempts: 1 });
+      const assignment = container.resolve(app.ASSIGNMENT_REPOSITORY).create({
+        id: S.ids.workerAssignment(), workspaceId: ws.id, missionId: asking.missionId, taskId: asking.taskId, roleId: 'design',
+        runtimeProfileId: 'rt_fixture', executionTargetId: 'tgt_fixture', grants: [],
+        budgets: { maxWallTimeMs: 60000, maxAttempts: 1 }, createdAt: now(),
+      });
+      const askHuman = container.resolveAll(I.BUILT_IN_TOOLS).find((tool) => tool.name === 'ask_human');
+      let asked = null;
+      try {
+        await askHuman.execute({ assignment, assignmentId: assignment.id, runId: null, signal: new AbortController().signal }, { question: 'Which colour?' });
+      } catch (e) { asked = e.message; }
+      check('ask_human in a trial answers nobody', asked === 'Nobody can answer during an eval trial. Continue with your best judgement and say what you assumed.', asked);
+      const decision = await container.resolve(I.APPROVAL_GATE).requestApproval({
+        toolName: 'shell', capability: 'shell.exec', assignmentId: assignment.id, risk: 'write_reversible', reason: 'asks', inputSummary: 'ls',
+      }, new AbortController().signal);
+      check('a tool approval in a trial is denied', decision.approved === false && decision.reason === 'No one can approve tools during an eval trial.', decision);
+      check('neither raised a card nor parked the task', approvals.list({ missionId: asking.missionId }).length === 0 && tasks.get(asking.taskId).status === 'RUNNING');
+      tasks.update(asking.taskId, { status: 'CANCELLED' });
+    }
+
+    // Recovery: a trial task found RUNNING under a dead run is left for the eval runner;
+    // a real one in the same state goes back to the queue.
+    const recovering = handTrial(container, ws.id, { status: 'RUNNING', attempts: 1 });
+    const real = realRun();
+    tasks.update(real.taskId, { status: 'RUNNING' });
+    const dead = (taskId, missionId) => {
+      const assignment = container.resolve(app.ASSIGNMENT_REPOSITORY).create({
+        id: S.ids.workerAssignment(), workspaceId: ws.id, missionId, taskId, roleId: 'design',
+        runtimeProfileId: 'rt_fixture', executionTargetId: 'tgt_fixture', grants: [],
+        budgets: { maxWallTimeMs: 60000, maxAttempts: 1 }, createdAt: now(),
+      });
+      runs.create({
+        id: S.ids.run(), missionId, taskId, assignmentId: assignment.id, attempt: 9,
+        status: 'RUNNING', roleId: 'design', runtimeProfileId: 'rt_fixture', executionTargetId: 'tgt_fixture',
+        externalSessionId: null, pid: null, exitCode: null, errorCode: null, errorMessage: null, usage: null,
+        startedAt: now(), finishedAt: null, heartbeatAt: now(),
+      });
+    };
+    dead(recovering.taskId, recovering.missionId);
+    dead(real.taskId, real.missionId);
+    await container.resolve(app.RECOVERY_SERVICE).run();
+    check('recovery does not requeue a trial task', tasks.get(recovering.taskId).status !== 'READY', tasks.get(recovering.taskId).status);
+    check('recovery still requeues a real task', tasks.get(real.taskId).status === 'READY', tasks.get(real.taskId).status);
+  }
 } finally {
   container?.resolve(P.DATABASE)?.close?.();
   rmSync(tmp, { recursive: true, force: true });
@@ -491,6 +656,25 @@ section('daemon: run scores');
     const ungated = (await d.tasks(m2.id)).filter((t) => t.completionGate === null);
     check('the ungated mission has an ungated task', ungated.length > 0, ungated.map((t) => t.key));
     check('a step with no gate has no score', ungated.every((t) => d.sql('SELECT 1 FROM run_scores WHERE task_id = ?', t.id).length === 0));
+
+    section('daemon: trial missions');
+    const ws = d.workspaceId;
+    const homeBefore = (await d.api('GET', `/v1/home?workspaceId=${ws}`)).body;
+    // Built by hand through the repositories (the runner comes in Task 6), with a
+    // second step waiting on a person, which a real mission would show in the Inbox.
+    const t = handTrial(d.container, ws, { roleId: 'development', key: 'build' });
+    trialTaskOn(d.container, t.missionId, { key: 'sign', title: 'Sign off', executor: 'human', status: 'AWAITING_HUMAN' });
+    const missionsList = (await d.api('GET', `/v1/missions?workspaceId=${ws}`)).body;
+    check('not in GET /v1/missions', Array.isArray(missionsList.missions ?? missionsList) && !JSON.stringify(missionsList).includes(t.missionId));
+    check('not in the backlog', !JSON.stringify((await d.api('GET', `/v1/workspaces/${ws}/backlog`)).body).includes(t.missionId));
+    const homeAfter = (await d.api('GET', `/v1/home?workspaceId=${ws}`)).body;
+    check('not on the Desk', !JSON.stringify(homeAfter).includes(t.missionId) && eq(homeAfter.metrics, homeBefore.metrics), { before: homeBefore.metrics, after: homeAfter.metrics });
+    check('not in the Inbox', !JSON.stringify((await d.api('GET', `/v1/inbox?workspaceId=${ws}`)).body).includes(t.missionId));
+    await new Promise((r) => setTimeout(r, 1000)); // five scheduler ticks
+    check('the scheduler never dispatches it', d.sql('SELECT COUNT(*) n FROM runs WHERE task_id = ?', t.taskId)[0].n === 0);
+    // Month usage includes a trial's spend, shown as the eval share.
+    const u = (await d.api('GET', `/v1/workspaces/${ws}/usage`)).body;
+    check('usage reports the eval share', typeof u.evalCostUsd === 'number' || u.evalCostUsd === null, u);
   } finally {
     await d.stop();
   }

@@ -3,7 +3,7 @@ import type {
   MissionRepositoryPort, MissionTask, StatusReportBacklogItem, StatusReportFacts, StatusReportMission, TaskRepositoryPort, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
 import {
-  REPORT_HOLDER_PRESET, REPORT_HOLDER_TITLE, SYSTEM_ACTOR, compareBacklog, isInProgress, isTerminalMissionStatus, monthBannerText,
+  REPORT_HOLDER_PRESET, REPORT_HOLDER_TITLE, SYSTEM_ACTOR, compareBacklog, isInProgress, isTerminalMissionStatus, isTrialMission, monthBannerText,
   renderStatusReport, statusReportHeadline, statusReportPoints, statusReportTitle, wipBannerText,
 } from '@tandemise/domain';
 import type {
@@ -86,16 +86,23 @@ export class DeskService {
    */
   #needsAPerson(workspaceId: WorkspaceId): number {
     const cards = this.deps.approvals.list({ workspaceId, statuses: ['PENDING'] }).filter((a) => a.kind !== 'check').length;
+    // An eval trial's steps never wait on a person (P3b); they are skipped like its missions are in every list.
     const steps = this.deps.tasks.listByStatus(['AWAITING_HUMAN'])
-      .filter((t) => this.deps.missions.get(t.missionId)?.workspaceId === workspaceId).length;
+      .filter((t) => this.#ownedBy(t.missionId, workspaceId)).length;
     // A step parked in another tool waits for the person's hand-back (spec A4).
     const parked = this.deps.tasks.listByStatus(['AWAITING_EXTERNAL'])
-      .filter((t) => this.deps.missions.get(t.missionId)?.workspaceId === workspaceId && this.#isParked(t)).length;
+      .filter((t) => this.#ownedBy(t.missionId, workspaceId) && this.#isParked(t)).length;
     const refinements = this.deps.missions.list({ workspaceId, statuses: ['DRAFT'] }).filter((m) => {
       const counts = this.deps.readiness.counts(m.id);
       return counts.openQuestions + counts.proposedPending > 0;
     }).length;
     return cards + steps + parked + refinements + this.deps.liveness.silentRuns(workspaceId).length;
+  }
+
+  /** A real mission of this workspace: never an eval trial's, which no person is asked about. */
+  #ownedBy(missionId: MissionTask['missionId'], workspaceId: WorkspaceId): boolean {
+    const mission = this.deps.missions.get(missionId);
+    return mission !== undefined && mission.workspaceId === workspaceId && !isTrialMission(mission);
   }
 
   /** An agent step in AWAITING_EXTERNAL that was parked, not a wait step polling. */

@@ -5,7 +5,7 @@ import type {
 } from '@tandemise/domain';
 import {
   KEEP_PAUSED_OPTION, RAISE_LIMIT_OPTION, UNMEASURED_USD_NOTE, admits, barLabel, canTransition, evaluateLimits, formatAmount,
-  heldLabel, isLimitPause, isTerminalMissionStatus, limitFacts, metricLabel, monthWindow, monthWindowOf, ofAmount, pullAllowedAtSpend,
+  heldLabel, isLimitPause, isTerminalMissionStatus, isTrialMission, limitFacts, metricLabel, monthWindow, monthWindowOf, ofAmount, pullAllowedAtSpend,
   reachedReason, suggestedRaise, warningNote, withAmount, worstLevel, type LimitLevel, type UsageWindow,
 } from '@tandemise/domain';
 import type {
@@ -158,7 +158,8 @@ export class LimitService implements LimitGuard {
   admit(missionId: MissionId): string | null {
     const mission = this.deps.missions.get(missionId);
     const workspace = mission === undefined ? undefined : this.deps.workspaces.get(mission.workspaceId);
-    if (mission === undefined || workspace === undefined) return null;
+    // An eval trial answers to its run's own spend cap, not the project's limits (P3b).
+    if (mission === undefined || workspace === undefined || isTrialMission(mission)) return null;
     for (const scope of [this.#missionScope(mission, workspace), this.#monthScope(workspace, mission)]) {
       if (admits(scope.statuses)) continue;
       const over = scope.statuses.find((s) => s.level === 'hard')!;
@@ -172,7 +173,7 @@ export class LimitService implements LimitGuard {
   refusal(missionId: MissionId): string | null {
     const mission = this.deps.missions.get(missionId);
     const workspace = mission === undefined ? undefined : this.deps.workspaces.get(mission.workspaceId);
-    if (mission === undefined || workspace === undefined) return null;
+    if (mission === undefined || workspace === undefined || isTrialMission(mission)) return null;
     for (const scope of [this.#missionScope(mission, workspace), this.#monthScope(workspace, mission)]) {
       const over = scope.statuses.find((s) => s.level === 'hard');
       if (over !== undefined) return reachedReason(over, scope.kind);
@@ -186,7 +187,8 @@ export class LimitService implements LimitGuard {
     const finishedTask = this.deps.runs.get(finishedRunId)?.taskId ?? null;
     const mission = this.deps.missions.get(missionId);
     const workspace = mission === undefined ? undefined : this.deps.workspaces.get(mission.workspaceId);
-    if (mission === undefined || workspace === undefined) return;
+    // A trial's spend is capped by its eval run, and a trial must never stop real missions (P3b).
+    if (mission === undefined || workspace === undefined || isTrialMission(mission)) return;
     for (const scope of [this.#missionScope(mission, workspace), this.#monthScope(workspace, mission)]) {
       for (const status of scope.statuses) {
         if (status.level === 'hard') this.#stop(scope, status, finishedTask);
@@ -580,6 +582,8 @@ export class LimitService implements LimitGuard {
       usage: usageView(scope.totals),
       limits: scope.statuses.map((s) => statusView(s, 'month')),
       defaultMissionLimits: workspace.defaultMissionLimits,
+      // The month's spend includes eval trials; this is their share, null when unmeasured.
+      evalCostUsd: this.deps.limits.evalUsageForWorkspace(workspaceId, window.start, window.end).costUsd,
       missions: this.deps.limits.usageByMission(workspaceId, window.start, window.end)
         .map((row) => ({ missionId: row.missionId, title: titles.get(row.missionId) ?? row.missionId, usage: usageView(row.totals) })),
     };

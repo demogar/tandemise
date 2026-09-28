@@ -2,7 +2,7 @@ import type {
   Approval, ApprovalRepositoryPort, AssignmentRepositoryPort, MissionRepositoryPort, MissionTask,
   RunRepositoryPort, TaskRepositoryPort, WorkerAssignment, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
-import { APPROVE_FOR_TASK_OPTION, APPROVE_OPTION, DEFAULT_AUTONOMY, REJECT_OPTION } from '@tandemise/domain';
+import { APPROVE_FOR_TASK_OPTION, APPROVE_OPTION, DEFAULT_AUTONOMY, REJECT_OPTION, isTrialMission } from '@tandemise/domain';
 import type { ApprovalFactory, PolicyEngine } from '@tandemise/policy';
 import type {
   ApprovalGate, ToolApprovalDecision, ToolApprovalRequest, ToolPolicyDecision, ToolPolicyGate,
@@ -122,6 +122,12 @@ export function createApprovalGate(deps: ApprovalGateDeps): ApprovalGate {
       const stickable = request.risk !== 'release' && request.risk !== 'destructive' && request.risk !== 'financial';
       if (stickable && standing.get(assignment.id)?.has(request.capability)) {
         return { approved: true, reason: `Allowed for the rest of this task (${request.capability}).`, approvalId: null };
+      }
+      // Nobody approves anything during an eval trial, so the tool is denied at
+      // once rather than held until the run's deadline (P3b ruling 4).
+      const mission = deps.missions.get(assignment.missionId);
+      if (mission !== undefined && isTrialMission(mission)) {
+        return { approved: false, reason: 'No one can approve tools during an eval trial.', approvalId: null };
       }
       const task = deps.tasks.get(assignment.taskId);
       const approval = deps.approvalFactory.createOrThrow({

@@ -1,7 +1,7 @@
 import type {
   Approval, ApprovalRepositoryPort, ArtifactManifest, ArtifactRepositoryPort, ArtifactStorePort, ArtifactType,
   AssignmentRepositoryPort, CapabilityGrant, CheckResult, CheckpointRepositoryPort,
-  DecisionRepositoryPort, EventRepositoryPort, ExecutionTargetRepositoryPort, ExecutionTargetRecord, ExternalRef,
+  Decision, DecisionRepositoryPort, EventRepositoryPort, ExecutionTargetRepositoryPort, ExecutionTargetRecord, ExternalRef,
   CriteriaTrace, GateFacts, GateOutcome, LimitPressure, LoadedArtifact, Member, MemberRepositoryPort, Mission, MissionCriterion, MissionQuestionRepositoryPort, MissionRepositoryPort, MissionTask, RepoRepositoryPort,
   Repository, ResourceLease, RoleRepositoryPort, RoleTemplate, Run, RunEventRecord, RunInputRepositoryPort, RunPurpose,
   ResolvedModel, RunRepositoryPort, RunScoreRepositoryPort, RunSkill, RunUsage, SkillFile, SkillPin, TracedCriterion,
@@ -158,7 +158,21 @@ export interface TaskExecutorDeps {
    * fails the run, so its absence just means nothing is kept.
    */
   readonly runScores?: RunScoreRepositoryPort;
+  /**
+   * What an eval trial replays instead of the live project (P3b): its frozen
+   * role, knowledge, decisions and answers. Asked only for a trial mission;
+   * absent (or null for a trial) outside the eval runner.
+   */
+  readonly trialContext?: (mission: Mission) => TrialContext | null;
   readonly log: Logger;
+}
+
+/** What an eval trial replays instead of the live project (P3b). Null for every real mission. */
+export interface TrialContext {
+  readonly role: RoleTemplate;
+  readonly knowledge: Workspace['knowledge'];
+  readonly decisions: readonly Decision[];
+  readonly answers: readonly { readonly key: string; readonly text: string; readonly answer: string }[];
 }
 
 /** What the executor asks of the skills library (P13). */
@@ -209,7 +223,13 @@ export class TaskExecutor {
       roleId: task.roleId,
     };
 
-    const role = this.deps.roles.get(task.roleId, workspace.id);
+    // An eval trial replays the case's frozen setup, never today's project (P3b).
+    // A trial with no setup to replay is a runner bug, and running it against
+    // the live role would score the wrong thing, so it stops here.
+    const trialMission = isTrialMission(mission);
+    const trial = trialMission ? this.deps.trialContext?.(mission) ?? null : null;
+    if (trialMission && trial === null) return this.#block(task, scope, 'This eval trial lost its setup.');
+    const role = trial?.role ?? this.deps.roles.get(task.roleId, workspace.id);
     if (role === undefined) {
       return this.#block(task, scope, `No role template '${task.roleId}' exists in this workspace.`);
     }
@@ -229,7 +249,8 @@ export class TaskExecutor {
     // 1. Admission. A mission or project at its limit starts nothing, however
     //    the attempt was reached (P8): the scheduler checks too, and this is
     //    the backstop for any other caller.
-    const overLimit = this.deps.limits?.admit(mission.id) ?? null;
+    //    An eval trial is bounded by its run's own spend cap instead.
+    const overLimit = trialMission ? null : this.deps.limits?.admit(mission.id) ?? null;
     if (overLimit !== null) return { kind: 'deferred', reason: overLimit };
     // 1(b). Skills (P13): a pinned skill whose content is gone refuses the run
     //       before anything is spent on it, naming the skill.
@@ -239,7 +260,7 @@ export class TaskExecutor {
     if (!leases.ok) return { kind: 'deferred', reason: leases.reason };
 
     try {
-      return await this.#run({ task, mission, workspace, repository, role, scope, signal });
+      return await this.#run({ task, mission, workspace, repository, role, trial, scope, signal });
     } catch (e) {
       this.deps.log.error('task.attempt_failed', {
         missionId: mission.id, taskId: task.id, error: errorMessage(e),
@@ -472,7 +493,7 @@ export class TaskExecutor {
 
       // 7. Run.
       const outcome = await this.#drive({
-        task: running, mission, profile, adapter, target, assignment, grants, scope, signal, agent,
+        task: running, mission, role, profile, adapter, target, assignment, grants, scope, signal, agent,
         runId, mcpConfigPath: toolSurface.mcpConfigPath, reservation, retainSlot: retained,
         prompt: session !== null && brief !== null ? roundRequest(brief, destinations) : compiled.prompt,
         ...(session === null ? {} : { continueSession: session, freshPrompt: compiled.prompt }),
@@ -643,7 +664,7 @@ export class TaskExecutor {
     // (task, attempt) is unique on the runs table.
     const runNumber = Math.max(task.attempts, ...deps.runs.listByTask(task.id).map((r) => r.attempt + 1));
     // P12: the model, decided by the one rule and recorded on the run before it starts.
-    const chosen = this.#modelFor(task, mission, profile, input.adapter);
+    const chosen = this.#modelFor(task, mission, input.role, profile, input.adapter);
     deps.runs.create({
       id: runId,
       missionId: mission.id,
@@ -855,6 +876,8 @@ export class TaskExecutor {
     }
     if (reason === null) return null;
     const current = this.#requireTask(task.id);
+    // Nobody reads a card raised by an eval trial: the trial ends blocked, naming the skill.
+    if (isTrialMission(mission)) return this.#block(current, scope, `Missing skill: ${named.join(', ')}`);
     // Nothing is waiting on this task but the person: don't raise a second card for the same refusal.
     const open = this.deps.approvals.pendingForTask(task.id).some((a) => a.kind === 'intervention');
     if (!open) {
@@ -916,20 +939,21 @@ export class TaskExecutor {
   #modelFor(
     task: MissionTask,
     mission: Mission,
+    role: RoleTemplate,
     profile: RuntimeProfile,
     adapter: { acceptsModel?(profile: RuntimeProfile): boolean },
   ): ResolvedModel {
-    const role = this.deps.roles.get(task.roleId, mission.workspaceId);
     const profileModel = profile.settings['model'];
     let pressure: LimitPressure | null = null;
     try {
-      pressure = this.deps.limits?.pressure?.(mission.id) ?? null;
+      // A trial's pinned model wins anyway; no pressure keeps its recorded reason honest.
+      pressure = isTrialMission(mission) ? null : this.deps.limits?.pressure?.(mission.id) ?? null;
     } catch (e) {
       this.deps.log.warn('limits.pressure_failed', { missionId: mission.id, error: errorMessage(e) });
     }
     return resolveModel({
       step: task.modelPolicy ?? null,
-      role: role?.models ?? null,
+      role: role.models ?? null,
       profileModel: typeof profileModel === 'string' ? profileModel : null,
       attempt: Math.max(1, task.attempts),
       pressure,
@@ -1129,7 +1153,9 @@ export class TaskExecutor {
         retryAfterMs: task.retryPolicy.backoffMs,
       };
     }
-    if (task.retryPolicy.onExhausted === 'fail') {
+    // Trial tasks are written to fail on exhaustion; the guard keeps an eval
+    // trial from ever raising an intervention card nobody would read.
+    if (task.retryPolicy.onExhausted === 'fail' || isTrialMission(mission)) {
       return this.#settle(task, scope, 'FAILED', reason, { retryFeedback: feedback });
     }
     // The card's evidence is a person-readable summary, never the gate's
@@ -1208,7 +1234,7 @@ export class TaskExecutor {
       && deps.runtimeManager.capabilities(profile).includes('session_resume');
 
     const outcome = await this.#drive({
-      task, mission: input.mission, profile, adapter: input.adapter, target: input.target, assignment: input.assignment,
+      task, mission: input.mission, role: input.role, profile, adapter: input.adapter, target: input.target, assignment: input.assignment,
       prompt: resumable ? tightenRequest(feedback, harvest.overBudget.map((o) => `${outDirFor(task)}/${o.type}.md`)) : fresh.prompt,
       freshPrompt: fresh.prompt,
       continueSession: resumable ? session : null,
@@ -1349,7 +1375,7 @@ export class TaskExecutor {
       const overtakenBeforeRun = this.#overtaken(task, scope, input.signal);
       if (overtakenBeforeRun !== null) return { kind: 'stopped', outcome: overtakenBeforeRun };
       const outcome = await this.#drive({
-        task, mission: input.mission, profile, adapter: input.adapter, target: input.target, assignment: input.assignment,
+        task, mission: input.mission, role: input.role, profile, adapter: input.adapter, target: input.target, assignment: input.assignment,
         prompt: resumable ? roundRequest(brief, destinations, { inPlace: true }) : fresh.prompt, freshPrompt: fresh.prompt,
         continueSession: resumable ? session : null, grants: input.grants, scope, signal: input.signal, agent: input.agent,
         runId: ids.run(), mcpConfigPath: input.mcpConfigPath, skills: input.skills?.received ?? null,
@@ -1633,7 +1659,7 @@ export class TaskExecutor {
   // ------------------------------------------------------------------- context
 
   async #compilePrompt(input: PromptInput): Promise<{ readonly prompt: string; readonly includedArtifactIds: readonly ArtifactId[] }> {
-    const { task, mission, workspace, role, grants, target, scope } = input;
+    const { task, mission, workspace, role, trial, grants, target, scope } = input;
     const dependencies = await this.#loadDependencies(task, scope);
 
     const expected: readonly ExpectedArtifact[] = task.expectedOutputs.map((type) => ({
@@ -1649,13 +1675,14 @@ export class TaskExecutor {
       role,
       workspaceName: workspace.name,
       criteria: ledger.map((c) => ({ key: c.key, statement: c.statement, covers: c.covers })),
-      answers: (this.deps.questions?.listByMission(mission.id) ?? [])
+      // An eval trial reads the case's frozen answers, knowledge and decisions, not today's.
+      answers: trial?.answers ?? (this.deps.questions?.listByMission(mission.id) ?? [])
         .flatMap((q) => (q.status === 'answered' && q.answer !== null ? [{ key: q.key, text: q.text, answer: q.answer }] : [])),
-      knowledge: workspace.knowledge,
+      knowledge: trial?.knowledge ?? workspace.knowledge,
       mission,
       task,
       dependencyArtifacts: dependencies,
-      decisions: this.deps.decisions.listByMission(mission.id).filter((d) => d.status === 'accepted'),
+      decisions: trial?.decisions ?? this.deps.decisions.listByMission(mission.id).filter((d) => d.status === 'accepted'),
       evidence: [],
       grants,
       outputContract: {
@@ -2023,7 +2050,8 @@ export class TaskExecutor {
     role: RoleTemplate,
     scope: EventScope,
   ): TaskAttemptOutcome | null {
-    if (!task.approvalPolicy.beforeStart) return null;
+    // Trial tasks are written with NO_APPROVAL; this guards it, since nobody would answer the card.
+    if (!task.approvalPolicy.beforeStart || isTrialMission(mission)) return null;
     const existing = this.deps.approvals.pendingForTask(task.id).find((a) => a.kind === 'action');
     if (existing !== undefined) {
       return { kind: 'settled', status: 'AWAITING_APPROVAL', reason: existing.title };
@@ -2283,6 +2311,8 @@ interface AttemptContext {
   readonly workspace: Workspace;
   readonly repository: Repository | null;
   readonly role: RoleTemplate;
+  /** The frozen setup an eval trial replays; null for every real mission. */
+  readonly trial: TrialContext | null;
   readonly scope: EventScope;
   readonly signal: AbortSignal;
   /** The skills this attempt installed (P13); absent before they are. */
@@ -2341,6 +2371,8 @@ interface Assessment {
 interface DriveInput {
   readonly task: MissionTask;
   readonly mission: Mission;
+  /** The role the attempt resolved: a trial's frozen one, else the workspace's. */
+  readonly role: RoleTemplate;
   readonly profile: RuntimeProfile;
   readonly adapter: { resume?: unknown; acceptsModel?(profile: RuntimeProfile): boolean; skillsFolder?(profile: RuntimeProfile): string | null };
   readonly target: ExecutionTarget;
