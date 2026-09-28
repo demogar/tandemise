@@ -30,6 +30,7 @@ interface MissionRow {
   limits: string | null;
   routine_id: string | null;
   issue_link_id: string | null;
+  eval_trial_id: string | null;
   created_at: string;
   updated_at: string;
   started_at: string | null;
@@ -77,6 +78,7 @@ function toRow(m: Mission): MissionRow {
     limits: m.limits === null || m.limits === undefined ? null : toJson(m.limits),
     routine_id: m.routineId ?? null,
     issue_link_id: m.issueLinkId ?? null,
+    eval_trial_id: m.evalTrialId ?? null,
     created_at: m.createdAt,
     updated_at: m.updatedAt,
     started_at: m.startedAt,
@@ -108,6 +110,7 @@ function fromRow(r: MissionRow): Mission {
     limits: r.limits === null ? null : parseJson<readonly Limit[]>(r.limits, []),
     routineId: r.routine_id === null ? null : asId<'RoutineId'>(r.routine_id),
     issueLinkId: r.issue_link_id === null ? null : asId<'IssueLinkId'>(r.issue_link_id),
+    evalTrialId: r.eval_trial_id === null ? null : asId<'EvalTrialId'>(r.eval_trial_id),
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     startedAt: r.started_at,
@@ -117,7 +120,7 @@ function fromRow(r: MissionRow): Mission {
 
 const COLUMNS = `id, workspace_id, repository_id, title, goal, constraints, success_criteria,
   status, autonomy, workflow_preset, workflow_inputs, integration_branch, base_branch, status_reason,
-  created_by, staffing, priority, rank, queued_at, limits, routine_id, issue_link_id, created_at, updated_at, started_at, completed_at`;
+  created_by, staffing, priority, rank, queued_at, limits, routine_id, issue_link_id, eval_trial_id, created_at, updated_at, started_at, completed_at`;
 
 export class SqliteMissionRepository implements MissionRepositoryPort {
   readonly #db: TandemiseDatabase;
@@ -137,7 +140,7 @@ export class SqliteMissionRepository implements MissionRepositoryPort {
       `INSERT INTO missions (${COLUMNS}) VALUES (
         :id, :workspace_id, :repository_id, :title, :goal, :constraints, :success_criteria,
         :status, :autonomy, :workflow_preset, :workflow_inputs, :integration_branch, :base_branch, :status_reason,
-        :created_by, :staffing, :priority, :rank, :queued_at, :limits, :routine_id, :issue_link_id, :created_at, :updated_at, :started_at, :completed_at)`,
+        :created_by, :staffing, :priority, :rank, :queued_at, :limits, :routine_id, :issue_link_id, :eval_trial_id, :created_at, :updated_at, :started_at, :completed_at)`,
     );
     this.#update = db.handle.prepare<MissionRow>(
       `UPDATE missions SET
@@ -157,8 +160,9 @@ export class SqliteMissionRepository implements MissionRepositoryPort {
     // One statement covers every filter combination: a NULL parameter disables
     // its clause, and the status set arrives as a JSON array so the placeholder
     // count - and therefore the prepared statement - never varies.
-    // A project's report holder (P10) is never listed: it holds status reports,
-    // it is not work, so no count, backlog, liveness or scheduler pass sees it.
+    // A project's report holder (P10) and every eval trial mission (P3b) are never
+    // listed: no count, backlog, liveness or scheduler pass sees them. `get()` is
+    // unfiltered, so a trial is still reachable by id.
     this.#selectList = db.handle.prepare<
       { workspaceId: string | null; statuses: string | null; limit: number | null; holder: string },
       MissionRow
@@ -166,6 +170,7 @@ export class SqliteMissionRepository implements MissionRepositoryPort {
       `SELECT ${COLUMNS} FROM missions
        WHERE (:workspaceId IS NULL OR workspace_id = :workspaceId)
          AND workflow_preset <> :holder
+         AND eval_trial_id IS NULL
          AND (:statuses IS NULL OR status IN (SELECT value FROM json_each(:statuses)))
        ORDER BY created_at DESC, id DESC
        LIMIT COALESCE(:limit, -1)`,
@@ -215,6 +220,7 @@ export class SqliteMissionRepository implements MissionRepositoryPort {
       limits: draft.limits ?? null,
       routineId: draft.routineId ?? null,
       issueLinkId: draft.issueLinkId ?? null,
+      evalTrialId: draft.evalTrialId ?? null,
       createdAt: now,
       updatedAt: now,
       startedAt: null,

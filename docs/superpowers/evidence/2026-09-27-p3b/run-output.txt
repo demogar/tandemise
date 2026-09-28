@@ -1,0 +1,314 @@
+
+### setup
+
+### e1-save-case.mjs
+(node:36937) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok   setup (API): the scripted runtime reports NDJSON and takes --model  → {"outputFormat":"ndjson","modelFlag":"--model"}
+  ok   setup (API): the Developer role is on the model "good"  → {"model":"good","escalate":[],"economyModel":null}
+  · the daemon runs with SCRIPTED_FAIL_MODEL=bad and SCRIPTED_COST_USD=0.25: a run on "bad" writes nothing, every run reports $0.25
+  ok   proof (API): the mission completed and its build step SUCCEEDED  → {"mission":"COMPLETE","build":"SUCCEEDED"}
+  ok   proof (API): the build passed on its first run  → [{"id":"run_01m3mpskq6ahr2yqrq1k","status":"SUCCEEDED"}]
+  ok   the succeeded build card offers "Save as eval case"  → DEVELOPER
+build
+Done
+just now
+by
+Coding agent
+·
+responsible
+You
+Full doc
+Continue elsewhere
+Save as eval case
+Request changes
+
+ChangeSet ready for the hello page
+
+Written by the scripted acceptance agent
+No model was called
+  ok   with no suite yet, the dialog offers a new suite, and the case name defaults to the step title  → {"suite":"New suite…","caseName":"build","newSuite":true,"stepTitle":"build"}
+  ok   the dialog says "Saved to Runs." with a link to Evals  → Save as eval case
+
+Saved to Runs. Open Evals
+
+Done
+  ok   proof (API): a suite "Runs" with one case, from this mission's build step  → {"suite":{"id":"esu_01m3mpssw5y61r6c2kms","workspaceId":"ws_01m3mps81y3kesn5pftk","name":"Runs","createdAt":"2026-09-28T19:10:23.621Z","updatedAt":"2026-09-28T19:10:23.621Z","cases":1},"kase":{"name":"Hello banner build","source":{"missionId":"msn_01m3mpsety7bnf2qkx9p","missionTitle":"Add a hello banner to the page","taskId":"tsk_01m3mpsevwcngr9fnzr5","missionExists":true},"roleId":"development"}}
+  ok   proof (API): the case keeps its base commit (a commit in the project) and its DesignBrief input  → {"baseSha":"f2c69112dac9ed5682270a430d5d9c98d0933e8f","inputs":[{"type":"DesignBrief","title":"DesignBrief: Scripted work"}]}
+  · the case row reads: ["Hello banner build","build","Developer","f2c6911","DesignBrief: Scripted work (DesignBrief)","from Add a hello banner to the page",""]
+  ok   the Suites tab lists "Runs · 1 case" and the case row  → ["Hello banner build","build","Developer","f2c6911","DesignBrief: Scripted work (DesignBrief)","from Add a hello banner to the page",""]
+  ok   the row shows the short base commit (7 characters of the case's base)  → {"shown":"f2c6911","baseSha":"f2c69112dac9ed5682270a430d5d9c98d0933e8f"}
+  ok   the row shows its input: the design brief, (DesignBrief)  → DesignBrief: Scripted work (DesignBrief)
+  ok   the row names the mission it came from, linked
+  ok   the Evals tab is active in the sidebar
+E1: PASS (14/14)
+
+### e2-models-candidate.mjs
+(node:37940) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok   proof (API): the Developer role is on "bad" now  → {"model":"bad","escalate":[],"economyModel":null}
+  ok   a suite with no runs opens the new-run form, on Models, prefilled with the role's model "bad"  → bad
+  ok   starting with every role as it is today is refused: "This candidate changes nothing."  → This candidate changes nothing.
+  ok   proof (API): the run is Models → Developer on "good", 3 repeats, cap $10  → {"candidate":{"kind":"models","roles":{"development":"good"}},"repeats":3,"cap":10}
+  ok   while it runs, the window shows "n / 6 trials" and "Cancel run"  → {"progress":"Progress\n1 / 6 trials\n3 repeats of each case, with the setup you have now and with the change","status":"running"}
+  ok   the spend shows against the cap: "Spent $… of $10.00"  → Spend
+Spent $0.50 of $10.00
+The run stops when it reaches the cap.
+  ok   proof (SQL): the trials are real missions ("Eval trial …")  → [{"id":"msn_01m3mpv37qegc1b76zay","title":"Eval trial Hello banner build candidate 1","status":"COMPLETE"},{"id":"msn_01m3mpv5gw7xn96vfqds","title":"Eval trial Hello banner build baseline 2","status":"DRAFT"},{"id":"msn_01m3mptwt9hzba2ndyx3","title":"Eval trial Hello banner build baseline 1","status":"FAILED"}]
+  ok   proof (API, during): the mission list, Home, the Inbox and approvals name no trial mission  → {"trials":3,"listed":["Add a hello banner to the page"]}
+  ok   the Missions list (during, All) shows E1's mission, counts 1 mission, and no "Eval trial"  → Missions
+Every outcome the workforce is pursuing, past and present.
+New mission
+Backlog
+0
+Routines
+0
+Active
+0
+Needs attention
+0
+Finished
+1
+All
+1
+Add a hello banner to the page
+msn_01m3mpsety7bnf2qkx9p
+Every task succeeded.
+0 of 1 verified
+acceptance-project
+2/2
+Complete
+50s ago
+
+1 mission · j k to move, ↵ to open
+  ok   the Desk (during) shows no "Eval trial"  → Nothing needs you
+Acceptance workspace
+Status report
+New mission
+Needs you
+0
+Nothing waits on you
+Working on
+0
+0 queued · no limit
+Criteria verified
+None yet
+No mission in progress has criteria
+This month
+0.1 agent min
+No monthly limit set
+Stalled
+0
+Everything can move
+Needs you now
+all clear
+Nothing is waiting on you
+
+Every mission is either running on its own or finished. New approvals will land here the moment an agent needs a decision.
+
+Active missions
+0 missions
+All missions
+No missions run
+  ok   the Inbox (during) shows no "Eval trial"  → Inbox
+What is waiting on a person.
+Nothing is waiting on you
+
+Approvals, questions, tasks for a person, work to hand back, stalled missions and quiet agents land here, one line each.
+
+Decided
+1 decision
+Approve the plan for Add a hello banner to the page?
+Approved·
+by
+You
+Add a hello banner to the page
+  ok   proof (API): the run completed, 6 of 6 trials  → {"status":"completed","progress":{"done":6,"total":6,"cancelled":0},"reason":null}
+  ok   proof (API): gate pass rate baseline 0, candidate 1, difference +1  → {"baseline":0,"candidate":1,"difference":1,"trials":{"baseline":{"completed":3,"blocked":0,"failed":3,"errored":0},"candidate":{"completed":3,"blocked":0,"failed":0,"errored":0}}}
+  ok   the scorecard reads Gate pass rate: Baseline 0%, Candidate 100%, Difference +100 pts  → ["Gate pass rate","0%","100%","+100 pts"]
+  ok   the difference is marked better (the success colour)
+  · Trials ["Trials","3 ran · 0 passed · 3 failed · 0 blocked","3 ran · 3 passed · 0 failed · 0 blocked","—"]; First-attempt ["First-attempt pass rate","0%","100%","+100 pts"]; Cost ["Cost (mean, total)","$0.50 · $1.50 total","$0.25 · $0.75 total","−$0.25"]
+  ok   the Trials row reads Baseline "3 ran · 0 passed · 3 failed · 0 blocked", Candidate "3 ran · 3 passed · 0 failed · 0 blocked"  → ["Trials","3 ran · 0 passed · 3 failed · 0 blocked","3 ran · 3 passed · 0 failed · 0 blocked","—"]
+  ok   the candidate heading reads "Candidate, against the setup when this run started"  → Candidate, against the setup when this run started
+  ok   no few-repeats note at 3 repeats
+  ok   proof (API, after): the mission list, Home, the Inbox and approvals name no trial mission  → {"trials":6,"listed":["Add a hello banner to the page"]}
+  ok   the Missions list (after, All) shows E1's mission, counts 1 mission, and no "Eval trial"  → Missions
+Every outcome the workforce is pursuing, past and present.
+New mission
+Backlog
+0
+Routines
+0
+Active
+0
+Needs attention
+0
+Finished
+1
+All
+1
+Add a hello banner to the page
+msn_01m3mpsety7bnf2qkx9p
+Every task succeeded.
+0 of 1 verified
+acceptance-project
+2/2
+Complete
+1m ago
+
+1 mission · j k to move, ↵ to open
+  ok   the Desk (after) shows no "Eval trial"  → Nothing needs you
+Acceptance workspace
+Status report
+New mission
+Needs you
+0
+Nothing waits on you
+Working on
+0
+0 queued · no limit
+Criteria verified
+None yet
+No mission in progress has criteria
+This month
+0.1 agent min
+No monthly limit set
+Stalled
+0
+Everything can move
+Needs you now
+all clear
+Nothing is waiting on you
+
+Every mission is either running on its own or finished. New approvals will land here the moment an agent needs a decision.
+
+Active missions
+0 missions
+All missions
+No missions run
+  ok   the Inbox (after) shows no "Eval trial"  → Inbox
+What is waiting on a person.
+Nothing is waiting on you
+
+Approvals, questions, tasks for a person, work to hand back, stalled missions and quiet agents land here, one line each.
+
+Decided
+1 decision
+Approve the plan for Add a hello banner to the page?
+Approved·
+by
+You
+Add a hello banner to the page
+E2: PASS (22/22)
+
+### e3-setup-candidate.mjs
+(node:40393) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok   the fixture is the project's exported setup, with the Developer role on "good" instead of "bad"  → {"files":[".tandemise/roles/architecture.md",".tandemise/roles/design.md",".tandemise/roles/development.md",".tandemise/roles/finance.md",".tandemise/roles/product.md",".tandemise/roles/qa.md",".tandemise/roles/release.md",".tandemise/roles/review.md",".tandemise/routines.yaml",".tandemise/tandemise.yaml",".tandemise/workflows/build-only.yaml",".tandemise/workflows/p0.yaml",".tandemise/workflows/p10-desk.yaml",".tandemise/workflows/p12-economy.yaml",".tandemise/workflows/p12-escalate.yaml",".tandemise/workflows/p12-models.yaml",".tandemise/workflows/p12-review.yaml",".tandemise/workflows/p13-lint.yaml",".tandemise/workflows/p13-skills.yaml",".tandemise/workflows/p13-unknown.yaml",".tandemise/workflows/p2-chain.yaml",".tandemise/workflows/p2-solo.yaml",".tandemise/workflows/p3-hold.yaml",".tandemise/workflows/p3b-evals.yaml",".tandemise/workflows/p5.yaml",".tandemise/workflows/p8-steps.yaml",".tandemise/workflows/p9-implement.yaml"],"role":["---","capabilities:","  - artifact.write","  - database","  - filesystem.read","  - filesystem.write","  - git","  - git.commit"]}
+  ok   the project is back to its committed files (the fixture lives outside it)  → 
+  ok   control (daemon log): the log does record setup actions ("setup.exported" is there)
+  ok   the preview of the fixture shows the Developer role's model changing to "good"  →  so an import never starts work.
+
+Import from a folder…
+
+From /tmp/tdm-p3b/setup-fixture/.tandemise: 0 to add · 1 to change · 0 to remove · 28 the same
+
+ITEM	KIND	CHANGE	YOUR CHOICE
+
+Developer
+model: bad → good
+	Role	Change	
+Keep mine
+Take theirs
+
+
+Project settings
+	Project	Same	—
+
+Work-in-progress 
+  ok   the Runs form opens on Setup, prefilled with the fixture folder  → New run
+Suite
+Runs (1 case)
+Try
+Models
+Skills
+Setup
+Setup folder
+/tmp/tdm-p3b/setup-fixture
+Change…
+A repository, or its .tandemise folder. Its roles are tried as they are there; nothing is applied to this project.
+Repeats
+Each case runs this many times with the setup you have now, and as many with the change. 1 to 10.
+Spend cap ($)
+The run stops when its trials have spent this much.
+Start run
+Cancel
+  ok   the form is on E1's suite
+  ok   the location is the Evals Runs tab  → #/evals?tab=runs
+  ok   proof (API): the project's roles are unchanged (the Developer is still on "bad")  → {"model":"bad","escalate":[],"economyModel":null}
+  ok   proof (API): the setup status is unchanged, so no setup was applied  → {"lastExport":{"hash":"d41e1ad76b11","repositoryName":"acceptance-project","files":27,"at":"2026-09-28T19:12:02.971Z"}}
+  ok   proof (daemon log): no "setup.applied" was logged, before or after  → {"before":0,"after":0}
+  ok   proof (API): no run was started by opening the form
+E3: PASS (11/11)
+
+### e4-spend-cap.mjs
+(node:40986) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok   proof (API): the run has a $0.60 cap, 2 repeats, Developer on "good"  → {"cap":0.6,"repeats":2,"candidate":{"kind":"models","roles":{"development":"good"}}}
+  ok   proof (API): the run stopped at its cap  → {"status":"stopped_at_cap","reason":"Stopped at your $0.60 cap"}
+  ok   proof (API): its reason is "Stopped at your $0.60 cap"  → Stopped at your $0.60 cap
+  ok   proof (API): it spent at least the cap, measured, and the trials not yet run were cancelled  → {"spentUsd":0.75,"progress":{"done":2,"total":4,"cancelled":2},"trials":["baseline 1 failed","candidate 1 passed","baseline 2 cancelled","candidate 2 cancelled"]}
+  ok   the window shows "Stopped at your $0.60 cap"  → Stopped at your $0.60 cap
+  ok   the spend reads "Spent $… of $0.60"  → Spend
+Spent $0.75 of $0.60
+  ok   the progress counts cancelled trials apart: "n / total trials · m cancelled"  → {"progress":"2 / 4 trials · 2 cancelled","api":{"done":2,"total":4,"cancelled":2}}
+  ok   proof (API): the trials the cap stopped say so  → [["failed","Not met: artifact.ChangeSet.exists is false Missing expected artifacts: ChangeSet."],["passed",null],["cancelled","Stopped at your $0.60 cap"],["cancelled","Stopped at your $0.60 cap"]]
+  · run header: "Stopped at cap\nStarted Sep 28, 2026, 2:12 PM\n· finished Sep 28, 2026, 2:12 PM"
+E4: PASS (8/8)
+
+### e5-from-your-runs.mjs
+(node:42431) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+  · API summary: [{"roleId":"development","model":"good","runs":1,"firstAttemptPassRate":1,"meanAttemptsToPass":1,"criteriaFailed":0,"medianCostUsd":0.25,"medianWallTimeMs":1559}]
+  ok   proof (API): Developer on "good" — 1 run, first-attempt pass rate 1, median cost $0.25  → {"roleId":"development","model":"good","runs":1,"firstAttemptPassRate":1,"meanAttemptsToPass":1,"criteriaFailed":0,"medianCostUsd":0.25,"medianWallTimeMs":1559}
+  ok   proof (API): no Developer on "bad" row (every "bad" run was an eval trial)  → ["development/good"]
+  ok   proof (SQL): trials were scored too, but kept out of this summary  → {"trialScores":12}
+  · columns: ["ROLE","MODEL","RUNS","FIRST-ATTEMPT PASS","ATTEMPTS TO PASS","CRITERIA FAILED","MEDIAN COST","MEDIAN TIME"]
+  ok   the window has a "Developer on good" row: 1 run, First-attempt pass 100%, Median cost $0.25  → ["Developer","good","1","100%","1","0","$0.25","2s"]
+  ok   no "Developer on bad" row in the window
+  · rows: ["Developer on good"]
+E5: PASS (5/5)
+
+### e6-cleanup.mjs
+(node:42915) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok   proof (API): every eval run on the suite has ended  → [{"id":"ern_01m3mptwt7knweq29c2p","status":"completed"},{"id":"ern_01m3mpxxawg7emefg31n","status":"stopped_at_cap"}]
+  ok   proof (API): no trial is still running  → ["failed","passed","failed","passed","failed","passed","failed","passed","cancelled","cancelled"]
+  · trial execution targets: [{"branch":"tandemise/eval-trial-hello-banner-build-baseline-1/eval-trial-hello-banner-build-baseline-1-build-aj3mmvnh","path":"/tmp/tdm-p3b/home/workspaces/ws_01m3mps81y3kesn5pftk/missions/msn_01m3mptwt9hzba2ndyx3/worktrees/eval-trial-hello-banner-build-baseline-1-build-aj3mmvnh","status":"RELEASED"},{"branch":"tandemise/eval-trial-hello-banner-build-baseline-1/eval-trial-hello-banner-build-baseline-1-build-aj3mmvnh","path":"/tmp/tdm-p3b/home/workspaces/ws_01m3mps81y3kesn5pftk/missions/msn_01m3mptwt9hzba2ndyx3/worktrees/eval-trial-hello-banner-build-baseline-1-build-aj3mmvnh","status":"RELEASED"},{"branch":"tandemise/eval-trial-hello-banner-build-candidate-1/eval-trial-hello-banner-build-candidate-1-build-msaysgrz","path":"/tmp/tdm-p3b/home/workspaces/ws_01m3mps81y3kesn5pftk/missions/msn_01m3mpv37qegc1b76zay/worktrees/eval-trial-hello-banner-build-candidate-1-build-msaysgrz","status":"RELEASED"},{"branch":"tandemise/eval-trial-hello-banner-build-baseline-2/eval-trial-hello-banner-build-baseline-2-build-4nkq14gv","path":"/tmp/tdm-p3b/home/workspaces/ws_01m3mps81y3kesn5pftk/missions/msn_01m3mpv5gw7xn96vfqds/worktrees/eval-trial-hello-banner-build-baseline-2-build-4nkq14gv","status":"RELEASED"},{"branch":"tandemise/eval-trial-hello-banner-build-baseline-2/eval-trial-hello-banner-build-baseline-2-build-4nkq14gv","path":"/tmp/tdm-p3b/home/workspaces/ws_01m3mps81y3kesn5pftk/missions/msn_01m3mpv5gw7xn96vfqds/worktrees/eval-trial-hello-banner-build-baseline-2-build-4nkq14gv","status":"RELEASED"},{"branch":"tandemise/eval-trial-hello-banner-build-candidate-2/eval-trial-hello-banner-build-candidate-2-build-y1bsx1d1","path":"/tmp/tdm-p3b/home/workspaces/ws_01m3mps81y3kesn5pftk/missions/msn_01m3mpvbxy850mdpegt8/worktrees/eval-trial-hello-banner-build-candidate-2-build-y1bsx1d1","status":"RELEASED"},{"branch":"tandemise/eval-trial-hello-banner-build-baseline-3/eval-trial-hello-banner-build-baseline-3-build-zhz7avvh","path":"/tmp/tdm-p3b/home/workspaces/ws_01m3mps81y3kesn5pftk/missions/msn_01m3mpve7phjbvbcpmgd/worktrees/eval-trial-hello-banner-build-baseline-3-build-zhz7avvh","status":"RELEASED"},{"branch":"tandemise/eval-trial-hello-banner-build-baseline-3/eval-trial-hello-banner-build-baseline-3-build-zhz7avvh","path":"/tmp/tdm-p3b/home/workspaces/ws_01m3mps81y3kesn5pftk/missions/msn_01m3mpve7phjbvbcpmgd/worktrees/eval-trial-hello-banner-build-baseline-3-build-zhz7avvh","status":"RELEASED"},{"branch":"tandemise/eval-trial-hello-banner-build-candidate-3/eval-trial-hello-banner-build-candidate-3-build-6m4y08fx","path":"/tmp/tdm-p3b/home/workspaces/ws_01m3mps81y3kesn5pftk/missions/msn_01m3mpvmmtk8kc15c7z2/worktrees/eval-trial-hello-banner-build-candidate-3-build-6m4y08fx","status":"RELEASED"},{"branch":"tandemise/eval-trial-hello-banner-build-baseline-1/eval-trial-hello-banner-build-baseline-1-build-bmjjqpve","path":"/tmp/tdm-p3b/home/workspaces/ws_01m3mps81y3kesn5pftk/missions/msn_01m3mpxxaxf9b10f17wx/worktrees/eval-trial-hello-banner-build-baseline-1-build-bmjjqpve","status":"RELEASED"},{"branch":"tandemise/eval-trial-hello-banner-build-baseline-1/eval-trial-hello-banner-build-baseline-1-build-bmjjqpve","path":"/tmp/tdm-p3b/home/workspaces/ws_01m3mps81y3kesn5pftk/missions/msn_01m3mpxxaxf9b10f17wx/worktrees/eval-trial-hello-banner-build-baseline-1-build-bmjjqpve","status":"RELEASED"},{"branch":"tandemise/eval-trial-hello-banner-build-candidate-1/eval-trial-hello-banner-build-candidate-1-build-92bhx9sq","path":"/tmp/tdm-p3b/home/workspaces/ws_01m3mps81y3kesn5pftk/missions/msn_01m3mpy3sah1x6794f0y/worktrees/eval-trial-hello-banner-build-candidate-1-build-92bhx9sq","status":"RELEASED"}]
+  ok   proof (SQL): the trials did work on tandemise/eval-trial-* branches  → [{"branch":"tandemise/eval-trial-hello-banner-build-baseline-1/eval-trial-hello-banner-build-baseline-1-build-aj3mmvnh","path":"/tmp/tdm-p3b/home/workspaces/ws_01m3mps81y3kesn5pftk/missions/msn_01m3mptwt9hzba2ndyx3/worktrees/eval-trial-hello-banner-build-baseline-1-build-aj3mmvnh","status":"RELEASED"},{"branch":"tandemise/eval-trial-hello-banner-build-baseline-1/eval-trial-hello-banner-build-baseline-1-build-aj3mmvnh","path":"/tmp/tdm-p3b/home/workspaces/ws_01m3mps81y3kesn5pftk/missions/msn_01m3mptwt9hzba2ndyx3/worktrees/eval-trial-hello-banner-build-baseline-1-build-aj3mmvnh","status":"RELEASED"},{"branch":"tandemise/eval-trial-hello-banner-build-candidate-1/eval-trial-hello-banner-build-candidate-1-build-msaysgrz","path":"/tmp/tdm-p3b/home/workspaces/ws_01m3mps81y3kesn5pftk/missions/msn_01m3mpv37qegc1b76zay/worktrees/eval-trial-hello-banner-build-candidate-1-build-msaysgrz","status":"RELEASED"},{"branch":"tandemise/eval-trial-hello-banner-build-baseline-2/eval-trial-hello-banner-build-baseline-2-build-4nkq14gv","path":"/tmp/tdm-p3b/home/workspaces/ws_01m3mps81y3kesn5pftk/missions/msn_01m3mpv5gw7xn96vfqds/worktrees/eval-trial-hello-banner-build-baseline-2-build-4nkq14gv","status":"RELEASED"}]
+  · git worktree list:
+/private/var/folders/dh/glpvvh110393gdzjc_v2x1sr0000gn/T/tdm-p3b-run-mulmgs59/project                                                                                                                            f2c6911 [main]
+/private/var/folders/dh/glpvvh110393gdzjc_v2x1sr0000gn/T/tdm-p3b-run-mulmgs59/home/workspaces/ws_01m3mps81y3kesn5pftk/missions/msn_01m3mpsety7bnf2qkx9p/worktrees/add-a-hello-banner-to-the-page-build-gr9fnzr5  8903990 [tandemise/add-a-hello-banner-to-the-page/add-a-hello-banner-to-the-page-build-gr9fnzr5]
+  · git branch --list 'tandemise/eval-trial*': ""
+  ok   `git worktree list` in the project shows no trial worktree  → /private/var/folders/dh/glpvvh110393gdzjc_v2x1sr0000gn/T/tdm-p3b-run-mulmgs59/project                                                                                                                            f2c6911 [main]
+/private/var/folders/dh/glpvvh110393gdzjc_v2x1sr0000gn/T/tdm-p3b-run-mulmgs59/home/workspaces/ws_01m3mps81y3kesn5pftk/missions/msn_01m3mpsety7bnf2qkx9p/worktrees/add-a-hello-banner-to-the-page-build-gr9fnzr5  8903990 [tandemise/add-a-hello-banner-to-the-page/add-a-hello-banner-to-the-page-build-gr9fnzr5]
+  ok   `git branch --list 'tandemise/eval-trial*'` in the project shows none  → 
+  ok   no trial worktree folder is left on disk  → []
+  · the project's other tandemise/* branches (real missions): "+ tandemise/add-a-hello-banner-to-the-page/add-a-hello-banner-to-the-page-build-gr9fnzr5"
+E6: PASS (6/6)
+
+# P3b acceptance report
+
+Run: 2026-09-28T19:13:50.226Z · build f575fe9 · fresh install at /var/folders/dh/glpvvh110393gdzjc_v2x1sr0000gn/T/tdm-p3b-run-mulmgs59
+Command: `node scratch/acceptance/p3-evals/run-all.mjs --keep-going`
+Result: **ALL PASS** (6/6 scenarios)
+
+| Scenario | Result | Checks |
+|---|---|---|
+| E1 — Save as eval case on a succeeded build step | PASS | 14/14 |
+| E2 — A Models candidate against the role on "bad": progress, then a +100 point scorecard; no trial shows anywhere | PASS | 22/22 |
+| E3 — Setup as code: a fixture folder's "Try on evals" prefills the Runs form and applies nothing | PASS | 11/11 |
+| E4 — A $0.60 spend cap at $0.25 a run stops the run | PASS | 8/8 |
+| E5 — From your runs: role × model rows from the real missions | PASS | 5/5 |
+| E6 — No trial worktree or branch is left after the runs | PASS | 6/6 |
+

@@ -27,6 +27,7 @@ import { FeedbackRounds } from './engine/feedback-rounds.js';
 import { SchedulerService } from './engine/scheduler.js';
 import { McpGatewayProvisioner } from './engine/mcp-gateway.js';
 import { TaskExecutor } from './engine/task-executor.js';
+import { EvalRunner } from './engine/eval-runner.js';
 import { EventRecorder } from './support/event-recorder.js';
 import { RepositoryProber } from './support/repository-prober.js';
 import { RuntimeOverrides } from './support/runtime-overrides.js';
@@ -58,6 +59,7 @@ import { SkillInstaller } from './engine/skill-installer.js';
 import { DEFAULT_QUIET_AFTER_MS, reachedReason, type IssueTrackerPort, type PullRequestSnapshotPort } from '@tandemise/domain';
 import { SetupService } from './services/setup-service.js';
 import { RefinementServiceImpl } from './services/refinement-service.js';
+import { EvalService } from './services/eval-service.js';
 import { PlanningServiceImpl } from './services/planning-service.js';
 import { ProjectionServiceImpl } from './services/projection-service.js';
 import { RoleServiceImpl } from './services/role-service.js';
@@ -161,6 +163,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       approvals: r.resolve(t.APPROVAL_REPOSITORY),
       approvalFactory: r.resolve(APPROVAL_FACTORY),
       tasks: r.resolve(t.TASK_REPOSITORY),
+      missions: r.resolve(t.MISSION_REPOSITORY),
       runs: r.resolve(t.RUN_REPOSITORY),
       address: (task, workspaceId) => r.resolve(t.REVIEW_PIPELINE).questionAddressFor(task, workspaceId),
       waiter: r.resolve(t.APPROVAL_WAITER),
@@ -281,10 +284,34 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       limits: r.resolve(t.LIMIT_SERVICE),
       skills: r.resolve(t.SKILL_SERVICE),
       skillInstaller: new SkillInstaller(r.resolve(t.EVENT_RECORDER)),
+      runScores: r.resolve(t.RUN_SCORE_REPOSITORY),
+      // Resolved per call: the eval runner is composed from this executor.
+      trialContext: (mission) => r.resolve(t.EVAL_RUNNER).contextFor(mission),
       paths: paths(r),
       clock: clock(r),
       log: log(r).child({ component: 'executor' }),
     }), { source: SOURCE });
+
+    bind(t.EVAL_RUNNER, (r) => new EvalRunner({
+      evals: r.resolve(t.EVAL_REPOSITORY),
+      missions: r.resolve(t.MISSION_REPOSITORY),
+      tasks: r.resolve(t.TASK_REPOSITORY),
+      runs: r.resolve(t.RUN_REPOSITORY),
+      runScores: r.resolve(t.RUN_SCORE_REPOSITORY),
+      criteria: r.resolve(t.MISSION_CRITERIA_REPOSITORY),
+      artifacts: r.resolve(t.ARTIFACT_REPOSITORY),
+      artifactStore: r.resolve(t.ARTIFACT_STORE),
+      blobs: r.resolve(t.EVAL_BLOBS),
+      repositories: r.resolve(t.REPO_REPOSITORY),
+      workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
+      targets: r.resolve(t.EXECUTION_TARGET_REPOSITORY),
+      targetManager: r.resolve(EXECUTION_TARGET_MANAGER),
+      executor: r.resolve(t.TASK_EXECUTOR),
+      // Deleting a trial's branch is raw git in the person's repository, like a case's base commit.
+      exec: r.tryResolve(INTEGRATION_COMMAND_EXECUTOR) ?? null,
+      clock: clock(r),
+      log: log(r).child({ component: 'eval-runner' }),
+    }), { source: SOURCE, dispose: (runner) => runner.stop() });
 
     bind(t.REMEDIATION_PLANNER, (r) => new RemediationPlanner(
       r.resolve(t.MISSION_REPOSITORY),
@@ -852,6 +879,43 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       gates: r.resolve(t.GATE_SERVICE),
     }), { source: SOURCE });
 
+    // Default: fails loudly, the way ISSUE_TRACKER's default does. Content-addressed
+    // eval case inputs (P3b) are really disk under the daemon, which rebinds this;
+    // a working in-memory default would let a composition that forgot to rebind
+    // silently lose a case's inputs instead of telling anyone.
+    bind(t.EVAL_BLOBS, () => ({
+      put: async (): Promise<string> => {
+        throw new TandemiseError('INTEGRATION_FAILED', 'Eval inputs cannot be stored in this build.');
+      },
+      get: async (): Promise<Uint8Array | null> => null,
+      has: async (): Promise<boolean> => false,
+    }), { source: SOURCE });
+
+    bind(t.EVAL_SERVICE, (r) => new EvalService({
+      evals: r.resolve(t.EVAL_REPOSITORY),
+      runScores: r.resolve(t.RUN_SCORE_REPOSITORY),
+      blobs: r.resolve(t.EVAL_BLOBS),
+      artifacts: r.resolve(t.ARTIFACT_REPOSITORY),
+      artifactStore: r.resolve(t.ARTIFACT_STORE),
+      runs: r.resolve(t.RUN_REPOSITORY),
+      runInputs: r.resolve(t.RUN_INPUT_REPOSITORY),
+      tasks: r.resolve(t.TASK_REPOSITORY),
+      missions: r.resolve(t.MISSION_REPOSITORY),
+      repositories: r.resolve(t.REPO_REPOSITORY),
+      workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
+      decisions: r.resolve(t.DECISION_REPOSITORY),
+      questions: r.resolve(t.MISSION_QUESTION_REPOSITORY),
+      criteria: r.resolve(t.MISSION_CRITERIA_REPOSITORY),
+      // The same runner as contributions, so a case's base commit is resolved with the daemon's own git.
+      exec: r.tryResolve(INTEGRATION_COMMAND_EXECUTOR) ?? null,
+      clock: clock(r),
+      roles: r.resolve(t.ROLE_REPOSITORY),
+      skills: r.resolve(t.SKILL_SERVICE),
+      readSetupFolder: (path) => r.resolve(t.SETUP_SERVICE).readFolder(path),
+      // Lazily: the runner is composed from the executor, which nothing here needs until a run starts.
+      runner: () => r.resolve(t.EVAL_RUNNER),
+    }), { source: SOURCE });
+
     bind(t.TANDEMISE_SERVICES, (r): TandemiseServices => ({
       system: r.resolve(t.SYSTEM_SERVICE),
       workspaces: r.resolve(t.WORKSPACE_SERVICE),
@@ -880,6 +944,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       issues: r.resolve(t.ISSUE_SERVICE),
       setup: r.resolve(t.SETUP_SERVICE),
       contributions: r.resolve(t.CONTRIBUTION_SERVICE),
+      evals: r.resolve(t.EVAL_SERVICE),
     }), { source: SOURCE });
   });
 }

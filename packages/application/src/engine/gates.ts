@@ -116,10 +116,18 @@ export class GateService {
     };
   }
 
+  /**
+   * The gate outcome and every fact the gate could read, from one read of the
+   * facts (P3b: a run's score keeps the facts, not just the verdict).
+   */
+  assess(task: MissionTask, measured: TaskMeasurements = {}): { readonly outcome: GateOutcome | null; readonly facts: GateFacts } {
+    const facts = this.factsFor(task, measured);
+    return { outcome: task.completionGate === null ? null : evaluateGate(task.completionGate, facts), facts };
+  }
+
   /** `null` when the task declares no completion gate - not a pass, an absence. */
   evaluate(task: MissionTask, measured: TaskMeasurements = {}): GateOutcome | null {
-    if (task.completionGate === null) return null;
-    return evaluateGate(task.completionGate, this.factsFor(task, measured));
+    return task.completionGate === null ? null : this.assess(task, measured).outcome;
   }
 
   /** One of the named workspace gates (`ready_for_qa`, `ready_to_ship`). */

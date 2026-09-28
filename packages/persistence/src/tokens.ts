@@ -1,9 +1,9 @@
 import { token } from '@tandemise/kernel';
 import type {
   ApprovalRepositoryPort, ArtifactRepositoryPort, AssignmentRepositoryPort,
-  CheckpointRepositoryPort, DecisionRepositoryPort, EvaluationRepositoryPort,
+  CheckpointRepositoryPort, DecisionRepositoryPort, EvalRepositoryPort, EvaluationRepositoryPort,
   EventRepositoryPort, ExecutionTargetRepositoryPort, FeedbackRepositoryPort, IntegrationRepositoryPort,
-  LeaseRepositoryPort, MemberRepositoryPort, MissionCriteriaRepositoryPort, MissionQuestionRepositoryPort, MissionRepositoryPort, LimitRepositoryPort, PersonRepositoryPort, RoutineRepositoryPort, SkillRepositoryPort, IssueRepositoryPort,
+  LeaseRepositoryPort, MemberRepositoryPort, MissionCriteriaRepositoryPort, MissionQuestionRepositoryPort, MissionRepositoryPort, LimitRepositoryPort, PersonRepositoryPort, RoutineRepositoryPort, RunScoreRepositoryPort, SkillRepositoryPort, IssueRepositoryPort,
   RepoRepositoryPort, RoleRepositoryPort, RunInputRepositoryPort,
   RunRepositoryPort, RuntimeProfileRepositoryPort, TaskRepositoryPort, UnitOfWork,
   WorkspaceRepositoryPort,
@@ -50,3 +50,5 @@ export const LIMIT_REPOSITORY = token<LimitRepositoryPort>('persistence.LimitRep
 export const ROUTINE_REPOSITORY = token<RoutineRepositoryPort>('persistence.RoutineRepository');
 export const SKILL_REPOSITORY = token<SkillRepositoryPort>('persistence.SkillRepository');
 export const ISSUE_REPOSITORY = token<IssueRepositoryPort>('persistence.IssueRepository');
+export const RUN_SCORE_REPOSITORY = token<RunScoreRepositoryPort>('persistence.RunScoreRepository');
+export const EVAL_REPOSITORY = token<EvalRepositoryPort>('persistence.EvalRepository');

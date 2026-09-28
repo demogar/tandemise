@@ -10,6 +10,7 @@ import * as persistenceTokens from '@tandemise/persistence';
 import {
   createArtifactsModule, ARTIFACT_STORE as ARTIFACTS_STORE_TOKEN,
   renderArtifactTemplate, parseArtifact, measureArtifact, deriveHandoff, splitAppendix,
+  FileEvalBlobs,
 } from '@tandemise/artifacts';
 import { policyModule } from '@tandemise/policy';
 import { contextModule } from '@tandemise/context';
@@ -30,12 +31,13 @@ import {
 import { GhIssueTracker, GhPullRequestSnapshots, githubIntegrationModule } from '@tandemise/integration-github';
 import { mcpIntegrationModule } from '@tandemise/integration-mcp';
 import { browserIntegrationModule } from '@tandemise/browser';
-import { createApplicationModule, createServices, SCHEDULER, type TandemiseServices,
+import { createApplicationModule, createServices, EVAL_RUNNER, SCHEDULER, type TandemiseServices,
   WORKFLOW_SOURCE,
   SKILL_FILES,
   ISSUE_TRACKER,
   PULL_REQUEST_SNAPSHOTS, GIT_CREDENTIAL_ENV, pickGitCredentialEnv,
   SETUP_FOLDER,
+  EVAL_BLOBS,
 } from '@tandemise/application';
 import * as applicationTokens from '@tandemise/application';
 
@@ -153,6 +155,10 @@ export function bootstrap(config: DaemonConfig, options: { readonly localPersonN
   container.rebind(SKILL_FILES, (r) =>
     new DaemonSkillFiles(config.paths.skills, config.skillsDiscoverRoot, r.resolve(LOGGER).child({ component: 'skills' })), { source: 'bootstrap' });
 
+  // Eval case inputs (P3b) are content-addressed bytes on disk, the same shape as the skills store.
+  // The application module binds an in-memory default; this replaces it with the real one.
+  container.rebind(EVAL_BLOBS, () => new FileEvalBlobs(config.paths.evalBlobs), { source: 'bootstrap' });
+
   // GitHub issues (P14) go through the same `gh` and command executor as the
   // GitHub tools, so `gh` is found on the daemon's own PATH.
   container.rebind(ISSUE_TRACKER, (r) => new GhIssueTracker(r.resolve(TOOL_COMMAND_EXECUTOR)), { source: 'bootstrap' });
@@ -172,6 +178,8 @@ export function bootstrap(config: DaemonConfig, options: { readonly localPersonN
   // gives shutdown its ordering - `stop()` aborts in-flight runs before the
   // database and process supervisor are disposed.
   lifecycle.add(container.resolve(SCHEDULER));
+  // Added after the scheduler, so shutdown stops the runner first; its live trial is left for boot recovery (P3b).
+  lifecycle.add(container.resolve(EVAL_RUNNER));
 
   return { container, services, lifecycle, events, projections, log, testClock };
 }

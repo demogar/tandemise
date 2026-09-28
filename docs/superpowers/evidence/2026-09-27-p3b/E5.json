@@ -1,0 +1,61 @@
+{
+  "id": "E5",
+  "title": "From your runs: role × model rows from the real missions",
+  "ok": true,
+  "checks": [
+    {
+      "label": "proof (API): Developer on \"good\" — 1 run, first-attempt pass rate 1, median cost $0.25",
+      "ok": true,
+      "observed": {
+        "roleId": "development",
+        "model": "good",
+        "runs": 1,
+        "firstAttemptPassRate": 1,
+        "meanAttemptsToPass": 1,
+        "criteriaFailed": 0,
+        "medianCostUsd": 0.25,
+        "medianWallTimeMs": 1559
+      }
+    },
+    {
+      "label": "proof (API): no Developer on \"bad\" row (every \"bad\" run was an eval trial)",
+      "ok": true,
+      "observed": [
+        "development/good"
+      ]
+    },
+    {
+      "label": "proof (SQL): trials were scored too, but kept out of this summary",
+      "ok": true,
+      "observed": {
+        "trialScores": 12
+      }
+    },
+    {
+      "label": "the window has a \"Developer on good\" row: 1 run, First-attempt pass 100%, Median cost $0.25",
+      "ok": true,
+      "observed": [
+        "Developer",
+        "good",
+        "1",
+        "100%",
+        "1",
+        "0",
+        "$0.25",
+        "2s"
+      ]
+    },
+    {
+      "label": "no \"Developer on bad\" row in the window",
+      "ok": true
+    }
+  ],
+  "notes": [
+    "API summary: [{\"roleId\":\"development\",\"model\":\"good\",\"runs\":1,\"firstAttemptPassRate\":1,\"meanAttemptsToPass\":1,\"criteriaFailed\":0,\"medianCostUsd\":0.25,\"medianWallTimeMs\":1559}]",
+    "columns: [\"ROLE\",\"MODEL\",\"RUNS\",\"FIRST-ATTEMPT PASS\",\"ATTEMPTS TO PASS\",\"CRITERIA FAILED\",\"MEDIAN COST\",\"MEDIAN TIME\"]",
+    "rows: [\"Developer on good\"]"
+  ],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise/docs/superpowers/evidence/2026-09-27-p3b/E5-from-your-runs.png"
+  ]
+}

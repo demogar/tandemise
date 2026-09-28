@@ -23,6 +23,8 @@ export interface ModelPolicy {
   readonly escalate?: readonly string[];
   /** Key of an upstream step whose run this step's run must differ from (fact `review.independent`). */
   readonly independentOf?: string;
+  /** Set only by eval trials: the step's model beats economy mode so limit pressure can't mask a candidate. */
+  readonly pinned?: boolean;
 }
 
 /** What a role says about models (Team → Roles). */
@@ -53,7 +55,7 @@ export interface ModelContext {
   readonly runtimeTakesModel: boolean;
 }
 
-export type ModelSource = 'runtime' | 'escalation' | 'economy' | 'step' | 'role' | 'profile';
+export type ModelSource = 'runtime' | 'escalation' | 'pinned' | 'economy' | 'step' | 'role' | 'profile';
 
 export interface ResolvedModel {
   /** Null: the runtime's own default (nothing is passed). */
@@ -79,6 +81,7 @@ function ladder(values: readonly string[] | undefined): string[] {
  *
  *  R1 runtime cannot take a model → none, "runtime default"
  *  R2 attempt ≥ 2 and a ladder (the step's, else the role's) → its rung, "retry escalation (attempt N)"
+ *  R2b a pinned step model (eval trials only) → it, "pinned step model (eval trial)"
  *  R3 a limit past its warning level and a role economy model → it, "economy: N% of limit"
  *  R4 step model → "step override"
  *  R5 role model → "role model"
@@ -95,6 +98,13 @@ export function resolveModel(ctx: ModelContext): ResolvedModel {
       const rung = rungs[Math.min(ctx.attempt - 2, rungs.length - 1)]!;
       return { model: rung, reason: `retry escalation (attempt ${ctx.attempt})`, source: 'escalation' };
     }
+  }
+
+  // An eval trial pins the candidate's model so a limit past its warning level
+  // cannot quietly swap it for the economy model and score the wrong setup.
+  const pinned = name(ctx.step?.model);
+  if (ctx.step?.pinned === true && pinned !== null) {
+    return { model: pinned, reason: 'pinned step model (eval trial)', source: 'pinned' };
   }
 
   const economy = name(ctx.role?.economyModel);

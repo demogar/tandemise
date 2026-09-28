@@ -25,7 +25,13 @@ export function Limits({ workspaceId, monthly, perMission }: {
         <div className="grid grid--3">
           <Stat label="Agent minutes this month" value={metric(u?.usage.agentMinutes ?? null)} />
           <Stat label="Tokens this month" value={metric(u?.usage.tokens ?? null)} muted={(u?.usage.tokens ?? null) === null} />
-          <Stat label="Cost this month" value={money(u?.usage.costUsd ?? null)} muted={(u?.usage.costUsd ?? null) === null} />
+          <Stat
+            label="Cost this month"
+            value={money(u?.usage.costUsd ?? null)}
+            muted={(u?.usage.costUsd ?? null) === null}
+            // Eval trials count against the month like any run; saying how much keeps the total from surprising anyone.
+            note={(u?.evalCostUsd ?? 0) > 0 ? `of which evals ${money(u?.evalCostUsd ?? null)}` : undefined}
+          />
         </div>
         {(u?.limits ?? []).length > 0 ? (
           <div className="stack" style={{ marginTop: 'var(--s3)' }}>

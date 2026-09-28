@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link } from 'wouter';
+import { Link, useLocation } from 'wouter';
 import type { SkillView } from '@tandemise/api-contract';
 import { stripFrontMatter } from '@tandemise/artifacts/strip-front-matter';
 import { PageHeader } from '../components/PageHeader.js';
@@ -10,6 +10,7 @@ import { Empty, ErrorState, SkeletonList } from '../components/primitives.js';
 import { useDaemonMutation, useSkillVersion, useSkills } from '../lib/queries.js';
 import { dateTime, pluralize } from '../lib/format.js';
 import { ImportSkills } from './skills/ImportSkills.js';
+import { evalsHref } from './evals/link.js';
 
 /**
  * The skills library (P13): skills the person already has, imported as
@@ -118,6 +119,15 @@ function SkillDetail({ skill, onDeleted }: { skill: SkillView; onDeleted: () => 
   const update = useDaemonMutation((daemon) => daemon.updateSkill(skill.id), ['workspaces']);
   const remove = useDaemonMutation((daemon) => daemon.deleteSkill(skill.id), ['workspaces']);
   const shown = skill.versions.find((v) => v.version === version) ?? skill.latest;
+  const [, navigate] = useLocation();
+  // Roles still on an older version: an update imports the new one but never moves a pin (Ruling 10), so the
+  // candidate moves just these roles to latest, inside an eval run only.
+  const behind = skill.usedBy.filter((u) => u.version < skill.latest.version);
+  const tryOnEvals = (): void =>
+    navigate(evalsHref({
+      tab: 'runs',
+      candidate: { kind: 'skills', roles: Object.fromEntries(behind.map((u) => [u.roleId, [{ name: skill.name, version: 'latest' as const }]])) },
+    }));
 
   return (
     <div className="stack" aria-label="Skill detail" style={{ gap: 'var(--s5)' }}>
@@ -156,14 +166,25 @@ function SkillDetail({ skill, onDeleted }: { skill: SkillView; onDeleted: () => 
         {skill.usedBy.length === 0 ? (
           <p className="muted" style={{ margin: 0 }}>No role uses it yet. Attach it to a role in <Link href="/team/roles">Team → Roles</Link>.</p>
         ) : (
-          <ul style={{ margin: 0, paddingLeft: 'var(--s4)' }}>
-            {skill.usedBy.map((u) => (
-              <li key={u.roleId}>
-                {u.roleName} pins v{u.version}
-                {u.version < skill.latest.version ? <span className="dim"> · v{skill.latest.version} is available in <Link href="/team/roles">Team → Roles</Link></span> : null}
-              </li>
-            ))}
-          </ul>
+          <>
+            <ul style={{ margin: 0, paddingLeft: 'var(--s4)' }}>
+              {skill.usedBy.map((u) => (
+                <li key={u.roleId}>
+                  {u.roleName} pins v{u.version}
+                  {u.version < skill.latest.version ? <span className="dim"> · v{skill.latest.version} is available in <Link href="/team/roles">Team → Roles</Link></span> : null}
+                </li>
+              ))}
+            </ul>
+            {behind.length > 0 ? (
+              <div className="row" style={{ gap: 'var(--s2)' }}>
+                <button type="button" className="btn" onClick={tryOnEvals}>
+                  <Icon name="target" size={13} />
+                  Try on evals
+                </button>
+                <span className="dim" style={{ fontSize: 'var(--fs-sm)' }}>Run your eval cases with v{skill.latest.version} before moving any role to it.</span>
+              </div>
+            ) : null}
+          </>
         )}
       </section>
 

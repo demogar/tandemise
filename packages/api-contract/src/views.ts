@@ -1,6 +1,7 @@
 import type { PlanDecision } from './for-me.js';
 import type {
-  Approval, ArtifactManifest, CheckResult, Decision, Evaluation, ExecutionTargetRecord,
+  Approval, ArtifactManifest, ArtifactType, CheckResult, CriteriaCounts, Decision, Evaluation, ExecutionTargetRecord,
+  EvalCandidate, EvalRunStatus, EvalTrialStatus,
   Integration, Mission, MissionProgress, MissionTask, Repository, RoleTemplate, Run,
   RunEventRecord, RuntimeHealth, RuntimeProfile, RuntimeDiscovery, RuntimeSettingField, Workspace,
   MissionPlan, PlanValidationIssue, GateOutcome, AccessLevel, Member, Person, Staffing,
@@ -866,6 +867,8 @@ export interface WorkspaceUsageView {
   readonly usage: UsageView;
   readonly limits: readonly LimitStatusView[];
   readonly defaultMissionLimits: readonly Limit[];
+  /** What eval trials spent this month, already inside `usage`; null when their runtime reported no cost (P3b). */
+  readonly evalCostUsd: number | null;
   readonly missions: readonly { readonly missionId: string; readonly title: string; readonly usage: UsageView }[];
 }
 
@@ -1054,3 +1057,125 @@ export interface SkillVersionDetailView extends SkillVersionView {
   /** Null when the stored content is missing. */
   readonly skillMd: string | null;
 }
+
+// -------------------------------------------------------------------- evals (P3b)
+//
+// `@tandemise/evaluation` (the scorecard's own home) sits above `api-contract`
+// in the layering (`npm run check:boundaries`), so `Scorecard` and
+// `RoleModelSummary` cannot be imported here; their shapes are restated
+// structurally instead, matching @tandemise/evaluation/src/scorecard.ts.
+
+export interface EvalSuiteView {
+  readonly id: string;
+  readonly name: string;
+  readonly cases: number;
+  readonly createdAt: string;
+}
+
+export interface EvalCaseView {
+  readonly id: string;
+  readonly suiteId: string;
+  readonly name: string;
+  readonly baseSha: string;
+  readonly repositoryId: string;
+  readonly roleId: string;
+  readonly stepTitle: string;
+  readonly inputs: readonly { readonly type: ArtifactType; readonly title: string }[];
+  readonly criteria: number;
+  readonly source: {
+    readonly missionId: string;
+    readonly missionTitle: string;
+    readonly taskId: string;
+    /** False once the source mission has since been removed; the case itself still replays fine. */
+    readonly missionExists: boolean;
+  };
+  readonly createdAt: string;
+}
+
+export interface EvalTrialView {
+  readonly id: string;
+  readonly caseId: string;
+  readonly caseName: string;
+  readonly variant: 'baseline' | 'candidate';
+  readonly repeat: number;
+  readonly status: EvalTrialStatus;
+  readonly reason: string | null;
+}
+
+/** Structural copy of `@tandemise/evaluation`'s `VariantScore`. */
+export interface VariantScoreView {
+  /** `failed` is completed trials whose gate did not pass; `errored` is failed trials with no score. */
+  readonly trials: { readonly completed: number; readonly blocked: number; readonly failed: number; readonly errored: number };
+  readonly gatePassRate: number | null;
+  readonly firstAttemptPassRate: number | null;
+  readonly criteria: CriteriaCounts | null;
+  readonly meanAttempts: number | null;
+  readonly overBudget: number;
+  readonly tokens: { readonly mean: number | null; readonly total: number | null };
+  readonly costUsd: { readonly mean: number | null; readonly total: number | null };
+  readonly wallTimeMs: { readonly mean: number | null; readonly total: number | null };
+}
+
+/** Structural copy of `@tandemise/evaluation`'s `ScorecardDifference`. */
+export interface ScorecardDifferenceView {
+  readonly gatePassRate: number | null;
+  readonly firstAttemptPassRate: number | null;
+  readonly meanAttempts: number | null;
+  readonly overBudget: number;
+  readonly meanTokens: number | null;
+  readonly meanCostUsd: number | null;
+  readonly meanWallTimeMs: number | null;
+}
+
+/** Structural copy of `@tandemise/evaluation`'s `Scorecard`, an eval run's baseline-vs-candidate result. */
+export interface Scorecard {
+  readonly baseline: VariantScoreView;
+  readonly candidate: VariantScoreView;
+  readonly difference: ScorecardDifferenceView;
+  readonly perCase: readonly {
+    readonly caseId: string;
+    readonly name: string;
+    readonly baseline: VariantScoreView;
+    readonly candidate: VariantScoreView;
+    readonly difference: ScorecardDifferenceView;
+  }[];
+  readonly fewRepeats: boolean;
+}
+
+export interface EvalRunView {
+  readonly id: string;
+  readonly suiteId: string;
+  readonly status: EvalRunStatus;
+  readonly reason: string | null;
+  readonly repeats: number;
+  readonly spendCapUsd: number;
+  /**
+   * The measured spend: a lower bound when `costUnmeasured`. Null only when no finished run
+   * reported a cost at all: unknown is never $0.
+   */
+  readonly spentUsd: number | null;
+  /** True when a finished trial reported no cost, so the cap may not stop this run in time. */
+  readonly costUnmeasured: boolean;
+  readonly candidate: EvalCandidate;
+  /** `done` counts trials with an outcome other than cancelled; `cancelled` counts the rest that ended. */
+  readonly progress: { readonly done: number; readonly total: number; readonly cancelled: number };
+  readonly trials: readonly EvalTrialView[];
+  readonly scorecard: Scorecard | null;
+  readonly createdAt: string;
+  readonly startedAt: string | null;
+  readonly finishedAt: string | null;
+}
+
+/** Structural copy of `@tandemise/evaluation`'s `RoleModelSummary`, the "From your runs" row. */
+export interface RoleModelSummary {
+  readonly roleId: string;
+  readonly model: string | null;
+  readonly runs: number;
+  readonly firstAttemptPassRate: number | null;
+  readonly meanAttemptsToPass: number | null;
+  readonly criteriaFailed: number;
+  readonly medianCostUsd: number | null;
+  readonly medianWallTimeMs: number | null;
+}
+
+export type RoleModelSummaryView = RoleModelSummary;

@@ -82,6 +82,7 @@ export class SqliteLimitRepository implements LimitRepositoryPort {
   readonly #clock: Clock;
   readonly #missionUsage;
   readonly #workspaceUsage;
+  readonly #evalUsage;
   readonly #usageByMission;
   readonly #find;
   readonly #get;
@@ -100,9 +101,18 @@ export class SqliteLimitRepository implements LimitRepositoryPort {
       `SELECT ${USAGE} FROM usage_records u JOIN missions m ON m.id = u.mission_id
         WHERE m.workspace_id = :workspaceId AND u.recorded_at >= :start AND u.recorded_at < :end`,
     );
+    // Eval spend within the same window (P3b): the mirror of workspaceUsage,
+    // restricted to hidden trial missions. The monthly total above still
+    // includes it - a trial run really did spend money this month.
+    this.#evalUsage = db.handle.prepare<{ workspaceId: string; start: string; end: string }, UsageRow>(
+      `SELECT ${USAGE} FROM usage_records u JOIN missions m ON m.id = u.mission_id
+        WHERE m.workspace_id = :workspaceId AND u.recorded_at >= :start AND u.recorded_at < :end AND m.eval_trial_id IS NOT NULL`,
+    );
+    // Per-mission usage leaves eval trials out (P3b): a trial mission is
+    // never listed, so it must not appear as a row in the usage-by-mission view.
     this.#usageByMission = db.handle.prepare<{ workspaceId: string; start: string; end: string }, UsageRow & { mission_id: string }>(
       `SELECT u.mission_id AS mission_id, ${USAGE} FROM usage_records u JOIN missions m ON m.id = u.mission_id
-        WHERE m.workspace_id = :workspaceId AND u.recorded_at >= :start AND u.recorded_at < :end
+        WHERE m.workspace_id = :workspaceId AND u.recorded_at >= :start AND u.recorded_at < :end AND m.eval_trial_id IS NULL
         GROUP BY u.mission_id ORDER BY agent_ms DESC, u.mission_id`,
     );
     this.#find = db.handle.prepare<{ workspaceId: string; missionId: string; metric: string; windowStart: string; threshold: string; amount: number }, IncidentRow>(
@@ -143,6 +153,10 @@ export class SqliteLimitRepository implements LimitRepositoryPort {
 
   usageForWorkspace(workspaceId: WorkspaceId, start: string, end: string): UsageTotals {
     return toTotals(this.#workspaceUsage.get({ workspaceId, start, end }));
+  }
+
+  evalUsageForWorkspace(workspaceId: WorkspaceId, start: string, end: string): UsageTotals {
+    return toTotals(this.#evalUsage.get({ workspaceId, start, end }));
   }
 
   usageByMission(workspaceId: WorkspaceId, start: string, end: string): readonly { missionId: MissionId; totals: UsageTotals }[] {

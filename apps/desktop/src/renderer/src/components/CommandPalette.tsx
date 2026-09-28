@@ -3,6 +3,7 @@ import { useLocation } from 'wouter';
 import { Icon, type IconName } from './Icon.js';
 import { useMissions } from '../lib/queries.js';
 import { humanizeStatus } from '../lib/format.js';
+import { evalsHref } from '../screens/evals/link.js';
 
 interface Command {
   readonly id: string;
@@ -37,6 +38,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }): JSX.Elemen
       { id: 'artifacts', group: 'Go to', label: 'Artifacts', icon: 'artifacts', run: go('/artifacts') },
       { id: 'team', group: 'Go to', label: 'Team', icon: 'workforce', run: go('/team') },
       { id: 'skills', group: 'Go to', label: 'Skills', icon: 'book', run: go('/skills') },
+      { id: 'evals', group: 'Go to', label: 'Evals', icon: 'target', run: go(evalsHref({ tab: 'suites' })) },
       { id: 'runtimes', group: 'Go to', label: 'Runtimes', icon: 'runtimes', run: go('/runtimes') },
       { id: 'integrations', group: 'Go to', label: 'Integrations', icon: 'integrations', run: go('/integrations') },
       { id: 'project', group: 'Go to', label: 'Repositories', icon: 'folder', run: go('/project') },

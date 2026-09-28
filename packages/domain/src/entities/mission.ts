@@ -1,4 +1,4 @@
-import type { IssueLinkId, MissionId, RepositoryId, RoutineId, TaskId, WorkspaceId, Timestamp } from '@tandemise/shared';
+import type { EvalTrialId, IssueLinkId, MissionId, RepositoryId, RoutineId, TaskId, WorkspaceId, Timestamp } from '@tandemise/shared';
 import type { Capability } from '../capability.js';
 import type { RoleStaffing } from '../staffing.js';
 import type { MissionPriority } from './backlog.js';
@@ -101,10 +101,17 @@ export interface Mission {
   readonly routineId: RoutineId | null;
   /** The GitHub issue it was created from (P14); absent or null for any other mission. */
   readonly issueLinkId?: IssueLinkId | null;
+  /** Set only on a hidden eval trial mission (P3b). Such a mission is never listed, scheduled or escalated. */
+  readonly evalTrialId?: EvalTrialId | null;
   readonly createdAt: Timestamp;
   readonly updatedAt: Timestamp;
   readonly startedAt: Timestamp | null;
   readonly completedAt: Timestamp | null;
+}
+
+/** Whether `m` is a hidden eval trial mission (P3b): never listed, scheduled or escalated. */
+export function isTrialMission(m: Pick<Mission, 'evalTrialId'> | undefined): boolean {
+  return m !== undefined && m.evalTrialId !== undefined && m.evalTrialId !== null;
 }
 
 export interface MissionDraft {
@@ -132,6 +139,8 @@ export interface MissionDraft {
   readonly routineId?: RoutineId | null;
   /** Set when an issue creates it (P14). */
   readonly issueLinkId?: IssueLinkId | null;
+  /** Set only on a hidden eval trial mission (P3b). */
+  readonly evalTrialId?: EvalTrialId | null;
 }
 
 /** Aggregate counters projected for the mission list, computed not stored. */

@@ -11,3 +11,6 @@ export type { QualityGate, QualityGateName } from './gates.js';
 
 export { CHECK_RUNNER, COMMAND_EXECUTOR, createEvaluationModule, evaluationModule } from './module.js';
 export type { EvaluationModuleOptions } from './module.js';
+
+export { scoreEvalRun, summarizeRunScores, trialScoreFrom } from './scorecard.js';
+export type { RoleModelSummary, Scorecard, ScorecardDifference, ScoredTrial, VariantScore } from './scorecard.js';

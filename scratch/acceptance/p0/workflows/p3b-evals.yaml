@@ -1,0 +1,14 @@
+name: P3b evals
+description: A design, then a gated build that reads it, so a build saved as an eval case carries an input of a type the build does not write.
+steps:
+  - key: design
+    role: design
+    objective: Design the hello page.
+    outputs: [DesignBrief]
+  - key: build
+    role: development
+    dependsOn: [design]
+    objective: Build the hello page.
+    inputs: [DesignBrief]
+    outputs: [ChangeSet]
+    gate: artifact.ChangeSet.exists && checks.tests == PASS

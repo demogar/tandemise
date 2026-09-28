@@ -178,3 +178,51 @@ interval to appear. Each check reads the newest 100 open issues with the label;
 an older one beyond that is picked up only once newer ones are closed or
 unlabelled. An issue whose label is removed is no longer watched, so a later
 close of it is not noticed.
+
+## Evals
+
+**Only one eval run per project at a time, and its trials run one at a
+time.** Trials share the project's runtimes and one run's spend would
+otherwise blur into another's, so starting a second run while one is going is
+refused: "Another eval run is still going in this project." Within a run,
+trials are driven case by case, repeat by repeat, baseline then candidate —
+one at a time, never in parallel.
+
+**Scores start at the update that shipped them; nothing is backfilled.**
+Every gated step's run has been scored since this release, but a step that
+ran before you upgraded left nothing behind to score — [From your
+runs](guides/evals.md#from-your-runs) has no history before that point to
+draw from.
+
+**Planning, refinement and intake can never become eval cases.** Saving a
+case needs a finished, gated agent step's scored run; none of those three
+write one (see "Limits do not count planning or refinement" and "Limits do
+not count intake either", above), so none of them can ever be saved.
+
+**A trial's `ask_human` is answered "nobody", and every tool approval it asks
+for is denied.** A worker mid-trial gets "Nobody can answer during an eval
+trial. Continue with your best judgement and say what you assumed." and
+continues on its own judgement; a tool that would otherwise wait for a
+person is refused at once instead of held. A trial that would need a person
+to unblock it fails rather than waiting for one who was never going to
+answer.
+
+**A trial replays the case's knowledge, decisions, answers and criteria
+exactly, but reads today's workflow engine and gate vocabulary.** Only the
+mission-specific content a case pins is frozen; the role each variant runs
+as, and the code that evaluates its gate, are always today's — that is what
+lets a candidate be compared against a baseline on identical ground. One
+consequence: a trial's gate reads the same facts a real mission's would, so
+a gate that only checks that an artifact of some type exists can't tell a
+step's own new output from a case input of that same type already present
+before the step ran — if a case's gate is a bare existence check and its
+input already provides that type, the gate can pass without the step doing
+anything.
+
+**"Try on evals" on the Skills screen only helps once the update is
+imported.** Updating a skill imports its new version, but a role keeps
+pinning whatever it already had until someone moves it (see "My skill
+changed. How do I take the new version?" in [Giving your agents your
+skills](guides/skills.md)) — so trying the newer version needs it already
+sitting in the library before there is anything to compare against the
+roles still on the old one.

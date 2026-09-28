@@ -1,0 +1,207 @@
+{
+  "id": "E2",
+  "title": "A Models candidate against the role on \"bad\": progress, then a +100 point scorecard; no trial shows anywhere",
+  "ok": true,
+  "checks": [
+    {
+      "label": "proof (API): the Developer role is on \"bad\" now",
+      "ok": true,
+      "observed": {
+        "model": "bad",
+        "escalate": [],
+        "economyModel": null
+      }
+    },
+    {
+      "label": "a suite with no runs opens the new-run form, on Models, prefilled with the role's model \"bad\"",
+      "ok": true,
+      "observed": "bad"
+    },
+    {
+      "label": "starting with every role as it is today is refused: \"This candidate changes nothing.\"",
+      "ok": true,
+      "observed": "This candidate changes nothing."
+    },
+    {
+      "label": "proof (API): the run is Models → Developer on \"good\", 3 repeats, cap $10",
+      "ok": true,
+      "observed": {
+        "candidate": {
+          "kind": "models",
+          "roles": {
+            "development": "good"
+          }
+        },
+        "repeats": 3,
+        "cap": 10
+      }
+    },
+    {
+      "label": "while it runs, the window shows \"n / 6 trials\" and \"Cancel run\"",
+      "ok": true,
+      "observed": {
+        "progress": "Progress\n1 / 6 trials\n3 repeats of each case, with the setup you have now and with the change",
+        "status": "running"
+      }
+    },
+    {
+      "label": "the spend shows against the cap: \"Spent $… of $10.00\"",
+      "ok": true,
+      "observed": "Spend\nSpent $0.50 of $10.00\nThe run stops when it reaches the cap."
+    },
+    {
+      "label": "proof (SQL): the trials are real missions (\"Eval trial …\")",
+      "ok": true,
+      "observed": [
+        {
+          "id": "msn_01m3mpv37qegc1b76zay",
+          "title": "Eval trial Hello banner build candidate 1",
+          "status": "COMPLETE"
+        },
+        {
+          "id": "msn_01m3mpv5gw7xn96vfqds",
+          "title": "Eval trial Hello banner build baseline 2",
+          "status": "DRAFT"
+        },
+        {
+          "id": "msn_01m3mptwt9hzba2ndyx3",
+          "title": "Eval trial Hello banner build baseline 1",
+          "status": "FAILED"
+        }
+      ]
+    },
+    {
+      "label": "proof (API, during): the mission list, Home, the Inbox and approvals name no trial mission",
+      "ok": true,
+      "observed": {
+        "trials": 3,
+        "listed": [
+          "Add a hello banner to the page"
+        ]
+      }
+    },
+    {
+      "label": "the Missions list (during, All) shows E1's mission, counts 1 mission, and no \"Eval trial\"",
+      "ok": true,
+      "observed": "Missions\nEvery outcome the workforce is pursuing, past and present.\nNew mission\nBacklog\n0\nRoutines\n0\nActive\n0\nNeeds attention\n0\nFinished\n1\nAll\n1\nAdd a hello banner to the page\nmsn_01m3mpsety7bnf2qkx9p\nEvery task succeeded.\n0 of 1 verified\nacceptance-project\n2/2\nComplete\n50s ago\n\n1 mission · j k to move, ↵ to open"
+    },
+    {
+      "label": "the Desk (during) shows no \"Eval trial\"",
+      "ok": true,
+      "observed": "Nothing needs you\nAcceptance workspace\nStatus report\nNew mission\nNeeds you\n0\nNothing waits on you\nWorking on\n0\n0 queued · no limit\nCriteria verified\nNone yet\nNo mission in progress has criteria\nThis month\n0.1 agent min\nNo monthly limit set\nStalled\n0\nEverything can move\nNeeds you now\nall clear\nNothing is waiting on you\n\nEvery mission is either running on its own or finished. New approvals will land here the moment an agent needs a decision.\n\nActive missions\n0 missions\nAll missions\nNo missions run"
+    },
+    {
+      "label": "the Inbox (during) shows no \"Eval trial\"",
+      "ok": true,
+      "observed": "Inbox\nWhat is waiting on a person.\nNothing is waiting on you\n\nApprovals, questions, tasks for a person, work to hand back, stalled missions and quiet agents land here, one line each.\n\nDecided\n1 decision\nApprove the plan for Add a hello banner to the page?\nApproved·\nby\nYou\nAdd a hello banner to the page"
+    },
+    {
+      "label": "proof (API): the run completed, 6 of 6 trials",
+      "ok": true,
+      "observed": {
+        "status": "completed",
+        "progress": {
+          "done": 6,
+          "total": 6,
+          "cancelled": 0
+        },
+        "reason": null
+      }
+    },
+    {
+      "label": "proof (API): gate pass rate baseline 0, candidate 1, difference +1",
+      "ok": true,
+      "observed": {
+        "baseline": 0,
+        "candidate": 1,
+        "difference": 1,
+        "trials": {
+          "baseline": {
+            "completed": 3,
+            "blocked": 0,
+            "failed": 3,
+            "errored": 0
+          },
+          "candidate": {
+            "completed": 3,
+            "blocked": 0,
+            "failed": 0,
+            "errored": 0
+          }
+        }
+      }
+    },
+    {
+      "label": "the scorecard reads Gate pass rate: Baseline 0%, Candidate 100%, Difference +100 pts",
+      "ok": true,
+      "observed": [
+        "Gate pass rate",
+        "0%",
+        "100%",
+        "+100 pts"
+      ]
+    },
+    {
+      "label": "the difference is marked better (the success colour)",
+      "ok": true
+    },
+    {
+      "label": "the Trials row reads Baseline \"3 ran · 0 passed · 3 failed · 0 blocked\", Candidate \"3 ran · 3 passed · 0 failed · 0 blocked\"",
+      "ok": true,
+      "observed": [
+        "Trials",
+        "3 ran · 0 passed · 3 failed · 0 blocked",
+        "3 ran · 3 passed · 0 failed · 0 blocked",
+        "—"
+      ]
+    },
+    {
+      "label": "the candidate heading reads \"Candidate, against the setup when this run started\"",
+      "ok": true,
+      "observed": "Candidate, against the setup when this run started"
+    },
+    {
+      "label": "no few-repeats note at 3 repeats",
+      "ok": true
+    },
+    {
+      "label": "proof (API, after): the mission list, Home, the Inbox and approvals name no trial mission",
+      "ok": true,
+      "observed": {
+        "trials": 6,
+        "listed": [
+          "Add a hello banner to the page"
+        ]
+      }
+    },
+    {
+      "label": "the Missions list (after, All) shows E1's mission, counts 1 mission, and no \"Eval trial\"",
+      "ok": true,
+      "observed": "Missions\nEvery outcome the workforce is pursuing, past and present.\nNew mission\nBacklog\n0\nRoutines\n0\nActive\n0\nNeeds attention\n0\nFinished\n1\nAll\n1\nAdd a hello banner to the page\nmsn_01m3mpsety7bnf2qkx9p\nEvery task succeeded.\n0 of 1 verified\nacceptance-project\n2/2\nComplete\n1m ago\n\n1 mission · j k to move, ↵ to open"
+    },
+    {
+      "label": "the Desk (after) shows no \"Eval trial\"",
+      "ok": true,
+      "observed": "Nothing needs you\nAcceptance workspace\nStatus report\nNew mission\nNeeds you\n0\nNothing waits on you\nWorking on\n0\n0 queued · no limit\nCriteria verified\nNone yet\nNo mission in progress has criteria\nThis month\n0.1 agent min\nNo monthly limit set\nStalled\n0\nEverything can move\nNeeds you now\nall clear\nNothing is waiting on you\n\nEvery mission is either running on its own or finished. New approvals will land here the moment an agent needs a decision.\n\nActive missions\n0 missions\nAll missions\nNo missions run"
+    },
+    {
+      "label": "the Inbox (after) shows no \"Eval trial\"",
+      "ok": true,
+      "observed": "Inbox\nWhat is waiting on a person.\nNothing is waiting on you\n\nApprovals, questions, tasks for a person, work to hand back, stalled missions and quiet agents land here, one line each.\n\nDecided\n1 decision\nApprove the plan for Add a hello banner to the page?\nApproved·\nby\nYou\nAdd a hello banner to the page"
+    }
+  ],
+  "notes": [
+    "Trials [\"Trials\",\"3 ran · 0 passed · 3 failed · 0 blocked\",\"3 ran · 3 passed · 0 failed · 0 blocked\",\"—\"]; First-attempt [\"First-attempt pass rate\",\"0%\",\"100%\",\"+100 pts\"]; Cost [\"Cost (mean, total)\",\"$0.50 · $1.50 total\",\"$0.25 · $0.75 total\",\"−$0.25\"]"
+  ],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise/docs/superpowers/evidence/2026-09-27-p3b/E2-run-form.png",
+    "/Users/demogar/projects/tandemise/tandemise/docs/superpowers/evidence/2026-09-27-p3b/E2-running.png",
+    "/Users/demogar/projects/tandemise/tandemise/docs/superpowers/evidence/2026-09-27-p3b/E2-missions-during.png",
+    "/Users/demogar/projects/tandemise/tandemise/docs/superpowers/evidence/2026-09-27-p3b/E2-desk-during.png",
+    "/Users/demogar/projects/tandemise/tandemise/docs/superpowers/evidence/2026-09-27-p3b/E2-inbox-during.png",
+    "/Users/demogar/projects/tandemise/tandemise/docs/superpowers/evidence/2026-09-27-p3b/E2-scorecard.png",
+    "/Users/demogar/projects/tandemise/tandemise/docs/superpowers/evidence/2026-09-27-p3b/E2-missions-after.png",
+    "/Users/demogar/projects/tandemise/tandemise/docs/superpowers/evidence/2026-09-27-p3b/E2-desk-after.png",
+    "/Users/demogar/projects/tandemise/tandemise/docs/superpowers/evidence/2026-09-27-p3b/E2-inbox-after.png"
+  ]
+}

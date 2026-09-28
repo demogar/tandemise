@@ -59,6 +59,12 @@ export const keys = {
   me: ['me'] as const,
   team: (ws?: string) => ['team', ws ?? 'all'] as const,
   staffing: (ws?: string) => ['staffing', ws ?? 'all'] as const,
+  // Evals (P3b): no stream topic reaches these yet, so a run's own poll (useEvalRun) is what moves them along.
+  evalSuites: (ws?: string) => ['evals', 'suites', ws ?? 'all'] as const,
+  evalCases: (suiteId: string) => ['evals', 'cases', suiteId] as const,
+  evalRuns: (suiteId: string) => ['evals', 'runs', suiteId] as const,
+  evalRun: (id: string) => ['evals', 'run', id] as const,
+  runScoreSummary: (ws: string | undefined, days: 7 | 30 | 90) => ['evals', 'run-scores', ws ?? 'all', String(days)] as const,
 };
 
 const TOPIC_KEYS: Readonly<Record<ProjectionTopic, readonly (readonly string[])[]>> = {
@@ -414,6 +420,58 @@ export function useStaffing() {
     queryKey: keys.staffing(workspaceId),
     queryFn: () => daemon.getStaffing(workspaceId as string),
     enabled: workspaceId !== undefined,
+  });
+}
+
+// -------------------------------------------------------------------- evals (P3b)
+
+export function useEvalSuites() {
+  const daemon = useDaemon();
+  const workspaceId = useWorkspaceId();
+  return useQuery({
+    queryKey: keys.evalSuites(workspaceId),
+    queryFn: () => daemon.evalSuites(workspaceId ?? ''),
+    enabled: Boolean(workspaceId),
+  });
+}
+
+export function useEvalCases(suiteId: string | null) {
+  const daemon = useDaemon();
+  return useQuery({
+    queryKey: keys.evalCases(suiteId ?? ''),
+    queryFn: () => daemon.evalCases(suiteId ?? ''),
+    enabled: suiteId !== null,
+  });
+}
+
+export function useEvalRuns(suiteId: string | null) {
+  const daemon = useDaemon();
+  return useQuery({
+    queryKey: keys.evalRuns(suiteId ?? ''),
+    queryFn: () => daemon.evalRuns(suiteId ?? ''),
+    enabled: suiteId !== null,
+  });
+}
+
+/** A run's own detail, polled every 2s while it may still be going - nothing streams its progress yet. */
+export function useEvalRun(id: string | null, options: { readonly poll: boolean } = { poll: false }) {
+  const daemon = useDaemon();
+  return useQuery({
+    queryKey: keys.evalRun(id ?? ''),
+    queryFn: () => daemon.evalRun(id ?? ''),
+    enabled: id !== null,
+    ...(options.poll ? { refetchInterval: 2_000 } : {}),
+  });
+}
+
+/** "From your runs" (spec B1): real-run summaries by role and model. */
+export function useRunScoreSummary(days: 7 | 30 | 90 = 30) {
+  const daemon = useDaemon();
+  const workspaceId = useWorkspaceId();
+  return useQuery({
+    queryKey: keys.runScoreSummary(workspaceId, days),
+    queryFn: () => daemon.runScoreSummary(workspaceId ?? '', days),
+    enabled: Boolean(workspaceId),
   });
 }
 

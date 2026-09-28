@@ -1,11 +1,11 @@
 import type {
-  ApprovalOption, ApprovalRepositoryPort, MissionTask, RunRepositoryPort, TaskRepositoryPort,
+  ApprovalOption, ApprovalRepositoryPort, MissionRepositoryPort, MissionTask, RunRepositoryPort, TaskRepositoryPort,
 } from '@tandemise/domain';
-import { CORE_CAPABILITIES, REJECT_OPTION } from '@tandemise/domain';
+import { CORE_CAPABILITIES, REJECT_OPTION, isTrialMission } from '@tandemise/domain';
 import type { ApprovalFactory } from '@tandemise/policy';
 import { defineTool, type IntegrationTool, type ToolContext } from '@tandemise/integrations-core';
 import type { Clock, WorkspaceId } from '@tandemise/shared';
-import { summarize } from '@tandemise/shared';
+import { TandemiseError, summarize } from '@tandemise/shared';
 import { z } from 'zod';
 import type { EventRecorder, EventScope } from '../support/event-recorder.js';
 import type { ApprovalWaiter } from '../support/tool-policy.js';
@@ -15,6 +15,9 @@ import type { RequestAddress } from '../engine/reviews.js';
 import { MAX_PARKED_MS, type RunDeadlines } from '../engine/run-deadline.js';
 
 export const ASK_HUMAN_TOOL = 'ask_human';
+
+/** What a worker asking a question inside an eval trial is told (P3b). */
+export const NOBODY_IN_TRIAL = 'Nobody can answer during an eval trial. Continue with your best judgement and say what you assumed.';
 
 /** What the card offers when the worker asked an open question. */
 const OPEN_ANSWER_OPTION: ApprovalOption = { id: 'answer', label: 'Send answer' };
@@ -69,6 +72,11 @@ export interface AskHumanDeps {
   readonly approvals: ApprovalRepositoryPort;
   readonly approvalFactory: ApprovalFactory;
   readonly tasks: TaskRepositoryPort;
+  /**
+   * Tells an eval trial's question apart (P3b): nobody answers one, so no card
+   * is raised. Optional so harnesses built before evals still compose.
+   */
+  readonly missions?: Pick<MissionRepositoryPort, 'get'>;
   /** Finds the run asking, whose agent is the event's actor. */
   readonly runs?: Pick<RunRepositoryPort, 'get' | 'listByTask'>;
   /**
@@ -148,6 +156,11 @@ export function createAskHumanTool(deps: AskHumanDeps): IntegrationTool {
         roleId: ctx.assignment.roleId,
         ...(ctx.runId === null ? {} : { runId: ctx.runId }),
       };
+
+      // An eval trial has nobody to ask. Parking its worker would only run out
+      // the park allowance, so it hears so at once and carries on (P3b ruling 3).
+      const mission = deps.missions?.get(ctx.assignment.missionId);
+      if (mission !== undefined && isTrialMission(mission)) throw new TandemiseError('PRECONDITION_FAILED', NOBODY_IN_TRIAL);
 
       const chooseFrom = input.options ?? [];
       const task = deps.tasks.get(ctx.assignment.taskId);

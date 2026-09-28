@@ -2102,3 +2102,70 @@
   font-size: var(--fs-xs);
   color: var(--text-tertiary);
 }
+
+/* ------------------------------------------------------------------- evals */
+
+/* The head of the runs list: which suite, and the one way to start a run. */
+.evals__listhead {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s3) var(--s4);
+  border-bottom: 1px solid var(--border);
+}
+
+.evals__listhead .select {
+  flex: 1;
+  min-width: 0;
+}
+
+/* A list row that is a button, in a reader list: the row's own look, not a button's. */
+.evals__row {
+  width: 100%;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  text-align: left;
+}
+
+.scorecard__num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.table th.scorecard__num {
+  text-align: right;
+}
+
+.scorecard__label {
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* Which way a difference went. Always with a sign as well, so colour is never the only cue. */
+.scorecard__diff--better {
+  color: var(--status-succeeded);
+  font-weight: 600;
+}
+
+.scorecard__diff--worse {
+  color: var(--status-failed);
+  font-weight: 600;
+}
+
+.scorecard__case + .scorecard__case {
+  border-top: 1px solid var(--border);
+}
+
+.scorecard__case-head {
+  width: 100%;
+  border: none;
+  background: transparent;
+  text-align: left;
+}
+
+.scorecard__case-body {
+  padding: 0 var(--s2) var(--s3);
+  background: var(--surface-sunken);
+}

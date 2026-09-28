@@ -137,7 +137,7 @@ export class SetupService {
     const kept = items.filter((i) => i.action !== 'same').length - taken.length;
     if (taken.length === 0) return { applied: 0, kept, lines: [] };
 
-    const read = await this.#readFolder(request.path);
+    const read = await this.readFolder(request.path);
     const theirs = readSetup(read.files).snapshot;
     const { workflowSources } = await this.#snapshot(workspaceId);
     const stored = await this.#storedFiles(workspaceId, taken, theirs);
@@ -330,7 +330,7 @@ export class SetupService {
   // -------------------------------------------------------------- gathering
 
   async #previewItems(workspaceId: WorkspaceId, path: string): Promise<{ folder: string; hash: string; items: readonly SetupItem[]; ignored: readonly string[] }> {
-    const read = await this.#readFolder(path);
+    const read = await this.readFolder(path);
     const parsed = readSetup(read.files);
     const { snapshot } = await this.#snapshot(workspaceId);
     const items = diffSetup(snapshot, parsed, await this.#diffContext(workspaceId, parsed.snapshot)).map((item) => this.#withRoutineProblem(item, parsed.snapshot));
@@ -360,7 +360,8 @@ export class SetupService {
     return problem === null ? item : { ...item, problem, choice: null };
   }
 
-  async #readFolder(path: string): Promise<{ root: string; files: Readonly<Record<string, string>>; ignored: readonly string[] }> {
+  /** A `.tandemise` folder's files (path → text); refuses a path that holds none. Also what an eval setup candidate reads (P3b). */
+  async readFolder(path: string): Promise<{ root: string; files: Readonly<Record<string, string>>; ignored: readonly string[] }> {
     const read = await this.deps.folder.read(path);
     if (read === null) {
       throw TandemiseError.validation(`There is no ${SETUP_DIR} folder in ${path}. Choose the repository folder that holds it, or the ${SETUP_DIR} folder itself.`);

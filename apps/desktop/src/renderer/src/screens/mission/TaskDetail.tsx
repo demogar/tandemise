@@ -16,6 +16,7 @@ import { modelLabel, modelPolicyLabel, quietFor, skillsLine } from '../../lib/do
 import { ApprovalCard } from '../approvals/ApprovalCard.js';
 import { RequestChangesButton } from '../../components/RequestChanges.js';
 import { StartRoundButton } from '../../components/ImpactDialog.js';
+import { SaveCaseDialog } from '../evals/SaveCaseDialog.js';
 
 export function TaskDetail({ task, detail, onClose }: { task: TaskView; detail: MissionDetail; onClose: () => void }): JSX.Element {
   // A note turns the retry into the next round, framed as a request rather than as the failure it follows.
@@ -27,6 +28,9 @@ export function TaskDetail({ task, detail, onClose }: { task: TaskView; detail: 
     detail.mission.id,
   );
   const canRetry = task.status === 'FAILED' || task.status === 'BLOCKED';
+  // Where Retry sits for a step that stopped, a finished gated agent step offers to become an eval case (spec B2).
+  const canSaveCase = task.executor === 'agent' && task.status === 'SUCCEEDED' && task.completionGate !== null;
+  const [savingCase, setSavingCase] = useState(false);
   // A wait step reads nothing, so there is nobody to send a note to; a cancelled mission takes no more rounds.
   // A stage your upload covers refuses rounds until a replan (spec A2), so it offers none.
   const canRequestChanges = task.executor !== 'wait' && detail.mission.status !== 'CANCELLED' && !task.coveredBy;
@@ -266,6 +270,16 @@ export function TaskDetail({ task, detail, onClose }: { task: TaskView; detail: 
             </div>
           </div>
         ) : null}
+
+        {canSaveCase ? (
+          <div className="row">
+            <button type="button" className="btn btn--ghost" onClick={() => setSavingCase(true)}>
+              <Icon name="target" size={13} />
+              Save as eval case
+            </button>
+          </div>
+        ) : null}
+        {savingCase ? <SaveCaseDialog task={task} onClose={() => setSavingCase(false)} /> : null}
 
         <Block label="Objective">{task.objective}</Block>
 

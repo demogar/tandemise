@@ -1,9 +1,9 @@
 import { token, type Token } from '@tandemise/kernel';
 import type {
   ApprovalRepositoryPort, ArtifactRepositoryPort, ArtifactStorePort, AssignmentRepositoryPort,
-  CheckpointRepositoryPort, DecisionRepositoryPort, EvaluationRepositoryPort, EventBusPort,
+  CheckpointRepositoryPort, DecisionRepositoryPort, EvalBlobPort, EvalRepositoryPort, EvaluationRepositoryPort, EventBusPort,
   EventRepositoryPort, ExecutionTargetRepositoryPort, FeedbackRepositoryPort, IntegrationRepositoryPort,
-  LeaseRepositoryPort, MemberRepositoryPort, MissionCriteriaRepositoryPort, MissionQuestionRepositoryPort, MissionRepositoryPort, LimitRepositoryPort, RoutineRepositoryPort, SkillRepositoryPort, IssueRepositoryPort, IssueTrackerPort, PullRequestSnapshotPort, PersonRepositoryPort, ProjectionBusPort, RepoRepositoryPort,
+  LeaseRepositoryPort, MemberRepositoryPort, MissionCriteriaRepositoryPort, MissionQuestionRepositoryPort, MissionRepositoryPort, LimitRepositoryPort, RoutineRepositoryPort, RunScoreRepositoryPort, SkillRepositoryPort, IssueRepositoryPort, IssueTrackerPort, PullRequestSnapshotPort, PersonRepositoryPort, ProjectionBusPort, RepoRepositoryPort,
   RoleRepositoryPort, RunInputRepositoryPort, RunRepositoryPort, RuntimeProfileRepositoryPort, SecretStorePort,
   TaskRepositoryPort, UnitOfWork, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
@@ -94,6 +94,10 @@ export const LIMIT_REPOSITORY = token<LimitRepositoryPort>('port.LimitRepository
 export const ROUTINE_REPOSITORY = token<RoutineRepositoryPort>('port.RoutineRepository');
 export const SKILL_REPOSITORY = token<SkillRepositoryPort>('port.SkillRepository');
 export const ISSUE_REPOSITORY = token<IssueRepositoryPort>('port.IssueRepository');
+export const RUN_SCORE_REPOSITORY = token<RunScoreRepositoryPort>('port.RunScoreRepository');
+export const EVAL_REPOSITORY = token<EvalRepositoryPort>('port.EvalRepository');
+/** Content-addressed eval case inputs (P3b); rebound by the daemon. */
+export const EVAL_BLOBS = token<EvalBlobPort>('port.EvalBlobs');
 
 export const ARTIFACT_STORE = token<ArtifactStorePort>('port.ArtifactStore');
 /** Workflow files, read from the project's repositories. */
@@ -190,6 +194,13 @@ export const PULL_REQUEST_SNAPSHOTS = token<PullRequestSnapshotPort>('port.PullR
 /** The git credential variables (ssh-agent, askpass) a pull request fetch may pass to git; see `pickGitCredentialEnv`. */
 export const GIT_CREDENTIAL_ENV = token<() => Readonly<Record<string, string>>>('port.GitCredentialEnv');
 export const SETUP_SERVICE = token<import('./services/setup-service.js').SetupService>('application.SetupService');
+/** Eval suites, saved cases and the run-score summary (P3b). */
+export const EVAL_SERVICE = token<import('./services/eval-service.js').EvalService>('application.EvalService');
+/**
+ * Runs eval trials one at a time (P3b), as a `LifecycleComponent` the daemon
+ * registers after the scheduler; its boot recovery runs before either starts.
+ */
+export const EVAL_RUNNER = token<import('./engine/eval-runner.js').EvalRunner>('application.EvalRunner');
 
 export const TANDEMISE_SERVICES = token<TandemiseServices>('application.TandemiseServices');
 

@@ -180,6 +180,18 @@ if (prompt.includes('SCRIPTED_HANG_ONCE') && runOf('SCRIPTED_HANG_ONCE') === 1) 
   await new Promise((r) => setTimeout(r, Number(process.env.SCRIPTED_HANG_MS ?? 600_000)));
 }
 {
+  // Evals (P3b): a model the script treats as bad writes nothing, so the step's gate fails every time.
+  // It still reports its usage, as a real model that did poor work would, so a run's spend stays measured.
+  //   SCRIPTED_FAIL_MODEL=<name>  (env, or in the goal) a run started with `--model <name>` writes nothing
+  const failModel = /SCRIPTED_FAIL_MODEL=(\S+)/.exec(prompt)?.[1] ?? process.env.SCRIPTED_FAIL_MODEL;
+  const at = process.argv.indexOf('--model');
+  if (failModel !== undefined && failModel !== '' && at !== -1 && process.argv[at + 1] === failModel) {
+    console.log('SCRIPTED_FAIL_MODEL: nothing written');
+    reportUsage();
+    process.exit(0);
+  }
+}
+{
   const failTimes = /SCRIPTED_FAIL_TIMES=(\d+)/.exec(prompt)?.[1] ?? process.env.SCRIPTED_FAIL_TIMES;
   if (failTimes !== undefined && runOf('SCRIPTED_FAIL_TIMES') <= Number(failTimes)) {
     console.log('SCRIPTED_FAIL_TIMES: nothing written');
@@ -339,20 +351,29 @@ if (outputs.length === 0) console.log('No artifacts requested.');
 //   SCRIPTED_USAGE_MIN=<n>   report n agent minutes, 1200 input and 300 output tokens, no cost
 //   SCRIPTED_COST_USD=<x>    also report a cost of x US dollars
 // A number can come from the environment or from "SCRIPTED_USAGE_MIN=5" in the prompt (the mission goal).
-const knobNumber = (name) => {
-  const fromEnv = process.env[name];
-  if (fromEnv !== undefined && fromEnv !== '') return Number(fromEnv);
-  const match = new RegExp(`${name}=([0-9.]+)`).exec(prompt);
-  return match === null ? null : Number(match[1]);
-};
-const usageMinutes = knobNumber('SCRIPTED_USAGE_MIN');
-const costUsd = knobNumber('SCRIPTED_COST_USD');
-if (usageMinutes !== null || costUsd !== null) {
-  console.log(JSON.stringify({
-    type: 'usage',
-    ...(usageMinutes === null ? {} : { wallTimeMs: Math.round(usageMinutes * 60_000) }),
-    inputTokens: 1200,
-    outputTokens: 300,
-    ...(costUsd === null ? {} : { costUsd }),
-  }));
+reportUsage();
+
+/**
+ * The usage line, printed last by a run that did its work and also by a run a
+ * knob cut short (SCRIPTED_FAIL_MODEL), so a failed run still costs what the
+ * runtime says it cost. A function declaration so a knob above can call it.
+ */
+function reportUsage() {
+  const knobNumber = (name) => {
+    const fromEnv = process.env[name];
+    if (fromEnv !== undefined && fromEnv !== '') return Number(fromEnv);
+    const match = new RegExp(`${name}=([0-9.]+)`).exec(prompt);
+    return match === null ? null : Number(match[1]);
+  };
+  const usageMinutes = knobNumber('SCRIPTED_USAGE_MIN');
+  const costUsd = knobNumber('SCRIPTED_COST_USD');
+  if (usageMinutes !== null || costUsd !== null) {
+    console.log(JSON.stringify({
+      type: 'usage',
+      ...(usageMinutes === null ? {} : { wallTimeMs: Math.round(usageMinutes * 60_000) }),
+      inputTokens: 1200,
+      outputTokens: 300,
+      ...(costUsd === null ? {} : { costUsd }),
+    }));
+  }
 }
