@@ -13,6 +13,7 @@ import {
 import { installShutdownHandlers } from './lifecycle.js';
 import { adoptGitName, gitUserName } from './local-person.js';
 import { RECOVERY_SERVICE } from '@tandemise/application';
+import type { Container } from '@tandemise/kernel';
 
 /**
  * tandemd.
@@ -25,6 +26,8 @@ import { RECOVERY_SERVICE } from '@tandemise/application';
 export async function startDaemon(overrides: Parameters<typeof loadConfig>[0] = {}): Promise<{
   url: string;
   stop: () => Promise<void>;
+  /** The DI container, so a check can resolve a repository directly rather than only through the HTTP API. */
+  container: Container;
 }> {
   const config = loadConfig(overrides);
   mkdirSync(config.home, { recursive: true });
@@ -115,7 +118,7 @@ export async function startDaemon(overrides: Parameters<typeof loadConfig>[0] = 
   };
 
   installShutdownHandlers({ log, shutdown: stop });
-  return { url, stop };
+  return { url, stop, container };
 }
 
 /** The longest startup waits for connected servers to report their tools. */

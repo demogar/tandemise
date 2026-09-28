@@ -281,6 +281,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       limits: r.resolve(t.LIMIT_SERVICE),
       skills: r.resolve(t.SKILL_SERVICE),
       skillInstaller: new SkillInstaller(r.resolve(t.EVENT_RECORDER)),
+      runScores: r.resolve(t.RUN_SCORE_REPOSITORY),
       paths: paths(r),
       clock: clock(r),
       log: log(r).child({ component: 'executor' }),

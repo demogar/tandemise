@@ -1,0 +1,8 @@
+name: Build only
+description: One development step, gated on the repository's own tests, and nothing downstream - the smallest gated build step P3b's run-scores check can retry.
+steps:
+  - key: build
+    role: development
+    objective: Build the hello page.
+    outputs: [ChangeSet]
+    gate: artifact.ChangeSet.exists && checks.tests == PASS

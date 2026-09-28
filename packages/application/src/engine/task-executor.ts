@@ -2,14 +2,14 @@ import type {
   Approval, ApprovalRepositoryPort, ArtifactManifest, ArtifactRepositoryPort, ArtifactStorePort, ArtifactType,
   AssignmentRepositoryPort, CapabilityGrant, CheckResult, CheckpointRepositoryPort,
   DecisionRepositoryPort, EventRepositoryPort, ExecutionTargetRepositoryPort, ExecutionTargetRecord, ExternalRef,
-  CriteriaTrace, GateOutcome, LimitPressure, LoadedArtifact, Member, MemberRepositoryPort, Mission, MissionCriterion, MissionQuestionRepositoryPort, MissionRepositoryPort, MissionTask, RepoRepositoryPort,
+  CriteriaTrace, GateFacts, GateOutcome, LimitPressure, LoadedArtifact, Member, MemberRepositoryPort, Mission, MissionCriterion, MissionQuestionRepositoryPort, MissionRepositoryPort, MissionTask, RepoRepositoryPort,
   Repository, ResourceLease, RoleRepositoryPort, RoleTemplate, Run, RunEventRecord, RunInputRepositoryPort, RunPurpose,
-  ResolvedModel, RunRepositoryPort, RunSkill, RunUsage, SkillFile, SkillPin, TracedCriterion,
+  ResolvedModel, RunRepositoryPort, RunScoreRepositoryPort, RunSkill, RunUsage, SkillFile, SkillPin, TracedCriterion,
   RuntimeProfile, RuntimeProfileRepositoryPort, TargetKind, TaskRepositoryPort, TaskStatus,
   Workspace, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
 import {
-  ACCEPT_RESULT_OPTION, ARTIFACT_OUT_DIR, CORE_CAPABILITIES, RUNTIME_ACTOR, anyCapabilityMatches, gateDependencies, indexTeam, isActiveMember, missingSkillReason, resolveModel, responsibleFor,
+  ACCEPT_RESULT_OPTION, ARTIFACT_OUT_DIR, CORE_CAPABILITIES, RUNTIME_ACTOR, anyCapabilityMatches, gateDependencies, indexTeam, isActiveMember, isTrialMission, missingSkillReason, resolveModel, responsibleFor,
 } from '@tandemise/domain';
 import { isDaemonStopping } from '../support/shutdown.js';
 import { NO_SKILLS, type InstalledSkills, type SkillInstaller } from './skill-installer.js';
@@ -152,6 +152,12 @@ export interface TaskExecutorDeps {
    */
   readonly skills?: SkillSupply;
   readonly skillInstaller?: SkillInstaller;
+  /**
+   * Where a run's measured facts are kept (P3b). Optional so harnesses built
+   * before evals still compose; the module always passes it. Scoring never
+   * fails the run, so its absence just means nothing is kept.
+   */
+  readonly runScores?: RunScoreRepositoryPort;
   readonly log: Logger;
 }
 
@@ -542,6 +548,7 @@ export class TaskExecutor {
 
       // 11. Gate.
       let assessed = this.#assess(running, harvest, outcome.failure, scope, outcome.runId);
+      this.#score(running, mission, outcome.runId, assessed, harvest);
       let final = harvest;
       let lastRunId = outcome.runId;
 
@@ -1030,7 +1037,11 @@ export class TaskExecutor {
     runId: RunId,
   ): Assessment {
     const measured = harvest.filesChanged === undefined ? {} : { filesChanged: harvest.filesChanged };
-    const gate = this.deps.gates.evaluate(task, measured);
+    // A task with no completion gate has nothing to score, so its facts are
+    // never assembled - GateService.assess() is only called when there is a
+    // gate to read them against.
+    const assessed = task.completionGate === null ? { outcome: null, facts: {} } : this.deps.gates.assess(task, measured);
+    const gate = assessed.outcome;
     const verdict = decide(gate, harvest, runFailure);
     if (gate !== null) {
       this.deps.recorder.record({ ...scope, runId }, {
@@ -1040,7 +1051,36 @@ export class TaskExecutor {
         detail: gate.detail,
       });
     }
-    return { gate, verdict, measured };
+    return { gate, verdict, measured, facts: assessed.facts };
+  }
+
+  /**
+   * Keeps the run's measured facts (P3b). A score is a record for people and
+   * evals; the engine never reads it back, and failing to write one never fails
+   * the run.
+   */
+  #score(task: MissionTask, mission: Mission, runId: RunId, assessed: Assessment, harvest: HarvestResult): void {
+    if (assessed.gate === null || this.deps.runScores === undefined) return;
+    try {
+      const run = this.deps.runs.get(runId);
+      if (run === undefined) return;
+      const traced = this.deps.gates.trace(mission.id);
+      const usage = run.usage;
+      this.deps.runScores.insert({
+        runId, taskId: task.id, missionId: mission.id, workspaceId: mission.workspaceId,
+        roleId: run.roleId, model: run.model ?? null, skills: run.skills ?? [],
+        attempt: run.attempt, round: run.round ?? task.round ?? 1, purpose: run.purpose ?? null,
+        gatePassed: assessed.gate.passed, gateDetail: assessed.gate.detail, facts: assessed.facts,
+        criteria: traced.qa === undefined ? null
+          : { verified: traced.trace.verified, failed: traced.trace.failed, unverified: traced.trace.unverified },
+        overBudget: harvest.overBudget.length,
+        inputTokens: usage?.inputTokens ?? null, outputTokens: usage?.outputTokens ?? null,
+        costUsd: usage?.costUsd ?? null, wallTimeMs: usage?.wallTimeMs ?? null,
+        evalTrial: isTrialMission(mission), scoredAt: this.deps.clock.now(),
+      });
+    } catch (e) {
+      this.deps.log.error('run.score_failed', { runId, error: errorMessage(e) });
+    }
   }
 
   #judge(input: JudgeInput): TaskAttemptOutcome {
@@ -1384,6 +1424,7 @@ export class TaskExecutor {
       const overtakenAfterChecks = this.#overtaken(task, scope, input.signal);
       if (overtakenAfterChecks !== null) return { kind: 'stopped', outcome: overtakenAfterChecks };
       assessed = this.#assess(task, harvest, null, scope, outcome.runId);
+      this.#score(task, input.mission, outcome.runId, assessed, harvest);
       if (!assessed.verdict.passed) break;
     }
     return { kind: 'harvest', harvest, assessed, lastRunId, checks };
@@ -2293,6 +2334,8 @@ interface Assessment {
   readonly gate: GateOutcome | null;
   readonly verdict: { readonly passed: boolean; readonly detail: string };
   readonly measured: { readonly filesChanged?: number };
+  /** Every fact the gate could read (P3b), kept for `#score` even when the gate itself only read a few. */
+  readonly facts: GateFacts;
 }
 
 interface DriveInput {

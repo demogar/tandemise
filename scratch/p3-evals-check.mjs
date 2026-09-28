@@ -7,9 +7,15 @@
 // store; and eval spend split out of workspace usage.
 //
 //   npm run build && node scratch/p3-evals-check.mjs
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import {
+  copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const here = dirname(fileURLToPath(import.meta.url));
 
 let passed = 0;
 const failures = [];
@@ -172,6 +178,105 @@ function insertMissionAt019(h, id, wsId) {
              VALUES (?,'W',NULL,'{}','{}','{}','supervised','{}',?,?)`).run(wsId, at, at);
   h.prepare(`INSERT INTO missions (id,workspace_id,title,goal,constraints,success_criteria,status,autonomy,workflow_preset,issue_link_id,created_at,updated_at)
              VALUES (?,?,'T','G','[]','[]','DRAFT','balanced','standard',NULL,?,?)`).run(id, wsId, at, at);
+}
+
+// -------------------------------------------------------------------------- daemon harness
+//
+// A real daemon (startDaemon, in process), a scripted runtime and the helpers
+// later P3b tasks reuse: api(), sql(), missionWith(), waitMission(), tasks(),
+// and the DI container itself, so a repository can be read directly rather
+// than only through the HTTP API. Copies scratch/p12-models-check.mjs's daemon
+// setup (env, workflows fixture, scripted runtime), generalised to a helper.
+async function daemonHarness() {
+  const root = mkdtempSync(join(tmpdir(), 'tdm3-'));
+  const home = join(root, 'h');
+  const repo = join(root, 'r');
+  const argsDir = join(root, 'args');
+  const gitConfig = join(root, 'gitconfig');
+  writeFileSync(gitConfig, '[user]\n\tname = Evals Tester\n\temail = evals@example.com\n');
+  process.env.GIT_CONFIG_GLOBAL = gitConfig;
+  process.env.SCRIPTED_DELAY_MS = '0';
+  process.env.SCRIPTED_ARGS_DIR = argsDir;
+  process.env.SCRIPTED_STATE_DIR = join(root, 'state');
+  delete process.env.TANDEMISE_OWNER_NAME;
+  execFileSync('git', ['init', '-q', '-b', 'main', repo], { stdio: 'ignore' });
+  writeFileSync(join(repo, 'README.md'), '# evals check\n');
+  writeFileSync(join(repo, 'package.json'), JSON.stringify({ name: 'e', private: true, scripts: { test: 'node -e "process.exit(0)"' } }));
+  mkdirSync(join(repo, '.tandemise', 'workflows'), { recursive: true });
+  const workflowsDir = join(here, 'acceptance/p0/workflows');
+  for (const f of readdirSync(workflowsDir)) copyFileSync(join(workflowsDir, f), join(repo, '.tandemise/workflows', f));
+  execFileSync('git', ['add', '.'], { cwd: repo, stdio: 'ignore' });
+  execFileSync('git', ['commit', '-q', '-m', 'init'], { cwd: repo, stdio: 'ignore' });
+
+  globalThis.__sqlite = await import('node:sqlite');
+  const { startDaemon } = await import('../apps/daemon/dist/main.js');
+  const daemon = await startDaemon({ home, logLevel: 'error', tickIntervalMs: 200 });
+  const token = JSON.parse(readFileSync(join(home, 'daemon.json'), 'utf8')).token;
+  const api = async (method, path, body) => {
+    const res = await fetch(`${daemon.url}${path}`, {
+      method,
+      headers: { authorization: `Bearer ${token}`, 'x-tandemise-api-version': 'v1', ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+    const text = await res.text();
+    return { status: res.status, body: text ? JSON.parse(text) : undefined };
+  };
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const poll = async (fn, ms = 60_000) => {
+    for (const until = Date.now() + ms; Date.now() < until; await sleep(150)) { const v = await fn(); if (v) return v; }
+    return undefined;
+  };
+  const sql = (q, ...p) => {
+    const db = new globalThis.__sqlite.DatabaseSync(join(home, 'tandemise.db'), { readOnly: true });
+    try { return db.prepare(q).all(...p); } finally { db.close(); }
+  };
+
+  const wsRes = await api('POST', '/v1/workspaces', { name: 'Evals', repositoryPath: repo });
+  const wsId = wsRes.body?.workspace?.id;
+  await api('PATCH', `/v1/workspaces/${wsId}`, { autonomy: { ...wsRes.body.workspace.autonomy, planApproval: 'auto' } });
+  await api('POST', '/v1/runtimes', {
+    adapterId: 'generic-cli', name: 'Scripted agent', workspaceId: null,
+    settings: {
+      command: process.execPath, args: [resolve(here, 'acceptance/p0/scripted-agent.mjs')], promptVia: 'stdin',
+      outputFormat: 'ndjson', modelFlag: '--model', capabilities: ['reasoning', 'tool_calling', 'shell', 'git', 'filesystem', 'mcp'],
+    },
+    maxConcurrent: 4, enabled: true,
+  });
+
+  const status = (id) => sql('SELECT status FROM missions WHERE id = ?', id)[0]?.status;
+  const TERMINAL = ['COMPLETE', 'BLOCKED', 'FAILED', 'CANCELLED'];
+  return {
+    api,
+    sql,
+    container: daemon.container,
+    workspaceId: wsId,
+    /** Creates and starts a mission on the harness workspace; `workflow` names a fixture in acceptance/p0/workflows. */
+    async missionWith({ goal, workflow, ...extra }) {
+      const body = (await api('POST', '/v1/missions', {
+        workspaceId: wsId, goal, workflowPreset: workflow, successCriteria: ['The steps finish'], planNow: true, ...extra,
+      })).body;
+      const id = body?.mission?.id;
+      if (id !== undefined) {
+        await poll(() => /Ready to start/.test(sql('SELECT status_reason AS r FROM missions WHERE id = ?', id)[0]?.r ?? '') || status(id) !== 'PLANNING', 20_000);
+        await api('POST', `/v1/missions/${id}/start`);
+      }
+      return { id };
+    },
+    /** Polls until the mission reaches `want`, or any terminal status; returns the status it stopped on. */
+    async waitMission(id, want) {
+      await poll(() => status(id) === want || TERMINAL.includes(status(id)), 60_000);
+      return status(id);
+    },
+    /** A mission's tasks, from the API's task view (carries `roleId`, `completionGate`, `gate`, ...). */
+    async tasks(id) {
+      const t = (await api('GET', `/v1/missions/${id}/tasks`)).body;
+      return t.tasks ?? t;
+    },
+    async stop() {
+      await daemon.stop();
+      rmSync(root, { recursive: true, force: true });
+    },
+  };
 }
 
 // -------------------------------------------------------------------------- harness
@@ -360,6 +465,26 @@ try {
 } finally {
   container?.resolve(P.DATABASE)?.close?.();
   rmSync(tmp, { recursive: true, force: true });
+}
+
+section('daemon: run scores');
+{
+  const d = await daemonHarness();
+  try {
+    // A build step that fails its gate once and then passes (the scripted agent writes nothing on its first run).
+    const m1 = await d.missionWith({ goal: 'Add a footer SCRIPTED_FAIL_TIMES=1 SCRIPTED_COST_USD=0.25', workflow: 'build-only' });
+    check('mission completes', await d.waitMission(m1.id, 'COMPLETE') === 'COMPLETE');
+    const buildTask = (await d.tasks(m1.id)).find((t) => t.roleId === 'development');
+    const rows = d.sql(`SELECT * FROM run_scores WHERE task_id = ? ORDER BY scored_at`, buildTask.id);
+    check('two scores for fail then pass', eq(rows.map((r) => r.gate_passed), [0, 1]), rows.map((r) => r.gate_passed));
+    check('facts include the check results', JSON.parse(rows[1].facts)['checks.tests'] !== undefined, Object.keys(JSON.parse(rows[1].facts)));
+    check('cost is kept', rows[1].cost_usd === 0.25, rows[1].cost_usd);
+    check('a real run is not a trial', rows.every((r) => r.eval_trial === 0));
+    const ungated = (await d.tasks(m1.id)).filter((t) => t.completionGate === null);
+    check('a step with no gate has no score', ungated.every((t) => d.sql('SELECT 1 FROM run_scores WHERE task_id = ?', t.id).length === 0));
+  } finally {
+    await d.stop();
+  }
 }
 
 console.log(`\n${passed} passed, ${failures.length} failed`);
