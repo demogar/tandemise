@@ -53,8 +53,9 @@ import { NotificationService } from './services/notification-service.js';
 import { RoutineService } from './services/routine-service.js';
 import { IssueService } from './services/issue-service.js';
 import { SkillService } from './services/skill-service.js';
+import { ContributionServiceImpl } from './services/contribution-service.js';
 import { SkillInstaller } from './engine/skill-installer.js';
-import { DEFAULT_QUIET_AFTER_MS, reachedReason, type IssueTrackerPort } from '@tandemise/domain';
+import { DEFAULT_QUIET_AFTER_MS, reachedReason, type IssueTrackerPort, type PullRequestSnapshotPort } from '@tandemise/domain';
 import { SetupService } from './services/setup-service.js';
 import { RefinementServiceImpl } from './services/refinement-service.js';
 import { PlanningServiceImpl } from './services/planning-service.js';
@@ -305,6 +306,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       r.resolve(EXECUTION_TARGET_MANAGER),
       r.resolve(t.EVENT_RECORDER),
       clock(r),
+      r.resolve(t.ARTIFACT_REPOSITORY),
     ), { source: SOURCE });
 
     bind(t.FEEDBACK_ROUNDS, (r) => new FeedbackRounds({
@@ -563,6 +565,8 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       clock: clock(r),
       log: log(r).child({ component: 'planning' }),
       skills: r.resolve(t.SKILL_SERVICE),
+      parser: r.resolve(t.ARTIFACT_PARSER),
+      templates: r.resolve(t.ARTIFACT_TEMPLATES),
       // Resolved per plan, not at construction: the integration service is
       // composed after planning, and a plan should see what is connected now.
       connectedApps: async (workspaceId) => (await r.resolve(t.INTEGRATION_SERVICE).list(asId(workspaceId)))
@@ -608,6 +612,9 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       unitOfWork: r.resolve(t.UNIT_OF_WORK),
       recorder: r.resolve(t.EVENT_RECORDER),
       scheduler: r.resolve(t.SCHEDULER),
+      // Resolved per call: a note's files are pinned through it (spec A3).
+      contributions: { pin: (input) => r.resolve(t.CONTRIBUTION_SERVICE).pin(input) },
+      clock: clock(r),
     }), { source: SOURCE });
 
     bind(t.MISSION_SERVICE, (r) => new MissionServiceImpl({
@@ -636,6 +643,15 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       recorder: r.resolve(t.EVENT_RECORDER),
       clock: clock(r),
       log: log(r).child({ component: 'missions' }),
+      // Resolved per call: uploads at creation are pinned through it (spec A2).
+      contributions: {
+        pin: (input) => r.resolve(t.CONTRIBUTION_SERVICE).pin(input),
+        adoptPullRequestHead: (input) => r.resolve(t.CONTRIBUTION_SERVICE).adoptPullRequestHead(input),
+      },
+      // Where a handed-back file's workspace link is made relative to (spec A5).
+      artifactRoot: (workspaceId) => paths(r).artifacts(workspaceId),
+      events: r.resolve(t.EVENT_REPOSITORY),
+      targets: r.resolve(t.EXECUTION_TARGET_REPOSITORY),
     }), { source: SOURCE });
 
     bind(t.REFINEMENT_SERVICE, (r) => new RefinementServiceImpl({
@@ -659,6 +675,8 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       paths: paths(r),
       clock: clock(r),
       log: log(r).child({ component: 'refinement' }),
+      // The first refinement converts the uploads when it comes before planning (spec A2).
+      intake: (missionId) => r.resolve(t.PLANNING_SERVICE).ensureIntake(missionId),
     }), { source: SOURCE });
 
     bind(t.LIMIT_SERVICE, (r) => new LimitService({
@@ -761,6 +779,24 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       return { listOpen: missing, view: missing, viewer: missing, comments: missing, postComment: missing, updateComment: missing, close: missing };
     }, { source: SOURCE });
 
+    // P3: the daemon rebinds this with `gh`; without it no link resolves, and
+    // a hand-back needs an export.
+    bind(t.PULL_REQUEST_SNAPSHOTS, (): PullRequestSnapshotPort => ({ read: async () => null }), { source: SOURCE });
+
+    bind(t.CONTRIBUTION_SERVICE, (r) => new ContributionServiceImpl({
+      missions: r.resolve(t.MISSION_REPOSITORY),
+      repositories: r.resolve(t.REPO_REPOSITORY),
+      members: r.resolve(t.MEMBER_REPOSITORY),
+      artifactStore: r.resolve(t.ARTIFACT_STORE),
+      artifacts: r.resolve(t.ARTIFACT_REPOSITORY),
+      snapshots: r.resolve(t.PULL_REQUEST_SNAPSHOTS),
+      artifactRoot: (workspaceId) => paths(r).artifacts(workspaceId),
+      // The same runner as `gh`, so a pull request's head is fetched with the daemon's own git and environment.
+      exec: r.tryResolve(INTEGRATION_COMMAND_EXECUTOR) ?? null,
+      // Bound by the daemon to what its own environment carries; empty elsewhere.
+      ...(r.has(t.GIT_CREDENTIAL_ENV) ? { credentialEnv: r.resolve(t.GIT_CREDENTIAL_ENV) } : {}),
+    }), { source: SOURCE });
+
     bind(t.ISSUE_SERVICE, (r) => new IssueService({
       issues: r.resolve(t.ISSUE_REPOSITORY),
       tracker: r.resolve(t.ISSUE_TRACKER),
@@ -843,6 +879,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       skills: r.resolve(t.SKILL_SERVICE),
       issues: r.resolve(t.ISSUE_SERVICE),
       setup: r.resolve(t.SETUP_SERVICE),
+      contributions: r.resolve(t.CONTRIBUTION_SERVICE),
     }), { source: SOURCE });
   });
 }

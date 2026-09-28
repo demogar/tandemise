@@ -3,7 +3,7 @@ import type {
   ApprovalRepositoryPort, ArtifactRepositoryPort, ArtifactStorePort, AssignmentRepositoryPort,
   CheckpointRepositoryPort, DecisionRepositoryPort, EvaluationRepositoryPort, EventBusPort,
   EventRepositoryPort, ExecutionTargetRepositoryPort, FeedbackRepositoryPort, IntegrationRepositoryPort,
-  LeaseRepositoryPort, MemberRepositoryPort, MissionCriteriaRepositoryPort, MissionQuestionRepositoryPort, MissionRepositoryPort, LimitRepositoryPort, RoutineRepositoryPort, SkillRepositoryPort, IssueRepositoryPort, IssueTrackerPort, PersonRepositoryPort, ProjectionBusPort, RepoRepositoryPort,
+  LeaseRepositoryPort, MemberRepositoryPort, MissionCriteriaRepositoryPort, MissionQuestionRepositoryPort, MissionRepositoryPort, LimitRepositoryPort, RoutineRepositoryPort, SkillRepositoryPort, IssueRepositoryPort, IssueTrackerPort, PullRequestSnapshotPort, PersonRepositoryPort, ProjectionBusPort, RepoRepositoryPort,
   RoleRepositoryPort, RunInputRepositoryPort, RunRepositoryPort, RuntimeProfileRepositoryPort, SecretStorePort,
   TaskRepositoryPort, UnitOfWork, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
@@ -12,7 +12,7 @@ import type {
   ApprovalService, ArtifactService, IntegrationService, MissionService, PlanningService,
   ProjectionService, RoleService, RuntimeService, SystemService, TandemiseServices,
   StaffingService, TeamService, WorkspaceService,
-  WorkflowService, FeedbackService, CriteriaService, RefinementService,
+  WorkflowService, FeedbackService, CriteriaService, RefinementService, ContributionService,
 } from './services.js';
 import type { IdentityPort } from './support/identity.js';
 import type { ReadinessService } from './services/readiness.js';
@@ -183,6 +183,12 @@ export const SKILL_FILES = token<SkillFilesPort>('port.SkillFiles');
 export const ISSUE_SERVICE = token<IssueService>('application.IssueService');
 /** GitHub issues over `gh` (P14); rebound by the daemon. */
 export const ISSUE_TRACKER = token<IssueTrackerPort>('port.IssueTracker');
+/** Outside contributions pinned as Evidence (P3). */
+export const CONTRIBUTION_SERVICE = token<ContributionService>('application.ContributionService');
+/** Reads a handed-back pull request (P3); rebound by the daemon with `gh`. */
+export const PULL_REQUEST_SNAPSHOTS = token<PullRequestSnapshotPort>('port.PullRequestSnapshots');
+/** The git credential variables (ssh-agent, askpass) a pull request fetch may pass to git; see `pickGitCredentialEnv`. */
+export const GIT_CREDENTIAL_ENV = token<() => Readonly<Record<string, string>>>('port.GitCredentialEnv');
 export const SETUP_SERVICE = token<import('./services/setup-service.js').SetupService>('application.SetupService');
 
 export const TANDEMISE_SERVICES = token<TandemiseServices>('application.TandemiseServices');

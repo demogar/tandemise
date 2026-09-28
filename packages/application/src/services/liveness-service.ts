@@ -206,7 +206,7 @@ export class LivenessService {
       statusReason: mission.statusReason,
       tasks: tasks.map((t) => ({
         id: t.id, key: t.key, title: t.title, status: t.status, statusReason: t.statusReason,
-        dependsOn: t.dependsOn, attempts: t.attempts, orderHint: t.orderHint,
+        dependsOn: t.dependsOn, attempts: t.attempts, orderHint: t.orderHint, executor: t.executor,
       })),
       cards: cards.map((c) => ({ taskId: c.taskId, kind: c.kind })),
       planning: mission.status === 'PLANNING' && this.deps.planning(mission.id),

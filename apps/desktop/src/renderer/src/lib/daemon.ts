@@ -70,9 +70,12 @@ import type {
   GiveFeedbackRequest,
   StartRoundRequest,
   TaskFeedbackView,
+  ParkTaskRequest,
+  HandBackRequest,
 } from '@tandemise/api-contract';
 import { API_VERSION, API_VERSION_HEADER, STREAM_PATH } from './domain.js';
 import type {
+  ArtifactManifest,
   MissionStatus,
   Repository,
   RoleStaffing,
@@ -115,6 +118,14 @@ export class DaemonUnreachableError extends Error {
 
 type Query = Record<string, string | number | boolean | undefined | null>;
 
+/**
+ * A contribution's bytes may be up to 24 MB (spec A1), and the daemon's own
+ * cap on these three routes is sized for that; the default 30 s timeout is
+ * for a small JSON body and would abort a real upload well before the daemon
+ * finishes writing it.
+ */
+const CONTRIBUTION_TIMEOUT_MS = 120_000;
+
 export class DaemonClient {
   constructor(private readonly connection: DaemonConnection) {}
 
@@ -132,7 +143,7 @@ export class DaemonClient {
 
   // --------------------------------------------------------------- transport
 
-  async #request<T>(method: string, path: string, body?: unknown, query?: Query): Promise<T> {
+  async #request<T>(method: string, path: string, body?: unknown, query?: Query, options?: { timeoutMs?: number }): Promise<T> {
     const url = new URL(`/v1${path}`, this.connection.url);
     for (const [key, value] of Object.entries(query ?? {})) {
       if (value !== undefined && value !== null && value !== '') url.searchParams.set(key, String(value));
@@ -148,7 +159,7 @@ export class DaemonClient {
           ...(body === undefined ? {} : { 'content-type': 'application/json' }),
         },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-        signal: AbortSignal.timeout(30_000),
+        signal: AbortSignal.timeout(options?.timeoutMs ?? 30_000),
       });
     } catch (error) {
       throw new DaemonUnreachableError(
@@ -232,8 +243,9 @@ export class DaemonClient {
     return this.#get(`/missions/${id}`);
   }
 
+  /** `body.uploads` (spec A2) is pinned before the mission is announced; a 120 s timeout covers that. */
   createMission(body: CreateMissionRequest): Promise<MissionDetail> {
-    return this.#request('POST', '/missions', body);
+    return this.#request('POST', '/missions', body, undefined, { timeoutMs: CONTRIBUTION_TIMEOUT_MS });
   }
 
   /** The project's backlog: drafts in the order they are planned, and the work-in-progress limit. */
@@ -417,11 +429,30 @@ export class DaemonClient {
     return this.#request('POST', `/runs/${runId}/snooze`, {});
   }
 
+  /** "Continue elsewhere" (spec A4): parks an agent step so its output can be brought back from another tool. */
+  parkTask(taskId: string, body: ParkTaskRequest): Promise<TaskView> {
+    return this.#request('POST', `/tasks/${taskId}/park`, body);
+  }
+
+  /** "Take it back": calls off a park, so the agent runs the step again. */
+  unparkTask(taskId: string): Promise<TaskView> {
+    return this.#request('POST', `/tasks/${taskId}/unpark`);
+  }
+
+  /** "Hand back" (spec A4): the contribution becomes the parked step's next round. A 120 s timeout covers the pin. */
+  handBack(taskId: string, body: HandBackRequest): Promise<{ task: TaskView; artifacts: ArtifactManifest[] }> {
+    return this.#request('POST', `/tasks/${taskId}/hand-back`, body, undefined, { timeoutMs: CONTRIBUTION_TIMEOUT_MS });
+  }
+
   // ---------------------------------------------------------- feedback and rounds
 
-  /** A note on a task. What it does follows the task's state; `impact` is set when finished work used its output. */
+  /**
+   * A note on a task. What it does follows the task's state; `impact` is set
+   * when finished work used its output. `body.attachments` (spec A3) is
+   * pinned before the note lands; a 120 s timeout covers that.
+   */
   giveFeedback(taskId: string, body: GiveFeedbackRequest): Promise<FeedbackGivenView> {
-    return this.#request('POST', `/tasks/${taskId}/feedback`, body);
+    return this.#request('POST', `/tasks/${taskId}/feedback`, body, undefined, { timeoutMs: CONTRIBUTION_TIMEOUT_MS });
   }
 
   /** Confirms a round that waited on the person's choice about the work downstream. */
@@ -510,6 +541,16 @@ export class DaemonClient {
   /** The manifest numbered along its versions, the body, and the appendix already split off. */
   artifact(id: string): Promise<ArtifactReadView> {
     return this.#get(`/artifacts/${id}`);
+  }
+
+  /** Absolute path to the artifact's body, for "reveal" and attaching an Evidence file to a runtime. */
+  artifactPath(id: string): Promise<{ path: string }> {
+    return this.#get(`/artifacts/${id}/path`);
+  }
+
+  /** Resolves a workspace link (spec A4) against the workspace's repositories and artifact root. */
+  resolveWorkspaceLink(workspaceId: string, path: string): Promise<{ path: string }> {
+    return this.#request('POST', '/workspace-links/resolve', { workspaceId, path });
   }
 
   // --------------------------------------------------------------- approvals

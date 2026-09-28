@@ -1,6 +1,6 @@
 import type { ApprovalKind } from './approval.js';
 import type { MissionStatus } from './mission.js';
-import type { TaskStatus } from './task.js';
+import type { TaskExecutor, TaskStatus } from './task.js';
 import { canTransition } from './mission.js';
 
 /**
@@ -57,6 +57,7 @@ export const LIVENESS_RULES: readonly LivenessRule[] = [
   { id: 'T6', subject: 'task', statuses: ['AWAITING_INPUT'], condition: 'a live run parked on its question card', kind: 'waiting' },
   { id: 'T7', subject: 'task', statuses: ['AWAITING_HUMAN'], condition: 'the Inbox step row', kind: 'waiting' },
   { id: 'T8', subject: 'task', statuses: ['AWAITING_EXTERNAL'], condition: 'a wait step polls until its timeout', kind: 'moving' },
+  { id: 'T8b', subject: 'task', statuses: ['AWAITING_EXTERNAL'], condition: 'a parked agent task: the person who took it elsewhere is who it waits on', kind: 'waiting' },
   { id: 'T9', subject: 'task', statuses: ['AWAITING_APPROVAL'], condition: 'a pending card for it', kind: 'waiting' },
   { id: 'T10', subject: 'task', statuses: ['AWAITING_APPROVAL'], condition: 'no pending card', kind: 'cause' },
   { id: 'T11', subject: 'task', statuses: ['BLOCKED'], condition: 'a pending card for it', kind: 'waiting' },
@@ -75,6 +76,8 @@ export interface LivenessTaskInput {
   readonly dependsOn: readonly string[];
   readonly attempts: number;
   readonly orderHint: number;
+  /** Who carries it out (plan.ts); absent is read as `agent`, which every caller from before P3 means. */
+  readonly executor?: TaskExecutor;
 }
 
 export interface LivenessInput {
@@ -150,7 +153,10 @@ export function taskLiveness(
     // Parked on its question; with the card gone, the run is still live and settles on its own.
     case 'AWAITING_INPUT': return { rule: 'T6', standing: context.carded.has(task.id) ? 'waiting' : 'moving' };
     case 'AWAITING_HUMAN': return { rule: 'T7', standing: 'waiting' };
-    case 'AWAITING_EXTERNAL': return { rule: 'T8', standing: movable('moving') };
+    // A wait step polls until its own timeout and keeps moving; a parked agent
+    // task went to a person, so it waits on them like AWAITING_HUMAN (T8b, spec A4).
+    case 'AWAITING_EXTERNAL':
+      return (task.executor ?? 'agent') === 'wait' ? { rule: 'T8', standing: movable('moving') } : { rule: 'T8b', standing: 'waiting' };
     case 'AWAITING_APPROVAL':
       return context.carded.has(task.id) ? { rule: 'T9', standing: 'waiting' } : { rule: 'T10', standing: 'cause' };
     case 'BLOCKED':

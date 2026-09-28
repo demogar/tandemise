@@ -1,0 +1,67 @@
+{
+  "id": "D7",
+  "title": "A hand-back is by you; the reader shows who recorded it",
+  "ok": true,
+  "checks": [
+    {
+      "label": "proof (API): the handed-back DesignBrief is authored and recorded by you",
+      "ok": true,
+      "observed": {
+        "authorId": "mem_01m3jhv6rxnqg50901vf",
+        "recordedBy": "mem_01m3jhv6rxnqg50901vf",
+        "responsibleId": "mem_01m3jhv6rxnqg50901vf",
+        "me": "mem_01m3jhv6rxnqg50901vf"
+      }
+    },
+    {
+      "label": "proof (API): so is its Evidence",
+      "ok": true,
+      "observed": {
+        "authorId": "mem_01m3jhv6rxnqg50901vf",
+        "recordedBy": "mem_01m3jhv6rxnqg50901vf"
+      }
+    },
+    {
+      "label": "the hand-back card reads \"by You\", with no \"responsible\" and no \"recorded by\"",
+      "ok": true,
+      "observed": "by You"
+    },
+    {
+      "label": "its reader reads \"by You\": you did it and recorded it, so the recorder is not repeated",
+      "ok": true,
+      "observed": "by You"
+    },
+    {
+      "label": "proof (API): the ChangeSet is authored by Dana and recorded by you",
+      "ok": true,
+      "observed": {
+        "authorId": "mem_01m3jj61m74s8xafwtcj",
+        "recordedBy": "mem_01m3jhv6rxnqg50901vf",
+        "responsibleId": "mem_01m3jj61m74s8xafwtcj",
+        "dana": "mem_01m3jj61m74s8xafwtcj",
+        "me": "mem_01m3jhv6rxnqg50901vf"
+      }
+    },
+    {
+      "label": "the card reads \"by Dana Reyes … recorded by You\"",
+      "ok": true,
+      "observed": "by Dana Reyes · recorded by You"
+    },
+    {
+      "label": "the reader shows \"recorded by You\"",
+      "ok": true,
+      "observed": "by Dana Reyes · recorded by You"
+    }
+  ],
+  "notes": [
+    "added Dana Reyes (member mem_01m3jj61m74s8xafwtcj) through the daemon, for this half only",
+    "build card: DEVELOPER\nbuild\nDone\nRound 2\njust now\nby\nDana Reyes\n·\nrecorded by\nYou\nOpen workspace ↗\n+1 more doc\nFull doc\nContinue elsewhere\nRequest changes\n\nDana finished the page in her editor; recorded here for her."
+  ],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p3/docs/superpowers/evidence/2026-09-27-p3a/D7-card-by-you.png",
+    "/Users/demogar/projects/tandemise/tandemise-p3/docs/superpowers/evidence/2026-09-27-p3a/D7-reader-by-you.png",
+    "/Users/demogar/projects/tandemise/tandemise-p3/docs/superpowers/evidence/2026-09-27-p3a/D7-hand-back-recording-for.png",
+    "/Users/demogar/projects/tandemise/tandemise-p3/docs/superpowers/evidence/2026-09-27-p3a/D7-card-by-dana.png",
+    "/Users/demogar/projects/tandemise/tandemise-p3/docs/superpowers/evidence/2026-09-27-p3a/D7-reader-recorded-by.png"
+  ]
+}

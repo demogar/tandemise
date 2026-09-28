@@ -1,5 +1,5 @@
 import type {
-  ExecutionTargetRepositoryPort, Mission, MissionTask, RepoRepositoryPort, RoleRepositoryPort,
+  ArtifactRepositoryPort, ExecutionTargetRepositoryPort, Mission, MissionTask, RepoRepositoryPort, RoleRepositoryPort,
   TaskRepositoryPort,
 } from '@tandemise/domain';
 import { topologicalOrder } from '@tandemise/domain';
@@ -8,6 +8,7 @@ import type { Clock } from '@tandemise/shared';
 import { errorMessage, ids, slugify, summarize } from '@tandemise/shared';
 import type { EventRecorder, EventScope } from '../support/event-recorder.js';
 import { asPlannedTasks, describeIssues, validateTaskGraph } from '../support/dag.js';
+import { liveArtifacts } from '../support/lineage.js';
 
 export interface MergedBranch {
   readonly taskKey: string;
@@ -47,6 +48,7 @@ export class BranchIntegrationService {
     private readonly targetManager: ExecutionTargetManager,
     private readonly recorder: EventRecorder,
     private readonly clock: Clock,
+    private readonly artifacts: ArtifactRepositoryPort,
   ) {}
 
   async integrate(mission: Mission): Promise<IntegrationOutcome> {
@@ -107,23 +109,57 @@ export class BranchIntegrationService {
     }
   }
 
+  /**
+   * One branch per succeeded task, in plan order. A task's branch is the one
+   * its newest live ChangeSet names, when it names one: a change handed back
+   * from a pull request (spec A4) lands on the pull request's branch, not the
+   * worktree the agent had been working in. Otherwise it is the task's
+   * worktree, as the target rows record it; a retired one (a hand-back
+   * replaced it) is not merged.
+   *
+   * A ChangeSet a run made names its target's branch, which for a `local`
+   * target is whatever the checkout had out (often the base branch itself).
+   * Only a run's worktree branch is merged, as before; the ChangeSet's own
+   * branch is taken as it stands only when a person brought it in.
+   */
   #branchesToMerge(
     mission: Mission,
     missionTasks: readonly MissionTask[],
   ): ReadonlyArray<{ taskKey: string; branch: string }> {
     const order = topologicalOrder(asPlannedTasks(missionTasks));
     const rank = new Map((order.ok ? order.value : missionTasks.map((t) => t.key)).map((k, i) => [k, i]));
-    const byId = new Map(missionTasks.map((t) => [t.id, t]));
+
+    const worktrees = new Map<string, { branch: string; live: boolean }[]>();
+    for (const record of this.targets.listByMission(mission.id)) {
+      if (record.kind !== 'worktree' || record.branch === null || record.taskId === null) continue;
+      worktrees.set(record.taskId, [...(worktrees.get(record.taskId) ?? []), { branch: record.branch, live: record.status !== 'RELEASED' }]);
+    }
+
+    const changeBranch = new Map<string, { branch: string; at: string }>();
+    for (const change of liveArtifacts(this.artifacts, mission.id, 'ChangeSet')) {
+      if (change.taskId === null) continue;
+      const branch = change.sourceRefs.find((r) => r.kind === 'git.branch')?.value;
+      if (branch === undefined || branch.length === 0) continue;
+      const own = (worktrees.get(change.taskId) ?? []).some((w) => w.branch === branch);
+      if (change.createdByRunId !== null && !own) continue;
+      const known = changeBranch.get(change.taskId);
+      if (known !== undefined && known.at >= change.createdAt) continue;
+      changeBranch.set(change.taskId, { branch, at: change.createdAt });
+    }
 
     const seen = new Set<string>();
     const entries: Array<{ taskKey: string; branch: string }> = [];
-    for (const record of this.targets.listByMission(mission.id)) {
-      if (record.kind !== 'worktree' || record.branch === null || record.taskId === null) continue;
-      if (record.branch === mission.integrationBranch || seen.has(record.branch)) continue;
-      const task = byId.get(record.taskId);
-      if (task === undefined || task.status !== 'SUCCEEDED') continue;
-      seen.add(record.branch);
-      entries.push({ taskKey: task.key, branch: record.branch });
+    for (const task of missionTasks) {
+      if (task.status !== 'SUCCEEDED') continue;
+      const fromChange = changeBranch.get(task.id)?.branch;
+      const branches = fromChange !== undefined
+        ? [fromChange]
+        : (worktrees.get(task.id) ?? []).filter((w) => w.live).map((w) => w.branch);
+      for (const branch of branches) {
+        if (branch === mission.integrationBranch || seen.has(branch)) continue;
+        seen.add(branch);
+        entries.push({ taskKey: task.key, branch });
+      }
     }
     return entries.sort((a, b) => (rank.get(a.taskKey) ?? 0) - (rank.get(b.taskKey) ?? 0));
   }

@@ -18,6 +18,10 @@ import { shortenPath, titleCase } from '../lib/format.js';
 import { MISSION_PRIORITIES, priorityLabel } from '../lib/domain.js';
 import { LimitFields, limitDraft, limitsFromDraft } from '../components/LimitFields.js';
 import { showFlash } from '../lib/notices.js';
+import { ContributionPicker, type Contribution } from '../components/ContributionPicker.js';
+
+/** The request schema's cap on uploads at creation; more can follow later as feedback. */
+const MAX_UPLOADS = 10;
 
 const AUTONOMY: readonly { value: AutonomyLevel; label: string; hint: string }[] = [
   { value: 'supervised', label: 'Supervised', hint: 'Approve the plan and every action that leaves this machine.' },
@@ -60,6 +64,7 @@ export function NewMission(): JSX.Element {
   const [staffing, setStaffing] = useState<Record<string, StaffingPatch>>({});
   const actors = useActors();
   const [createdFor, setCreatedFor] = useState<string | null>(null);
+  const [uploads, setUploads] = useState<Contribution[]>([]);
   const textarea = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -112,6 +117,8 @@ export function NewMission(): JSX.Element {
         ...(priority === 'normal' ? {} : { priority }),
         ...(ownLimits.limits.length === 0 ? {} : { limits: ownLimits.limits }),
         ...behalfOf(actors, createdFor),
+        // Sent in every mode: an upload is pinned at creation, and read only when planning or refinement starts.
+        ...(uploads.length === 0 ? {} : { uploads }),
         ...(Object.keys(staffing).length > 0
           ? { staffing: Object.fromEntries(Object.entries(staffing).map(([role, patch]) => [role, toWire(patch)])) as RoleStaffingPatchRequest }
           : {}),
@@ -265,6 +272,17 @@ export function NewMission(): JSX.Element {
                 placeholder={'Existing password sign-in still works\nEnrolment is covered by an end-to-end test'}
               />
             </Field>
+
+            {/* Beside what done means, not under "More options": work you already
+                have is part of saying what you want, and a stage it covers is
+                skipped rather than done again. */}
+            <ContributionPicker
+              value={uploads}
+              onChange={setUploads}
+              max={MAX_UPLOADS}
+              label="Start from your own work"
+              hint="A spec, a design export, a patch or a pull request link. A stage it already covers is skipped."
+            />
 
             <Field label="Autonomy" hint={AUTONOMY.find((option) => option.value === autonomy)?.hint}>
               <Segmented

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'wouter';
-import type { FeedCard, MissionDetail } from '@tandemise/api-contract';
+import type { FeedCard, MissionDetail, TaskView } from '@tandemise/api-contract';
+import type { TaskStatus } from '@tandemise/domain';
 import { Drawer } from '../../components/Modal.js';
 import { HandoffCard } from '../../components/HandoffCard.js';
 import { Empty, ErrorState, SkeletonList } from '../../components/primitives.js';
@@ -45,6 +46,7 @@ export function FeedPane({ detail, focusNeeds, onFocused }: { detail: MissionDet
   }, [focusNeeds, hasNeeds, onFocused]);
 
   const objectives = new Map(detail.tasks.map((t) => [t.id as string, t.objective]));
+  const tasksById = new Map(detail.tasks.map((t) => [t.id as string, t]));
   // Looked up live, so the drawer follows the task when someone claims or completes it.
   const doingTask = doing === null ? undefined : detail.tasks.find((t) => t.id === doing);
 
@@ -82,6 +84,8 @@ export function FeedPane({ detail, focusNeeds, onFocused }: { detail: MissionDet
         replanning={replan.isPending}
         objective={c.taskId === null ? undefined : objectives.get(c.taskId)}
         waitingFor={c.section === 'in_progress' ? waitingFor(c, detail, actors) : undefined}
+        task={c.taskId === null ? undefined : tasksById.get(c.taskId)}
+        usedDownstream={c.taskId !== null && ranOnOutput(c.taskId, detail.tasks)}
       />
     );
 
@@ -142,7 +146,7 @@ export function FeedPane({ detail, focusNeeds, onFocused }: { detail: MissionDet
         <div className="feed">
           {detail.mission.status === 'DRAFT' ? (
             // Nothing runs before a plan, and nothing is planned before the request is ready: a draft's feed is getting it ready.
-            <GetReady missionId={missionId} />
+            <GetReady missionId={missionId} uploads={detail.uploads ?? []} />
           ) : (
             <>
               {/* Above "Needs you": what the mission has to prove comes before what it is doing. */}
@@ -178,3 +182,28 @@ function waitingFor(card: FeedCard, detail: MissionDetail, actors: Actors): stri
   // The latest addressee is where an escalated request sits now.
   return `Waiting for ${actors.name(addressees[addressees.length - 1]!)}`;
 }
+
+/**
+ * Whether work that depends on this step has already run, as far as the
+ * mission view can tell: the daemon refuses to take a step elsewhere once its
+ * output was used, so the card stops offering it. The daemon still decides
+ * (`rounds.impactOf`, read from `run_inputs`): a consumer needs a run row, so a
+ * dependent counts only once it has one (`runCount > 0`) or is in a status
+ * that only exists because a run is already in flight (`RUNNING`,
+ * `AWAITING_INPUT` - the same pair `downstream.ts` calls `LIVE_RUN_STATUSES`).
+ * `AWAITING_APPROVAL` with `runCount === 0` is a *start* approval - the
+ * dependent has not run yet, has consumed nothing, and must not hide the
+ * button; the same goes for `SUCCEEDED`/`FAILED` reached with no run (a
+ * `wait` step, say). A run in flight is trusted over its status alone: a step
+ * is marked running before its run row lands, and the view may be read in
+ * between.
+ */
+function ranOnOutput(taskId: string, tasks: readonly TaskView[]): boolean {
+  const self = tasks.find((t) => t.id === taskId);
+  return tasks.some((t) => t.id !== taskId
+    && (t.runCount > 0 || STARTED.includes(t.status))
+    && (t.dependsOn.includes(taskId) || (self !== undefined && t.dependsOn.includes(self.key))));
+}
+
+/** Statuses that only exist because a run has already started, whatever `runCount` says yet. */
+const STARTED: readonly TaskStatus[] = ['RUNNING', 'AWAITING_INPUT'];

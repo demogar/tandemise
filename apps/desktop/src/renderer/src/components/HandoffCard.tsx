@@ -1,12 +1,19 @@
-import type { ApprovalView, FeedCard, FeedChange, PlanDecision } from '@tandemise/api-contract';
+import { useState } from 'react';
+import type { ApprovalView, FeedCard, FeedChange, PlanDecision, TaskView } from '@tandemise/api-contract';
 import type { TaskStatus } from '@tandemise/domain';
 import { Icon } from './Icon.js';
 import { Attribution } from './ActorChip.js';
 import { DecisionForm, useApprovalDecision } from './Decision.js';
 import { RequestChangesButton } from './RequestChanges.js';
-import { REQUEST_CHANGES_OPTION } from '../lib/domain.js';
+import { LINKABLE_OUTPUT_TYPES, PARKABLE_TASK_STATUSES, REQUEST_CHANGES_OPTION } from '../lib/domain.js';
+import { useWorkspaceId } from '../lib/workspace.js';
+import { HandoffLinkButton, openableLinks } from './HandoffLinks.js';
+import { ContinueElsewhereDialog, HandBackDialog } from './HandBackDialog.js';
 import { StartRoundButton } from './ImpactDialog.js';
 import { pluralize, relativeTime, taskTone, type Tone } from '../lib/format.js';
+import { useDaemonMutation } from '../lib/queries.js';
+import { describeError } from '../lib/daemon.js';
+import { showFlash } from '../lib/notices.js';
 import { actorLabel, type Actors } from '../lib/team.js';
 
 /** What changed, at most: the handoff contract caps `changed` at three, and a card shows all of them. */
@@ -36,8 +43,14 @@ export function HandoffCard({
   replanning = false,
   objective,
   waitingFor,
+  task,
+  usedDownstream = false,
 }: {
   card: FeedCard;
+  /** Work that depends on this card's step has already run on its output, so it can no longer be taken elsewhere. */
+  usedDownstream?: boolean;
+  /** The card's task as the mission view has it: whether it can be continued elsewhere, or is parked there now. */
+  task?: TaskView;
   missionId: string;
   /** Who an open request on this card is waiting for, when it is someone else: "Waiting for Ana Ruiz". */
   waitingFor?: string;
@@ -52,6 +65,15 @@ export function HandoffCard({
   replanning?: boolean;
 }): JSX.Element {
   const handoff = card.handoff;
+  const workspaceId = useWorkspaceId();
+  const [elsewhere, setElsewhere] = useState<'continue' | 'hand_back' | null>(null);
+  const parked = task?.parkedExternal ?? null;
+  // "Take it back": the person changed their mind, and the agent runs the step again.
+  const takeBack = useDaemonMutation((daemon, taskId: string) => daemon.unparkTask(taskId), ['tasks', 'missions', 'approvals'], missionId);
+  // Offered where the daemon would take it (spec A4): an agent's step making something that can come back from
+  // another tool, which nothing downstream has run on yet. The daemon still decides, and says why in the dialog.
+  const canContinue = task !== undefined && parked === null && task.executor === 'agent' && !usedDownstream
+    && PARKABLE_TASK_STATUSES.includes(task.status) && task.expectedOutputs.some((type) => LINKABLE_OUTPUT_TYPES.includes(type));
   const waiting = isWaiting(card);
   // A waiting card says what it is waiting on; an older headline would describe work that is not the current state.
   // A step that is mine has nothing written yet, and "Waiting for <me>" tells me nothing; what it asks for does.
@@ -75,8 +97,7 @@ export function HandoffCard({
     ?? handoff?.needs
     ?? (card.pendingApproval ? card.pendingApproval.approval.title : null)
     ?? (card.humanAction === 'claim' ? 'Someone to take this step. Claim it, do it, then mark it done.' : card.humanAction === 'complete' ? 'You to do this step and mark it done.' : null);
-  // Only http(s) leaves the app; the main process refuses anything else, and a dead button is worse than none.
-  const links = (handoff?.links ?? []).filter((link) => /^https?:\/\//i.test(link.url));
+  const links = openableLinks(handoff?.links);
   const tone = cardTone(card);
 
   return (
@@ -108,21 +129,19 @@ export function HandoffCard({
         <Attribution by={card.doneBy} responsible={card.responsible} recordedBy={card.recordedBy} meId={actors.meId} />
         <span className="feedcard__actions">
           {links.map((link) => (
-            <button
-              key={`${link.label}-${link.url}`}
-              type="button"
-              className="btn btn--ghost feedcard__link"
-              title={link.url}
-              onClick={() => void window.tandemise.openExternal(link.url)}
-            >
-              {link.label} ↗
-            </button>
+            <HandoffLinkButton key={`${link.label}-${link.url ?? link.path}`} link={link} workspaceId={workspaceId} className="btn btn--ghost feedcard__link" />
           ))}
           {card.moreArtifacts > 0 ? <span className="feedcard__more">+{pluralize(card.moreArtifacts, 'more doc', 'more docs')}</span> : null}
           {card.artifactId ? (
             <button type="button" className="btn btn--ghost feedcard__link" onClick={() => onFullDoc(card)}>
               <Icon name="file" size={12} />
               Full doc
+            </button>
+          ) : null}
+          {canContinue ? (
+            <button type="button" className="btn btn--ghost feedcard__link" onClick={() => setElsewhere('continue')}>
+              <Icon name="externalLink" size={12} />
+              Continue elsewhere
             </button>
           ) : null}
           {/* A review card on this card already offers Request changes as one of its answers; a second button with the same words would be two ways to say one thing. */}
@@ -142,6 +161,28 @@ export function HandoffCard({
         <p className={`feedcard__headline${waiting ? ' feedcard__headline--waiting' : ''}`} title={lead}>
           {lead}
         </p>
+      ) : null}
+
+      {parked !== null && card.taskId !== null ? (
+        // The step waits on the person who took it elsewhere, whichever section the card is in: say so, with the way back.
+        <div className="feedcard__needs">
+          <div className="feedcard__needs-line">
+            <Icon name="clock" size={13} />
+            <span className="feedcard__needs-text">Waiting for your work in {parked.tool}</span>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              disabled={takeBack.isPending}
+              onClick={() => takeBack.mutate(card.taskId!, { onSuccess: () => showFlash(`Taken back from ${parked.tool}`) })}
+            >
+              {takeBack.isPending ? 'Taking it back…' : 'Take it back'}
+            </button>
+            <button type="button" className="btn btn--primary" onClick={() => setElsewhere('hand_back')}>
+              Hand back
+            </button>
+          </div>
+          {takeBack.isError ? <p className="field__error" role="alert">{describeError(takeBack.error).detail}</p> : null}
+        </div>
       ) : null}
 
       {changed.length > 0 ? <ChangedList changed={changed} actors={actors} /> : null}
@@ -171,7 +212,8 @@ export function HandoffCard({
         </ul>
       ) : null}
 
-      {card.section === 'needs_you' ? (
+      {/* Nothing asked and no decision open (a parked step says its own line above): no empty box. */}
+      {card.section === 'needs_you' && (needs || card.pendingApproval) ? (
         <div className={`feedcard__needs${check ? ' feedcard__needs--soft' : ''}`}>
           {needs ? (
             <div className="feedcard__needs-line">
@@ -196,6 +238,12 @@ export function HandoffCard({
           ) : null}
           {card.pendingApproval ? <InlineDecision key={card.pendingApproval.approval.id} view={card.pendingApproval} /> : null}
         </div>
+      ) : null}
+      {elsewhere === 'continue' && task !== undefined ? (
+        <ContinueElsewhereDialog task={task} outputs={task.expectedOutputs} missionId={missionId} onClose={() => setElsewhere(null)} />
+      ) : null}
+      {elsewhere === 'hand_back' && task !== undefined && parked !== null ? (
+        <HandBackDialog task={task} tool={parked.tool} missionId={missionId} onClose={() => setElsewhere(null)} />
       ) : null}
     </article>
   );

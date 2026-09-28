@@ -1,10 +1,13 @@
 import { useState } from 'react';
-import type { RefinementCriterionView, RefinementQuestionView, RefinementView } from '@tandemise/api-contract';
+import type { MissionDetail, RefinementCriterionView, RefinementQuestionView, RefinementView } from '@tandemise/api-contract';
 import { Drawer } from '../../components/Modal.js';
 import { ErrorState, SkeletonList, StatusBadge } from '../../components/primitives.js';
 import { useDaemonMutation, useMissionRefinement } from '../../lib/queries.js';
 import { pluralize, type Tone } from '../../lib/format.js';
 import { ArtifactReader } from '../artifacts/ArtifactReader.js';
+import { Icon } from '../../components/Icon.js';
+
+type Upload = NonNullable<MissionDetail['uploads']>[number];
 
 /**
  * "Get it ready": a DRAFT mission's way to being planned (P6 spec §6).
@@ -14,9 +17,10 @@ import { ArtifactReader } from '../artifacts/ArtifactReader.js';
  * same readiness the daemon enforces, so what this panel says is left to do
  * is exactly what stands between the request and a plan.
  */
-export function GetReady({ missionId }: { missionId: string }): JSX.Element {
+export function GetReady({ missionId, uploads = [] }: { missionId: string; uploads?: readonly Upload[] }): JSX.Element {
   const refinement = useMissionRefinement(missionId);
   const [reading, setReading] = useState<string | null>(null);
+  const [readingUpload, setReadingUpload] = useState<Upload | null>(null);
   const refine = useDaemonMutation((daemon) => daemon.refineMission(missionId), ['refinement'], missionId);
 
   if (refinement.isPending) return <SkeletonList rows={3} />;
@@ -66,6 +70,39 @@ export function GetReady({ missionId }: { missionId: string }): JSX.Element {
           </div>
         </div>
       </section>
+
+      {uploads.length > 0 ? (
+        // Read-only: what the request came with (spec A2). More work is added as feedback once it runs.
+        <section className="section feed__section" aria-label="Your uploads">
+          <div className="section__head">
+            <h2 className="section__title">Your uploads</h2>
+            <span className="section__meta">{pluralize(uploads.length, 'upload')}</span>
+          </div>
+          <div className="list">
+            {uploads.map((upload) => (
+              <div key={upload.evidenceId} className="list__row">
+                <Icon name={upload.refs.some((r) => r.kind === 'url') ? 'link' : 'file'} size={13} className="dim" />
+                <div className="list__main">
+                  <div className="list__title truncate" title={upload.filename}>
+                    {upload.filename}
+                  </div>
+                  <div className="list__subtitle truncate">{uploadSource(upload)}</div>
+                </div>
+                <div className="list__aside">
+                  {upload.intakeArtifactId !== null ? (
+                    <button type="button" className="btn btn--ghost" onClick={() => setReadingUpload(upload)}>
+                      Read what it became
+                    </button>
+                  ) : (
+                    // Intake waits for the first refinement or plan: a request can sit in the backlog for days first.
+                    <span className="dim">Read when refining or planning starts</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       {proposed.length > 0 ? (
         <section className="section feed__section" aria-label="Proposed criteria">
@@ -163,6 +200,11 @@ export function GetReady({ missionId }: { missionId: string }): JSX.Element {
       {reading ? (
         <Drawer title="Refinement" wide onClose={() => setReading(null)}>
           <ArtifactReader id={reading} />
+        </Drawer>
+      ) : null}
+      {readingUpload?.intakeArtifactId ? (
+        <Drawer title={readingUpload.filename} wide onClose={() => setReadingUpload(null)}>
+          <ArtifactReader id={readingUpload.intakeArtifactId} />
         </Drawer>
       ) : null}
     </>
@@ -311,4 +353,10 @@ function originLine(c: RefinementCriterionView): string {
   if (c.origin === 'added') return 'Added by you';
   if (c.origin === 'issue') return 'From the GitHub issue';
   return c.decidedBy === 'autonomy' ? 'Proposed by the product agent; accepted because this mission runs autonomously' : 'Proposed by the product agent; accepted by you';
+}
+
+/** Where an upload came from, in a line: the link it was read from, else its kind of file. */
+function uploadSource(upload: Upload): string {
+  const url = upload.refs.find((r) => r.kind === 'url');
+  return url !== undefined ? url.value : upload.mediaType;
 }

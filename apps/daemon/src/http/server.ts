@@ -161,7 +161,10 @@ export class HttpServer {
       }
 
       const bearer = bearerToken(authorization!);
-      const ctx = makeContext(req, matched.params, url.searchParams, log, () => this.#opts.identityResolver(bearer));
+      const ctx = makeContext(req, matched.params, url.searchParams, log, () => this.#opts.identityResolver(bearer), {
+        maxBodyBytes: matched.route.maxBodyBytes,
+        overflowMessage: matched.route.overflowMessage,
+      });
       const result = await matched.route.handler(ctx);
       if (result === HANDLED) return;
       sendJson(res, result === undefined ? 204 : 200, result);

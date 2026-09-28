@@ -242,9 +242,12 @@ export class TaskExecutor {
       // settling from that stale copy compared READY with READY, skipped the
       // write, and left the row RUNNING with nothing running.
       const current = this.#requireTask(task.id);
-      // Reset or cancelled by someone else while this attempt was failing (a
-      // Redo aborts the pass, which can surface as a throw): that status stands.
-      if (current.status === 'PENDING' || current.status === 'CANCELLED') {
+      // Moved by someone else while this attempt was failing (a Redo resets it,
+      // a park writes AWAITING_EXTERNAL, and the abort can surface as a throw):
+      // that status stands, the rule #overtaken and #stopped apply. Only the
+      // status the attempt started from is not a decision: a throw before the
+      // step was marked RUNNING leaves it READY, and that is still a failure.
+      if (!LIVE_RUN_STATUSES.includes(current.status) && current.status !== task.status) {
         return { kind: 'settled', status: current.status, reason: current.statusReason };
       }
       return this.#settleFailure(current, scope, errorMessage(e));
@@ -1636,7 +1639,11 @@ export class TaskExecutor {
     // its skills folder, the whole SKILL.md when it cannot.
     const skillSection = input.skills?.promptSection ?? null;
     const prompt = skillSection === null ? compiled.prompt : `${compiled.prompt.trimEnd()}\n\n${skillSection}\n`;
-    return { prompt, includedArtifactIds: compiled.includedArtifactIds };
+    // Files attached to the notes this pass answers are shown in the round's
+    // brief, not by the compiler, so they are added to what the run records it
+    // read (spec A3); a continued session gets the same brief and records the same.
+    const attached = (input.round?.attachments ?? []).map((a) => a.manifest.id).filter((id) => !compiled.includedArtifactIds.includes(id));
+    return { prompt, includedArtifactIds: [...compiled.includedArtifactIds, ...attached] };
   }
 
   #contractNotes(
@@ -1789,9 +1796,11 @@ export class TaskExecutor {
     if (upstreamIds.size === 0) return null;
 
     // Newest first: after a remediation cycle the fix task's ChangeSet is the
-    // one that should be reviewed, not the original.
-    const changeSets = this.deps.artifacts
-      .listByMission(mission.id, 'ChangeSet')
+    // one that should be reviewed, not the original. Only live ones: a change
+    // handed back as a file (spec A4) replaces the agent's but names no
+    // branch, and the agent's retired branch must not be what work after it
+    // is cut from; with no live branch upstream, the mission base is.
+    const changeSets = liveArtifacts(this.deps.artifacts, mission.id, 'ChangeSet')
       .filter((a) => a.taskId !== null && upstreamIds.has(a.taskId))
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
@@ -1867,8 +1876,10 @@ export class TaskExecutor {
     const record = target.describe();
     if (kind === 'worktree') {
       // The branch and its tree are the reviewable output of the task. Leaving
-      // them is not laziness; discarding them would destroy the work.
-      this.deps.targets.update(record.id, { status: 'READY' });
+      // them is not laziness; discarding them would destroy the work. A
+      // hand-back that landed as the run wound down has already retired the
+      // target, and that stands.
+      if (this.deps.targets.get(record.id)?.status !== 'RELEASED') this.deps.targets.update(record.id, { status: 'READY' });
       await target.dispose();
       return;
     }

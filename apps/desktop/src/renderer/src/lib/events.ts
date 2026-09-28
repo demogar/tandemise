@@ -134,6 +134,8 @@ function describe(record: RunEventRecord, roleNames: ReadonlyMap<string, string>
     case 'completed':
       return { ...base, icon: 'check', tone: 'succeeded', title: `${role} finished`, detail: body.summary ?? null, link: null };
     case 'failed':
+      // A run stopped on purpose (a park, a cancel, a redo) ends as CANCELLED; calling that a failure would be false.
+      if (body.code === 'CANCELLED') return { ...base, icon: 'stop', tone: 'pending', title: `${role} stopped`, detail: body.message, link: null };
       return { ...base, icon: 'alertCircle', tone: 'failed', title: `${role} failed`, detail: `${body.code}: ${body.message}`, link: null };
     case 'raw':
       return { ...base, icon: 'terminal', tone: 'pending', title: body.channel, detail: body.text, link: null };
@@ -332,6 +334,28 @@ function describe(record: RunEventRecord, roleNames: ReadonlyMap<string, string>
           actor !== null && actor !== '—' && actor !== 'Someone' ? `Asked by ${actor}` : null,
           body.redone.length > 0 ? `Redone: ${body.redone.join(', ')}` : null,
         ].filter((part): part is string => part !== null).join(' · ') || null,
+        link: null,
+      };
+    case 'task.parked_external':
+      return { ...base, icon: 'externalLink', tone: 'pending', title: `Continued in ${body.tool}`, detail: null, link: null };
+    case 'task.unparked':
+      return { ...base, icon: 'refresh', tone: 'running', title: `Taken back from ${body.tool}`, detail: null, link: null };
+    case 'task.handed_back':
+      return {
+        ...base,
+        icon: 'check',
+        tone: 'succeeded',
+        title: `Handed back (round ${body.round})`,
+        detail: body.contribution === 'file' ? 'From a file' : 'From a link',
+        link: body.artifactIds[0] ? { kind: 'artifact', id: body.artifactIds[0] } : null,
+      };
+    case 'mission.intake_completed':
+      return {
+        ...base,
+        icon: 'file',
+        tone: 'pending',
+        title: `Read ${pluralize(body.uploads, 'upload')}`,
+        detail: body.failed.length > 0 ? `${body.produced.length} converted, ${body.failed.length} could not be read` : null,
         link: null,
       };
   }

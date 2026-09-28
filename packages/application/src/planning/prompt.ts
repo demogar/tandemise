@@ -33,6 +33,12 @@ export interface PlannerPromptInput {
   readonly criteria?: readonly { readonly key: string; readonly statement: string }[];
   /** What the person answered while the request was refined. */
   readonly answers?: readonly { readonly key: string; readonly text: string; readonly answer: string }[];
+  /**
+   * What intake made of the person's uploads that may stand in for a stage
+   * (spec A2): an intake ProductSpec is here only once it passed the Done-when
+   * check, so the planner is never offered a skip validation would refuse.
+   */
+  readonly uploads?: readonly { readonly id: string; readonly type: string; readonly title: string }[];
 }
 
 /**
@@ -89,7 +95,7 @@ ${mission.constraints.length > 0 ? `Constraints:\n${mission.constraints.map((c) 
       ? `\nDecided during refinement (the person's own answers; plan around them, do not re-open them):\n${(input.answers ?? []).map((a) => `- ${a.text}\n  Answer: ${a.answer}`).join('\n')}\n`
       : ''
   }
-Repository: ${repository ? `${repository.name} at ${repository.path} (default branch ${repository.defaultBranch})` : 'none selected — plan tasks that do not require a repository'}
+${renderUploads(input.uploads ?? [])}Repository: ${repository ? `${repository.name} at ${repository.path} (default branch ${repository.defaultBranch})` : 'none selected — plan tasks that do not require a repository'}
 ${others.length === 0 ? '' : `
 This project has more than one repository. A task may set "repository" to any of
 these names to work there instead of the mission's own; omit it or use null to
@@ -239,6 +245,25 @@ fence, matching:
     }
   ]
 }`;
+}
+
+/**
+ * The uploads that already cover a stage, and how to say so. Shown only when
+ * there are some: a `skipped` list offered with nothing to skip for would
+ * invite the planner to drop a stage on a guess.
+ */
+function renderUploads(uploads: readonly { readonly id: string; readonly type: string; readonly title: string }[]): string {
+  if (uploads.length === 0) return '';
+  return `
+Uploaded by the person, already converted and checked (preexisting artifacts):
+${uploads.map((u) => `- ${u.type} "${u.title}" (id ${u.id})`).join('\n')}
+
+An upload already covers a stage when a preexisting artifact of that stage's output type exists. Omit the stage and name it under \`skipped\` with the artifact it was covered by.
+Add it to the plan object as
+"skipped": [{ "stage": "<the omitted stage's role id, e.g. product>", "outputType": "<its output type>", "artifactId": "<the id above>", "reason": "<one sentence>" }]
+and keep the stages that read that type: they read the upload instead.
+
+`;
 }
 
 function renderConnectedApps(apps: readonly ConnectedApp[]): string {

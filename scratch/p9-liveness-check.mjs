@@ -35,14 +35,15 @@ section('pure: the table names every status');
   const missionRows = D.LIVENESS_RULES.filter((r) => r.subject === 'mission');
   const taskRows = D.LIVENESS_RULES.filter((r) => r.subject === 'task');
   check('18 mission rows L1-L18', eq(missionRows.map((r) => r.id), Array.from({ length: 18 }, (_, i) => `L${i + 1}`)), missionRows.map((r) => r.id));
-  check('15 task rows T1-T15', eq(taskRows.map((r) => r.id), Array.from({ length: 15 }, (_, i) => `T${i + 1}`)), taskRows.map((r) => r.id));
+  // P3 split T8 into T8 (a wait step) and T8b (a parked agent task), so the run stays 15 numbered ids plus T8b.
+  check('16 task rows T1-T15 plus T8b', eq(taskRows.map((r) => r.id), [...Array.from({ length: 8 }, (_, i) => `T${i + 1}`), 'T8b', ...Array.from({ length: 7 }, (_, i) => `T${i + 9}`)]), taskRows.map((r) => r.id));
   for (const status of D.MISSION_STATUSES) check(`mission status ${status} has a row`, missionRows.some((r) => r.statuses.includes(status)));
   for (const status of D.TASK_STATUSES) check(`task status ${status} has a row`, taskRows.some((r) => r.statuses.includes(status)));
   check('every mission row says its kind', missionRows.every((r) => ['moving', 'waiting', 'parked', 'finished', 'stalled'].includes(r.kind)), missionRows.map((r) => [r.id, r.kind]));
 }
 
 section('pure: one input per mission row');
-const t = (key, status, extra = {}) => ({ id: `tsk_${key}`, key, title: extra.title ?? `Step ${key}`, status, statusReason: extra.statusReason ?? null, dependsOn: extra.dependsOn ?? [], attempts: extra.attempts ?? 1, orderHint: extra.orderHint ?? 0 });
+const t = (key, status, extra = {}) => ({ id: `tsk_${key}`, key, title: extra.title ?? `Step ${key}`, status, statusReason: extra.statusReason ?? null, dependsOn: extra.dependsOn ?? [], attempts: extra.attempts ?? 1, orderHint: extra.orderHint ?? 0, executor: extra.executor });
 const base = { statusReason: null, tasks: [], cards: [], planning: false, refining: false, queued: false, ready: false, readinessLabel: 'Plan', toDecide: 0 };
 {
   const cases = [
@@ -99,7 +100,12 @@ section('pure: one input per task row, and the action a stall gets');
     ['T5', [t('a', 'RUNNING')], 'a', 'moving'],
     ['T6', [t('a', 'AWAITING_INPUT')], 'a', 'waiting', [{ taskId: 'tsk_a', kind: 'choice' }]],
     ['T7', [t('a', 'AWAITING_HUMAN')], 'a', 'waiting'],
-    ['T8', [t('a', 'AWAITING_EXTERNAL')], 'a', 'moving'],
+    // P3: T8 now applies only to a wait step; an agent task (the default when
+    // no executor is given, spec A4) parked in AWAITING_EXTERNAL is T8b, waiting
+    // on the person who took it - it used to read as T8/moving here, which was
+    // wrong once AWAITING_EXTERNAL could mean "parked", not just "a wait step".
+    ['T8', [t('a', 'AWAITING_EXTERNAL', { executor: 'wait' })], 'a', 'moving'],
+    ['T8b', [t('a', 'AWAITING_EXTERNAL', { executor: 'agent' })], 'a', 'waiting'],
     ['T9', [t('a', 'AWAITING_APPROVAL')], 'a', 'waiting', [{ taskId: 'tsk_a', kind: 'action' }]],
     ['T10', [t('a', 'AWAITING_APPROVAL')], 'a', 'stalled'],
     ['T11', [t('a', 'BLOCKED', { statusReason: 'Gate not met' })], 'a', 'waiting', [{ taskId: 'tsk_a', kind: 'intervention' }]],

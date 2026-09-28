@@ -1,0 +1,100 @@
+{
+  "id": "D6",
+  "title": "A workspace link renders \"Open workspace ↗\" and resolves to the local path",
+  "ok": true,
+  "checks": [
+    {
+      "label": "proof (API): the hand-back's handoff has a workspace link with a path and no url",
+      "ok": true,
+      "observed": {
+        "label": "Open the file",
+        "kind": "workspace",
+        "path": "blobs/61/612599c5989da30ed0e41be75db62b45cdf174c23374f4775d8e06e370ac7730"
+      }
+    },
+    {
+      "label": "the design card shows \"Open workspace ↗\" (its title is the link's path)",
+      "ok": true,
+      "observed": {
+        "shown": "blobs/61/612599c5989da30ed0e41be75db62b45cdf174c23374f4775d8e06e370ac7730",
+        "path": "blobs/61/612599c5989da30ed0e41be75db62b45cdf174c23374f4775d8e06e370ac7730"
+      }
+    },
+    {
+      "label": "clicking it asks the daemon, which resolves it to the Evidence file on disk",
+      "ok": true,
+      "observed": {
+        "resolved": {
+          "request": {
+            "workspaceId": "ws_01m3jhv6rxnqg50901ve",
+            "path": "blobs/61/612599c5989da30ed0e41be75db62b45cdf174c23374f4775d8e06e370ac7730"
+          },
+          "status": 200,
+          "body": {
+            "path": "/private/var/folders/dh/glpvvh110393gdzjc_v2x1sr0000gn/T/tdm-p3-run-mukffeqa/home/workspaces/ws_01m3jhv6rxnqg50901ve/artifacts/blobs/61/612599c5989da30ed0e41be75db62b45cdf174c23374f4775d8e06e370ac7730"
+          }
+        },
+        "evidencePath": "/tmp/tdm-p3/home/workspaces/ws_01m3jhv6rxnqg50901ve/artifacts/blobs/61/612599c5989da30ed0e41be75db62b45cdf174c23374f4775d8e06e370ac7730"
+      }
+    },
+    {
+      "label": "that file is the handed-back export",
+      "ok": true
+    },
+    {
+      "label": "no error flash after the click",
+      "ok": true,
+      "observed": ""
+    },
+    {
+      "label": "the build card shows \"Open workspace ↗\" for the agent's README.md link",
+      "ok": true,
+      "observed": "README.md"
+    },
+    {
+      "label": "it resolves to README.md in the project's repository",
+      "ok": true,
+      "observed": {
+        "resolved": {
+          "request": {
+            "workspaceId": "ws_01m3jhv6rxnqg50901ve",
+            "path": "README.md"
+          },
+          "status": 200,
+          "body": {
+            "path": "/private/var/folders/dh/glpvvh110393gdzjc_v2x1sr0000gn/T/tdm-p3-run-mukffeqa/project/README.md"
+          }
+        },
+        "readme": "/private/var/folders/dh/glpvvh110393gdzjc_v2x1sr0000gn/T/tdm-p3-run-mukffeqa/project/README.md"
+      }
+    },
+    {
+      "label": "the reader of the handed-back DesignBrief offers \"Open workspace\"",
+      "ok": true,
+      "observed": "design\ndesign\nby\nYou\nRequest changes\n\nReworked the greeting in Figma: larger, higher, warmer colours.\n\nOpen workspace ↗\nv1\nv2\nCompare with v1\nDesign Brief\nSep 27, 2026, 6:09 PM\nhello-design-v2.md\nDetails\n\nReworked the greeting in Figma: larger, higher, warmer colours.\n\nHanded back from Figma\n\nFrom h"
+    },
+    {
+      "label": "proof (API): a path out of the project is refused",
+      "ok": true,
+      "observed": {
+        "status": 400,
+        "body": {
+          "error": {
+            "code": "VALIDATION",
+            "message": "'../../etc/passwd' is not inside this project's repositories or artifacts.",
+            "details": {
+              "code": "outside_workspace"
+            },
+            "retryable": false
+          }
+        }
+      }
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p3/docs/superpowers/evidence/2026-09-27-p3a/D6-design-card-open-workspace.png",
+    "/Users/demogar/projects/tandemise/tandemise-p3/docs/superpowers/evidence/2026-09-27-p3a/D6-build-card-open-workspace.png",
+    "/Users/demogar/projects/tandemise/tandemise-p3/docs/superpowers/evidence/2026-09-27-p3a/D6-reader-open-workspace.png"
+  ]
+}

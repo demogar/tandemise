@@ -215,6 +215,18 @@ function TaskCard({
   onSelect: () => void;
   register: (element: HTMLElement | null) => void;
 }): JSX.Element {
+  if (task.coveredBy) {
+    // A stage your upload already covers (spec A2): it never runs, so no status dot, no people, no meta; only what covers it.
+    return (
+      <button type="button" ref={register} className="taskcard taskcard--covered" data-status={task.status} data-selected={selected} onClick={onSelect}>
+        <div className="taskcard__title">{task.title} · covered by your upload</div>
+        <div className="taskcard__covered-by" title={task.coveredBy.filename}>
+          <Icon name="file" size={11} />
+          <span className="truncate">{task.coveredBy.filename}</span>
+        </div>
+      </button>
+    );
+  }
   const tone = taskTone(task.status);
   const elapsed =
     task.startedAt && task.finishedAt ? Date.parse(task.finishedAt) - Date.parse(task.startedAt) : null;

@@ -1,5 +1,5 @@
 import type {
-  Approval, ApprovalRepositoryPort, ArtifactManifest, ArtifactRepositoryPort, ArtifactStorePort, EvaluationRepositoryPort, EventRepositoryPort, FeedbackItem,
+  Approval, ApprovalRepositoryPort, ArtifactManifest, ArtifactRepositoryPort, ArtifactStorePort, EvaluationRepositoryPort, EventRepositoryPort, FeedbackAttachment, FeedbackItem,
   FeedbackRepositoryPort, Finding, LoadedArtifact, MemberRepositoryPort, Mission, MissionRepositoryPort, MissionTask, RunInputRepositoryPort,
   RunRepositoryPort, TaskRepositoryPort, TaskStatus, UnitOfWork,
 } from '@tandemise/domain';
@@ -20,6 +20,8 @@ import { upstreamTaskIds } from '../support/lineage.js';
 import { runActorOf } from '../support/run-actor.js';
 import { withdrawApproval } from '../support/withdraw.js';
 import { withoutEscalation } from './staffing-resolver.js';
+import { COVERED_MESSAGE, isCoveredPlaceholder } from '../support/outside-work.js';
+import { uploadFilename } from '../planning/intake.js';
 import { MAX_REMEDIATION_CYCLES } from './remediation.js';
 
 /** The statuses a task may start its next round from: it has settled, one way or another. */
@@ -57,6 +59,8 @@ export interface RecordFeedbackInput {
   readonly recordedBy: string;
   readonly status: 'open' | 'queued';
   readonly round: number | null;
+  /** Files already pinned as Evidence, and links typed straight through (spec A3). */
+  readonly attachments?: readonly FeedbackAttachment[];
 }
 
 export interface DownstreamImpact {
@@ -125,7 +129,7 @@ export class FeedbackRounds {
     const now = deps.clock.now();
     const item = deps.feedback.create({
       id: ids.feedback(), taskId: input.task.id, artifactId: input.artifactId, authorId: input.authorId,
-      recordedBy: input.recordedBy, text: input.text.trim(), attachments: [], status: input.status, round: input.round,
+      recordedBy: input.recordedBy, text: input.text.trim(), attachments: input.attachments ?? [], status: input.status, round: input.round,
       createdAt: now, updatedAt: now,
     });
     deps.recorder.record(this.#scope(input.task, input.authorId), {
@@ -178,6 +182,11 @@ export class FeedbackRounds {
   beginRound(input: StartRoundInput): RoundBegun {
     const { deps } = this;
     const task = deps.tasks.get(input.task.id) ?? input.task;
+    // A stage an upload covers has no work of its own to go again on: rerunning
+    // it is a replan, which decides afresh whether the upload still covers it.
+    if (isCoveredPlaceholder(task)) {
+      throw new TandemiseError('CONFLICT', COVERED_MESSAGE, { details: { taskId: task.id } });
+    }
     if (!ROUND_START_STATUSES.includes(task.status)) {
       throw new TandemiseError('PRECONDITION_FAILED', `A task in ${task.status} cannot start a round.`, {
         details: { taskId: task.id, status: task.status },
@@ -255,6 +264,53 @@ export class FeedbackRounds {
     deps.recorder.invalidate('tasks', mission.id);
     deps.recorder.invalidate('approvals', mission.id);
     return { task: deps.tasks.get(task.id)!, stop: stop.map((dependent) => dependent.id) };
+  }
+
+  /**
+   * Spec §3's downstream rule for a round that has already landed: a person's
+   * hand-back (spec A4) is written complete, so nothing waits for it to run.
+   * `redo` sends every consumer of an older version back to PENDING, to run
+   * again on the new one; `keep` leaves them, and `onPersonCompleted` flags
+   * them. Call it inside the caller's unit, after the new outputs are written;
+   * the returned ids have a live pass to stop once that unit has committed.
+   */
+  redoConsumers(task: MissionTask, round: number, choice: 'redo' | 'keep'): readonly TaskId[] {
+    if (choice !== 'redo') return [];
+    const { consumers } = this.impactOf(task);
+    const redone = redoSet(task, consumers, undefined, this.deps.tasks.listByMission(task.missionId));
+    const live = redone.filter((dependent) => this.#redo(dependent, task, round)).map((dependent) => dependent.id);
+    this.deps.recorder.invalidate('tasks', task.missionId);
+    return live;
+  }
+
+  /**
+   * Holds the work waiting on `task` while its output is away, as a round
+   * holds it (see `#holdReady`): parking a step elsewhere (spec A4) takes its
+   * output away until the hand-back. Call it inside the caller's unit, after
+   * the task's own status has moved off SUCCEEDED; the scheduler releases what
+   * it held once the task is done again.
+   */
+  holdDependents(task: MissionTask, reason: string): void {
+    this.#holdReady(task, reason);
+    this.deps.recorder.invalidate('tasks', task.missionId);
+  }
+
+  /**
+   * The reverse of `holdDependents` when the park is called off rather than
+   * handed back: the work it held (still PENDING with the hold's `reason`)
+   * stops saying it waits on the other tool. It stays PENDING, since the step
+   * it needs is going again, and the scheduler releases it the way it releases
+   * any work whose dependencies are done once the step succeeds. Call it
+   * inside the caller's unit.
+   */
+  releaseHeld(task: MissionTask, reason: string): void {
+    const { deps } = this;
+    const all = deps.tasks.listByMission(task.missionId);
+    for (const t of all) {
+      if (t.status !== 'PENDING' || t.statusReason !== reason || !upstreamTaskIds(t, all).has(task.id)) continue;
+      deps.tasks.update(t.id, { statusReason: null });
+    }
+    deps.recorder.invalidate('tasks', task.missionId);
   }
 
   /**
@@ -386,7 +442,12 @@ export class FeedbackRounds {
     // task's next version then supersedes that, which would hide it or list it twice.
     // In round 1 this is only ever an earlier attempt's output, which a retry edits too.
     const newest = new Map<string, ArtifactManifest>();
-    for (const manifest of deps.artifacts.listByTask(task.id)) {
+    // Only what the task makes. A file pinned on one of its notes, or handed
+    // back to it, is Evidence on the task too, but no run made it, and it is
+    // material for the request rather than a draft to edit.
+    const drafts = deps.artifacts.listByTask(task.id)
+      .filter((a) => task.expectedOutputs.includes(a.type) && !(a.type === 'Evidence' && a.createdByRunId === null));
+    for (const manifest of drafts) {
       const known = newest.get(manifest.type);
       if (known === undefined || manifest.createdAt > known.createdAt) newest.set(manifest.type, manifest);
     }
@@ -401,9 +462,24 @@ export class FeedbackRounds {
     const toItem = (i: FeedbackItem): BriefItem => ({
       id: i.id, authorName: this.#name(i.authorId), text: i.text, round: i.round,
       artifactType: i.artifactId === null ? null : deps.artifacts.get(i.artifactId)?.type ?? null,
+      ...(i.attachments.length === 0 ? {} : { attachments: i.attachments.map((a) => this.#attachmentLine(a)) }),
     });
+    // The files the notes owed now carry, read so the agent sees them and the
+    // run records them among its inputs (spec A3).
+    const attachments: LoadedArtifact[] = [];
+    for (const item of toAddress) {
+      for (const attachment of item.attachments) {
+        if (attachment.kind !== 'artifact' || attachments.some((a) => a.manifest.id === attachment.artifactId)) continue;
+        try {
+          attachments.push(await deps.artifactStore.read(attachment.artifactId));
+        } catch {
+          // An unreadable file is still named on its note; the brief goes on without its body.
+        }
+      }
+    }
     return {
       round, previous,
+      ...(attachments.length === 0 ? {} : { attachments }),
       toAddress: toAddress.map(toItem),
       // This round's own answered notes too: a task redone within its round must not undo them either.
       earlier: current.filter((i) => i.status === 'addressed' && (i.round ?? 0) <= round).map(toItem),
@@ -587,6 +663,13 @@ export class FeedbackRounds {
       { type: 'mission.status', from: mission.status, to: 'EXECUTING', reason },
     );
     this.deps.recorder.invalidate('missions', mission.id);
+  }
+
+  /** One attachment as the brief names it: a pinned file by its name and id, a link by its url. */
+  #attachmentLine(attachment: FeedbackAttachment): string {
+    if (attachment.kind === 'link') return attachment.label === undefined ? attachment.url : `${attachment.label}: ${attachment.url}`;
+    const manifest = this.deps.artifacts.get(attachment.artifactId);
+    return `${manifest === undefined ? 'a file' : uploadFilename(manifest)} (artifact ${attachment.artifactId})`;
   }
 
   #isAgent(id: string): boolean {

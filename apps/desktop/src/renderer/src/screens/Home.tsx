@@ -9,6 +9,7 @@ import { useWorkspaceId } from '../lib/workspace.js';
 import { showFlash } from '../lib/notices.js';
 import { missionOfItem, useInbox, type InboxItem } from '../lib/inbox.js';
 import { QuietRow, StalledRow } from './inbox/LivenessRows.js';
+import { ParkedRow } from './inbox/ParkedRow.js';
 import { buildTimeline } from '../lib/events.js';
 import { useActors } from '../lib/team.js';
 import { healthTone, missionTone, pluralize, relativeTime } from '../lib/format.js';
@@ -132,6 +133,8 @@ export function Home(): JSX.Element {
                     <StalledRow key={item.id} stalled={item.stalled} bordered />
                   ) : item.kind === 'quiet' ? (
                     <QuietRow key={item.id} run={item.run} bordered />
+                  ) : item.kind === 'parked' ? (
+                    <ParkedRow key={item.id} parked={item.parked} bordered />
                   ) : (
                     <RefinementRow key={item.id} item={item} />
                   ),

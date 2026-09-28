@@ -1,0 +1,117 @@
+{
+  "id": "D5",
+  "title": "A ready next step waits for the hand-back, then runs on the handed-back version",
+  "ok": true,
+  "checks": [
+    {
+      "label": "the design finished (round 1) and the build is ready, asking to start",
+      "ok": true,
+      "observed": {
+        "design": "SUCCEEDED",
+        "build": "AWAITING_APPROVAL",
+        "card": "Start build?"
+      }
+    },
+    {
+      "label": "the finished design's card offers \"Continue elsewhere\" while the build only asks to start",
+      "ok": true,
+      "observed": {
+        "card": "PRODUCT DESIGNER\ndesign\nDone\njust now\nby\nDesign agent\n·\nresponsible\nYou\nOpen workspace ↗\nFull doc\nContinue elsewhere\nRequest changes\n\nDesignBrief ready for the hello page\n\nWritten by the scripted acceptance agent\nNo model was called",
+        "build": {
+          "status": "AWAITING_APPROVAL",
+          "runCount": 0,
+          "statusReason": "Start build?"
+        }
+      }
+    },
+    {
+      "label": "the finished design is parked in Figma",
+      "ok": true,
+      "observed": {
+        "status": "AWAITING_EXTERNAL",
+        "parkedExternal": {
+          "tool": "Figma",
+          "since": "2026-09-27T23:09:46.301Z"
+        }
+      }
+    },
+    {
+      "label": "proof (API): the build went back to PENDING with \"Waiting for 'design' from Figma.\"",
+      "ok": true,
+      "observed": {
+        "status": "PENDING",
+        "statusReason": "Waiting for 'design' from Figma."
+      }
+    },
+    {
+      "label": "proof (API): its start card was withdrawn",
+      "ok": true,
+      "observed": [
+        "Start build?: CANCELLED"
+      ]
+    },
+    {
+      "label": "the window shows the build \"Waiting for 'design' from Figma.\"",
+      "ok": true,
+      "observed": "drawer"
+    },
+    {
+      "label": "the hand-back holds the file",
+      "ok": true
+    },
+    {
+      "label": "proof (API): design round 2 is SUCCEEDED, and its DesignBrief supersedes round 1",
+      "ok": true,
+      "observed": {
+        "status": "SUCCEEDED",
+        "round2": "art_01m3jj3q0ej0fzyw4dp2",
+        "supersedes": "art_01m3jj381agbsb2j6q36",
+        "round1": "art_01m3jj381agbsb2j6q36"
+      }
+    },
+    {
+      "label": "the build is released and asks to start again",
+      "ok": true,
+      "observed": "Start build?"
+    },
+    {
+      "label": "the build ran and finished",
+      "ok": true,
+      "observed": {
+        "status": "SUCCEEDED",
+        "statusReason": null
+      }
+    },
+    {
+      "label": "the build ran once, and it read the handed-back DesignBrief (round 2), never round 1",
+      "ok": true,
+      "observed": {
+        "runs": 1,
+        "inputs": [
+          "art_01m3jj3q0ej0fzyw4dp2"
+        ],
+        "round1": "art_01m3jj381agbsb2j6q36",
+        "round2": "art_01m3jj3q0ej0fzyw4dp2"
+      }
+    },
+    {
+      "label": "the build's prompt carries the handed-back work",
+      "ok": true,
+      "observed": "d)\n<<<UNTRUSTED_DATA id=1 label=\"DesignBrief: design\" origin=\"artifact art_01m3jj3q0ej0fzyw4dp2\">>>\nReworked the greeting in Figma: larger, higher, warmer colours.\n\n## Handed back from Figma\n\nFrom hello-design-v2.md (Evidence art_01m3jj3q0ckzrxk6d55h).\n\n# Hello page, v2\n\nThe greeting is larger and sits higher. Colours: warm, #f6c28b on #fffaf3.\n\n<<<END_UNTRUSTED_DATA id=1>>>\n\n## Policy — what you "
+    },
+    {
+      "label": "the build card is finished in the window",
+      "ok": true,
+      "observed": "DEVELOPER\nbuild\nDone\njust now\nby\nCoding agent\n·\nresponsible\nYou\nOpen workspace ↗\nFull doc\nContinue elsewhere\nRequest changes\n\nChangeSet ready for the hello page\n\nWritten by the scripted acceptance agent\nNo model was called"
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p3/docs/superpowers/evidence/2026-09-27-p3a/D5-finished-design-card.png",
+    "/Users/demogar/projects/tandemise/tandemise-p3/docs/superpowers/evidence/2026-09-27-p3a/D5-continue-finished-design.png",
+    "/Users/demogar/projects/tandemise/tandemise-p3/docs/superpowers/evidence/2026-09-27-p3a/D5-build-held-drawer.png",
+    "/Users/demogar/projects/tandemise/tandemise-p3/docs/superpowers/evidence/2026-09-27-p3a/D5-hand-back-file.png",
+    "/Users/demogar/projects/tandemise/tandemise-p3/docs/superpowers/evidence/2026-09-27-p3a/D5-released-after-hand-back.png",
+    "/Users/demogar/projects/tandemise/tandemise-p3/docs/superpowers/evidence/2026-09-27-p3a/D5-build-ran-on-hand-back.png"
+  ]
+}

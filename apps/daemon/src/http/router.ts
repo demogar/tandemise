@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { TandemiseError, errorMessage, isTandemiseError, redactSecrets, type Logger } from '@tandemise/shared';
-import { API_PREFIX, API_VERSION, API_VERSION_HEADER, HTTP_STATUS_BY_CODE, type ApiErrorBody } from '@tandemise/api-contract';
+import { API_PREFIX, API_VERSION, API_VERSION_HEADER, CONTRIBUTION_BASE64_MAX, HTTP_STATUS_BY_CODE, type ApiErrorBody } from '@tandemise/api-contract';
 import { z } from 'zod';
 import type { Caller } from '@tandemise/application';
 
@@ -27,11 +27,24 @@ export interface RequestContext {
 export type Handler = (ctx: RequestContext) => Promise<unknown> | unknown;
 type Method = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
 
+/**
+ * Per-route overrides for the body reader. Almost every route wants the
+ * global cap and its generic message; the handful that accept a contribution
+ * (spec A1) want a larger cap and a message that names the limit a person
+ * can act on, rather than a byte count meant for a log.
+ */
+export interface RouteOptions {
+  readonly maxBodyBytes?: number;
+  readonly overflowMessage?: string;
+}
+
 interface Route {
   readonly method: Method;
   readonly segments: readonly string[];
   readonly handler: Handler;
   readonly pattern: string;
+  readonly maxBodyBytes: number;
+  readonly overflowMessage?: string;
 }
 
 /** Marks a response as already-written (used for file/blob streaming). */
@@ -41,13 +54,17 @@ export class Router {
   readonly #routes: Route[] = [];
 
   get(p: string, h: Handler): this { return this.#add('GET', p, h); }
-  post(p: string, h: Handler): this { return this.#add('POST', p, h); }
-  patch(p: string, h: Handler): this { return this.#add('PATCH', p, h); }
-  put(p: string, h: Handler): this { return this.#add('PUT', p, h); }
+  post(p: string, h: Handler, options?: RouteOptions): this { return this.#add('POST', p, h, options); }
+  patch(p: string, h: Handler, options?: RouteOptions): this { return this.#add('PATCH', p, h, options); }
+  put(p: string, h: Handler, options?: RouteOptions): this { return this.#add('PUT', p, h, options); }
   delete(p: string, h: Handler): this { return this.#add('DELETE', p, h); }
 
-  #add(method: Method, pattern: string, handler: Handler): this {
-    this.#routes.push({ method, pattern, handler, segments: pattern.split('/').filter(Boolean) });
+  #add(method: Method, pattern: string, handler: Handler, options: RouteOptions = {}): this {
+    this.#routes.push({
+      method, pattern, handler, segments: pattern.split('/').filter(Boolean),
+      maxBodyBytes: options.maxBodyBytes ?? MAX_BODY_BYTES,
+      overflowMessage: options.overflowMessage,
+    });
     return this;
   }
 
@@ -76,14 +93,34 @@ export class Router {
 
 const MAX_BODY_BYTES = 8 * 1024 * 1024;
 
-export async function readJsonBody(req: IncomingMessage): Promise<unknown> {
+/**
+ * The three routes that accept a contribution's bytes (mission uploads, a
+ * feedback attachment, a hand-back) declare this in place of the global cap
+ * (spec A1). `CONTRIBUTION_BASE64_MAX` (imported, not restated) is the base64
+ * length of a file at the 24 MB decoded cap; a request the schema would
+ * accept still carries a workspaceId, a goal or note, filenames and JSON
+ * punctuation around that, so this adds 1 MiB of headroom for the rest of
+ * the envelope rather than clipping a compliant upload at the byte count
+ * alone. The message cannot name a single file - the router cannot tell one
+ * oversized file from several that added up - so it speaks of "the files",
+ * matching `CONTRIBUTION_TOTAL_MESSAGE`'s tone; a single file over the limit
+ * still gets the more precise "That file is larger than 24 MB." from the
+ * schema or from `ContributionError('too_large', …)` when the request is
+ * small enough to reach either of them.
+ */
+export const CONTRIBUTION_BODY: RouteOptions = {
+  maxBodyBytes: CONTRIBUTION_BASE64_MAX + 1024 * 1024,
+  overflowMessage: 'The files you added are larger than 24 MB.',
+};
+
+export async function readJsonBody(req: IncomingMessage, maxBodyBytes = MAX_BODY_BYTES, overflowMessage?: string): Promise<unknown> {
   const chunks: Buffer[] = [];
   let total = 0;
   for await (const chunk of req) {
     const buf = chunk as Buffer;
     total += buf.length;
-    if (total > MAX_BODY_BYTES) {
-      throw TandemiseError.validation(`Request body exceeds ${MAX_BODY_BYTES} bytes.`);
+    if (total > maxBodyBytes) {
+      throw TandemiseError.validation(overflowMessage ?? `Request body exceeds ${maxBodyBytes} bytes.`);
     }
     chunks.push(buf);
   }
@@ -102,6 +139,7 @@ export function makeContext(
   query: URLSearchParams,
   log: Logger,
   resolveCaller: () => Caller,
+  bodyOptions: RouteOptions = {},
 ): RequestContext {
   let cached: unknown;
   let read = false;
@@ -115,7 +153,7 @@ export function makeContext(
       return caller;
     },
     async body<T>(schema: z.ZodType<T>): Promise<T> {
-      if (!read) { cached = await readJsonBody(req); read = true; }
+      if (!read) { cached = await readJsonBody(req, bodyOptions.maxBodyBytes, bodyOptions.overflowMessage); read = true; }
       // Only an absent body means "empty object"; an explicit JSON null is a value.
       const parsed = schema.safeParse(cached === undefined ? {} : cached);
       if (!parsed.success) {

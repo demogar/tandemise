@@ -24,9 +24,51 @@ export function isArtifactType(v: string): v is ArtifactType {
   return (ARTIFACT_TYPES as readonly string[]).includes(v);
 }
 
+/**
+ * What a person calls the types a stage can be covered by or continued
+ * elsewhere as. Named one by one rather than derived: the last word of the
+ * type name reads wrongly for half of them ("Brief" for a design, "Plan" for
+ * an implementation plan, "Set" for a change).
+ */
+const OUTPUT_TYPE_LABELS: Partial<Record<ArtifactType, string>> = {
+  ProductSpec: 'Spec',
+  ProblemBrief: 'Brief',
+  DesignBrief: 'Design',
+  ImplementationPlan: 'Implementation plan',
+  ChangeSet: 'Change',
+};
+
+/**
+ * A short, human name for an artifact type, for a place with room for a word
+ * or two: a spec covered by an upload is "Spec", not "ProductSpec". A type
+ * without a name of its own is its CamelCase split into words, capitalised
+ * only at the start ("ReviewReport" reads "Review report", "QAPlan" "QA plan").
+ */
+export function outputTypeLabel(type: ArtifactType): string {
+  const named = OUTPUT_TYPE_LABELS[type];
+  if (named !== undefined) return named;
+  // An acronym stays one word in capitals: "QAPlan" reads "QA plan".
+  const words = type.match(/[A-Z]{2,}(?![a-z])|[A-Z][a-z0-9]*/g);
+  if (words === null || words.length === 0) return type;
+  return [words[0] as string, ...words.slice(1).map((w) => (/^[A-Z]{2,}$/.test(w) ? w : w.toLowerCase()))].join(' ');
+}
+
 /** Where a handoff link points, so a card can say "open preview" rather than a bare URL. */
 export const HANDOFF_LINK_KINDS = ['workspace', 'preview', 'pr', 'doc', 'other'] as const;
 export type HandoffLinkKind = (typeof HANDOFF_LINK_KINDS)[number];
+
+/**
+ * One link on a handoff card (spec A5). Every kind but `workspace` must be a
+ * full http(s) URL, so a click always leaves the desktop; only `workspace`
+ * may instead (or also) carry a `path` into the repository or artifact root,
+ * which the daemon resolves rather than opening in a browser.
+ */
+export interface HandoffLink {
+  readonly label: string;
+  readonly url?: string;
+  readonly path?: string;
+  readonly kind: HandoffLinkKind;
+}
 
 /**
  * What a busy owner reads first, and often the only thing they read: a
@@ -40,7 +82,7 @@ export interface ArtifactHandoff {
   readonly points: readonly string[];
   readonly needs: string | null;
   readonly changed: readonly { readonly what: string; readonly feedback: string | null }[];
-  readonly links: readonly { readonly label: string; readonly url: string; readonly kind: HandoffLinkKind }[];
+  readonly links: readonly HandoffLink[];
 }
 
 /** A pointer to truth that lives in another system (MVP.md §15.3). */

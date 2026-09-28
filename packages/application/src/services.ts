@@ -3,7 +3,7 @@ import type {
   TaskId, WorkspaceId,
 } from '@tandemise/shared';
 import type {
-  Approval, ArtifactManifest, ExecutionTargetRecord, Mission, RoleStaffing, RoleTemplate,
+  Approval, ArtifactManifest, ExecutionTargetRecord, FeedbackAttachment, Mission, OutsideContribution, PullRequestSnapshot, RoleStaffing, RoleTemplate,
   RunEventRecord, RuntimeProfile, StaffingPatch,
 } from '@tandemise/domain';
 import type {
@@ -12,7 +12,7 @@ import type {
   ConnectIntegrationRequest, ConnectionAttemptView, ConnectorView,
   IntegrationView, MissionDetail, MissionSummary, RepositoryProbe, RuntimeDiscoveryView,
   RuntimeView, SystemInfo, TaskView, UpdateWorkspaceRequest, UpsertRoleRequest, WorkspaceView,
-  ClaimTaskRequest, CompleteTaskRequest,
+  ClaimTaskRequest, CompleteTaskRequest, HandBackRequest, ParkTaskRequest,
   WorkflowSummary,
   AddMemberRequest, ArtifactView, CreatePersonRequest, MeView, MemberView, PersonView, StaffingPreviewView,
   TeamView, UpdateMemberRequest, UpdatePersonRequest, MissionArtifactView, MissionFeedView, ArtifactReadView,
@@ -66,6 +66,55 @@ export interface TandemiseServices {
   readonly issues: import('./services/issue-service.js').IssueService;
   /** The project's setup as files in a repository (P15). */
   readonly setup: import('./services/setup-service.js').SetupService;
+  /** Files and links handed in from outside a mission, pinned as Evidence (P3). */
+  readonly contributions: ContributionService;
+}
+
+/** One contribution pinned as Evidence, with what a caller needs to type it next. */
+export interface PinnedContribution {
+  /** Always type `Evidence`, content-addressed and never changed after this. */
+  readonly evidence: ArtifactManifest;
+  readonly filename: string;
+  readonly mediaType: string;
+  /** Set when a link was read as a pull request, so a hand-back can carry its head ref. */
+  readonly resolved: PullRequestSnapshot | null;
+  /** The checkout a pull request's head was made a local branch in, when it was. */
+  readonly repositoryPath: string | null;
+}
+
+/** Outside contributions (spec A1, A5). */
+export interface ContributionService {
+  /**
+   * Pins one contribution as Evidence with its ExternalRefs, authored by the
+   * caller's member or `onBehalfOf` and recorded by the caller's (spec A6).
+   * A pull request's head is fetched into `tandemise/pr-<n>` in the checkout
+   * that read it and recorded as its `git.branch`.
+   * Throws ContributionError('unreadable_link' | 'too_large' | 'empty'), or
+   * 'unfetchable_pull_request' when `requireBranch` and the head could not be fetched.
+   */
+  pin(input: {
+    missionId: MissionId; taskId?: TaskId | null; caller: Caller;
+    /** A member id, as every other `onBehalfOf` in the API. */
+    onBehalfOf?: string | null;
+    contribution: OutsideContribution;
+    /** A change handed back (a ChangeSet step) is refused, writing nothing, when a pull request's head cannot be fetched. */
+    requireBranch?: boolean;
+  }): Promise<PinnedContribution>;
+  /**
+   * Resolves a workspace link path to an absolute path inside one of the
+   * workspace's repository roots or its artifact root; throws
+   * ContributionError('outside_workspace') for anything else.
+   */
+  resolveWorkspacePath(workspaceId: WorkspaceId, path: string): Promise<string>;
+  /**
+   * Hands a step's own worktree branches to a pull request's head: each
+   * worktree is removed (`--force`; the hand-back replaced its work) and its
+   * branch forced to `commit`, so the step's next agent round builds on the
+   * pull request. Returns what could not be done, in words; never throws.
+   */
+  adoptPullRequestHead(input: {
+    repositoryPath: string; commit: string; worktrees: readonly { readonly directory: string; readonly branch: string }[];
+  }): Promise<readonly string[]>;
 }
 
 /** Making a rough request ready to plan (P6). Every write is refused once the mission has left DRAFT. */
@@ -133,6 +182,24 @@ export interface MissionService {
   completeTask(caller: Caller, taskId: TaskId, request: CompleteTaskRequest): Promise<TaskView>;
   /** A person takes an unassigned human task, for themselves or for the member named. */
   claimTask(caller: Caller, taskId: TaskId, request: ClaimTaskRequest): Promise<TaskView>;
+  /**
+   * "Continue elsewhere" (spec A4): parks an agent step with a linkable output
+   * as AWAITING_EXTERNAL, stopping its live run. CONFLICT with the reason when
+   * the step cannot be parked.
+   */
+  parkTask(taskId: TaskId, caller: Caller, request: ParkTaskRequest): Promise<TaskView>;
+  /**
+   * "Take it back": calls a park off. The step goes back to READY and runs
+   * again; the work the park held waits for it. CONFLICT, writing nothing,
+   * unless the step is parked and its mission still open.
+   */
+  unparkTask(taskId: TaskId, caller: Caller): Promise<TaskView>;
+  /**
+   * "Hand back" (spec A4): the person's contribution becomes the parked step's
+   * next round, written as its expected outputs. CONFLICT, with nothing
+   * written, unless the step is parked and its mission still open.
+   */
+  handBack(taskId: TaskId, caller: Caller, request: HandBackRequest): Promise<{ task: TaskView; artifacts: ArtifactManifest[] }>;
 }
 
 export interface PlanningService {
@@ -149,6 +216,12 @@ export interface PlanningService {
   abandon(id: MissionId): void;
   /** Whether a planner is running for the mission in this daemon (P9: a PLANNING mission without one is stalled). */
   isPlanning(id: MissionId): boolean;
+  /**
+   * Converts the mission's uploads once (spec A2), at the first refinement or
+   * planning, and returns the intake artifacts a plan may skip a stage for.
+   * Idempotent and never throws.
+   */
+  ensureIntake(id: MissionId): Promise<readonly ArtifactManifest[]>;
 }
 
 export interface ApprovalService {
@@ -165,6 +238,8 @@ export interface ArtifactService {
   read(id: ArtifactId): Promise<ArtifactReadView>;
   /** Omit the workspace to search the whole install. Current versions only unless `includeSuperseded`. */
   search(workspaceId: WorkspaceId | undefined, query: string, options?: { includeSuperseded?: boolean }): readonly ArtifactView[];
+  /** Absolute path to the artifact's body on disk, for "reveal" and attaching an Evidence file to a runtime. */
+  path(id: ArtifactId): string;
 }
 
 export interface RuntimeService {
@@ -252,14 +327,25 @@ export interface PendingFeedback {
 
 export interface FeedbackService {
   /** Spec §2's table decides what happens; see `feedbackEffectFor`. */
-  give(caller: Caller, taskId: TaskId, request: GiveFeedbackRequest, options?: { readonly forceDownstream?: 'keep' }): FeedbackGivenView;
+  give(
+    caller: Caller, taskId: TaskId, request: GiveFeedbackRequest,
+    options?: { readonly forceDownstream?: 'keep'; readonly attachments?: readonly FeedbackAttachment[] },
+  ): FeedbackGivenView;
+  /**
+   * `give` for a note with attachments (spec A3): its files are pinned as
+   * Evidence on the task first, which `give` cannot do synchronously.
+   */
+  giveWithAttachments(caller: Caller, taskId: TaskId, request: GiveFeedbackRequest): Promise<FeedbackGivenView>;
   /**
    * `give`'s writes alone, for a caller with a unit of its own (a retry that
    * also widens access). It must call `afterGive` once that unit has committed:
    * stopping a pass or waking the scheduler before then acts on a round that
    * may still roll back.
    */
-  beginGive(caller: Caller, taskId: TaskId, request: GiveFeedbackRequest, options?: { readonly forceDownstream?: 'keep' }): PendingFeedback;
+  beginGive(
+    caller: Caller, taskId: TaskId, request: GiveFeedbackRequest,
+    options?: { readonly forceDownstream?: 'keep'; readonly attachments?: readonly FeedbackAttachment[] },
+  ): PendingFeedback;
   afterGive(pending: PendingFeedback): FeedbackGivenView;
   /** Confirms a round that waited on the downstream choice. */
   startRound(caller: Caller, taskId: TaskId, request: StartRoundRequest): TaskView;

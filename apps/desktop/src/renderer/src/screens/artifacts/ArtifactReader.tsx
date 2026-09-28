@@ -8,6 +8,10 @@ import { Empty, ErrorState, IdChip, Skeleton } from '../../components/primitives
 import { useArtifact, useMission } from '../../lib/queries.js';
 import { Attribution } from '../../components/ActorChip.js';
 import { RequestChangesButton } from '../../components/RequestChanges.js';
+import { HandoffLinkButton, openableLinks } from '../../components/HandoffLinks.js';
+import { useDaemon } from '../../lib/connection.js';
+import { describeError } from '../../lib/daemon.js';
+import { showFlash } from '../../lib/notices.js';
 import { actorLabel, useActors, type Actors } from '../../lib/team.js';
 import { bytes, dateTime, pluralize, titleCase } from '../../lib/format.js';
 import { lineDiff, type DiffLine } from '../../lib/line-diff.js';
@@ -73,8 +77,7 @@ function ReaderDocument({ view, onVersion }: { view: ArtifactReadView; onVersion
   const showVersion = versions.length <= 1 && ((manifest.version ?? 1) > 1 || (manifest.supersededBy ?? null) !== null);
   // Output a round overtook before it was judged: without this it would read as the latest version.
   const setAside = (view.withdrawnAt ?? null) !== null;
-  // Only http(s) leaves the app: the main process refuses anything else, and a button that does nothing is worse than none.
-  const links = (handoff?.links ?? []).filter((link) => /^https?:\/\//i.test(link.url));
+  const links = openableLinks(handoff?.links);
   // `needs` asks the person the request is for; anyone else is told who it waits on, as the feed does.
   // Read defensively: the offline mock serves read views without it.
   const waitingOn = handoff?.needs ? waitingFor(view.openRequest ?? null, actors) : null;
@@ -136,16 +139,7 @@ function ReaderDocument({ view, onVersion }: { view: ArtifactReadView; onVersion
         {links.length > 0 ? (
           <div className="handoff__links">
             {links.map((link) => (
-              <button
-                key={`${link.label}-${link.url}`}
-                type="button"
-                className="btn"
-                title={link.url}
-                onClick={() => void window.tandemise.openExternal(link.url)}
-              >
-                {link.label}
-                <Icon name="externalLink" size={12} />
-              </button>
+              <HandoffLinkButton key={`${link.label}-${link.url ?? link.path}`} link={link} workspaceId={manifest.workspaceId} icon />
             ))}
           </div>
         ) : null}
@@ -240,12 +234,36 @@ function ReaderDocument({ view, onVersion }: { view: ArtifactReadView; onVersion
           <span>
             This artifact is <span className="mono">{manifest.mediaType}</span> and cannot be shown inline.
           </span>
-          <button type="button" className="btn" onClick={() => void window.tandemise.revealInFinder(manifest.contentRef)}>
-            Reveal in Finder
-          </button>
+          <RevealButton artifactId={manifest.id} />
         </div>
       )}
     </article>
+  );
+}
+
+/**
+ * "Reveal in Finder" for a body the reader cannot show. The stored `contentRef`
+ * is relative to the artifact store, which Finder cannot place, so the daemon
+ * resolves the absolute path first (spec A5).
+ */
+function RevealButton({ artifactId }: { artifactId: string }): JSX.Element {
+  const daemon = useDaemon();
+  const [busy, setBusy] = useState(false);
+  const reveal = async (): Promise<void> => {
+    setBusy(true);
+    try {
+      const { path } = await daemon.artifactPath(artifactId);
+      await window.tandemise.revealInFinder(path);
+    } catch (error) {
+      showFlash(describeError(error).detail);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <button type="button" className="btn" disabled={busy} onClick={() => void reveal()}>
+      Reveal in Finder
+    </button>
   );
 }
 
@@ -258,6 +276,8 @@ function ReaderRequestChanges({ taskId, missionId, artifactId, title }: { taskId
   const task = mission.data?.tasks.find((t) => t.id === taskId);
   // A wait step reads no notes; a mission that fails to load still lets the note be sent, named after the document.
   if (task?.executor === 'wait') return null;
+  // A stage your upload covers has no round to take a note: the daemon refuses one, so the button is not offered.
+  if (task?.coveredBy) return null;
   return (
     <span className="reader__request">
       <RequestChangesButton

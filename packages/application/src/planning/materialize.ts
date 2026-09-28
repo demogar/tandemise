@@ -1,7 +1,8 @@
 import type { MissionId, Clock, RepositoryId } from '@tandemise/shared';
 import { TandemiseError, ids } from '@tandemise/shared';
 import type { ArtifactHandoff, MissionPlan, MissionTask, PlannedTask, Repository, SkillPin } from '@tandemise/domain';
-import { planGateProblems } from '@tandemise/domain';
+import { DEFAULT_RETRY_POLICY, NO_APPROVAL, outputTypeLabel, planGateProblems } from '@tandemise/domain';
+import { COVERED_PREFIX } from '../support/outside-work.js';
 
 /**
  * Turns an accepted plan into the task rows the scheduler runs.
@@ -34,12 +35,100 @@ export function materializePlan(
   // same repository as `beveloce-web`, and failing over capitalisation would be
   // a needless way to lose a plan.
   const byName = new Map(repositories.map((r) => [r.name.toLowerCase(), r.id]));
-  const tasks = options.inferInputs === true ? withInferredInputs(plan.tasks) : plan.tasks;
-  return tasks.map((task, index) => {
-    const made = fromPlanned(task, missionId, index, now, byName);
+  const inferred = options.inferInputs === true ? withInferredInputs(plan.tasks) : plan.tasks;
+  const placeholders = skippedPlaceholders(plan, inferred, options.uploadFilename);
+  const tasks = withPlaceholderDependencies(inferred, placeholders);
+  // The placeholders come first: they are upstream of whatever reads their type.
+  const skipped = placeholders.map(({ task, reason }, index) => ({
+    ...fromPlanned(task, missionId, index, now, byName),
+    status: 'SKIPPED' as const,
+    statusReason: reason,
+    finishedAt: now,
+  }));
+  return [...skipped, ...tasks.map((task, index) => {
+    const made = fromPlanned(task, missionId, skipped.length + index, now, byName);
     // P13: the pins are resolved now, so `latest` means the newest version when the task was created.
     return options.skills === undefined ? made : { ...made, skills: options.skills(task) };
+  })];
+}
+
+/**
+ * One `SKIPPED` task per stage the planner left out because an upload covers
+ * it (spec A2). There is no stored plan JSON, so this row is the skip's only
+ * record: it carries the stage's output type, which makes it the producer the
+ * graph needs, and says whose upload stands in for the work.
+ */
+function skippedPlaceholders(
+  plan: MissionPlan,
+  tasks: readonly PlannedTask[],
+  uploadFilename: ((artifactId: string) => string | undefined) | undefined,
+): readonly { readonly task: PlannedTask; readonly reason: string }[] {
+  const taken = new Set(tasks.map((t) => t.key));
+  return (plan.skipped ?? []).map((skip) => {
+    const key = uniqueKey(skip.stage, taken);
+    taken.add(key);
+    const filename = uploadFilename?.(skip.artifactId) ?? skip.artifactId;
+    return {
+      reason: `${COVERED_PREFIX} ${filename}`,
+      task: {
+        key,
+        // A plain human name for the stage - "Spec", not the planner's raw role
+        // id and not the "(covered by your upload)" phrase the Plan tab's
+        // covered row already adds once on its own (spec A2).
+        title: outputTypeLabel(skip.outputType),
+        objective: skip.reason.length > 0 ? skip.reason : `Covered by the upload ${filename}.`,
+        roleId: skip.stage,
+        dependsOn: [],
+        requiredCapabilities: [],
+        inputArtifacts: [],
+        expectedOutputs: [skip.outputType],
+        executionPolicy: { isolation: 'none', maxWallTimeMs: 60_000, capabilities: [] },
+        approvalPolicy: NO_APPROVAL,
+        retryPolicy: DEFAULT_RETRY_POLICY,
+        completionGate: null,
+      },
+    };
   });
+}
+
+/**
+ * Every task that reads a skipped stage's type waits on its placeholder, so
+ * the graph shows where that input comes from. A task that would otherwise
+ * start the plan (it depends on nothing) waits on every placeholder and may
+ * read each one's type: it stands where the skipped stage stood, and a planner
+ * that left `inputArtifacts` out would otherwise start it without the upload
+ * that replaced the stage before it. Optional, since the planner did not ask
+ * for it by name.
+ */
+function withPlaceholderDependencies(
+  tasks: readonly PlannedTask[],
+  placeholders: readonly { readonly task: PlannedTask }[],
+): readonly PlannedTask[] {
+  if (placeholders.length === 0) return tasks;
+  return tasks.map((task) => {
+    if (task.dependsOn.length === 0) {
+      const types = [...new Set(placeholders.flatMap(({ task: p }) => p.expectedOutputs))]
+        .filter((type) => !task.inputArtifacts.some((r) => r.type === type));
+      return {
+        ...task,
+        dependsOn: placeholders.map(({ task: p }) => p.key),
+        inputArtifacts: [...task.inputArtifacts, ...types.map((type) => ({ type, required: false }))],
+      };
+    }
+    const extra = placeholders
+      .filter(({ task: p }) => task.inputArtifacts.some((r) => p.expectedOutputs.includes(r.type)) && !task.dependsOn.includes(p.key))
+      .map(({ task: p }) => p.key);
+    return extra.length === 0 ? task : { ...task, dependsOn: [...task.dependsOn, ...extra] };
+  });
+}
+
+/** The stage as a task key, made unique: a planner may name a stage the way a role is named, or loosely. */
+function uniqueKey(stage: string, taken: ReadonlySet<string>): string {
+  const base = stage.toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '') || 'skipped';
+  const start = /^[a-z0-9]/.test(base) ? base : `s_${base}`;
+  let key = start;
+  for (let n = 2; taken.has(key); n++) key = `${start}_${n}`;
+  return key;
 }
 
 export interface MaterializeOptions {
@@ -57,6 +146,8 @@ export interface MaterializeOptions {
    * resolve their role's pins on their first run.
    */
   readonly skills?: (task: PlannedTask) => readonly SkillPin[];
+  /** The filename behind an intake artifact, for a skipped stage's placeholder (spec A2). */
+  readonly uploadFilename?: (artifactId: string) => string | undefined;
 }
 
 function withInferredInputs(tasks: readonly PlannedTask[]): readonly PlannedTask[] {
@@ -169,6 +260,10 @@ export function renderPlanDocument(plan: MissionPlan, missionTitle: string, hand
     plan.summary.trim().length > 0 ? plan.summary.trim() : `${plan.tasks.length} tasks.`,
     '',
   ];
+
+  for (const skip of plan.skipped ?? []) {
+    lines.push(`## ${skip.stage} — covered by your upload`, '', `- Produces: ${skip.outputType}, from artifact ${skip.artifactId}`, '', skip.reason, '');
+  }
 
   for (const task of plan.tasks) {
     lines.push(

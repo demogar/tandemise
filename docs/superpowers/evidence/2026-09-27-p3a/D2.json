@@ -1,0 +1,169 @@
+{
+  "id": "D2",
+  "title": "Continue elsewhere on a design step: waiting for your work in Figma",
+  "ok": true,
+  "checks": [
+    {
+      "label": "the dialog says the agent stops and dependent work waits",
+      "ok": true,
+      "observed": "Continue design elsewhere\n\nThe agent stops, and work that needs this step waits until you hand it back.\n\nWhere you will work on it\nCancel\nContinue elsewhere"
+    },
+    {
+      "label": "the tool is prefilled with Figma for a design step",
+      "ok": true,
+      "observed": "Figma"
+    },
+    {
+      "label": "proof (API): the step is AWAITING_EXTERNAL, parked in Figma, \"Continued in Figma\"",
+      "ok": true,
+      "observed": {
+        "status": "AWAITING_EXTERNAL",
+        "parkedExternal": {
+          "tool": "Figma",
+          "since": "2026-09-27T23:06:06.349Z"
+        },
+        "statusReason": "Continued in Figma"
+      }
+    },
+    {
+      "label": "the design card says \"Waiting for your work in Figma\"",
+      "ok": true,
+      "observed": "PRODUCT DESIGNER\ndesign\nWaiting\njust now\nby\nDesign agent\n·\nresponsible\nYou\nRequest changes\n\nContinued in Figma\n\nWaiting for your work in Figma\nTake it back\nHand back"
+    },
+    {
+      "label": "the card offers Hand back, and no longer Continue elsewhere",
+      "ok": true,
+      "observed": "PRODUCT DESIGNER\ndesign\nWaiting\njust now\nby\nDesign agent\n·\nresponsible\nYou\nRequest changes\n\nContinued in Figma\n\nWaiting for your work in Figma\nTake it back\nHand back"
+    },
+    {
+      "label": "the running pass was stopped, and the step is still parked afterwards (not CANCELLED)",
+      "ok": true,
+      "observed": {
+        "runs": [
+          "CANCELLED"
+        ],
+        "status": "AWAITING_EXTERNAL"
+      }
+    },
+    {
+      "label": "the timeline shows \"Continued in Figma\"",
+      "ok": true,
+      "observed": "Designer started\nScripted agent on local:/private/var/folders/dh/glpvvh110393gdzjc_v2x1sr0000gn/T/tdm-p3-run-mukffeqa/project\n06:06:02 PM\n·\nDesign agent\nProduct Designer task is now Awaiting external\nContinued in Figma\n06:06:06 PM\n·\nYou\nContinued in Figma\n06:0"
+    },
+    {
+      "label": "the raw log shows task.parked_external {\"tool\":\"Figma\"}",
+      "ok": true,
+      "observed": "task.parked_external {\"tool\":\"Figma\"}"
+    },
+    {
+      "label": "proof (API): the Desk's \"needs you\" count went up by one",
+      "ok": true,
+      "observed": {
+        "before": 0,
+        "after": 1
+      }
+    },
+    {
+      "label": "the Desk's \"Needs you\" card on Home counts one more",
+      "ok": true,
+      "observed": {
+        "before": "Needs you\n0\nNothing waits on you",
+        "after": "Needs you\n1\nDecisions and steps in your inbox"
+      }
+    },
+    {
+      "label": "the Inbox lists it as \"Waiting for your work in Figma\", with Hand back",
+      "ok": true,
+      "observed": "Waiting for your work in Figma\ndesign·Hello page, taken to Figma SCRIPTED_SLOW_20S\nHand back\njust now"
+    },
+    {
+      "label": "build has not started: it waits for the design",
+      "ok": true,
+      "observed": {
+        "status": "PENDING",
+        "statusReason": null
+      }
+    },
+    {
+      "label": "proof (API): parked in Figma; the build waits",
+      "ok": true,
+      "observed": {
+        "parked": {
+          "tool": "Figma",
+          "since": "2026-09-27T23:06:22.043Z"
+        },
+        "build": [
+          "PENDING",
+          null
+        ]
+      }
+    },
+    {
+      "label": "the parked card offers Take it back next to Hand back",
+      "ok": true,
+      "observed": "PRODUCT DESIGNER\ndesign\nWaiting\njust now\nby\nDesign agent\n·\nresponsible\nYou\nRequest changes\n\nContinued in Figma\n\nWaiting for your work in Figma\nTake it back\nHand back"
+    },
+    {
+      "label": "the window says \"Taken back from Figma\"",
+      "ok": true,
+      "observed": "Taken back from Figma"
+    },
+    {
+      "label": "proof (API): the design is no longer parked and goes back to the agent",
+      "ok": true,
+      "observed": {
+        "status": "RUNNING",
+        "statusReason": null
+      }
+    },
+    {
+      "label": "proof (API): the build no longer waits on Figma",
+      "ok": true,
+      "observed": {
+        "status": "PENDING",
+        "statusReason": null
+      }
+    },
+    {
+      "label": "the card no longer says it waits for your work in Figma",
+      "ok": true,
+      "observed": "PRODUCT DESIGNER\ndesign\nRunning\njust now\nby\nDesign agent\n·\nresponsible\nYou\nContinue elsewhere\nRequest changes"
+    },
+    {
+      "label": "proof (API): the agent ran the design again and it succeeded",
+      "ok": true,
+      "observed": {
+        "status": "SUCCEEDED",
+        "runs": [
+          "CANCELLED",
+          "SUCCEEDED"
+        ]
+      }
+    },
+    {
+      "label": "proof (API): the build was released once the design was done",
+      "ok": true,
+      "observed": {
+        "status": "RUNNING",
+        "statusReason": null,
+        "runCount": 1
+      }
+    },
+    {
+      "label": "the timeline shows \"Taken back from Figma\" after \"Continued in Figma\"",
+      "ok": true,
+      "observed": "esign agent\nProduct Designer task is now Awaiting external\nContinued in Figma\n06:06:22 PM\n·\nYou\nContinued in Figma\n06:06:22 PM\n·\nYou\nProduct Designer stopped\nRun cancelled\n06:06:22 PM\n·\nDesign agent\nProduct Designer run cancelled\nTook 3s\n06:06:22 PM\n·\nDesign agent\nProduct Designer task is now Ready\nTaken back from Figma.\n06:06:24 PM\n·\nYou\nTaken back from Figma\n06:06:24 PM\n·\nYou"
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-p3/docs/superpowers/evidence/2026-09-27-p3a/D2-continue-dialog.png",
+    "/Users/demogar/projects/tandemise/tandemise-p3/docs/superpowers/evidence/2026-09-27-p3a/D2-parked-card.png",
+    "/Users/demogar/projects/tandemise/tandemise-p3/docs/superpowers/evidence/2026-09-27-p3a/D2-timeline.png",
+    "/Users/demogar/projects/tandemise/tandemise-p3/docs/superpowers/evidence/2026-09-27-p3a/D2-timeline-raw.png",
+    "/Users/demogar/projects/tandemise/tandemise-p3/docs/superpowers/evidence/2026-09-27-p3a/D2-desk.png",
+    "/Users/demogar/projects/tandemise/tandemise-p3/docs/superpowers/evidence/2026-09-27-p3a/D2-inbox.png",
+    "/Users/demogar/projects/tandemise/tandemise-p3/docs/superpowers/evidence/2026-09-27-p3a/D2-take-it-back-card.png",
+    "/Users/demogar/projects/tandemise/tandemise-p3/docs/superpowers/evidence/2026-09-27-p3a/D2-take-it-back-timeline.png"
+  ]
+}

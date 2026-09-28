@@ -1,4 +1,4 @@
-import type { Approval, ArtifactType, CriterionResult, LimitMetric, MissionPriority, MissionStatus, RoutineTemplate, TandemiseEventBody } from '@tandemise/domain';
+import type { Approval, ArtifactType, CriterionResult, LimitMetric, MissionPriority, MissionStatus, RoutineTemplate, TaskStatus, TandemiseEventBody } from '@tandemise/domain';
 
 /**
  * The handful of *runtime* values the renderer needs from the domain.
@@ -71,6 +71,10 @@ const SEMANTIC: Readonly<Record<TandemiseEventBody['type'], boolean>> = {
   'feedback.dismissed': true,
   'task.round_started': true,
   'mission.pulled': true,
+  'task.parked_external': true,
+  'task.unparked': true,
+  'task.handed_back': true,
+  'mission.intake_completed': true,
   note: true,
 };
 
@@ -272,6 +276,30 @@ export function skillsLine(task: {
   const pinned = task.skills ?? [];
   if (pinned.length === 0) return null;
   return `Skills (pinned): ${pinned.map(skillPinLabel).join(', ')}`;
+}
+
+/**
+ * P3 outside contributions. Mirrors `CONTRIBUTION_MAX_BYTES` (entities/contribution.ts)
+ * and the request schema's two refusals word for word, so a file the daemon would
+ * refuse is refused in the picker first, in the same words.
+ */
+export const CONTRIBUTION_MAX_BYTES = 24 * 1024 * 1024;
+export const CONTRIBUTION_FILE_MESSAGE = 'That file is larger than 24 MB.';
+export const CONTRIBUTION_TOTAL_MESSAGE = 'These files add up to more than 24 MB. Add the rest later as feedback.';
+
+/**
+ * What "Continue elsewhere" may take (spec A4). Mirrors `LINKABLE_OUTPUT_TYPES`
+ * and the park rule's statuses in the application layer; the daemon still
+ * decides, and says why when it refuses.
+ */
+export const LINKABLE_OUTPUT_TYPES: readonly ArtifactType[] = ['DesignBrief', 'ChangeSet', 'ImplementationPlan', 'ProductSpec'];
+export const PARKABLE_TASK_STATUSES: readonly TaskStatus[] = ['READY', 'RUNNING', 'SUCCEEDED'];
+
+/** Where the work most likely goes next, prefilled in "Continue elsewhere" and editable there: a design in Figma, code or a plan in Cursor, a spec in Google Docs. */
+export function defaultElsewhereTool(outputs: readonly ArtifactType[]): string {
+  if (outputs.includes('DesignBrief')) return 'Figma';
+  if (outputs.includes('ChangeSet') || outputs.includes('ImplementationPlan')) return 'Cursor';
+  return 'Google Docs';
 }
 
 export const API_VERSION = 'v1';

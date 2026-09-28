@@ -163,4 +163,16 @@ export class ArtifactServiceImpl implements ArtifactService {
       : this.workspaces.list().flatMap((w) => this.artifacts.search(w.id, trimmed, SEARCH_LIMIT, options)).slice(0, SEARCH_LIMIT);
     return found.map((a) => toArtifactView({ members: this.members }, a));
   }
+
+  /**
+   * The blob's absolute path (spec A4/A5): "reveal in Finder" and attaching an
+   * Evidence file to the runtime a hand-back was continued in. The row alone
+   * is enough - `resolvePath` needs only the manifest, not the body itself -
+   * so this never touches the file the way `read` does.
+   */
+  path(id: ArtifactId): string {
+    const row = this.artifacts.get(id);
+    if (row === undefined) throw TandemiseError.notFound('Artifact', id);
+    return this.store.resolvePath(row);
+  }
 }
