@@ -6,6 +6,7 @@ import { useWorkspace } from '../lib/workspace.js';
 import { useConnection } from '../lib/connection.js';
 import type { StreamState } from '../lib/stream.js';
 import type { Tone } from '../lib/format.js';
+import { evalsHref } from '../screens/evals/link.js';
 
 interface NavEntry {
   readonly href: string;
@@ -31,7 +32,9 @@ const PROJECT: readonly NavEntry[] = [
   { href: '/project', label: 'Repositories', icon: 'folder' },
   { href: '/team', label: 'Team', icon: 'workforce' },
   { href: '/skills', label: 'Skills', icon: 'book' },
-  { href: '/evals', label: 'Evals', icon: 'target' },
+  // An explicit query: the hash router keeps a query until a link names one, so a bare
+  // `/evals` would reopen whatever an earlier deep link left there.
+  { href: evalsHref({ tab: 'suites' }), label: 'Evals', icon: 'target' },
   { href: '/runtimes', label: 'Runtimes', icon: 'runtimes' },
   { href: '/integrations', label: 'Integrations', icon: 'integrations' },
 ];
@@ -113,6 +116,8 @@ function NavLink({ entry, active, count }: { entry: NavEntry; active: boolean; c
   );
 }
 
-function isActive(location: string, href: string): boolean {
+function isActive(location: string, target: string): boolean {
+  // The query is not part of the route: `/evals?tab=suites` is active on `/evals`.
+  const href = target.split('?')[0] ?? target;
   return href === '/' ? location === '/' : location === href || location.startsWith(`${href}/`);
 }

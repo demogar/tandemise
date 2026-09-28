@@ -306,6 +306,26 @@ try {
   check('trying a setup applies nothing', JSON.stringify(await role()) === roleBefore);
   await shot('16-setup-candidate-prefilled');
 
+  // A deep link's candidate is used once: leave by the sidebar without Cancel, come back by the sidebar
+  // (and after a reload), and the old candidate must not reopen the form.
+  const sidebarTo = (label) => press(label, '.sidebar__nav');
+  const formWithFolder = () => page.evaluate(`(document.querySelector('main [aria-label="New run"]')?.innerText ?? '').includes(${JSON.stringify(env.project)})`);
+  check('the link left no candidate in the query', !(await page.evaluate(`/candidate=|new=1/.test(location.search)`)), await page.evaluate('location.search'));
+  await sidebarTo('Missions');
+  await sidebarTo('Evals');
+  await waitFor('Suites');
+  check('the sidebar marks Evals active on its query link', await page.evaluate(`[...document.querySelectorAll('.sidebar__nav a[aria-current="page"]')].map((a) => a.innerText.trim()).join() === 'Evals'`));
+  check('back by the sidebar opens Suites', await page.evaluate(`document.querySelector('.tabs [aria-selected="true"]')?.innerText.trim() === 'Suites'`));
+  await press('Runs', '.tabs');
+  await sleep(800);
+  check('the old candidate does not reopen the run form', !(await formWithFolder()) && !(await has('Start run')));
+  await page.evaluate('location.reload()');
+  await sleep(1500);
+  await page.waitForText('Daemon connected', { timeoutMs: 60_000 });
+  await sleep(800);
+  check('nor after a reload', !(await formWithFolder()) && !(await has('Start run')));
+  await shot('16b-back-to-evals-no-stale-candidate');
+
   // -------------------------------------------------------------- try on evals: skills
   log('try on evals: skills');
   await go('#/skills');
