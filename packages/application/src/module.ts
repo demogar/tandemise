@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { defineModule, type Container, type Resolver, type TandemiseModule } from '@tandemise/kernel';
 import type { Clock, Logger, TandemisePaths } from '@tandemise/shared';
 import { TandemiseError, asId, createPaths, nullLogger, systemClock } from '@tandemise/shared';
@@ -856,27 +855,17 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       gates: r.resolve(t.GATE_SERVICE),
     }), { source: SOURCE });
 
-    // Default: in memory. Content-addressed eval case inputs (P3b) are really
-    // disk under the daemon, which rebinds this the way it rebinds WORKFLOW_SOURCE
-    // and SETUP_FOLDER; a harness without a filesystem still composes.
-    bind(t.EVAL_BLOBS, () => {
-      const store = new Map<string, Uint8Array>();
-      return {
-        async put(bytes: Uint8Array): Promise<string> {
-          const sha256 = createHash('sha256').update(bytes).digest('hex');
-          if (!store.has(sha256)) store.set(sha256, bytes);
-          return sha256;
-        },
-        async get(sha256: string): Promise<Uint8Array | null> {
-          const bytes = store.get(sha256);
-          if (bytes === undefined) return null;
-          return createHash('sha256').update(bytes).digest('hex') === sha256 ? bytes : null;
-        },
-        async has(sha256: string): Promise<boolean> {
-          return store.has(sha256);
-        },
-      };
-    }, { source: SOURCE });
+    // Default: fails loudly, the way ISSUE_TRACKER's default does. Content-addressed
+    // eval case inputs (P3b) are really disk under the daemon, which rebinds this;
+    // a working in-memory default would let a composition that forgot to rebind
+    // silently lose a case's inputs instead of telling anyone.
+    bind(t.EVAL_BLOBS, () => ({
+      put: async (): Promise<string> => {
+        throw new TandemiseError('INTEGRATION_FAILED', 'Eval inputs cannot be stored in this build.');
+      },
+      get: async (): Promise<Uint8Array | null> => null,
+      has: async (): Promise<boolean> => false,
+    }), { source: SOURCE });
 
     bind(t.EVAL_SERVICE, (r) => new EvalService({
       evals: r.resolve(t.EVAL_REPOSITORY),

@@ -1,5 +1,5 @@
 import type {
-  ArtifactRepositoryPort, ArtifactStorePort, DecisionRepositoryPort, EvalBlobPort, EvalCase, EvalCaseCriterion,
+  ArtifactManifest, ArtifactRepositoryPort, ArtifactStorePort, DecisionRepositoryPort, EvalBlobPort, EvalCase, EvalCaseCriterion,
   EvalCaseInput, EvalCaseProvenance, EvalCaseSnapshot, EvalRepositoryPort, EvalSuite, GateExpression, Mission,
   MissionCriteriaRepositoryPort, MissionQuestionRepositoryPort, MissionRepositoryPort, MissionTask, RepoRepositoryPort,
   Repository, Run, RunInputRepositoryPort, RunRepositoryPort, RunScoreRepositoryPort, TaskRepositoryPort, WorkspaceRepositoryPort,
@@ -87,10 +87,13 @@ export class EvalService {
   }
 
   /**
-   * Freezes a finished, gated step as a replayable case (spec B2). Every
-   * refusal below is checked, in order, before anything is written: a case
-   * that fails halfway through - inputs copied, name rejected - would leave a
-   * blob no case ever points to and, worse, a suite nobody asked for.
+   * Freezes a finished, gated step as a replayable case (spec B2), in two
+   * phases: first everything is read and validated - including reading each
+   * input's bytes, but never storing them - and only once every refusal has
+   * had its chance does anything get written: each input into the blob
+   * store, then the suite (if new), then the case itself. A case that failed
+   * halfway through - inputs copied, name rejected - would leave a blob no
+   * case ever points to and, worse, a suite nobody asked for.
    */
   async saveCase(
     taskId: TaskId,
@@ -114,19 +117,32 @@ export class EvalService {
     if (repository === undefined) throw new EvalError('base_unresolved', BASE_UNRESOLVED_MESSAGE);
     const baseSha = await this.#resolveBaseSha(task, mission, repository);
 
-    const inputs = await this.#collectInputs(firstRun.id);
+    // Phase (a): read every input's manifest and bytes. Nothing is written yet.
+    const pendingInputs = await this.#readInputs(firstRun.id);
     const step = this.#buildStep(task, gate);
     const missionContext = this.#missionContext(mission);
     const criteria = this.#criteriaList(mission);
     const referenceOutputs = this.#referenceOutputs(mission, task);
 
+    // Phase (b): validate the name and the suite choice. Still nothing written.
     const name = req.name.trim();
     if (name.length < 1 || name.length > 80) throw TandemiseError.validation('Name the case 1-80 characters.');
     const newSuiteName = req.newSuiteName?.trim();
     if (req.suiteId === undefined && (newSuiteName === undefined || newSuiteName.length === 0)) {
       throw TandemiseError.validation('Pick a suite or name a new one.');
     }
+    let existingSuite: EvalSuite | undefined;
+    if (req.suiteId !== undefined) {
+      existingSuite = this.#requireSuite(req.suiteId);
+      // A suite from another workspace is not this workspace's to pick.
+      if (existingSuite.workspaceId !== mission.workspaceId) throw TandemiseError.notFound('Eval suite', req.suiteId);
+    } else if (this.deps.evals.listSuites(mission.workspaceId).some((s) => s.name === newSuiteName)) {
+      throw new TandemiseError('CONFLICT', 'A suite with that name already exists.');
+    }
 
+    // Only now, once every refusal above has had its chance, does anything get written.
+    const inputs = await this.#storeInputs(pendingInputs);
+    const suite = existingSuite ?? this.createSuite(mission.workspaceId, caller, newSuiteName!);
     const snapshot: EvalCaseSnapshot = {
       repositoryId: repository.id, baseSha, inputs, step, mission: missionContext, criteria,
     };
@@ -134,9 +150,6 @@ export class EvalService {
       missionId: mission.id, missionTitle: mission.title, taskId: task.id, runId: firstRun.id,
       inputArtifactIds: this.deps.runInputs.listByRun(firstRun.id), referenceOutputs,
     };
-
-    // Only now, once every refusal above has had its chance, does anything get written.
-    const suite = req.suiteId !== undefined ? this.#requireSuite(req.suiteId) : this.createSuite(mission.workspaceId, caller, newSuiteName!);
     const kase: EvalCase = {
       id: ids.evalCase(), suiteId: suite.id, name, snapshot, provenance,
       createdBy: caller.personId, createdAt: this.deps.clock.now(),
@@ -195,7 +208,11 @@ export class EvalService {
    */
   async #resolveBaseSha(task: MissionTask, mission: Mission, repository: Repository): Promise<string> {
     const upstream = this.#upstreamChangeCommit(task, mission, repository);
-    if (upstream !== null) return upstream;
+    if (upstream !== null) {
+      // A recorded ref that is not a real commit hash is no more usable than none at all.
+      if (!/^[0-9a-f]{40}$/.test(upstream)) throw new EvalError('base_unresolved', BASE_UNRESOLVED_MESSAGE);
+      return upstream;
+    }
 
     const exec = this.deps.exec;
     if (exec === undefined || exec === null) throw new EvalError('base_unresolved', BASE_UNRESOLVED_MESSAGE);
@@ -234,20 +251,29 @@ export class EvalService {
     return null;
   }
 
-  /** Every run input, copied into the eval blob store; a source that can no longer be read refuses the whole save. */
-  async #collectInputs(runId: Run['id']): Promise<readonly EvalCaseInput[]> {
-    const inputs: EvalCaseInput[] = [];
+  /** Every run input's manifest and bytes, read but not yet stored anywhere; a source that can no longer be read refuses the whole save before anything is written. */
+  async #readInputs(runId: Run['id']): Promise<readonly { readonly manifest: ArtifactManifest; readonly bytes: Uint8Array }[]> {
+    const pending: { manifest: ArtifactManifest; bytes: Uint8Array }[] = [];
     for (const id of this.deps.runInputs.listByRun(runId)) {
       const manifest = this.deps.artifacts.get(id);
       try {
         if (manifest === undefined) throw new Error('missing artifact manifest');
         const bytes = await this.deps.artifactStore.readBinary(id);
-        // The blob store is the source of truth for the hash it stored the bytes under.
-        const sha256 = await this.deps.blobs.put(bytes);
-        inputs.push({ type: manifest.type, sha256, mediaType: manifest.mediaType, title: manifest.title, handoff: manifest.handoff ?? null });
+        pending.push({ manifest, bytes });
       } catch {
         throw new EvalError('input_missing', `An input of this step can no longer be read: ${manifest?.title ?? id}.`);
       }
+    }
+    return pending;
+  }
+
+  /** Writes every already-read input into the eval blob store. Called only once every refusal above has had its chance. */
+  async #storeInputs(pending: readonly { readonly manifest: ArtifactManifest; readonly bytes: Uint8Array }[]): Promise<readonly EvalCaseInput[]> {
+    const inputs: EvalCaseInput[] = [];
+    for (const { manifest, bytes } of pending) {
+      // The blob store is the source of truth for the hash it stored the bytes under.
+      const sha256 = await this.deps.blobs.put(bytes);
+      inputs.push({ type: manifest.type, sha256, mediaType: manifest.mediaType, title: manifest.title, handoff: manifest.handoff ?? null });
     }
     return inputs;
   }

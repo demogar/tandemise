@@ -305,6 +305,8 @@ async function daemonHarness() {
     workspaceId: wsId,
     /** The fixture repository's checkout on disk, for the eval-cases section's own git plumbing. */
     repoPath: repo,
+    /** This daemon's own home directory, so a check can look for a file it should (or should not) have written. */
+    home,
     planOnly,
     /** Creates and starts a mission on the harness workspace; `workflow` names a fixture in acceptance/p0/workflows. */
     async missionWith({ goal, workflow, ...extra }) {
@@ -739,6 +741,30 @@ section('daemon: run scores');
       if (worktree !== undefined) execFileSync('git', ['worktree', 'remove', '--force', worktree], { cwd: d.repoPath, stdio: 'ignore' });
       execFileSync('git', ['branch', '-D', 'feature/gone'], { cwd: d.repoPath, stdio: 'ignore' });
       await refuses('a deleted base branch is refused', () => evals.saveCase(m3Build.id, caller, { suiteId: kase.suiteId, name: 'y' }), 'base_unresolved');
+
+      // Proves saveCase's write ordering (fix round 1, item 1): a synthetic
+      // input - the step's own ChangeSet, attached as a run input purely so
+      // the blob-store phase has something to write - must still be absent
+      // after a refusal, and present on disk only once a save actually lands.
+      const m4 = await d.missionWith({ goal: 'Add a header', workflow: 'build-only' });
+      check('m4 completes', await d.waitMission(m4.id, 'COMPLETE') === 'COMPLETE');
+      const m4Build = (await d.tasks(m4.id)).find((t) => t.roleId === 'development');
+      const m4FirstRun = runsRepo.listByTask(m4Build.id).sort((a, b) => a.attempt - b.attempt)[0];
+      const changeSet = artifactsRepo.listByTask(m4Build.id).find((a) => a.type === 'ChangeSet');
+      runInputsRepo.record(m4FirstRun.id, [changeSet.id]);
+      const blobPath = join(d.home, 'evals', 'blobs', changeSet.sha256.slice(0, 2), changeSet.sha256);
+      check('the input blob does not exist yet', !existsSync(blobPath));
+
+      await refuses(
+        'an invalid case name is refused before any input is written to the blob store',
+        () => evals.saveCase(m4Build.id, caller, { suiteId: kase.suiteId, name: '' }),
+        'VALIDATION',
+      );
+      check('no blob was written for the refused save', !existsSync(blobPath));
+
+      const kase4 = await evals.saveCase(m4Build.id, caller, { suiteId: kase.suiteId, name: 'Header' });
+      check('a saved case writes its input blob to disk', existsSync(blobPath));
+      check('the saved case records the same hash', kase4.snapshot.inputs.some((i) => i.sha256 === changeSet.sha256));
     }
   } finally {
     await d.stop();
