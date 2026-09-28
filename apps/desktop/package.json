@@ -19,7 +19,7 @@
     "@tandemise/artifacts": "*",
     "@tandemise/domain": "*",
     "@tandemise/shared": "*",
-    "@tanstack/react-query": "^5.102.8",
+    "@tanstack/react-query": "^5.103.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "wouter": "^3.11.0"
