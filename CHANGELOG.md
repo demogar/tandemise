@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/demogar/tandemise/compare/v0.7.0...v0.8.0) (2026-09-28)
+
+
+### Features
+
+* score every run and try a setup on evals before it goes live ([#34](https://github.com/demogar/tandemise/issues/34)) ([8636a3c](https://github.com/demogar/tandemise/commit/8636a3c263c47eb95ad5b0f084a855ce5eea2bde))
+
 ## [0.7.0](https://github.com/demogar/tandemise/compare/v0.6.0...v0.7.0) (2026-09-28)
 
 
