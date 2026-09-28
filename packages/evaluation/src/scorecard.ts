@@ -70,17 +70,22 @@ function attemptGroups(scores: readonly RunScore[]): RunScore[][] {
 }
 
 export function summarizeRunScores(scores: readonly RunScore[]): RoleModelSummary[] {
-  const byRoleModel = new Map<string, { readonly roleId: string; readonly model: string | null; rows: RunScore[] }>();
+  const keyOf = (score: RunScore): string => `${score.roleId}\u0000${score.model ?? ''}`;
+  const byRoleModel = new Map<string, { readonly roleId: string; readonly model: string | null; rows: RunScore[]; groups: RunScore[][] }>();
   for (const score of scores) {
-    const key = `${score.roleId}\u0000${score.model ?? ''}`;
+    const key = keyOf(score);
     const bucket = byRoleModel.get(key);
     if (bucket) bucket.rows.push(score);
-    else byRoleModel.set(key, { roleId: score.roleId, model: score.model, rows: [score] });
+    else byRoleModel.set(key, { roleId: score.roleId, model: score.model, rows: [score], groups: [] });
+  }
+  // Attempt groups span every row: an escalation ladder's later attempts run on another model, but the
+  // group's first-attempt and attempts-to-pass figures belong to the role × model that made attempt 1.
+  for (const group of attemptGroups(scores)) {
+    // Every group is non-empty (built from at least one score), and its first row's bucket exists.
+    byRoleModel.get(keyOf(group[0] as RunScore))?.groups.push(group);
   }
 
-  const summaries = [...byRoleModel.values()].map(({ roleId, model, rows }) => {
-    const groups = attemptGroups(rows);
-    // Every group is non-empty: built from at least one score in attemptGroups.
+  const summaries = [...byRoleModel.values()].map(({ roleId, model, rows, groups }) => {
     const firstAttemptPasses = groups.filter((g) => (g[0] as RunScore).gatePassed).length;
     const attemptsToPass = groups
       .map((g) => g.findIndex((row) => row.gatePassed))

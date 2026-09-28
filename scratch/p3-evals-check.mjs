@@ -509,6 +509,19 @@ try {
   check('criteria failed sums', good.criteriaFailed === 2);
   check('median cost ignores nulls', good.medianCostUsd === 0.5, good.medianCostUsd);
   check('a round is its own group', E.summarizeRunScores([row({ round: 1, gatePassed: false }), row({ round: 2, gatePassed: true, scoredAt: '3' })])[0].firstAttemptPassRate === 0.5);
+  // Final review, item 3: an escalation ladder - attempt 1 on A fails, attempt 2 on B passes. The
+  // attempt group belongs to the model that made the first attempt; B gets its run, not first-attempt credit.
+  {
+    const ladder = E.summarizeRunScores([
+      row({ taskId: 'e', model: 'A', gatePassed: false, scoredAt: '1' }),
+      row({ taskId: 'e', model: 'B', gatePassed: true, scoredAt: '2' }),
+    ]);
+    const onA = ladder.find((s) => s.model === 'A');
+    const onB = ladder.find((s) => s.model === 'B');
+    check('escalation: both models count their run', onA?.runs === 1 && onB?.runs === 1, ladder);
+    check('escalation: the first model owns the attempt group (0% first time, 2 attempts to pass)', onA?.firstAttemptPassRate === 0 && onA?.meanAttemptsToPass === 2, onA);
+    check('escalation: the second model gets no first-attempt credit', (onB?.firstAttemptPassRate ?? 0) === 0 && onB?.meanAttemptsToPass === null, onB);
+  }
 
   const ts = E.trialScoreFrom([row({ scoredAt: '2', gatePassed: true }), row({ scoredAt: '1', gatePassed: false })]);
   check('trial score: last gate, first attempt, sums', ts.gatePassed && !ts.firstAttemptPassed && ts.attempts === 2 && ts.costUsd === 1);

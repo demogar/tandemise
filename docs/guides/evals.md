@@ -33,11 +33,15 @@ the last 7, 30 or 90 days:
 | Column | What it means |
 |---|---|
 | Runs | How many scored attempts went into this row |
-| First-attempt pass | Share of steps whose very first attempt passed the gate, no retry needed |
+| First-attempt pass | Share of steps whose very first attempt, made on this model, passed the gate, no retry needed |
 | Attempts to pass | Mean attempts a step needed before its gate passed, counting only steps that did pass |
 | Criteria failed | Total criteria left failed across every scored run |
 | Median cost | Median reported cost per run |
 | Median time | Median reported wall time per run |
+
+A step's first attempt and its attempts to pass belong to the model that made
+its first attempt. When a retry escalates to a bigger model, that model's row
+counts the run, but not the step's first attempt or its attempts to pass.
 
 This is your project's own history — real missions only. An eval trial never
 appears here, no matter how many you run: trying a candidate could otherwise
