@@ -18,6 +18,11 @@
       "observed": "bad"
     },
     {
+      "label": "starting with every role as it is today is refused: \"This candidate changes nothing.\"",
+      "ok": true,
+      "observed": "This candidate changes nothing."
+    },
+    {
       "label": "proof (API): the run is Models → Developer on \"good\", 3 repeats, cap $10",
       "ok": true,
       "observed": {
@@ -49,17 +54,17 @@
       "ok": true,
       "observed": [
         {
-          "id": "msn_01m3mkwe5j790x8q95z8",
+          "id": "msn_01m3mpv37qegc1b76zay",
           "title": "Eval trial Hello banner build candidate 1",
           "status": "COMPLETE"
         },
         {
-          "id": "msn_01m3mkwgh0wr87mjnfva",
+          "id": "msn_01m3mpv5gw7xn96vfqds",
           "title": "Eval trial Hello banner build baseline 2",
           "status": "DRAFT"
         },
         {
-          "id": "msn_01m3mkw7jsv97f2p7mbz",
+          "id": "msn_01m3mptwt9hzba2ndyx3",
           "title": "Eval trial Hello banner build baseline 1",
           "status": "FAILED"
         }
@@ -78,7 +83,7 @@
     {
       "label": "the Missions list (during, All) shows E1's mission, counts 1 mission, and no \"Eval trial\"",
       "ok": true,
-      "observed": "Missions\nEvery outcome the workforce is pursuing, past and present.\nNew mission\nBacklog\n0\nRoutines\n0\nActive\n0\nNeeds attention\n0\nFinished\n1\nAll\n1\nAdd a hello banner to the page\nmsn_01m3mktshd1bn3tg2jt8\nEvery task succeeded.\n0 of 1 verified\nacceptance-project\n2/2\nComplete\n50s ago\n\n1 mission · j k to move, ↵ to open"
+      "observed": "Missions\nEvery outcome the workforce is pursuing, past and present.\nNew mission\nBacklog\n0\nRoutines\n0\nActive\n0\nNeeds attention\n0\nFinished\n1\nAll\n1\nAdd a hello banner to the page\nmsn_01m3mpsety7bnf2qkx9p\nEvery task succeeded.\n0 of 1 verified\nacceptance-project\n2/2\nComplete\n50s ago\n\n1 mission · j k to move, ↵ to open"
     },
     {
       "label": "the Desk (during) shows no \"Eval trial\"",
@@ -97,7 +102,8 @@
         "status": "completed",
         "progress": {
           "done": 6,
-          "total": 6
+          "total": 6,
+          "cancelled": 0
         },
         "reason": null
       }
@@ -113,12 +119,14 @@
           "baseline": {
             "completed": 3,
             "blocked": 0,
-            "failed": 3
+            "failed": 3,
+            "errored": 0
           },
           "candidate": {
             "completed": 3,
             "blocked": 0,
-            "failed": 0
+            "failed": 0,
+            "errored": 0
           }
         }
       }
@@ -138,6 +146,21 @@
       "ok": true
     },
     {
+      "label": "the Trials row reads Baseline \"3 ran · 0 passed · 3 failed · 0 blocked\", Candidate \"3 ran · 3 passed · 0 failed · 0 blocked\"",
+      "ok": true,
+      "observed": [
+        "Trials",
+        "3 ran · 0 passed · 3 failed · 0 blocked",
+        "3 ran · 3 passed · 0 failed · 0 blocked",
+        "—"
+      ]
+    },
+    {
+      "label": "the candidate heading reads \"Candidate, against the setup when this run started\"",
+      "ok": true,
+      "observed": "Candidate, against the setup when this run started"
+    },
+    {
       "label": "no few-repeats note at 3 repeats",
       "ok": true
     },
@@ -154,7 +177,7 @@
     {
       "label": "the Missions list (after, All) shows E1's mission, counts 1 mission, and no \"Eval trial\"",
       "ok": true,
-      "observed": "Missions\nEvery outcome the workforce is pursuing, past and present.\nNew mission\nBacklog\n0\nRoutines\n0\nActive\n0\nNeeds attention\n0\nFinished\n1\nAll\n1\nAdd a hello banner to the page\nmsn_01m3mktshd1bn3tg2jt8\nEvery task succeeded.\n0 of 1 verified\nacceptance-project\n2/2\nComplete\n1m ago\n\n1 mission · j k to move, ↵ to open"
+      "observed": "Missions\nEvery outcome the workforce is pursuing, past and present.\nNew mission\nBacklog\n0\nRoutines\n0\nActive\n0\nNeeds attention\n0\nFinished\n1\nAll\n1\nAdd a hello banner to the page\nmsn_01m3mpsety7bnf2qkx9p\nEvery task succeeded.\n0 of 1 verified\nacceptance-project\n2/2\nComplete\n1m ago\n\n1 mission · j k to move, ↵ to open"
     },
     {
       "label": "the Desk (after) shows no \"Eval trial\"",
@@ -168,7 +191,7 @@
     }
   ],
   "notes": [
-    "Trials [\"Trials\",\"3 completed / 0 blocked / 3 failed\",\"3 completed / 0 blocked / 0 failed\",\"—\"]; First-attempt [\"First-attempt pass rate\",\"0%\",\"100%\",\"+100 pts\"]; Cost [\"Cost (mean, total)\",\"$0.50 · $1.50 total\",\"$0.25 · $0.75 total\",\"−$0.25\"]"
+    "Trials [\"Trials\",\"3 ran · 0 passed · 3 failed · 0 blocked\",\"3 ran · 3 passed · 0 failed · 0 blocked\",\"—\"]; First-attempt [\"First-attempt pass rate\",\"0%\",\"100%\",\"+100 pts\"]; Cost [\"Cost (mean, total)\",\"$0.50 · $1.50 total\",\"$0.25 · $0.75 total\",\"−$0.25\"]"
   ],
   "shots": [
     "/Users/demogar/projects/tandemise/tandemise/docs/superpowers/evidence/2026-09-27-p3b/E2-run-form.png",

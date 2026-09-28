@@ -14,7 +14,7 @@
         "meanAttemptsToPass": 1,
         "criteriaFailed": 0,
         "medianCostUsd": 0.25,
-        "medianWallTimeMs": 1564
+        "medianWallTimeMs": 1559
       }
     },
     {
@@ -51,7 +51,7 @@
     }
   ],
   "notes": [
-    "API summary: [{\"roleId\":\"development\",\"model\":\"good\",\"runs\":1,\"firstAttemptPassRate\":1,\"meanAttemptsToPass\":1,\"criteriaFailed\":0,\"medianCostUsd\":0.25,\"medianWallTimeMs\":1564}]",
+    "API summary: [{\"roleId\":\"development\",\"model\":\"good\",\"runs\":1,\"firstAttemptPassRate\":1,\"meanAttemptsToPass\":1,\"criteriaFailed\":0,\"medianCostUsd\":0.25,\"medianWallTimeMs\":1559}]",
     "columns: [\"ROLE\",\"MODEL\",\"RUNS\",\"FIRST-ATTEMPT PASS\",\"ATTEMPTS TO PASS\",\"CRITERIA FAILED\",\"MEDIAN COST\",\"MEDIAN TIME\"]",
     "rows: [\"Developer on good\"]"
   ],

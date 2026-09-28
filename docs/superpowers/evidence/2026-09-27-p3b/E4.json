@@ -36,8 +36,9 @@
       "observed": {
         "spentUsd": 0.75,
         "progress": {
-          "done": 4,
-          "total": 4
+          "done": 2,
+          "total": 4,
+          "cancelled": 2
         },
         "trials": [
           "baseline 1 failed",
@@ -56,10 +57,44 @@
       "label": "the spend reads \"Spent $… of $0.60\"",
       "ok": true,
       "observed": "Spend\nSpent $0.75 of $0.60"
+    },
+    {
+      "label": "the progress counts cancelled trials apart: \"n / total trials · m cancelled\"",
+      "ok": true,
+      "observed": {
+        "progress": "2 / 4 trials · 2 cancelled",
+        "api": {
+          "done": 2,
+          "total": 4,
+          "cancelled": 2
+        }
+      }
+    },
+    {
+      "label": "proof (API): the trials the cap stopped say so",
+      "ok": true,
+      "observed": [
+        [
+          "failed",
+          "Not met: artifact.ChangeSet.exists is false Missing expected artifacts: ChangeSet."
+        ],
+        [
+          "passed",
+          null
+        ],
+        [
+          "cancelled",
+          "Stopped at your $0.60 cap"
+        ],
+        [
+          "cancelled",
+          "Stopped at your $0.60 cap"
+        ]
+      ]
     }
   ],
   "notes": [
-    "run header: \"Stopped at cap\\nStarted Sep 28, 2026, 1:20 PM\\n· finished Sep 28, 2026, 1:21 PM\""
+    "run header: \"Stopped at cap\\nStarted Sep 28, 2026, 2:12 PM\\n· finished Sep 28, 2026, 2:12 PM\""
   ],
   "shots": [
     "/Users/demogar/projects/tandemise/tandemise/docs/superpowers/evidence/2026-09-27-p3b/E4-run-form.png",

@@ -33,7 +33,7 @@
       "ok": true,
       "observed": [
         {
-          "id": "run_01m3mktyfs4gtekgnvsq",
+          "id": "run_01m3mpskq6ahr2yqrq1k",
           "status": "SUCCEEDED"
         }
       ]
@@ -63,19 +63,19 @@
       "ok": true,
       "observed": {
         "suite": {
-          "id": "esu_01m3mkv5k9wwmhs0nd65",
-          "workspaceId": "ws_01m3mktjshky99t38n8j",
+          "id": "esu_01m3mpssw5y61r6c2kms",
+          "workspaceId": "ws_01m3mps81y3kesn5pftk",
           "name": "Runs",
-          "createdAt": "2026-09-28T18:18:42.665Z",
-          "updatedAt": "2026-09-28T18:18:42.665Z",
+          "createdAt": "2026-09-28T19:10:23.621Z",
+          "updatedAt": "2026-09-28T19:10:23.621Z",
           "cases": 1
         },
         "kase": {
           "name": "Hello banner build",
           "source": {
-            "missionId": "msn_01m3mktshd1bn3tg2jt8",
+            "missionId": "msn_01m3mpsety7bnf2qkx9p",
             "missionTitle": "Add a hello banner to the page",
-            "taskId": "tsk_01m3mktsj9nmdy95hn8p",
+            "taskId": "tsk_01m3mpsevwcngr9fnzr5",
             "missionExists": true
           },
           "roleId": "development"
@@ -86,7 +86,7 @@
       "label": "proof (API): the case keeps its base commit (a commit in the project) and its DesignBrief input",
       "ok": true,
       "observed": {
-        "baseSha": "ba4a4cd1833d25b6addc3333767b927f9ca240b6",
+        "baseSha": "f2c69112dac9ed5682270a430d5d9c98d0933e8f",
         "inputs": [
           {
             "type": "DesignBrief",
@@ -102,7 +102,7 @@
         "Hello banner build",
         "build",
         "Developer",
-        "ba4a4cd",
+        "f2c6911",
         "DesignBrief: Scripted work (DesignBrief)",
         "from Add a hello banner to the page",
         ""
@@ -112,8 +112,8 @@
       "label": "the row shows the short base commit (7 characters of the case's base)",
       "ok": true,
       "observed": {
-        "shown": "ba4a4cd",
-        "baseSha": "ba4a4cd1833d25b6addc3333767b927f9ca240b6"
+        "shown": "f2c6911",
+        "baseSha": "f2c69112dac9ed5682270a430d5d9c98d0933e8f"
       }
     },
     {
@@ -132,7 +132,7 @@
   ],
   "notes": [
     "the daemon runs with SCRIPTED_FAIL_MODEL=bad and SCRIPTED_COST_USD=0.25: a run on \"bad\" writes nothing, every run reports $0.25",
-    "the case row reads: [\"Hello banner build\",\"build\",\"Developer\",\"ba4a4cd\",\"DesignBrief: Scripted work (DesignBrief)\",\"from Add a hello banner to the page\",\"\"]"
+    "the case row reads: [\"Hello banner build\",\"build\",\"Developer\",\"f2c6911\",\"DesignBrief: Scripted work (DesignBrief)\",\"from Add a hello banner to the page\",\"\"]"
   ],
   "shots": [
     "/Users/demogar/projects/tandemise/tandemise/docs/superpowers/evidence/2026-09-27-p3b/E1-build-card.png",
