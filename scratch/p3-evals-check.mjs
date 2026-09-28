@@ -187,6 +187,10 @@ function insertMissionAt019(h, id, wsId) {
 // and the DI container itself, so a repository can be read directly rather
 // than only through the HTTP API. Copies scratch/p12-models-check.mjs's daemon
 // setup (env, workflows fixture, scripted runtime), generalised to a helper.
+//
+// Meant to be called once per process: it starts one real daemon on its own
+// port and home directory, and sets process-wide env vars (GIT_CONFIG_GLOBAL,
+// SCRIPTED_*) that a second daemon in the same process would stomp on.
 async function daemonHarness() {
   const root = mkdtempSync(join(tmpdir(), 'tdm3-'));
   const home = join(root, 'h');
@@ -475,12 +479,17 @@ section('daemon: run scores');
     const m1 = await d.missionWith({ goal: 'Add a footer SCRIPTED_FAIL_TIMES=1 SCRIPTED_COST_USD=0.25', workflow: 'build-only' });
     check('mission completes', await d.waitMission(m1.id, 'COMPLETE') === 'COMPLETE');
     const buildTask = (await d.tasks(m1.id)).find((t) => t.roleId === 'development');
-    const rows = d.sql(`SELECT * FROM run_scores WHERE task_id = ? ORDER BY scored_at`, buildTask.id);
+    const rows = d.sql(`SELECT * FROM run_scores WHERE task_id = ? ORDER BY scored_at, rowid`, buildTask.id);
     check('two scores for fail then pass', eq(rows.map((r) => r.gate_passed), [0, 1]), rows.map((r) => r.gate_passed));
-    check('facts include the check results', JSON.parse(rows[1].facts)['checks.tests'] !== undefined, Object.keys(JSON.parse(rows[1].facts)));
-    check('cost is kept', rows[1].cost_usd === 0.25, rows[1].cost_usd);
+    check('facts include the check results', JSON.parse(rows[1]?.facts ?? '{}')['checks.tests'] !== undefined, Object.keys(JSON.parse(rows[1]?.facts ?? '{}')));
+    check('cost is kept', rows[1]?.cost_usd === 0.25, rows[1]?.cost_usd);
     check('a real run is not a trial', rows.every((r) => r.eval_trial === 0));
-    const ungated = (await d.tasks(m1.id)).filter((t) => t.completionGate === null);
+
+    // p2-solo's single `doc` step has no completion gate, so it is never scored.
+    const m2 = await d.missionWith({ goal: 'Write a short spec', workflow: 'p2-solo' });
+    check('the ungated mission completes', await d.waitMission(m2.id, 'COMPLETE') === 'COMPLETE');
+    const ungated = (await d.tasks(m2.id)).filter((t) => t.completionGate === null);
+    check('the ungated mission has an ungated task', ungated.length > 0, ungated.map((t) => t.key));
     check('a step with no gate has no score', ungated.every((t) => d.sql('SELECT 1 FROM run_scores WHERE task_id = ?', t.id).length === 0));
   } finally {
     await d.stop();
