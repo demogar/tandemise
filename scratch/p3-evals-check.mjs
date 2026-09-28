@@ -320,6 +320,43 @@ try {
     check('eval usage is the trial share', limits.evalUsageForWorkspace(ws.id, month.start, month.end).costUsd === 2);
     check('per-mission usage leaves trials out', limits.usageByMission(ws.id, month.start, month.end).every((u) => u.missionId !== trialMissionId));
   }
+
+  section('pure: scorecard');
+  const E = await import('@tandemise/evaluation');
+  const row = (o) => ({ runId: 'r', taskId: 't1', missionId: 'm', workspaceId: 'w', roleId: 'development', model: 'good', skills: [], attempt: 1, round: 1, purpose: 'round', gatePassed: true, gateDetail: '', facts: {}, criteria: null, overBudget: 0, inputTokens: 100, outputTokens: 10, costUsd: 0.5, wallTimeMs: 1000, evalTrial: false, scoredAt: '2026-09-27T00:00:00Z', ...o });
+  const summary = E.summarizeRunScores([
+    row({ taskId: 'a', gatePassed: false, scoredAt: '1' }), row({ taskId: 'a', gatePassed: true, scoredAt: '2', costUsd: 1.5 }),
+    row({ taskId: 'b', gatePassed: true, costUsd: null }),
+    row({ taskId: 'c', gatePassed: false, criteria: { verified: 1, failed: 2, unverified: 0 } }),
+    row({ taskId: 'd', model: 'other' }),
+  ]);
+  const good = summary.find((s) => s.model === 'good');
+  check('runs per role × model', good.runs === 4 && summary.length === 2);
+  check('first-attempt pass rate is per task and round', good.firstAttemptPassRate === 1 / 3, good.firstAttemptPassRate);
+  check('mean attempts to pass counts only tasks that passed', good.meanAttemptsToPass === 1.5, good.meanAttemptsToPass);
+  check('criteria failed sums', good.criteriaFailed === 2);
+  check('median cost ignores nulls', good.medianCostUsd === 0.5, good.medianCostUsd);
+  check('a round is its own group', E.summarizeRunScores([row({ round: 1, gatePassed: false }), row({ round: 2, gatePassed: true, scoredAt: '3' })])[0].firstAttemptPassRate === 0.5);
+
+  const ts = E.trialScoreFrom([row({ scoredAt: '2', gatePassed: true }), row({ scoredAt: '1', gatePassed: false })]);
+  check('trial score: last gate, first attempt, sums', ts.gatePassed && !ts.firstAttemptPassed && ts.attempts === 2 && ts.costUsd === 1);
+  check('trial score: one unknown cost makes the total unknown', E.trialScoreFrom([row({}), row({ costUsd: null, scoredAt: '9' })]).costUsd === null);
+  check('trial score of no rows is null', E.trialScoreFrom([]) === null);
+
+  const score = (o) => ({ gatePassed: true, attempts: 1, firstAttemptPassed: true, criteria: null, overBudget: 0, inputTokens: 100, outputTokens: 0, costUsd: 1, wallTimeMs: 10, model: 'x', ...o });
+  const card = E.scoreEvalRun([
+    { caseId: 'c1', caseName: 'One', variant: 'baseline', status: 'failed', score: score({ gatePassed: false, firstAttemptPassed: false, attempts: 2 }) },
+    { caseId: 'c1', caseName: 'One', variant: 'candidate', status: 'passed', score: score({}) },
+    { caseId: 'c2', caseName: 'Two', variant: 'baseline', status: 'blocked', score: null },
+    { caseId: 'c2', caseName: 'Two', variant: 'candidate', status: 'passed', score: score({ costUsd: null }) },
+  ], 2);
+  check('baseline counts', eq(card.baseline.trials, { completed: 1, blocked: 1, failed: 1 }));
+  check('gate pass rates', card.baseline.gatePassRate === 0 && card.candidate.gatePassRate === 1);
+  check('difference is candidate minus baseline', card.difference.gatePassRate === 1 && card.difference.meanAttempts === -1);
+  check('an unknown cost makes the variant cost unknown', card.candidate.costUsd.total === null && card.difference.meanCostUsd === null);
+  check('per case, in first-seen order', eq(card.perCase.map((c) => c.caseId), ['c1', 'c2']));
+  check('few repeats under 3', card.fewRepeats === true && E.scoreEvalRun([], 3).fewRepeats === false);
+  check('no completed trials gives null rates', E.scoreEvalRun([], 3).baseline.gatePassRate === null);
 } finally {
   container?.resolve(P.DATABASE)?.close?.();
   rmSync(tmp, { recursive: true, force: true });
