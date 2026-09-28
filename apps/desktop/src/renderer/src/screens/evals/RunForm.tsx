@@ -19,6 +19,14 @@ const KINDS: readonly { value: Kind; label: string }[] = [
 /** A skill pin as the form edits it: a library version, or whatever is newest when the run starts. */
 type Pin = SkillRef;
 
+const NOTHING_CHANGED = 'This candidate changes nothing.';
+
+/** The same skills at the same versions, in any order: `latest` is never the same as a numbered pin. */
+function samePins(pins: readonly Pin[], current: readonly Pin[]): boolean {
+  if (pins.length !== current.length) return false;
+  return pins.every((p) => current.some((c) => c.name === p.name && c.version === p.version));
+}
+
 /**
  * Starts an eval run (spec B4): one suite, one change to try against the
  * setup the project has today, how many times to repeat each case, and a cap
@@ -86,22 +94,34 @@ export function RunForm({ suites, suiteId: initialSuiteId, candidate, onStarted,
     return own;
   };
 
-  const setPin = (role: RoleTemplate, name: string, version: Pin['version']): void =>
+  const setPin = (role: RoleTemplate, name: string, version: Pin['version']): void => {
+    setProblem(null);
     setSkills((current) => ({ ...current, [role.id]: pinsFor(role).map((p) => (p.name === name ? { name, version } : p)) }));
+  };
 
   const chooseFolder = async (): Promise<void> => {
     const path = await window.tandemise.selectDirectory('Choose a setup folder');
     if (path) setFolder(path);
   };
 
+  // Only the roles the person changed (or a link named) go in the candidate: a role sent as it is today
+  // would still count as "changed" to the run, and override a model its case's step pinned.
   const buildCandidate = (): EvalCandidateRequest | string => {
     if (kind === 'models') {
-      const chosen = Object.fromEntries(suiteRoles.map((r) => [r.id, modelFor(r).trim()] as const).filter(([, model]) => model !== ''));
-      return Object.keys(chosen).length === 0 ? 'Give at least one role a model to try.' : { kind, roles: chosen };
+      const linked = candidate?.kind === 'models' ? candidate.roles : {};
+      const chosen = Object.fromEntries(suiteRoles
+        .map((r) => [r, modelFor(r).trim()] as const)
+        .filter(([r, model]) => model !== '' && (model !== (r.models?.model ?? '') || linked[r.id] === model))
+        .map(([r, model]) => [r.id, model] as const));
+      return Object.keys(chosen).length === 0 ? NOTHING_CHANGED : { kind, roles: chosen };
     }
     if (kind === 'skills') {
-      const chosen = Object.fromEntries(suiteRoles.map((r): [string, SkillRef[]] => [r.id, [...pinsFor(r)]]).filter(([, pins]) => pins.length > 0));
-      return Object.keys(chosen).length === 0 ? 'None of the roles this suite uses pin a skill.' : { kind, roles: chosen };
+      const linked = candidate?.kind === 'skills' ? candidate.roles : {};
+      const chosen = Object.fromEntries(suiteRoles
+        .map((r): [RoleTemplate, SkillRef[]] => [r, [...pinsFor(r)]])
+        .filter(([r, pins]) => pins.length > 0 && (linked[r.id] !== undefined || !samePins(pins, r.skills ?? [])))
+        .map(([r, pins]) => [r.id, pins] as const));
+      return Object.keys(chosen).length === 0 ? NOTHING_CHANGED : { kind, roles: chosen };
     }
     return folder === '' ? 'Choose a setup folder.' : { kind, folder };
   };
@@ -173,7 +193,7 @@ export function RunForm({ suites, suiteId: initialSuiteId, candidate, onStarted,
                       aria-label={`Model for ${role.name}`}
                       value={modelFor(role)}
                       placeholder="runtime default"
-                      onChange={(event) => setModels((current) => ({ ...current, [role.id]: event.target.value }))}
+                      onChange={(event) => { setProblem(null); setModels((current) => ({ ...current, [role.id]: event.target.value })); }}
                     />
                   ) : pinsFor(role).length === 0 ? (
                     <span className="dim">No skills pinned</span>

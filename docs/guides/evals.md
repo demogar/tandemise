@@ -84,14 +84,17 @@ from.
 
 | Try | What you set |
 |---|---|
-| **Models** | one model string per role the suite's cases use |
+| **Models** | one model string per role the suite's cases use, prefilled with the role's model today |
 | **Skills** | one version per skill a role pins — an exact version, or "latest" resolved when the run starts |
 | **Setup** | a folder — a repository or its `.tandemise` folder; its roles are tried exactly as the folder has them |
 
 Set **Repeats** (1 to 10, 3 by default) and a **Spend cap ($)** — required,
 above zero. The baseline is today's setup for every role the suite's cases
 use, frozen the moment the run starts; the candidate is that same baseline
-with your one change laid over it. Nothing here is ever written back to your
+with your one change laid over it. Only the roles you change go into the
+candidate. If you leave every role as it is, the form says "This candidate
+changes nothing." A role you leave alone also keeps any model its case's
+step pinned for itself, on both sides. Nothing here is ever written back to your
 project — a setup candidate reads the folder you point at and applies
 nothing, the same way **Apply** on Setup as code is a separate, later step.
 

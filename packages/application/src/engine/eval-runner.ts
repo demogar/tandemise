@@ -401,9 +401,14 @@ export class EvalRunner implements LifecycleComponent {
     }
 
     const role = variantRole.role;
-    // The person asked to try this model on this step, so a models candidate replaces the step's own model too.
-    const candidateModel = trial.variant === 'candidate' && run.candidate.kind === 'models'
-      ? run.candidate.roles[step.roleId]
+    // The person asked to try this model on this step, so a models candidate replaces the step's own model
+    // too - but only for a role it names with a model other than the baseline's. A role it repeats as it
+    // is today was not changed, and its step keeps the model it pinned in both variants.
+    const named = trial.variant === 'candidate' && run.candidate.kind === 'models'
+      ? nonBlank(run.candidate.roles[step.roleId])
+      : undefined;
+    const candidateModel = named !== undefined && named !== nonBlank(run.variants.baseline.roles[step.roleId]?.role.models?.model)
+      ? named
       : undefined;
     const model = nonBlank(candidateModel) ?? nonBlank(step.stepModel) ?? nonBlank(role.models?.model);
     const escalate = step.modelPolicy?.escalate ?? role.models?.escalate;

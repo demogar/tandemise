@@ -1173,9 +1173,33 @@ section('daemon: run scores');
         check('the runtime reports no cost now', asText.status === 200, asText.body);
         const r7 = await E().startRun(suite.id, caller, { candidate: { kind: 'models', roles: { development: 'good' } }, repeats: 1, spendCapUsd: 0.01 });
         const d7 = await waitEvalRun(r7.id, TERMINAL);
-        check('unmeasured cost is flagged, never zero', d7.costUnmeasured === true && d7.spentUsd === null, { unmeasured: d7.costUnmeasured, spent: d7.spentUsd });
+        check('nothing measured at all: flagged, and spent is null, never zero', d7.costUnmeasured === true && d7.spentUsd === null, { unmeasured: d7.costUnmeasured, spent: d7.spentUsd });
         check('an unmeasured run is not stopped at the cap', d7.run.status === 'completed', d7.run);
         await d.api('PATCH', `/v1/runtimes/${runtime.id}`, { settings: runtime.settings });
+
+        // Final review, item 1: a models candidate changes only the roles it names with a new model. A case
+        // whose step pins its own model ("good") runs that model in both variants when the candidate
+        // repeats the Developer's current model (what the old form sent) and changes another role.
+        writeFileSync(join(d.repoPath, '.tandemise/workflows/pinned-build.yaml'), [
+          'name: Pinned build', 'description: One gated build step that pins its own model.', 'steps:',
+          '  - key: build', '    role: development', '    model: good', '    objective: Build the hello page.', '    outputs: [ChangeSet]',
+          '    gate: artifact.ChangeSet.exists', '',
+        ].join('\n'));
+        check('a second role for the suite', (await d.api('PUT', '/v1/roles/copywriter', { ...devRest, id: 'copywriter', name: 'Copywriter', workspaceId: ws, models: { model: 'plain', escalate: [], economyModel: null } })).status === 200);
+        const m8 = await d.missionWith({ goal: 'Build it pinned', workflow: 'pinned-build' });
+        const m9 = await d.missionWith({ goal: 'Write it plain', workflow: 'copy-only' });
+        check('the pinned and the copy missions complete', await d.waitMission(m8.id, 'COMPLETE') === 'COMPLETE' && await d.waitMission(m9.id, 'COMPLETE') === 'COMPLETE');
+        const pinnedCase = await E().saveCase((await d.tasks(m8.id)).find((t) => t.roleId === 'development').id, caller, { newSuiteName: 'Pinned', name: 'Pinned build' });
+        check('the case keeps its step model', pinnedCase.snapshot.step.stepModel === 'good', pinnedCase.snapshot.step);
+        const copyCase = await E().saveCase((await d.tasks(m9.id)).find((t) => t.roleId === 'copywriter').id, caller, { suiteId: pinnedCase.suiteId, name: 'Copy' });
+        const r8 = await E().startRun(pinnedCase.suiteId, caller, { candidate: { kind: 'models', roles: { development: 'bad', copywriter: 'good' } }, repeats: 1, spendCapUsd: 5 });
+        const d8 = await waitEvalRun(r8.id, TERMINAL);
+        check('the pinned run completes', d8.run.status === 'completed', d8.run);
+        const modelsOf = (caseId, variant) => d8.trials.filter((t) => t.caseId === caseId && t.variant === variant && t.missionId !== null)
+          .flatMap((t) => d.sql('SELECT model FROM runs WHERE mission_id = ?', t.missionId).map((r) => r.model));
+        check('an untouched role keeps its step model in the baseline', modelsOf(pinnedCase.id, 'baseline').length > 0 && modelsOf(pinnedCase.id, 'baseline').every((m) => m === 'good'), modelsOf(pinnedCase.id, 'baseline'));
+        check('and in the candidate', modelsOf(pinnedCase.id, 'candidate').length > 0 && modelsOf(pinnedCase.id, 'candidate').every((m) => m === 'good'), modelsOf(pinnedCase.id, 'candidate'));
+        check('the role the candidate changed runs its new model', modelsOf(copyCase.id, 'candidate').every((m) => m === 'good') && modelsOf(copyCase.id, 'baseline').every((m) => m === 'plain') && modelsOf(copyCase.id, 'candidate').length > 0, [modelsOf(copyCase.id, 'baseline'), modelsOf(copyCase.id, 'candidate')]);
         delete process.env.SCRIPTED_FAIL_MODEL;
         delete process.env.SCRIPTED_COST_USD;
 
