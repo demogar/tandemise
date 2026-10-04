@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.9.0](https://github.com/demogar/tandemise/compare/v0.8.0...v0.9.0) (2026-10-04)
+
+
+### Features
+
+* a step can say the plan no longer fits, and the steps after it wait for you ([#38](https://github.com/demogar/tandemise/issues/38)) ([9f7ee03](https://github.com/demogar/tandemise/commit/9f7ee031a3c5c8e2ea189c9b35b2e4263c39a6fc))
+
+
+### Bug Fixes
+
+* a person's step shows what came in, and questions are asked in the app ([#37](https://github.com/demogar/tandemise/issues/37)) ([0aeda64](https://github.com/demogar/tandemise/commit/0aeda64d54b245310839725d781e3ffedb777f78))
+
 ## [0.8.0](https://github.com/demogar/tandemise/compare/v0.7.0...v0.8.0) (2026-09-28)
 
 
