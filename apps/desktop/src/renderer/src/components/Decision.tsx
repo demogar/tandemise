@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { ApprovalView } from '@tandemise/api-contract';
 import type { Approval, ApprovalOption, RiskClass } from '@tandemise/domain';
-import { NEEDS_CHANGES_OPTION, REJECT_OPTION, REQUEST_CHANGES_OPTION, isLimitCard } from '../lib/domain.js';
+import { NEEDS_CHANGES_OPTION, REJECT_OPTION, REQUEST_CHANGES_OPTION, SKIP_REST_OPTION, isLimitCard, isPlanFitCard } from '../lib/domain.js';
 import { ConfirmDialog } from './Modal.js';
 import { ErrorState } from './primitives.js';
 import { RecordingFor, behalfOf } from './ActorChip.js';
@@ -94,8 +94,8 @@ export function useApprovalDecision(view: ApprovalView): ApprovalDecision {
     // Request changes starts another round of the same work: nothing is lost, so nothing is confirmed.
     const confirm = copy.question || approval.kind === 'check' || optionId === REQUEST_CHANGES_OPTION
       ? false
-      : isConsequential(approval.risk) || optionId === REJECT_OPTION;
-    const danger = optionId === REJECT_OPTION && !copy.question && approval.kind !== 'check';
+      : isConsequential(approval.risk) || optionId === REJECT_OPTION || optionId === SKIP_REST_OPTION;
+    const danger = (optionId === REJECT_OPTION || optionId === SKIP_REST_OPTION) && !copy.question && approval.kind !== 'check';
     const hint = copy.question
       ? 'The worker is waiting, and carries on as soon as you send this.'
       : approval.kind === 'check'
@@ -372,6 +372,20 @@ export function copyFor(approval: Approval, selectedId: string | undefined, revi
       notePlaceholder: '',
       noteShort: '',
       noteRequired: false,
+    };
+  }
+  // A step said the plan no longer fits: the answer is what happens to the steps after it, not a yes or no.
+  if (isPlanFitCard(approval)) {
+    const requestsChanges = selectedId === REQUEST_CHANGES_OPTION;
+    return {
+      question: false,
+      kindLabel: 'Plan no longer fits',
+      effectQuestion: 'What happens when you decide?',
+      notePlaceholder: requestsChanges
+        ? 'What should it do instead? It goes again as the next round, using exactly what you write.'
+        : 'Add a note for the record (optional).',
+      noteShort: requestsChanges ? 'What should it do instead?' : 'Add a note for the record (optional)',
+      noteRequired: requestsChanges,
     };
   }
   if (approval.kind === 'check') {

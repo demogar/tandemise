@@ -1,0 +1,54 @@
+{
+  "id": "F3",
+  "title": "Sending the stopped step back runs its next round, and the plan goes on from it",
+  "ok": true,
+  "checks": [
+    {
+      "label": "proof (API): intake ran again as round 2",
+      "ok": true,
+      "observed": {
+        "round": 2,
+        "status": "SUCCEEDED"
+      }
+    },
+    {
+      "label": "round 2 was briefed with the note",
+      "ok": true,
+      "observed": "## Role: Product Manager\nTurns an outcome into a scoped, testable specification.\n\nYou are the Product Manager for this mission.\n\nYour job is to convert the stated outcome into a specification precise enough\nthat an engineer could implement it and a tester could verify it — without\nasking you a follo"
+    },
+    {
+      "label": "proof (API): round 2's output no longer says stop",
+      "ok": true,
+      "observed": [
+        {
+          "headline": "Evidence ready for the hello page",
+          "points": [
+            "Written by the scripted acceptance agent",
+            "No model was called"
+          ],
+          "needs": null,
+          "changed": [
+            {
+              "what": "Applied: Panama counts as Americas for this role: go on with the CV.",
+              "feedback": "fb_01m42aqz94gaeb6nh2wg"
+            }
+          ],
+          "links": []
+        }
+      ]
+    },
+    {
+      "label": "proof (API): draft and polish ran on it",
+      "ok": true,
+      "observed": "SUCCEEDED"
+    },
+    {
+      "label": "proof (API): no second card was filed",
+      "ok": true
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-wt-handoff/docs/superpowers/evidence/2026-10-03-plan-fit/F3-inbox-decided-send-back.png"
+  ]
+}

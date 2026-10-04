@@ -40,6 +40,7 @@ export const OFFLINE_CHECKS = [
   'p15-setup-check',
   'oauth-connect-check',
   'persistence-check',
+  'plan-fit-check',
   'planner-steps-check',
   'policy-eval-check',
   'resume-check',

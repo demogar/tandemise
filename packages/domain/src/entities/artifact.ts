@@ -83,6 +83,13 @@ export interface ArtifactHandoff {
   readonly needs: string | null;
   readonly changed: readonly { readonly what: string; readonly feedback: string | null }[];
   readonly links: readonly HandoffLink[];
+  /**
+   * Set only when what the step found means the steps after it should not run
+   * as planned: why, in one sentence (plan-fit spec). The steps after it wait
+   * for a person. Absent on almost every handoff, so it is optional rather
+   * than normalised to null, and stored handoffs are unchanged.
+   */
+  readonly stop?: string;
 }
 
 /** A pointer to truth that lives in another system (MVP.md §15.3). */

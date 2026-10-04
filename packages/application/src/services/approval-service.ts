@@ -2,7 +2,9 @@ import type {
   Approval, ApprovalRepositoryPort, ArtifactRepositoryPort, MemberRepositoryPort, Mission, MissionRepositoryPort, MissionTask,
   RoleRepositoryPort, RunRepositoryPort, TaskRepositoryPort, UnitOfWork,
 } from '@tandemise/domain';
-import { ACCEPT_RESULT_OPTION, NEEDS_CHANGES_OPTION, REQUEST_CHANGES_OPTION, canTransition, isAffirmative } from '@tandemise/domain';
+import {
+  ACCEPT_RESULT_OPTION, FINISHED_TASK_STATUSES, NEEDS_CHANGES_OPTION, REQUEST_CHANGES_OPTION, SKIP_REST_OPTION, canTransition, isAffirmative, isPlanFitCard,
+} from '@tandemise/domain';
 import type { ApprovalView, DecideApprovalRequest } from '@tandemise/api-contract';
 import type { ApprovalId, Clock, Logger } from '@tandemise/shared';
 import { TandemiseError, asId, summarize } from '@tandemise/shared';
@@ -19,6 +21,8 @@ import { materializePlan } from '../planning/materialize.js';
 import { skillPinner, type SkillPinning } from './planning-service.js';
 import type { LimitService } from './limit-service.js';
 import { parsePlanResponse } from '../planning/parse.js';
+import { upstreamTaskIds } from '../support/lineage.js';
+import { skippedForPlanFit } from '../engine/plan-fit.js';
 
 export interface ApprovalDeps {
   readonly approvals: ApprovalRepositoryPort;
@@ -139,6 +143,7 @@ export class ApprovalServiceImpl implements ApprovalService {
 
       let round: RoundBegun | null = null;
       if (written.kind === 'plan') this.#resumePlan(written, approved, request);
+      else if (isPlanFitCard(written)) round = this.#resumePlanFit(written, actorId, recordedBy);
       else if (written.taskId !== null) round = this.#resumeTask(written, approved, actorId, recordedBy);
       else if (this.deps.limits?.incidentFor(written) !== undefined) this.deps.limits.decide(written, option.id, request.raiseTo, actorId);
       return { decided: written, begun: round };
@@ -310,6 +315,39 @@ export class ApprovalServiceImpl implements ApprovalService {
     this.#setTaskStatus(task, scope, 'BLOCKED',
       'Rejected without changes, so nothing was re-run. Request changes with a note, or retry the task, to run it again.');
     this.#setMissionStatus(mission, scope, 'BLOCKED', `The output of '${task.key}' was rejected.`);
+    return null;
+  }
+
+  /**
+   * A step said the plan no longer fits (plan-fit spec), and the steps after
+   * it wait at promotion. The step itself already succeeded, so its status is
+   * not touched here unless it goes again as a round.
+   *
+   * Continue releases them: the scheduler finds the card answered and
+   * promotes them. Skip marks every unfinished step downstream SKIPPED, and
+   * the mission finishes on what was done. Send back starts the step's next
+   * round with the note; nothing downstream used its output, so nothing else
+   * is redone, and the new output is read afresh for a stop.
+   */
+  #resumePlanFit(approval: Approval, actorId: string, recordedBy: string): RoundBegun | null {
+    const task = approval.taskId === null ? undefined : this.deps.tasks.get(approval.taskId);
+    if (task === undefined) return null;
+    const mission = this.deps.missions.get(task.missionId);
+    if (mission === undefined) return null;
+    if (approval.selectedOptionId === REQUEST_CHANGES_OPTION) {
+      const note = approval.decisionNote?.trim() ?? '';
+      const item = this.deps.rounds.record({ task, text: note, artifactId: null, authorId: actorId, recordedBy, status: 'open', round: null });
+      return this.deps.rounds.beginRound({ task, feedbackIds: [item.id], actorId, keepCardId: approval.id, downstream: 'none' });
+    }
+    if (approval.selectedOptionId === SKIP_REST_OPTION) {
+      const all = this.deps.tasks.listByMission(task.missionId);
+      const reason = skippedForPlanFit(task);
+      for (const later of all) {
+        if (FINISHED_TASK_STATUSES.includes(later.status) || !upstreamTaskIds(later, all).has(task.id)) continue;
+        this.#setTaskStatus(later, { workspaceId: mission.workspaceId, missionId: mission.id, taskId: later.id, roleId: later.roleId, actorId }, 'SKIPPED', reason);
+      }
+    }
+    this.deps.recorder.invalidate('tasks', mission.id);
     return null;
   }
 

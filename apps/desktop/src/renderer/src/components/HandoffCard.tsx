@@ -5,7 +5,7 @@ import { Icon } from './Icon.js';
 import { Attribution } from './ActorChip.js';
 import { DecisionForm, useApprovalDecision } from './Decision.js';
 import { RequestChangesButton } from './RequestChanges.js';
-import { LINKABLE_OUTPUT_TYPES, PARKABLE_TASK_STATUSES, REQUEST_CHANGES_OPTION } from '../lib/domain.js';
+import { LINKABLE_OUTPUT_TYPES, PARKABLE_TASK_STATUSES, REQUEST_CHANGES_OPTION, isPlanFitCard } from '../lib/domain.js';
 import { useWorkspaceId } from '../lib/workspace.js';
 import { HandoffLinkButton, openableLinks } from './HandoffLinks.js';
 import { ContinueElsewhereDialog, HandBackDialog } from './HandBackDialog.js';
@@ -97,7 +97,10 @@ export function HandoffCard({
   // A check holds nothing up, so it is asked for softly rather than as a blocker.
   const check = card.pendingApproval?.approval.kind === 'check';
   // A card for me names the open request even when the author wrote no `needs`.
+  // A step that said the plan no longer fits: the line says why, since the steps after it wait on this answer.
+  const planFit = card.pendingApproval !== null && card.pendingApproval !== undefined && isPlanFitCard(card.pendingApproval.approval);
   const needs = (replan ? 'A new plan. Re-plan the mission, or change its goal.' : null)
+    ?? (planFit ? `The plan no longer fits: ${card.pendingApproval!.approval.rationale}` : null)
     ?? handoff?.needs
     ?? (card.pendingApproval ? card.pendingApproval.approval.title : null)
     ?? (card.humanAction === 'claim' ? 'Someone to take this step. Claim it, do it, then mark it done.' : card.humanAction === 'complete' ? 'You to do this step and mark it done.' : null);

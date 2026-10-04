@@ -160,6 +160,15 @@ export function limitUnit(metric: LimitMetric): string {
   return LIMIT_METRIC_LABELS[metric]?.unit ?? metric;
 }
 
+/** Mirrors the plan-fit answers in `@tandemise/domain`: skip the steps after a stop, or run them as planned. */
+export const SKIP_REST_OPTION = 'skip_rest';
+export const CONTINUE_PLAN_OPTION = 'continue_plan';
+
+/** A plan-fit card: a step said the plan no longer fits, and the steps after it wait on this answer. */
+export function isPlanFitCard(approval: Approval): boolean {
+  return approval.kind === 'intervention' && approval.taskId !== null && approval.options.some((o) => o.id === SKIP_REST_OPTION);
+}
+
 /** A limit card: an intervention with no task that offers "Raise limit and resume". */
 export function isLimitCard(approval: Approval): boolean {
   return approval.kind === 'intervention' && approval.taskId === null && approval.options.some((o) => o.id === RAISE_LIMIT_OPTION);

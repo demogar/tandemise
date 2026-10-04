@@ -1,0 +1,25 @@
+{
+  "id": "F4",
+  "title": "Continuing as planned releases the steps after a stop",
+  "ok": true,
+  "checks": [
+    {
+      "label": "proof (API): draft and polish ran",
+      "ok": true,
+      "observed": "SUCCEEDED"
+    },
+    {
+      "label": "proof (API): intake stayed round 1",
+      "ok": true,
+      "observed": 1
+    },
+    {
+      "label": "proof (API): the card reads approved",
+      "ok": true
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-wt-handoff/docs/superpowers/evidence/2026-10-03-plan-fit/F4-inbox-decided-continue.png"
+  ]
+}
