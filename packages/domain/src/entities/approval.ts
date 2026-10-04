@@ -113,6 +113,20 @@ export const NEEDS_CHANGES_OPTION = 'needs_changes';
 export const REQUEST_CHANGES_OPTION = 'request_changes';
 
 /**
+ * The answers to a plan-fit card: a step's handoff said `stop`, the plan no
+ * longer fits, and the steps after it wait. Skip them, or run them as planned;
+ * the third answer is `request_changes`, a new round of the step. Carried on
+ * an `intervention` card with a task, so no new approval kind is needed.
+ */
+export const SKIP_REST_OPTION = 'skip_rest';
+export const CONTINUE_PLAN_OPTION = 'continue_plan';
+
+/** A plan-fit card, told from other interventions by its options, as a limit card is. */
+export function isPlanFitCard(approval: Pick<Approval, 'kind' | 'taskId' | 'options'>): boolean {
+  return approval.kind === 'intervention' && approval.taskId !== null && approval.options.some((o) => o.id === SKIP_REST_OPTION);
+}
+
+/**
  * Whether deciding `optionId` means the request was granted.
  *
  * An `action` or `release` card is a yes/no question, so only `approve` is a
@@ -129,7 +143,7 @@ export function isAffirmative(kind: ApprovalKind, optionId: string): boolean {
   return kind === 'choice'
     ? optionId !== REJECT_OPTION
     : optionId === APPROVE_OPTION || optionId === APPROVE_FOR_TASK_OPTION || optionId === ACCEPT_RESULT_OPTION
-      || optionId === RAISE_LIMIT_OPTION;
+      || optionId === RAISE_LIMIT_OPTION || optionId === CONTINUE_PLAN_OPTION;
 }
 
 export const DEFAULT_APPROVAL_OPTIONS: readonly ApprovalOption[] = [

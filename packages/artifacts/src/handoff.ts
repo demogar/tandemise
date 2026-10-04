@@ -18,6 +18,7 @@ export const HANDOFF_LIMITS = {
   changed: 3,
   linkLabel: 40,
   links: 5,
+  stop: 200,
 } as const;
 
 const text = (what: string, max: number) => z.string().trim()
@@ -77,7 +78,12 @@ export const handoffSchema: z.ZodType<ArtifactHandoff, z.ZodTypeDef, unknown> = 
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'link url must be a full URL', path: ['url'] });
     }
   })).max(HANDOFF_LIMITS.links, `handoff.links may have at most ${HANDOFF_LIMITS.links} items`).default([]),
-});
+  // Rare, so absent stays absent rather than normalised to null: every stored handoff reads as it did.
+  stop: z.preprocess(
+    (value) => (value === null || (typeof value === 'string' && value.trim() === '') ? undefined : value),
+    text('handoff.stop', HANDOFF_LIMITS.stop).optional(),
+  ),
+}).transform(({ stop, ...rest }) => (stop === undefined ? rest : { ...rest, stop }));
 
 const NO_TEXT = '(no text)';
 

@@ -21,6 +21,7 @@ import type { TaskAttemptOutcome, TaskExecutor } from './task-executor.js';
 import { waitingReason, withoutEscalation, type StaffingResolver } from './staffing-resolver.js';
 import type { ReviewPipeline } from './reviews.js';
 import type { FeedbackRounds, ReviewRouting } from './feedback-rounds.js';
+import { isHeldForPlanFit, type PlanFit } from './plan-fit.js';
 
 /** Mission statuses in which the scheduler is allowed to dispatch work. */
 const DISPATCHABLE: readonly MissionStatus[] = ['EXECUTING', 'REVIEWING', 'QA', 'READY_TO_SHIP'];
@@ -45,6 +46,12 @@ export interface SchedulerDeps {
   readonly reviews: ReviewPipeline;
   /** Releases feedback notes a settled pass never read, once per tick. */
   readonly rounds: FeedbackRounds;
+  /**
+   * Holds the steps after one whose handoff said the plan no longer fits
+   * (plan-fit spec). Optional so harnesses built before it still compose; the
+   * module always passes it.
+   */
+  readonly planFit?: Pick<PlanFit, 'holdBehind'>;
   /**
    * Plans the next queued drafts while a project has room under its
    * work-in-progress limit (P7). Optional so harnesses built before the
@@ -287,10 +294,32 @@ export class SchedulerService implements LifecycleComponent {
         continue;
       }
       const satisfied = dependencies.every((d) => d.status === 'SUCCEEDED' || d.status === 'SKIPPED');
+      if (!satisfied) continue;
+      // A dependency that said the plan no longer fits holds this step until a
+      // person answers; the reason is written once, not on every pass.
+      const held = this.#planFitHold(mission, dependencies);
+      if (held !== null) {
+        if (task.statusReason !== held) this.#setStatus(task, scope, 'PENDING', held);
+        continue;
+      }
       // Resolved in the same write that makes it READY: from here on, changes
       // to the workspace's or mission's staffing no longer move this task.
-      if (satisfied) this.#setStatus(task, scope, 'READY', null, this.#resolveStaffing(task));
+      this.#setStatus(task, scope, 'READY', null, this.#resolveStaffing(task));
     }
+  }
+
+  #planFitHold(mission: Mission, dependencies: readonly MissionTask[]): string | null {
+    if (this.deps.planFit === undefined) return null;
+    for (const dependency of dependencies) {
+      try {
+        const held = this.deps.planFit.holdBehind(mission, dependency);
+        if (held !== null) return held;
+      } catch (e) {
+        // A card that cannot be filed must not stop the mission: say so, and let the step run as planned.
+        this.deps.log.warn('scheduler.plan_fit_failed', { taskId: dependency.id, error: errorMessage(e) });
+      }
+    }
+    return null;
   }
 
   // ------------------------------------------------------------------ dispatch
@@ -541,7 +570,7 @@ export class SchedulerService implements LifecycleComponent {
       return;
     }
 
-    const movable = tasks.some((t) => ACTIVE_TASK_STATUSES.includes(t.status));
+    const movable = tasks.some((t) => ACTIVE_TASK_STATUSES.includes(t.status) || isHeldForPlanFit(t));
     if (!movable && this.#active.size === 0) {
       const stuck = tasks.filter((t) => t.status === 'BLOCKED');
       this.#setMissionStatus(

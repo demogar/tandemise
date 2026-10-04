@@ -1,0 +1,85 @@
+{
+  "id": "F2",
+  "title": "A stop holds the steps after it; skipping them finishes the mission",
+  "ok": true,
+  "checks": [
+    {
+      "label": "proof (API): intake succeeded, its handoff says stop",
+      "ok": true
+    },
+    {
+      "label": "proof (API): draft waits, PENDING with \"Waiting for you: 'intake' says the plan no longer fits.\"",
+      "ok": true,
+      "observed": {
+        "status": "PENDING",
+        "reason": "Waiting for you: 'intake' says the plan no longer fits."
+      }
+    },
+    {
+      "label": "proof (API): one card, offering skip, send back and continue",
+      "ok": true,
+      "observed": [
+        {
+          "id": "skip_rest",
+          "label": "Skip the steps after it",
+          "recommended": true
+        },
+        {
+          "id": "request_changes",
+          "label": "Send it back with a note"
+        },
+        {
+          "id": "continue_plan",
+          "label": "Continue as planned"
+        }
+      ]
+    },
+    {
+      "label": "the intake card in the feed carries the decision and the stop",
+      "ok": true,
+      "observed": "PRODUCT MANAGER\nintake\nDone\njust now\nby\nProduct agent\n·\nresponsible\nYou\nFull doc\n\nEvidence ready for the hello page\n\nWritten by the scripted acceptance agent\nNo model was called\nNeeds The plan no longer fits: The role is US-only, so the steps after this have nothing to work on.\nYou will be asked to confirm.\nSend it back with a note\nContinue as planned\nSkip the steps after it"
+    },
+    {
+      "label": "draft's drawer says \"Waiting for you: 'intake' says the plan no longer fits.\"",
+      "ok": true,
+      "observed": "draft\nPending\nProduct Designer\nnone isolation\nWould go to\nDesign agent\n·\nResponsible\nYou\nChange\nWaiting for you: 'intake' says the plan no longer fits.\nOBJECTIVE\nDraft the application from what intake found.\nSTARTED\n—\nFINISHED\n—\nDetails\nRequest changes\nClose"
+    },
+    {
+      "label": "the Inbox lists it as \"Plan no longer fits\"",
+      "ok": true,
+      "observed": "Tandemise\nAcceptance\n1 repository\nHome\nMissions\nInbox\n2\nArtifacts\nACCEPTANCE\nRepositories\nTeam\nSkills\nEvals\nRuntimes\nIntegrations\nAPP\nSettings\nDaemon connected · 59692\nInbox\nWhat is waiting on a person.\nanswer\nFor you·Apply to the Ashby role SCRIPTED_NEEDS\nTask\n49s ago\n‘intake’ says the plan no longer fits\nEvidence ready for the hello page\nFor you·Apply to the role, skip SCRIPTED_STOP\nPlan no longer fits\njust now\nDecided\n2 decisions\nApprove the plan for Apply to the role, skip SCRIPTED_STOP?\nApproved·\nby\nYou\nApply to the role, skip SCRIPTED_STOP\nApprove the plan for Apply to the Ashby role SCRIPTED_NEEDS?\nApproved·\nby\nYou\nApply to the Ashby role SCRIPTED_NEEDS"
+    },
+    {
+      "label": "proof (API): draft and polish are SKIPPED with \"Skipped: 'intake' said the plan no longer fits.\"",
+      "ok": true,
+      "observed": [
+        [
+          "draft",
+          "SKIPPED",
+          "Skipped: 'intake' said the plan no longer fits."
+        ],
+        [
+          "polish",
+          "SKIPPED",
+          "Skipped: 'intake' said the plan no longer fits."
+        ]
+      ]
+    },
+    {
+      "label": "proof (API): the mission finished on what was done",
+      "ok": true,
+      "observed": "COMPLETE"
+    },
+    {
+      "label": "proof (API): nothing after intake ever ran",
+      "ok": true
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-wt-handoff/docs/superpowers/evidence/2026-10-03-plan-fit/F2-feed-plan-no-longer-fits.png",
+    "/Users/demogar/projects/tandemise/tandemise-wt-handoff/docs/superpowers/evidence/2026-10-03-plan-fit/F2-draft-held-drawer.png",
+    "/Users/demogar/projects/tandemise/tandemise-wt-handoff/docs/superpowers/evidence/2026-10-03-plan-fit/F2-inbox-decided-skip.png",
+    "/Users/demogar/projects/tandemise/tandemise-wt-handoff/docs/superpowers/evidence/2026-10-03-plan-fit/F2-mission-finished-after-skip.png"
+  ]
+}

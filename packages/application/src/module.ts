@@ -25,6 +25,7 @@ import { RecoveryService } from './engine/recovery.js';
 import { RemediationPlanner } from './engine/remediation.js';
 import { FeedbackRounds } from './engine/feedback-rounds.js';
 import { SchedulerService } from './engine/scheduler.js';
+import { PlanFit } from './engine/plan-fit.js';
 import { McpGatewayProvisioner } from './engine/mcp-gateway.js';
 import { TaskExecutor } from './engine/task-executor.js';
 import { EvalRunner } from './engine/eval-runner.js';
@@ -364,6 +365,13 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       members: r.resolve(t.MEMBER_REPOSITORY),
       reviews: r.resolve(t.REVIEW_PIPELINE),
       rounds: r.resolve(t.FEEDBACK_ROUNDS),
+      planFit: new PlanFit({
+        artifacts: r.resolve(t.ARTIFACT_REPOSITORY),
+        approvals: r.resolve(t.APPROVAL_REPOSITORY),
+        approvalFactory: r.resolve(APPROVAL_FACTORY),
+        recorder: r.resolve(t.EVENT_RECORDER),
+        addressFor: (task, workspaceId) => r.resolve(t.REVIEW_PIPELINE).addressFor(task, workspaceId),
+      }),
       // Resolved per pass, not at construction: the backlog plans through the
       // planning service, which is composed with the API services after this.
       // Resolved per pass: routines create missions through the mission service, composed after this.

@@ -20,7 +20,7 @@
 // agent answers every note in handoff.changed, citing its id. The P2 modes are
 // listed where they are read, below.
 // A task objective that mentions "preview" gets an "Open preview" link in its handoff.
-// P3 knobs (SCRIPTED_PLAN_SKIP, SCRIPTED_WORKSPACE_LINK) are described where they are read, as is SCRIPTED_NEEDS (plan fit).
+// P3 knobs (SCRIPTED_PLAN_SKIP, SCRIPTED_WORKSPACE_LINK) are described where they are read, as are SCRIPTED_NEEDS and SCRIPTED_STOP (plan fit).
 // P8 usage knobs (SCRIPTED_USAGE_MIN, SCRIPTED_COST_USD) are described where they are read, at the end.
 import { createHash } from 'node:crypto';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
@@ -322,6 +322,9 @@ for (const { type, destination } of outputs) {
       points: ['All 14 listed cities and all 4 pay tiers are in the US', 'No questions file was written'],
       needs: 'Decide: skip it, or ask whether Panama counts as Americas',
     } : {}),
+    // Plan fit: SCRIPTED_STOP (in the goal) has the step that looks into the request say the plan no longer
+    // fits in its first pass; a round (the person sent it back with a note) no longer does, nor does any other step.
+    ...(mode('SCRIPTED_STOP') && !inRound && /^Look into the request/.test(objective) ? { stop: 'The role is US-only, so the steps after this have nothing to work on.' } : {}),
   };
   const typeFront = type === 'ReviewReport' && REVIEW_BLOCKING
     ? { verdict: 'fail', reviewedRef: 'HEAD', findings: [{ severity: 'blocking', title: 'The greeting ignores the visitor name', location: 'hello.txt' }] }

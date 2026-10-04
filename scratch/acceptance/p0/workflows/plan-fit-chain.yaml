@@ -1,0 +1,19 @@
+name: Plan fit chain
+description: An agent looks into the request, then two agent steps build on it, so a stop in the first holds both.
+steps:
+  - key: intake
+    role: product
+    objective: Look into the request and record what you found.
+    outputs: [Evidence]
+  - key: draft
+    role: design
+    dependsOn: [intake]
+    objective: Draft the application from what intake found.
+    inputs: [Evidence]
+    outputs: [DesignBrief]
+  - key: polish
+    role: design
+    dependsOn: [draft]
+    objective: Polish the draft so it reads well.
+    inputs: [DesignBrief]
+    outputs: [DesignBrief]

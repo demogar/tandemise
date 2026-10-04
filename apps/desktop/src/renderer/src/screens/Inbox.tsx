@@ -13,7 +13,7 @@ import { missionOfItem, useInbox, type InboxItem } from '../lib/inbox.js';
 import { useApprovals, useMission } from '../lib/queries.js';
 import { actorsLine, useActors, type Actors } from '../lib/team.js';
 import { pluralize, relativeTime, titleCase } from '../lib/format.js';
-import { REQUEST_CHANGES_OPTION, isLimitCard } from '../lib/domain.js';
+import { REQUEST_CHANGES_OPTION, isLimitCard, isPlanFitCard } from '../lib/domain.js';
 import { QuietRow, StalledRow } from './inbox/LivenessRows.js';
 import { ParkedRow } from './inbox/ParkedRow.js';
 
@@ -244,6 +244,7 @@ function kindLabel(approval: Approval): string {
   if (position) return position;
   if (approval.kind === 'choice') return 'Question';
   if (isLimitCard(approval)) return 'Limit reached';
+  if (isPlanFitCard(approval)) return 'Plan no longer fits';
   return titleCase(approval.kind);
 }
 

@@ -42,6 +42,30 @@ applies:
 The row disappears as soon as the mission can move again. There is nothing to
 clear.
 
+## What does "Plan no longer fits" mean?
+
+A plan is written before any step runs, and a step can find something that
+makes the rest of it pointless: the job it was asked to apply to is not open
+to you, the bug was already fixed, the file it was meant to read was never
+written. When that happens the agent says so in its handoff (`stop`), its own
+step finishes, and **the steps after it wait** with "Waiting for you: '<step>'
+says the plan no longer fits." instead of running on.
+
+One card asks what to do, in the Inbox and on the step's card in the mission
+feed. It quotes why the agent stopped and what it needs from you:
+
+- **Skip the steps after it** (recommended): every unfinished step that depends
+  on it is skipped, saying why, and the mission finishes on what was done. You
+  are asked to confirm.
+- **Send it back with a note**: the step goes again as its next round, with your
+  note as the brief ("Panama counts as Americas, go on"). If the new round no
+  longer says stop, the next steps start on it.
+- **Continue as planned**: the next steps start on what it wrote.
+
+To stop the whole mission instead, use **Cancel** on the mission. An eval
+trial never waits on this card: nobody is there to answer it, so a stop in a
+trial is ignored.
+
 ## What is a "Quiet" agent?
 
 Every event an agent writes (a message, a tool call, a file) is timestamped.

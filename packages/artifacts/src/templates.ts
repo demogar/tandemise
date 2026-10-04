@@ -28,6 +28,7 @@ const HOW_TO_FILL = [
   '  - The handoff is what a busy owner reads first, often the only thing they read. Write the headline as the outcome, not the activity.',
   '  - Put `needs` only when a person must act, and say what they must do.',
   '  - Put a link for every real thing that lives elsewhere (preview, pull request, design file).',
+  '  - Put `stop` only when what you found means the steps after yours should not run as planned (the request turned out moot, out of scope, or blocked). It is rare: the next steps wait for a person until they answer it.',
 ].join('\n');
 
 /**
@@ -50,6 +51,7 @@ const HANDOFF_BLOCK = [
   `    - label: <what the link opens, at most ${HANDOFF_LIMITS.linkLabel} characters, e.g. Open preview>`,
   `      url: <an http:// or https:// URL; up to ${HANDOFF_LIMITS.links} links, or delete this key's items>`,
   '      kind: workspace | preview | pr | doc | other',
+  `  stop: <only when the steps after yours should not run as planned: why, in one sentence, at most ${HANDOFF_LIMITS.stop} characters; otherwise delete this line>`,
 ].join('\n');
 
 const TEMPLATES: Readonly<Record<SchemaBackedArtifactType, string>> = {

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Plan fit acceptance: a person's step shows what came in, in the real window, on a brand-new installation.
+// Plan fit acceptance: a person's step shows what came in, and a step can say the plan no longer fits, in the real window, on a brand-new installation.
 //
 //   npm run build && node scratch/acceptance/plan-fit/run-all.mjs [--keep-going] [--only=f1] [--hold]
 //
@@ -53,7 +53,7 @@ desktop.unref();
 
 const keepGoing = process.argv.includes('--keep-going');
 const only = process.argv.find((a) => a.startsWith('--only='))?.slice('--only='.length).split(',');
-const scenarios = ['f1-person-sees-what-came-in.mjs']
+const scenarios = ['f1-person-sees-what-came-in.mjs', 'f2-stop-then-skip.mjs', 'f3-stop-then-send-back.mjs', 'f4-stop-then-continue.mjs']
   .filter((file) => !only || only.some((o) => file.startsWith(o)));
 
 const results = () => readdirSync(EVIDENCE).filter((f) => /^F\d\.json$/.test(f)).map((f) => JSON.parse(readFileSync(join(EVIDENCE, f), 'utf8')));

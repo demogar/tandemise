@@ -74,7 +74,7 @@ section('pure: handoff schema');
     check(`${type} accepts a valid handoff`, parsed.ok && parsed.value.frontMatter.handoff?.headline === HANDOFF.headline, issuesOf(parsed));
   }
   check('hasSchema is true for every type', ARTIFACT_TYPES.every((t) => hasSchema(t)) && Object.keys(ARTIFACT_SCHEMAS).length === 16);
-  check('HANDOFF_LIMITS match the contract', eq(HANDOFF_LIMITS, { title: 60, headline: 90, point: 140, points: 3, needs: 140, changedWhat: 140, changed: 3, linkLabel: 40, links: 5 }));
+  check('HANDOFF_LIMITS match the contract', eq(HANDOFF_LIMITS, { title: 60, headline: 90, point: 140, points: 3, needs: 140, changedWhat: 140, changed: 3, linkLabel: 40, links: 5, stop: 200 }));
 
   const missingHandoff = parseArtifact('Evidence', doc('Evidence', { handoff: OMIT }));
   check('a missing handoff is refused, even for Evidence', !missingHandoff.ok, issuesOf(missingHandoff));
