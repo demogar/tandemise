@@ -1360,6 +1360,75 @@ section('reader: read view and approval headline');
   check('search: the empty listing hides superseded versions too', !h.services.artifacts.search(ws, '').some((a) => a.id === v1.id));
 }
 
+section('person step: what came in, and questions go through ask_human');
+{
+  const { mkdtempSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { ids } = await import('@tandemise/shared');
+  const app = await import('@tandemise/application');
+
+  // The planner is told that a worker's questions are asked in the app, never planned as a paste step.
+  const mission0 = { id: 'msn_x', title: 'Job post', goal: 'Apply to a job', constraints: [], successCriteria: [], autonomy: 'balanced', workflowPreset: 'feature-delivery' };
+  const prompt = app.buildPlannerPrompt({
+    mission: mission0, repository: null, roles: [], preset: app.findPreset('feature-delivery'), availableCapabilities: ['reasoning'], repositoryContext: null,
+  });
+  check('planner: questions for the person go through ask_human, not a person step', /ask_human/.test(prompt) && /never plan a person step to answer/i.test(prompt), prompt.split('# Writing good objectives')[0].slice(-1200));
+
+  // Found on a real mission: intake stopped (the role was US-only) and said so in its handoff, but the
+  // person step after it showed only its planned objective, which pointed at a file that was never written.
+  const HOME = mkdtempSync(join(tmpdir(), 'thp-'));
+  const h = await engineHarness(HOME, 'handoff-person-inputs');
+  const caller = { personId: h.services.identity.localPerson().id };
+  const ws = (await h.services.workspaces.create(caller, { name: 'Inputs' })).workspace.id;
+  const owner = h.services.team.me(caller).memberships.find((m) => m.workspaceId === ws).memberId;
+  const mission = await h.services.missions.create(caller, { workspaceId: ws, goal: 'Apply to the Ashby role', title: 'Ashby' });
+  h.repo.missions.update(mission.id, { status: 'PAUSED' });
+  const at = (minute) => `2026-10-01T10:${String(minute).padStart(2, '0')}:00.000Z`;
+  const handoff = (headline, extra = {}) => ({ headline, points: [], needs: null, changed: [], links: [], ...extra });
+  const addTask = (key, status, extra = {}) => h.repo.tasks.add({
+    id: ids.task(), missionId: mission.id, key, title: `Task ${key}`, objective: extra.objective ?? 'o', roleId: 'research',
+    dependsOn: extra.dependsOn ?? [], requiredCapabilities: [], inputArtifacts: extra.inputArtifacts ?? [], expectedOutputs: extra.expectedOutputs ?? ['Evidence'],
+    executionPolicy: { isolation: 'none', maxWallTimeMs: 60000, capabilities: [] },
+    approvalPolicy: { beforeStart: false, onCompletion: false }, retryPolicy: { maxAttempts: 2, backoffMs: 0, onExhausted: 'fail' },
+    completionGate: null, status, statusReason: null, attempts: 1, remediatesTaskId: null, repositoryId: null,
+    executor: extra.executor ?? 'agent', waitPolicy: null, orderHint: 0, staffingOverride: null,
+    assigneeId: extra.executor === 'human' ? owner : null, responsibleId: owner, staffing: null,
+    createdAt: at(0), updatedAt: at(30), startedAt: at(1), finishedAt: status === 'SUCCEEDED' ? at(10) : null,
+  });
+  const addArtifact = (taskId, type, extra = {}) => h.repo.artifacts.create({
+    id: ids.artifact(), workspaceId: ws, missionId: mission.id, taskId, createdByRunId: null, type,
+    title: extra.title ?? `${type} doc`, contentRef: `x/${type}.md`, mediaType: 'text/markdown', sha256: 'a'.repeat(64), byteSize: 10,
+    schemaVersion: 1, sourceRefs: [], supersedes: extra.supersedes ?? null, summary: null, createdAt: extra.createdAt ?? at(5),
+    authorId: owner, responsibleId: owner, recordedBy: owner, handoff: extra.handoff ?? null, wordCount: 10, overBudget: false,
+  });
+
+  const intake = addTask('intake', 'SUCCEEDED');
+  const draft = addArtifact(intake.id, 'Evidence', { handoff: handoff('First pass'), createdAt: at(4) });
+  const evidence = addArtifact(intake.id, 'Evidence', {
+    supersedes: draft.id, createdAt: at(6),
+    handoff: handoff('The role is US-only, so I stopped before the CV', { needs: 'Decide: skip it, or ask Ashby whether Panama counts' }),
+  });
+  // A sibling that is not upstream of the person step: its Evidence is not what the person was handed.
+  const sibling = addTask('sibling', 'SUCCEEDED');
+  addArtifact(sibling.id, 'Evidence', { handoff: handoff('Unrelated research'), createdAt: at(7) });
+  const answer = addTask('answer', 'AWAITING_HUMAN', {
+    executor: 'human', dependsOn: ['intake'], inputArtifacts: [{ type: 'Evidence', required: false }], expectedOutputs: ['DecisionRecord'],
+  });
+  // A person step that declares no inputs still sees what the step before it handed over.
+  const noDecl = addTask('nodecl', 'AWAITING_HUMAN', { executor: 'human', dependsOn: ['intake'], expectedOutputs: ['DecisionRecord'] });
+  const agentStep = addTask('agentstep', 'PENDING', { dependsOn: ['intake'], inputArtifacts: [{ type: 'Evidence', required: true }] });
+
+  const view = h.services.projections.taskView(answer.id);
+  check('a person step lists what came in: the live upstream artifact, with its handoff',
+    Array.isArray(view.inputs) && view.inputs.length === 1 && view.inputs[0].id === evidence.id && view.inputs[0].handoff?.needs?.startsWith('Decide: skip it'),
+    view.inputs?.map((a) => ({ id: a.id, h: a.handoff?.headline })));
+  check('it leaves out a superseded version and a sibling\'s artifact', !view.inputs?.some((a) => a.id === draft.id) && view.inputs?.every((a) => a.taskId === intake.id));
+  const nd = h.services.projections.taskView(noDecl.id);
+  check('a person step with no declared inputs still sees its dependency\'s live output', nd.inputs?.length === 1 && nd.inputs[0].id === evidence.id, nd.inputs?.map((a) => a.id));
+  check('an agent step carries no inputs list (its prompt already has them)', eq(h.services.projections.taskView(agentStep.id).inputs, []));
+}
+
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) {
   console.log(failures.map((f) => `  - ${f}`).join('\n'));

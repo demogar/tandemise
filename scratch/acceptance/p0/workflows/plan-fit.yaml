@@ -1,0 +1,14 @@
+name: Plan fit
+description: An agent looks into the request, then a person acts on what it found, so the person's step has to show what came in.
+steps:
+  - key: intake
+    role: product
+    objective: Look into the request and record what you found.
+    outputs: [Evidence]
+  - key: answer
+    role: product
+    executor: human
+    dependsOn: [intake]
+    objective: Read the questions in applications/23/questions.md and paste your answers by number.
+    inputs: [Evidence]
+    outputs: [DecisionRecord]

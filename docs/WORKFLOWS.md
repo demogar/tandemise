@@ -45,7 +45,14 @@ steps:
 A **human** step keeps manual work inside the dependency graph, so the tasks
 that need it wait rather than fail — and what you paste is written as the
 artifact the step declared, which means the next task reads a design you made in
-Figma exactly as it would read one a model wrote.
+Figma exactly as it would read one a model wrote. The step's drawer starts with
+what the steps before it handed over (each one's headline, points and what it
+needs from you, with the full document a click away), because those steps ran
+after the objective was written and may have found it no longer fits.
+
+A person step is for work only a person can do. Questions an agent has for you
+are not a step: the agent asks them in the app while it runs (`ask_human`), and
+your answer goes straight back to it.
 
 A **wait** step holds no model and no worker slot. The obvious alternative — an
 agent polling in a loop — re-sends its whole context on every poll, so a

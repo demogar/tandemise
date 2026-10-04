@@ -20,7 +20,7 @@
 // agent answers every note in handoff.changed, citing its id. The P2 modes are
 // listed where they are read, below.
 // A task objective that mentions "preview" gets an "Open preview" link in its handoff.
-// P3 knobs (SCRIPTED_PLAN_SKIP, SCRIPTED_WORKSPACE_LINK) are described where they are read.
+// P3 knobs (SCRIPTED_PLAN_SKIP, SCRIPTED_WORKSPACE_LINK) are described where they are read, as is SCRIPTED_NEEDS (plan fit).
 // P8 usage knobs (SCRIPTED_USAGE_MIN, SCRIPTED_COST_USD) are described where they are read, at the end.
 import { createHash } from 'node:crypto';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
@@ -315,6 +315,13 @@ for (const { type, destination } of outputs) {
       // P3: SCRIPTED_WORKSPACE_LINK points at a file in the repository by path, as an agent names its working copy.
       : mode('SCRIPTED_WORKSPACE_LINK') ? { links: [{ label: 'The page in the repository', kind: 'workspace', path: 'README.md' }] } : {}),
     ...(changed.length > 0 ? { changed } : {}),
+    // Plan fit: SCRIPTED_NEEDS (in the goal) writes a handoff that stops early and asks the reader to decide,
+    // the way a real intake did when the role it was asked about turned out to be US-only.
+    ...(mode('SCRIPTED_NEEDS') ? {
+      headline: 'The role is US-only, so I stopped before the CV',
+      points: ['All 14 listed cities and all 4 pay tiers are in the US', 'No questions file was written'],
+      needs: 'Decide: skip it, or ask whether Panama counts as Americas',
+    } : {}),
   };
   const typeFront = type === 'ReviewReport' && REVIEW_BLOCKING
     ? { verdict: 'fail', reviewedRef: 'HEAD', findings: [{ severity: 'blocking', title: 'The greeting ignores the visitor name', location: 'hello.txt' }] }

@@ -1,4 +1,4 @@
-import type { FeedbackView, MissionDetail, TaskView } from '@tandemise/api-contract';
+import type { ArtifactView, FeedbackView, MissionDetail, TaskView } from '@tandemise/api-contract';
 import type { StaffingPatch } from '@tandemise/domain';
 import { useQuery } from '@tanstack/react-query';
 import { Icon } from '../../components/Icon.js';
@@ -17,6 +17,9 @@ import { ApprovalCard } from '../approvals/ApprovalCard.js';
 import { RequestChangesButton } from '../../components/RequestChanges.js';
 import { StartRoundButton } from '../../components/ImpactDialog.js';
 import { SaveCaseDialog } from '../evals/SaveCaseDialog.js';
+import { ArtifactReader } from '../artifacts/ArtifactReader.js';
+import { HandoffLinkButton, openableLinks } from '../../components/HandoffLinks.js';
+import { useWorkspaceId } from '../../lib/workspace.js';
 
 export function TaskDetail({ task, detail, onClose }: { task: TaskView; detail: MissionDetail; onClose: () => void }): JSX.Element {
   // A note turns the retry into the next round, framed as a request rather than as the failure it follows.
@@ -180,6 +183,8 @@ export function TaskDetail({ task, detail, onClose }: { task: TaskView; detail: 
                   ? `Up for grabs: ${task.claimable.map((c) => actorLabel(c, actors.meId)).join(', ')} can claim it`
                   : task.assignee && task.assignee.id !== actors.meId ? `This one is for ${task.assignee.name}` : 'This one is yours'}
               </div>
+              {/* What the steps before handed over comes first: the plan was written before they ran, and they may have found it no longer fits. */}
+              {(task.inputs ?? []).length > 0 ? <HandedOver inputs={task.inputs ?? []} detail={detail} /> : null}
               <p className="muted" style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{task.objective}</p>
               {/* Said where the work is written, not squeezed into the footer next to the picker. */}
               {!actors.solo && eligible !== null && actors.meId !== null && !eligible.includes(actors.meId) ? (
@@ -549,6 +554,56 @@ function personStepReason(task: TaskView, actors: Actors): string | null {
   const named = task.assignee ?? (task.claimable.length === 1 ? task.claimable[0] : null);
   if (named == null) return null;
   return actors.name(named.id) === 'You' ? 'Waiting for you.' : null;
+}
+
+/**
+ * What a person's step was handed, as the steps before it wrote it: the
+ * headline, the points, and what it needs from the reader, with the full
+ * document one click away. An agent in the same place reads these in its
+ * prompt; without them a person sees only the objective, which was planned
+ * before those steps ran.
+ */
+function HandedOver({ inputs, detail }: { inputs: readonly ArtifactView[]; detail: MissionDetail }): JSX.Element {
+  const workspaceId = useWorkspaceId();
+  const [reading, setReading] = useState<string | null>(null);
+  const fromStep = (taskId: string | null): string | null => detail.tasks.find((t) => t.id === taskId)?.title ?? null;
+  return (
+    <div className="stack" aria-label="What came in" style={{ gap: 'var(--s3)' }}>
+      {inputs.map((input) => {
+        const from = fromStep(input.taskId);
+        const links = openableLinks(input.handoff?.links);
+        return (
+          <div key={input.id} className="stack" style={{ gap: 'var(--s2)' }}>
+            <div className="qa__q">{from === null ? titleCase(input.type) : `From “${from}”`}</div>
+            <p className="feedcard__headline" style={{ margin: 0 }}>{input.handoff?.headline ?? input.summary ?? input.title}</p>
+            {(input.handoff?.points ?? []).length > 0 ? (
+              <ul className="feedcard__points">
+                {input.handoff!.points.map((point, index) => <li key={index}>{point}</li>)}
+              </ul>
+            ) : null}
+            {input.handoff?.needs ? (
+              <div className="feedcard__needs">
+                <div className="feedcard__needs-line">
+                  <Icon name="flag" size={13} />
+                  <span className="feedcard__needs-text"><strong>Needs</strong> {input.handoff.needs}</span>
+                </div>
+              </div>
+            ) : null}
+            <div className="row row--wrap">
+              <button type="button" className="btn btn--ghost" onClick={() => setReading(reading === input.id ? null : input.id)}>
+                <Icon name="file" size={13} />
+                {reading === input.id ? 'Hide full doc' : 'Full doc'}
+              </button>
+              {links.map((link, index) => (
+                <HandoffLinkButton key={index} link={link} workspaceId={workspaceId} className="btn btn--ghost" />
+              ))}
+            </div>
+            {reading === input.id ? <ArtifactReader id={input.id} /> : null}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 /**
