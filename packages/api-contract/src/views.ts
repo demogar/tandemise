@@ -429,6 +429,14 @@ export interface TaskView extends MissionTask {
    */
   readonly repositoryName: string | null;
   readonly outputArtifacts: readonly ArtifactView[];
+  /**
+   * For a person's step, what the steps before it handed over: the live
+   * artifacts an agent in its place would have been given, with their
+   * handoffs. A person cannot read a prompt, so this is how they see what the
+   * previous step found and what it needs from them. Empty for other steps.
+   * Optional so a projection built before it still type-checks.
+   */
+  readonly inputs?: readonly ArtifactView[];
   readonly assignee: ActorRef | null;
   readonly responsible: ActorRef | null;
   /** People who may pick the task up; empty unless it waits in a pool. */

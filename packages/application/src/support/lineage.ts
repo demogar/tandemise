@@ -45,3 +45,37 @@ export function supersededBy(
   return liveArtifacts(artifacts, task.missionId, type)
     .find((a) => a.taskId === task.id || (a.taskId !== null && upstream.has(a.taskId)));
 }
+
+/**
+ * What a person's step was handed: the artifacts an agent in its place would
+ * have been given, from the mission's artifacts (superseded versions included).
+ *
+ * Per declared input, the live artifacts of that type from upstream tasks, or
+ * the newest live one when nothing upstream made it, as the executor reads
+ * them. A person step planned without declared inputs gets the live outputs
+ * of the steps it directly depends on: an agent would at least know what
+ * those found, and a person should too.
+ */
+export function handedTo(
+  task: MissionTask,
+  tasks: readonly MissionTask[],
+  all: readonly ArtifactManifest[],
+): readonly ArtifactManifest[] {
+  const superseded = new Set(all.map((a) => a.supersedes).filter((id) => id !== null));
+  const live = all.filter((a) => !superseded.has(a.id));
+  if (task.inputArtifacts.length === 0) {
+    const direct = new Set(tasks.filter((t) => task.dependsOn.includes(t.key)).map((t) => t.id));
+    return live.filter((a) => a.taskId !== null && direct.has(a.taskId));
+  }
+  const upstream = upstreamTaskIds(task, tasks);
+  const handed: ArtifactManifest[] = [];
+  for (const requirement of task.inputArtifacts) {
+    const ofType = live.filter((a) => a.type === requirement.type);
+    const fromUpstream = ofType.filter((a) => a.taskId !== null && upstream.has(a.taskId));
+    const newest = [...ofType].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+    for (const artifact of fromUpstream.length > 0 ? fromUpstream : newest === undefined ? [] : [newest]) {
+      if (!handed.some((h) => h.id === artifact.id)) handed.push(artifact);
+    }
+  }
+  return handed;
+}

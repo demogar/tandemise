@@ -1,0 +1,64 @@
+{
+  "id": "F1",
+  "title": "A person's step shows what the step before it handed over",
+  "ok": true,
+  "checks": [
+    {
+      "label": "proof (API): intake wrote Evidence whose handoff needs a decision",
+      "ok": true,
+      "observed": {
+        "headline": "The role is US-only, so I stopped before the CV",
+        "points": [
+          "All 14 listed cities and all 4 pay tiers are in the US",
+          "No questions file was written"
+        ],
+        "needs": "Decide: skip it, or ask whether Panama counts as Americas",
+        "changed": [],
+        "links": []
+      }
+    },
+    {
+      "label": "proof (API): the person step's view carries that Evidence as what came in",
+      "ok": true,
+      "observed": [
+        {
+          "id": "art_01m42a6wzpn576b0yt7r",
+          "headline": "The role is US-only, so I stopped before the CV"
+        }
+      ]
+    },
+    {
+      "label": "the drawer names the step it came from",
+      "ok": true,
+      "observed": "answer\nThis one is yours\nFROM “INTAKE”\n\nThe role is US-only, so I stopped before the CV\n\nAll 14 listed cities and all 4 pay tiers are in the US\nNo questions file was written\nNeeds Decide: skip it, or ask whether Panama counts as Americas\nFull doc\n\nRead the questions in applications/23/questions.md and paste your answers by number.\n\nAwaiting human\nProduct Manager\nnone isolation\nDone by\nYou\nChange\nWaiting for you.\nOBJECTIVE\nRead the questions in applications/23/questions.md and paste your answers by number.\nSTARTED\n—\nFINISHED\n—\nDetails\nMark done\nRequest changes\nClose"
+    },
+    {
+      "label": "the drawer shows the intake headline and points",
+      "ok": true,
+      "observed": "answer\nThis one is yours\nFROM “INTAKE”\n\nThe role is US-only, so I stopped before the CV\n\nAll 14 listed cities and all 4 pay tiers are in the US\nNo questions file was written\nNeeds Decide: skip it, or ask whether Panama counts as Americas\nFull doc\n\nRead the questions in applications/23/questions.md and paste your answers by number.\n\nAwaiting human\nProduct Manager\nnone isolation\nDone by\nYou\nChange\nWaiting for you.\nOBJECTIVE\nRead the questions in applications/23/questions.md and paste your answers by number.\nSTARTED\n—\nFINISHED\n—\nDetails\nMark done\nRequest changes\nClose"
+    },
+    {
+      "label": "the drawer shows what it needs from the person",
+      "ok": true,
+      "observed": "answer\nThis one is yours\nFROM “INTAKE”\n\nThe role is US-only, so I stopped before the CV\n\nAll 14 listed cities and all 4 pay tiers are in the US\nNo questions file was written\nNeeds Decide: skip it, or ask whether Panama counts as Americas\nFull doc\n\nRead the questions in applications/23/questions.md and paste your answers by number.\n\nAwaiting human\nProduct Manager\nnone isolation\nDone by\nYou\nChange\nWaiting for you.\nOBJECTIVE\nRead the questions in applications/23/questions.md and paste your answers by number.\nSTARTED\n—\nFINISHED\n—\nDetails\nMark done\nRequest changes\nClose"
+    },
+    {
+      "label": "what came in reads before the objective planned ahead of it",
+      "ok": true,
+      "observed": {
+        "headline": 40,
+        "objective": 248
+      }
+    },
+    {
+      "label": "\"Full doc\" opens the Evidence in the drawer",
+      "ok": true,
+      "observed": "answer\nThis one is yours\nFROM “INTAKE”\n\nThe role is US-only, so I stopped before the CV\n\nAll 14 listed cities and all 4 pay tiers are in the US\nNo questions file was written\nNeeds Decide: skip it, or ask whether Panama counts as Americas\nHide full doc\n\nRead the questions in applications/23/questions.md and paste your answers by number.\n\nAwaiting human\nProduct Manager\nnone isolation\nDone by\nYou\nChange\nWaiting for you.\nOBJECTIVE\nRead the questions in applications/23/questions.md and paste your answers by number.\nSTARTED\n—\nFINISHED\n—\nDetails\nMark done\nRequest changes\nClose"
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/Users/demogar/projects/tandemise/tandemise-wt-handoff/docs/superpowers/evidence/2026-10-03-plan-fit/F1-person-step-what-came-in.png",
+    "/Users/demogar/projects/tandemise/tandemise-wt-handoff/docs/superpowers/evidence/2026-10-03-plan-fit/F1-person-step-full-doc.png"
+  ]
+}

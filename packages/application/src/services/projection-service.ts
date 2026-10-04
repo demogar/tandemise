@@ -31,6 +31,7 @@ import { resolveChanges, toFeedbackView } from '../support/feedback-view.js';
 import { missionTakesRounds } from '../support/feedback-rules.js';
 import { intakeArtifactFor, missionUploads, uploadFilename } from '../planning/intake.js';
 import { isCoveredPlaceholder, parkedExternalOf, waitingForWorkIn } from '../support/outside-work.js';
+import { handedTo } from '../support/lineage.js';
 
 /** Where a task that carries an in-round note has not started that round's pass yet. */
 const ROUND_NOT_RUN: readonly MissionTask['status'][] = ['READY', 'PENDING'];
@@ -521,6 +522,9 @@ export class ProjectionServiceImpl implements ProjectionService {
       }
     }
 
+    // What each person's step was handed, read once and only when the mission has one.
+    const missionArtifacts = tasks.some((t) => t.executor === 'human') ? this.deps.artifacts.listByMission(mission.id) : [];
+
     // A parked step is told from a wait step by its park event, so the log is
     // read only when some agent step is AWAITING_EXTERNAL.
     const parkLog = tasks.some((t) => t.status === 'AWAITING_EXTERNAL' && t.executor === 'agent')
@@ -543,6 +547,7 @@ export class ProjectionServiceImpl implements ProjectionService {
         latestRun,
         runCount: runs.length,
         outputArtifacts: this.deps.artifacts.listByTask(task.id).map((a) => toArtifactView(this.deps, a)),
+        inputs: task.executor === 'human' ? handedTo(task, tasks, missionArtifacts).map((a) => toArtifactView(this.deps, a)) : [],
         // The newest measurement per check, not one row per attempt: a task
         // that retried 14 times produced 56 results describing 4 checks, and
         // the card rendered all of them - including a FAIL from two days and

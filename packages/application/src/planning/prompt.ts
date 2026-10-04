@@ -199,6 +199,14 @@ is a mistake that costs the user time and money:
   making a design in a tool the workers cannot reach). The mission parks until
   they return; what they paste becomes the step's \`expectedOutputs\` artifact.
 
+Never plan a person step to answer questions a worker will raise, or to make a
+choice a worker's result will put to them. A worker that needs the person asks
+with \`ask_human\` while it runs: the question reaches them in the app, with any
+options, and the answer comes straight back to that worker. A person step that
+says "read the questions in <file> and paste your answers" sends them looking
+for something they cannot see, and still runs when there turned out to be
+nothing to answer.
+
 Neither kind needs a real \`roleId\`, capabilities, a gate, or isolation. Both
 still take \`key\`, \`title\`, \`objective\` and \`dependsOn\`.
 
