@@ -52,6 +52,13 @@ what traces it ("Covered by AC1", "Covers U1, U2"), QA's evidence, and a status:
 | **Not verified** | no pass yet: QA skipped it, has not run, or ran before the spec changed |
 | **Not covered** | none of the spec's criteria covers this line of yours |
 
+Before anything covers or verifies a line, its row says what in the plan will
+answer it next: **The spec will cover this**, **QA will verify this** (a plan
+with no spec step, such as a bug fix or a quick change), **Nothing in this plan
+verifies this** (a workflow of your own with neither step), or **Waiting for
+the plan**. Every built-in workflow ends in a QA step, so a mission planned
+from one can always verify what you wrote.
+
 Your own line takes the combined result of the spec criteria that cover it:
 all passed is Verified, any failure is Failed.
 

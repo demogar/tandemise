@@ -268,10 +268,19 @@ try {
     check('the view lists them unverified and counted, not yet "not covered"', view.length === 2 && view.every((v) => v.result === 'UNVERIFIED' && v.counted && !v.uncovered && v.qaArtifactId === null), view);
   }
 
+  section('the checklist says what in the plan answers a line next');
+  {
+    check('no plan yet: plannedCheck is null ("Waiting for the plan")', h.services.criteria.list(mission.id).every((v) => v.plannedCheck === null));
+    // A quick change once read "The spec will cover this" all the way to Complete: it had no spec step and no QA step.
+    const quick = h.app.findPreset('quick-change').build({});
+    check('a quick change ends in a QA step that verifies the lines', quick.tasks.some((t) => t.roleId === 'qa' && t.expectedOutputs.includes('QAReport') && t.completionGate === h.app.QA_CRITERIA_GATE), quick.tasks.map((t) => t.key));
+  }
+
   const app = h.app;
   const spec = addTask('product_spec', 'product', ['ProductSpec'], app.SPEC_CRITERIA_GATE);
   const qa = addTask('qa', 'qa', ['QAReport'], app.QA_CRITERIA_GATE);
   const release = addTask('release_candidate', 'release', ['ReleaseCandidate'], app.RELEASE_CRITERIA_GATE);
+  check('a plan with a spec step still to run: plannedCheck is "spec"', h.services.criteria.list(mission.id).every((v) => v.plannedCheck === 'spec'));
 
   section('harvest: a spec the ledger cannot hold is refused');
   {
