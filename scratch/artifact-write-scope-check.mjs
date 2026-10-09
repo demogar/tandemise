@@ -54,6 +54,30 @@ console.log('\n── filesystem.write: unscoped, as before\n');
   ok('no artifact-only rule', !args.includes('--allowed-tools'));
 }
 
+console.log('\n── shell without filesystem.write (review, QA): commands run, edits stay scoped\n');
+{
+  // Found on a real mission: the reviewer could read the diff but every `npm test`
+  // came back "This command requires approval", and the step still passed.
+  // Verified against Claude Code 2.1.295: the same argv without the Bash rule
+  // refuses `npm test`; with it the command runs.
+  for (const [who, grants] of [
+    ['review', ['repository.read', 'filesystem.read', 'shell.exec', 'artifact.write']],
+    ['qa', ['repository.read', 'filesystem.read', 'shell.exec', 'tests.run', 'browser', 'browser.navigate', 'artifact.write']],
+  ]) {
+    const args = invoke(grants);
+    const allowed = flag(args, '--allowed-tools').split(',');
+    ok(`${who}: Bash is allowed by rule`, allowed.includes('Bash'), flag(args, '--allowed-tools'));
+    ok(`${who}: BashOutput and KillShell too`, allowed.includes('BashOutput') && allowed.includes('KillShell'));
+    ok(`${who}: edits still only under .tandemise/out`, allowed.includes('Edit(.tandemise/out/**)') && !allowed.includes('Edit'));
+    ok(`${who}: mode stays default`, flag(args, '--permission-mode') === 'default');
+    ok(`${who}: Bash is not disallowed`, !flag(args, '--disallowed-tools').split(',').includes('Bash'));
+  }
+  const pinned = invoke(['repository.read', 'shell.exec', 'artifact.write'], { permissionMode: 'default' });
+  ok('a profile that pins its mode gets no shell rule', !flag(pinned, '--allowed-tools').split(',').includes('Bash'), flag(pinned, '--allowed-tools'));
+  const developer = invoke(['filesystem.write', 'shell.exec', 'artifact.write']);
+  ok('write + shell bypasses prompts and needs no rule', flag(developer, '--permission-mode') === 'bypassPermissions' && !developer.includes('--allowed-tools'));
+}
+
 console.log('\n── profile allow rules are kept alongside\n');
 {
   const args = invoke(['artifact.write'], { allowedTools: 'WebFetch' });

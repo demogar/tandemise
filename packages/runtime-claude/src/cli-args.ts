@@ -58,9 +58,30 @@ export function disallowedTools(grants: readonly Capability[]): string[] {
   return artifactOnly(grants) ? disallowed.filter((tool) => !ARTIFACT_ONLY_TOOLS.includes(tool)) : disallowed;
 }
 
-/** Scoped allow rules implied by the grants, on top of any the profile configures. */
-export function allowedToolRules(grants: readonly Capability[]): string[] {
-  return artifactOnly(grants) ? [ARTIFACT_WRITE_RULE] : [];
+/** The shell tools, allowed outright for a run granted shell that is not already bypassing prompts. */
+export const SHELL_TOOLS: readonly string[] = CAPABILITY_TOOL_GUARDS[0]!.tools;
+
+/**
+ * Scoped allow rules implied by the grants, on top of any the profile configures.
+ *
+ * A run granted shell but not `filesystem.write` (review, QA) runs in `default`
+ * mode so its edits stay scoped. Headless, `default` refuses every shell
+ * command that is not plainly read-only ("This command requires approval"):
+ * a real reviewer could read the diff but never run `npm test`, said so in its
+ * handoff, and still passed. The grant has already said yes to shell, so the
+ * shell tools are allowed by rule. A profile that pins `permissionMode` chose
+ * its prompts on purpose and gets no rule.
+ */
+export function allowedToolRules(
+  grants: readonly Capability[],
+  settings: Readonly<Record<string, unknown>> = {},
+): string[] {
+  const rules = artifactOnly(grants) ? [ARTIFACT_WRITE_RULE] : [];
+  const pinned = typeof settings['permissionMode'] === 'string' && (PERMISSION_MODES as readonly string[]).includes(settings['permissionMode']);
+  if (!pinned && anyCapabilityMatches(grants, CORE_CAPABILITIES.shell) && permissionMode(grants, settings) !== 'bypassPermissions') {
+    rules.push(...SHELL_TOOLS);
+  }
+  return rules;
 }
 
 /**
@@ -75,6 +96,8 @@ export function allowedToolRules(grants: readonly Capability[]): string[] {
  *    plus the execution target's workspace isolation are the real gate.
  *  - write granted, shell not → `acceptEdits`. Edits proceed; a shell attempt
  *    still prompts, which is the correct outcome for an ungranted capability.
+ *  - shell granted, write not → `default`, with the shell tools allowed by
+ *    rule (`allowedToolRules`), so commands run and edits stay scoped.
  *  - neither → `default`. With the write and shell tools already disallowed,
  *    the remaining toolset is read-only and does not prompt.
  *
@@ -147,7 +170,7 @@ export function buildInvocation(request: RunRequest, resumeSessionRef: string | 
   if (settings['userSettings'] !== 'inherit') args.push('--setting-sources', 'project,local');
 
   const allowed = [...new Set([
-    ...allowedToolRules(request.grants),
+    ...allowedToolRules(request.grants, settings),
     // The run-scoped gateway only publishes tools this assignment was granted,
     // and every call through it is decided by Tandemise's policy engine - with
     // an approval card when the grant says ask. Without an allow rule headless
