@@ -1,0 +1,85 @@
+{
+  "id": "R1",
+  "title": "Plan the rest again from a stop: new steps for what is left, built on what is done",
+  "ok": true,
+  "checks": [
+    {
+      "label": "proof (API): a plan card for the rest, with what it keeps, replaces and adds",
+      "ok": true,
+      "observed": "Keeps 1 step already started · replaces 2 steps not started · adds 2 steps"
+    },
+    {
+      "label": "the planner was told what is done, what intake found and the note",
+      "ok": true,
+      "observed": "# Already done: plan only the rest\n\nThis mission is under way. The steps below already ran and are kept exactly as\nthey are; you are planning only what is still needed after them.\n\nWhy the person wants a new plan for the rest:\n````\nAsk Ashby whether Panama counts, then tailor the application for the Americas.\n````\n\n- `intake` (product, succeeded): intake\n  Found: Evidence ready for the hello page\n    - Written by the scripted acceptance agent\n    - No model was called\n  Said the plan no longer fits: The role is US-only, so the steps after this have nothing to work on.\n  Outputs: Evidence (art_"
+    },
+    {
+      "label": "proof (API): nothing changed yet: draft and polish are still there, held",
+      "ok": true,
+      "observed": [
+        "draft",
+        "intake",
+        "polish"
+      ]
+    },
+    {
+      "label": "the feed asks for the new plan, with the line",
+      "ok": true,
+      "observed": "msn_01m4h0559yxv4xzfr9vc\nMissions\nplan-fit-chain\nApply to the role, replan SCRIPTED_REPLAN SCRIPTED_STOP\nApply to the role, replan SCRIPTED_REPLAN SCRIPTED_STOP\nAwaiting plan approval\nStart\nRe-plan\nCancel\nFeed\n1\nPlan\n3\nTimeline\nArtifacts\n2\nChecks & Gates\nMetrics\nDone when\n0 of 1 verified\nU1\nThe acceptance scenario finishes its steps\nThe spec will cover this\nNot verified\nNeeds you\n1 item\nPlan for Apply to the role, replan SCRIPTED_REPLAN SCRIPTED…\nAwaiting approval\njust now\nby\nRuntime\n·\nresponsible\nYou\nFull doc\n\nAsk first, then tailor the application for the Americas from what intake found.\n\nKeeps 1 step already started · replaces 2 steps not started · adds 2 steps\n2 tasks: design ×2\nNeeds Approve the new steps to carry on\nApplies immediately.\nReject\nApprove\nDone\n1\nPRODUCT MANAGER\nintake\nDone\njust now\nby\nProduct agent\n·\nresponsible\nYou\nFull doc\nRequest changes\n\nEvidence ready for the hell"
+    },
+    {
+      "label": "proof (API): the new steps ran",
+      "ok": true,
+      "observed": "SUCCEEDED"
+    },
+    {
+      "label": "proof (API): the unstarted steps were replaced",
+      "ok": true,
+      "observed": [
+        "ask_first",
+        "intake",
+        "tailor"
+      ]
+    },
+    {
+      "label": "proof (API): intake kept its id, runs and outputs",
+      "ok": true,
+      "observed": {
+        "before": {
+          "runs": [
+            "run_01m4h058dys8mvd4ez18"
+          ],
+          "artifacts": [
+            "art_01m4h05a0z72tzman909"
+          ]
+        },
+        "after": {
+          "runs": [
+            "run_01m4h058dys8mvd4ez18"
+          ],
+          "artifacts": [
+            "art_01m4h05a0z72tzman909"
+          ]
+        }
+      }
+    },
+    {
+      "label": "proof (API): the first new step was handed intake's output",
+      "ok": true,
+      "observed": [
+        "art_01m4h05a0z72tzman909"
+      ]
+    },
+    {
+      "label": "proof (API): the mission completed",
+      "ok": true
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/tmp/claude-1000/-home-demogar-projects-tandemise/7b30c050-0cfe-490e-8e18-179b54363d52/scratchpad/rp-evidence/R1-inbox-decided-plan-the-rest.png",
+    "/tmp/claude-1000/-home-demogar-projects-tandemise/7b30c050-0cfe-490e-8e18-179b54363d52/scratchpad/rp-evidence/R1-feed-new-plan-asks.png",
+    "/tmp/claude-1000/-home-demogar-projects-tandemise/7b30c050-0cfe-490e-8e18-179b54363d52/scratchpad/rp-evidence/R1-inbox-new-plan-approved.png",
+    "/tmp/claude-1000/-home-demogar-projects-tandemise/7b30c050-0cfe-490e-8e18-179b54363d52/scratchpad/rp-evidence/R1-mission-finished-on-new-plan.png"
+  ]
+}

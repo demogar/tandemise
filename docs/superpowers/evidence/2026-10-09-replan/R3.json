@@ -1,0 +1,65 @@
+{
+  "id": "R3",
+  "title": "A paused mission keeps what is done: the old re-plan route and the header both plan only the rest",
+  "ok": true,
+  "checks": [
+    {
+      "label": "proof (API): POST /plan with a finished step files a replan card, not a replace-all",
+      "ok": true,
+      "observed": [
+        "Replan",
+        "Summary",
+        "ask_first (design)",
+        "tailor (design)",
+        "MissionPlan"
+      ]
+    },
+    {
+      "label": "proof (API): intake is untouched, same id, runs and outputs",
+      "ok": true
+    },
+    {
+      "label": "proof (API): rejected, it goes back to paused, not executing",
+      "ok": true,
+      "observed": "PAUSED"
+    },
+    {
+      "label": "the header of a paused mission with finished work offers Plan the rest again",
+      "ok": true,
+      "observed": [
+        "Resume",
+        "Plan the rest again",
+        "Cancel"
+      ]
+    },
+    {
+      "label": "proof (API): the header button files a new replan card",
+      "ok": true
+    },
+    {
+      "label": "proof (API): approved, the new steps ran and the mission completed",
+      "ok": true,
+      "observed": [
+        "ask_first",
+        "intake",
+        "tailor"
+      ]
+    },
+    {
+      "label": "proof (API): intake is still untouched",
+      "ok": true
+    },
+    {
+      "label": "proof (API): the new plan answered the stop card it left open",
+      "ok": true,
+      "observed": {
+        "status": "REJECTED",
+        "option": "replan_rest"
+      }
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/tmp/claude-1000/-home-demogar-projects-tandemise/7b30c050-0cfe-490e-8e18-179b54363d52/scratchpad/rp-evidence/R3-paused-header-plan-the-rest.png"
+  ]
+}
