@@ -72,7 +72,7 @@ export type { EnvironmentOverrides } from './support/defaults.js';
 export { ApprovalServiceImpl } from './services/approval-service.js';
 export { ArtifactServiceImpl } from './services/artifact-service.js';
 export { IntegrationServiceImpl } from './services/integration-service.js';
-export { MissionServiceImpl } from './services/mission-service.js';
+export { MissionServiceImpl, titleFromGoal } from './services/mission-service.js';
 export { FeedbackServiceImpl } from './services/feedback-service.js';
 export { CriteriaServiceImpl } from './services/criteria-service.js';
 export { ReadinessService, assertReadiness } from './services/readiness.js';

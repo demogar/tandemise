@@ -293,3 +293,46 @@ function requirement(op: BinaryOp, expected: GateValue): string {
   if (op === '!=') return `anything but ${expected}`;
   return `${op} ${expected}`;
 }
+
+/** "ChangeSet" → "change set", "QAReport" → "QA report": a type named in a sentence. */
+function typeWords(type: string): string {
+  return type
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+    .split(' ')
+    .map((w) => (w === w.toUpperCase() ? w : w.toLowerCase()))
+    .join(' ');
+}
+
+const PHRASES: ReadonlyArray<readonly [RegExp, (m: RegExpMatchArray) => string]> = [
+  [/^artifact\.(\w+)\.exists(?: == true)?$/, (m) => `it writes a ${typeWords(m[1]!)}`],
+  [/^checks\.(\w+) == PASS$/, (m) => (m[1] === 'tests' ? 'the tests pass' : `${m[1]} passes`)],
+  [/^checks\.(\w+) != FAIL$/, (m) => (m[1] === 'tests' ? 'the tests do not fail' : `${m[1]} does not fail`)],
+  [/^diff\.files_changed > 0$/, () => 'it changes at least one file'],
+  [/^review\.blocking_findings == 0$/, () => 'review finds nothing blocking'],
+  [/^review\.verdict == pass$/, () => 'review passes it'],
+  [/^qa\.criteria_failed == 0$/, () => 'QA fails no criterion'],
+  [/^qa\.criteria_unverified == 0$/, () => 'QA verifies every criterion'],
+  [/^qa\.blocking_defects == 0$/, () => 'QA finds no blocking defect'],
+  [/^criteria\.uncovered_user == 0$/, () => 'the spec covers every Done-when line'],
+  [/^criteria\.unknown_covers == 0$/, () => 'the spec names only real Done-when lines'],
+];
+
+/**
+ * A gate as a person reads it: "it writes a change set, the tests pass and it
+ * changes at least one file". A plan card once showed
+ * `artifact.ChangeSet.exists && checks.tests == PASS && diff.files_changed > 0`.
+ * Anything it cannot say plainly - an `||`, a negation, a fact without a
+ * phrase - is returned as written, so the sentence never hides a condition.
+ */
+export function describeGate(expression: GateExpression): string {
+  if (/\|\||[()!](?!=)/.test(expression)) return expression;
+  const clauses = expression.split('&&').map((c) => c.trim().replace(/\s+/g, ' '));
+  const words: string[] = [];
+  for (const clause of clauses) {
+    const phrase = PHRASES.map(([re, say]) => { const m = clause.match(re); return m === null ? null : say(m); }).find((p) => p !== null);
+    if (phrase === undefined || phrase === null) return expression;
+    words.push(phrase);
+  }
+  return words.length <= 1 ? (words[0] ?? expression) : `${words.slice(0, -1).join(', ')} and ${words.at(-1)}`;
+}

@@ -1098,11 +1098,22 @@ function scopeOf(mission: Mission): EventScope {
  * and nothing else. Deliberately dumb: a title is a label, and spending a model
  * call on one would make creating a mission slower than typing the title.
  */
-function titleFromGoal(goal: string): string {
+export function titleFromGoal(goal: string): string {
   const firstSentence = goal.trim().split(/(?<=[.!?])\s/)[0] ?? goal.trim();
   const trimmed = firstSentence.replace(/[.!?]+$/, '').trim();
-  return trimmed.length <= 80 ? trimmed : `${trimmed.slice(0, 77).trimEnd()}…`;
+  if (trimmed.length <= TITLE_MAX) return trimmed;
+  // A goal's first clause is usually the outcome and the rest its reason:
+  // "Add a --top N option to the tally CLI so it prints…" titles as the option.
+  // Cutting at a fixed length instead left "…the N most frequent w…".
+  const clause = trimmed.split(/,\s|\s(?:so that|so|because|which|while|without|—|-)\s/)[0]!.trim();
+  if (clause.length >= 12 && clause.length <= TITLE_MAX) return clause;
+  const cut = trimmed.slice(0, TITLE_MAX - 1);
+  const words = /\s/.test(trimmed[TITLE_MAX - 1] ?? '') ? cut : cut.replace(/\s+\S*$/, '');
+  return `${(words.length >= 12 ? words : cut).trimEnd()}…`;
 }
+
+/** The handoff contract's title budget (collaboration roadmap). */
+const TITLE_MAX = 60;
 
 /**
  * Whether the member was reached by an escalation, and so may take a task
