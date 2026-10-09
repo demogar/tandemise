@@ -83,11 +83,17 @@ inputs that exist before the plan).
 
 - **A replan always asks**, whatever the project's autonomy: it changes a
   plan the person already approved. The card is the plan card, with one more
-  evidence line: "Keeps N finished steps · replaces M · adds K".
+  evidence line, which also leads the plan's handoff in the feed: "Keeps N
+  steps already started · replaces M steps not started · adds K steps".
 - Reject leaves the mission as it was before the replan was asked for: the
   unstarted steps it would have replaced are restored, and a plan-fit hold
   that led here is still waiting on its card.
 - Approve replaces the unstarted steps and the mission returns to EXECUTING.
+  It also answers any plan-fit card still open on the mission (a replan asked
+  for from the header or the route): the new plan is the answer to "the plan
+  no longer fits", and an open card would hold the new steps behind the stop.
+- A paused mission goes back to PAUSED when its replan is rejected or cannot
+  be planned, so PLANNING and AWAITING_PLAN_APPROVAL may move to PAUSED.
 
 ### Where the person asks for it
 
@@ -99,7 +105,8 @@ inputs that exist before the plan).
   BLOCKED, PAUSED or FAILED and has started steps (where it today offers no
   re-plan, or a re-plan that would destroy them). The existing **Re-plan**
   stays for a mission where nothing has started.
-- The liveness Stalled row's **Re-plan** action follows the same rule.
+- The liveness Stalled row keeps offering what P9 specified. It reads its own
+  list of re-plannable statuses, not the new EXECUTING → PLANNING edge.
 
 ### Mission status
 

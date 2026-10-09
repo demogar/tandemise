@@ -35,7 +35,7 @@ export function materializePlan(
   // same repository as `beveloce-web`, and failing over capitalisation would be
   // a needless way to lose a plan.
   const byName = new Map(repositories.map((r) => [r.name.toLowerCase(), r.id]));
-  const inferred = options.inferInputs === true ? withInferredInputs(plan.tasks) : plan.tasks;
+  const inferred = options.inferInputs === true ? withInferredInputs(plan.tasks, options.upstream) : plan.tasks;
   const placeholders = skippedPlaceholders(plan, inferred, options.uploadFilename);
   const tasks = withPlaceholderDependencies(inferred, placeholders);
   // The placeholders come first: they are upstream of whatever reads their type.
@@ -131,7 +131,39 @@ function uniqueKey(stage: string, taken: ReadonlySet<string>): string {
   return key;
 }
 
+/**
+ * A replan's new steps, with any key a kept step already holds renamed
+ * (replan spec). Keys are unique per mission, and the planner is told not to
+ * reuse a kept key; one that does still gets a plan, not a constraint error.
+ * Inside the new plan a dependency on the colliding key means the new step,
+ * so it follows the rename; a new step that meant the kept one names it under
+ * a key it does not share. Uploads are never re-skipped by a replan.
+ */
+export function renameAgainst(plan: MissionPlan, kept: ReadonlySet<string>): MissionPlan {
+  const taken = new Set([...kept, ...plan.tasks.map((t) => t.key)]);
+  const renamed = new Map<string, string>();
+  for (const task of plan.tasks) {
+    if (!kept.has(task.key)) continue;
+    const key = uniqueKey(task.key, taken);
+    taken.add(key);
+    renamed.set(task.key, key);
+  }
+  return {
+    summary: plan.summary,
+    tasks: plan.tasks.map((t) => ({
+      ...t,
+      key: renamed.get(t.key) ?? t.key,
+      dependsOn: t.dependsOn.map((d) => renamed.get(d) ?? d),
+    })),
+  };
+}
+
 export interface MaterializeOptions {
+  /**
+   * Steps outside this plan that its tasks may depend on: a replan's kept
+   * steps, so a new step reads what the finished one it builds on wrote.
+   */
+  readonly upstream?: readonly PlannedTask[];
   /**
    * For a model's plan: a task that names no inputs reads what its direct
    * dependencies produce. A planner often leaves `inputArtifacts` out, and a
@@ -150,8 +182,8 @@ export interface MaterializeOptions {
   readonly uploadFilename?: (artifactId: string) => string | undefined;
 }
 
-function withInferredInputs(tasks: readonly PlannedTask[]): readonly PlannedTask[] {
-  const byKey = new Map(tasks.map((t) => [t.key, t]));
+function withInferredInputs(tasks: readonly PlannedTask[], upstream: readonly PlannedTask[] = []): readonly PlannedTask[] {
+  const byKey = new Map([...upstream, ...tasks].map((t) => [t.key, t]));
   return tasks.map((task) => {
     if (task.inputArtifacts.length > 0 || task.dependsOn.length === 0) return task;
     const types = [...new Set(task.dependsOn.flatMap((key) => byKey.get(key)?.expectedOutputs ?? []))];

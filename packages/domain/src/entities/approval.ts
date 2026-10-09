@@ -120,6 +120,8 @@ export const REQUEST_CHANGES_OPTION = 'request_changes';
  */
 export const SKIP_REST_OPTION = 'skip_rest';
 export const CONTINUE_PLAN_OPTION = 'continue_plan';
+/** Plan fit's fourth answer: a new plan for what is left, keeping what is done (replan spec). */
+export const REPLAN_REST_OPTION = 'replan_rest';
 
 /** A plan-fit card, told from other interventions by its options, as a limit card is. */
 export function isPlanFitCard(approval: Pick<Approval, 'kind' | 'taskId' | 'options'>): boolean {

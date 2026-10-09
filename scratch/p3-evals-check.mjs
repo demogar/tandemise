@@ -416,7 +416,7 @@ try {
   ws = (await h.services.workspaces.create(caller, { name: 'Evals' })).workspace;
 
   section('persistence: migration 020');
-  check('schema version is 20', P.SCHEMA_VERSION === 20, P.SCHEMA_VERSION);
+  check('schema version is 20 or later', P.SCHEMA_VERSION >= 20, P.SCHEMA_VERSION);
   {
     // A database at 019 with one mission migrates, and the mission is not a trial.
     const path = join(tmp, 'at-019.db');
@@ -426,7 +426,7 @@ try {
     dbh.pragma('foreign_keys = OFF');
     insertMissionAt019(dbh, 'msn_old', 'ws_old');
     dbh.pragma('foreign_keys = ON');
-    const result = P.migrate(db, undefined, P.MIGRATIONS);
+    const result = P.migrate(db, undefined, P.MIGRATIONS.filter((m) => m.version <= 20));
     check('only migration 020 applies', eq(result.applied, [20]), result.applied);
     const missions = new P.SqliteMissionRepository(db, clock);
     check('an old mission has evalTrialId null', missions.get('msn_old').evalTrialId === null);

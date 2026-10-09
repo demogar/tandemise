@@ -35,7 +35,7 @@ export function MissionDetail({ id, tab }: { id: string; tab: MissionTab }): JSX
   const [focusNeeds, setFocusNeeds] = useState(false);
 
   const act = useDaemonMutation(
-    (daemon, args: { action: 'plan' | 'start' | 'pause' | 'resume' | 'cancel' }) => daemon.missionAction(id, args.action),
+    (daemon, args: { action: 'plan' | 'replan' | 'start' | 'pause' | 'resume' | 'cancel' }) => daemon.missionAction(id, args.action),
     ['missions', 'tasks'],
     id,
   );
@@ -256,8 +256,11 @@ function TabLink({
   );
 }
 
+/** A new plan for what is left, keeping what is done (replan spec). */
+const REPLAN_REST: MissionAction = { id: 'replan', label: 'Plan the rest again', icon: 'sparkle' };
+
 interface MissionAction {
-  readonly id: 'plan' | 'start' | 'pause' | 'resume' | 'cancel';
+  readonly id: 'plan' | 'replan' | 'start' | 'pause' | 'resume' | 'cancel';
   readonly label: string;
   readonly icon: IconName;
   readonly primary?: boolean;
@@ -284,8 +287,10 @@ function actionsFor(status: MissionStatus, planUnstarted: boolean): readonly Mis
         { id: 'cancel', label: 'Cancel', icon: 'x' },
       ];
     case 'PAUSED':
+      // Paused partway through, a person may want a different rest rather than more of the same.
       return [
         { id: 'resume', label: 'Resume', icon: 'play', primary: true },
+        ...(planUnstarted ? [] : [REPLAN_REST]),
         { id: 'cancel', label: 'Cancel', icon: 'x' },
       ];
     case 'BLOCKED':
@@ -299,8 +304,11 @@ function actionsFor(status: MissionStatus, planUnstarted: boolean): readonly Mis
           { id: 'cancel', label: 'Cancel', icon: 'x' },
         ];
       }
+      // Blocked partway through: Re-plan would have thrown away what is done, so
+      // the way to change course is a new plan for the rest (replan spec).
       return [
         { id: 'resume', label: 'Resume', icon: 'play', primary: true },
+        REPLAN_REST,
         { id: 'cancel', label: 'Cancel', icon: 'x' },
       ];
     default:

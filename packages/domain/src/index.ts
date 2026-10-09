@@ -11,6 +11,7 @@ export * from './staffing-presets.js';
 export * from './entities/mission.js';
 export * from './entities/member.js';
 export * from './entities/task.js';
+export * from './entities/replan.js';
 export * from './entities/run.js';
 export * from './entities/artifact.js';
 export * from './entities/approval.js';

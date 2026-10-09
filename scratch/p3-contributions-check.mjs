@@ -84,7 +84,7 @@ check('an acronym stays together', D.outputTypeLabel('QAPlan') === 'QA plan' && 
   check('only the git credential variables that are set are passed to a PR fetch', eq(picked, { SSH_AUTH_SOCK: '/tmp/agent.sock', GIT_ASKPASS: '/bin/askpass' }), picked);
 }
 
-check('P3a added no migration: nothing between 019 and P3b\'s 020', MIGRATIONS.filter((m) => m.version > 19).every((m) => m.version === 20), MIGRATIONS.map((m) => m.version));
+check('P3a added no migration: P3b\'s 020 follows 019', MIGRATIONS.find((m) => m.version === 20)?.name === 'evals' && MIGRATIONS.some((m) => m.version === 19), MIGRATIONS.map((m) => `${m.version}:${m.name}`));
 
 // ------------------------------------------------------ the gh PR resolver
 // The real GhPullRequestSnapshots over a scripted executor: which URLs reach
