@@ -27,10 +27,13 @@ export function isTerminalMissionStatus(s: MissionStatus): boolean {
  */
 const TRANSITIONS: Record<MissionStatus, readonly MissionStatus[]> = {
   DRAFT: ['PLANNING', 'CANCELLED'],
-  PLANNING: ['AWAITING_PLAN_APPROVAL', 'EXECUTING', 'FAILED', 'CANCELLED', 'BLOCKED'],
+  // PAUSED from either: a paused mission's replan of the rest goes back to paused when it is
+  // rejected or cannot be planned (replan spec), rather than starting work nobody resumed.
+  PLANNING: ['AWAITING_PLAN_APPROVAL', 'EXECUTING', 'FAILED', 'CANCELLED', 'BLOCKED', 'PAUSED'],
   // BLOCKED is where a rejected plan leaves the mission, until it is re-planned or its goal changes.
-  AWAITING_PLAN_APPROVAL: ['EXECUTING', 'PLANNING', 'BLOCKED', 'CANCELLED', 'FAILED'],
-  EXECUTING: ['REVIEWING', 'QA', 'READY_TO_SHIP', 'BLOCKED', 'PAUSED', 'FAILED', 'CANCELLED', 'COMPLETE'],
+  AWAITING_PLAN_APPROVAL: ['EXECUTING', 'PLANNING', 'BLOCKED', 'CANCELLED', 'FAILED', 'PAUSED'],
+  // PLANNING from EXECUTING is a replan of the rest (replan spec), refused while a run is live.
+  EXECUTING: ['REVIEWING', 'QA', 'READY_TO_SHIP', 'BLOCKED', 'PAUSED', 'FAILED', 'CANCELLED', 'COMPLETE', 'PLANNING'],
   REVIEWING: ['EXECUTING', 'QA', 'BLOCKED', 'PAUSED', 'FAILED', 'CANCELLED'],
   QA: ['EXECUTING', 'READY_TO_SHIP', 'BLOCKED', 'PAUSED', 'FAILED', 'CANCELLED'],
   READY_TO_SHIP: ['RELEASED', 'EXECUTING', 'COMPLETE', 'BLOCKED', 'PAUSED', 'CANCELLED'],

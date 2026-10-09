@@ -498,6 +498,12 @@ export type StartRoundRequest = z.infer<typeof startRoundRequest>;
 export const dismissFeedbackRequest = z.object({ onBehalfOf });
 export type DismissFeedbackRequest = z.infer<typeof dismissFeedbackRequest>;
 
+/** A new plan for what is left (replan spec); the note says why, and briefs the planner. */
+export const replanMissionRequest = z.object({
+  note: z.string().max(4000).nullish(),
+});
+export type ReplanMissionRequest = z.infer<typeof replanMissionRequest>;
+
 export const cancelMissionRequest = z.object({
   reason: z.string().max(500).optional(),
 });

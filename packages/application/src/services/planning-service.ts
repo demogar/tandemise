@@ -1,11 +1,12 @@
 import { relative } from 'node:path';
 import type {
   ApprovalRepositoryPort, ArtifactHandoff, ArtifactManifest, ArtifactRepositoryPort, ArtifactStorePort, Capability, MemberRepositoryPort, Mission,
-  MissionCriteriaRepositoryPort, MissionPlan, MissionQuestionRepositoryPort, MissionRepositoryPort, MissionTask, PlanValidationIssue, RepoRepositoryPort,
+  MissionCriteriaRepositoryPort, MissionPlan, MissionQuestionRepositoryPort, MissionRepositoryPort, MissionStatus, MissionTask, PlanProposalRepositoryPort,
+  PlanValidationIssue, RepoRepositoryPort, RunRepositoryPort,
   PlannedTask, Repository, RoleRepositoryPort, RoleTemplate, RuntimeProfile, RuntimeProfileRepositoryPort, SkillPin,
   TaskRepositoryPort, Workspace, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
-import { ARTIFACT_OUT_DIR, CORE_CAPABILITIES, RUNTIME_ACTOR, SYSTEM_ACTOR, DEFAULT_ESCALATE_AFTER_MS, canTransition, indexTeam, isActiveMember, compileWorkflow, validateMissionPlan } from '@tandemise/domain';
+import { ARTIFACT_OUT_DIR, CORE_CAPABILITIES, RUNTIME_ACTOR, SYSTEM_ACTOR, DEFAULT_ESCALATE_AFTER_MS, LIVE_RUN_STATUSES, canTransition, describeReplan, indexTeam, isActiveMember, isTrialMission, compileWorkflow, replanRefusal, splitForReplan, validateMissionPlan } from '@tandemise/domain';
 import type { MissionDetail } from '@tandemise/api-contract';
 import type { ArtifactMeasurePort, ArtifactParserPort, ArtifactTemplatePort, WorkflowSourcePort } from '../ports.js';
 import type { ReadinessService } from './readiness.js';
@@ -13,17 +14,18 @@ import type { ApprovalFactory } from '@tandemise/policy';
 import type { ExecutionTarget, ExecutionTargetManager } from '@tandemise/execution-core';
 import { describeRejections, onlyBusy } from '@tandemise/runtimes-core';
 import type { RuntimeManager, RuntimeSelection, SlotReservation } from '@tandemise/runtimes-core';
-import type { ArtifactId, Clock, Logger, MissionId, TandemisePaths, WorkspaceId } from '@tandemise/shared';
+import type { ApprovalId, ArtifactId, Clock, Logger, MissionId, TandemisePaths, WorkspaceId } from '@tandemise/shared';
 import { TandemiseError, errorMessage, ids, slugify, summarize } from '@tandemise/shared';
 import type { PlanningService, ProjectionService } from '../services.js';
 import type { EventRecorder, EventScope } from '../support/event-recorder.js';
 import { satisfiableCapabilities } from '../support/capabilities.js';
 import { describeIssues } from '../support/dag.js';
 import { DEFAULT_PRESET_ID, findPreset, type WorkflowPreset } from '../planning/presets.js';
-import { buildPlannerPrompt, describePlan, type ConnectedApp } from '../planning/prompt.js';
+import { buildPlannerPrompt, describePlan, type AlreadyDone, type ConnectedApp } from '../planning/prompt.js';
 import { parsePlanResponse } from '../planning/parse.js';
-import { clip, materializePlan, planTitle, renderPlanDocument } from '../planning/materialize.js';
+import { clip, materializePlan, planTitle, renameAgainst, renderPlanDocument } from '../planning/materialize.js';
 import { ensureTandemiseIgnore } from '../support/ignore.js';
+import { reopenCard, sentence } from '../support/replan.js';
 import { checkSpecLedger, readHandoff, readTitle } from '../engine/harvester.js';
 import {
   buildIntakePrompt, hasAcceptanceCriteria, intakeArtifactFor, intakeTargetFor, missionUploads, uploadFilename,
@@ -54,6 +56,10 @@ export interface PlanningDeps {
   readonly workflows: WorkflowSourcePort;
   readonly missions: MissionRepositoryPort;
   readonly tasks: TaskRepositoryPort;
+  /** Which steps have run, for what a replan keeps (replan spec). */
+  readonly runs: Pick<RunRepositoryPort, 'listByMission'>;
+  /** A replan's new steps, waiting on its plan card. */
+  readonly proposals: PlanProposalRepositoryPort;
   readonly roles: RoleRepositoryPort;
   readonly runtimeProfiles: RuntimeProfileRepositoryPort;
   readonly approvals: ApprovalRepositoryPort;
@@ -137,6 +143,13 @@ export class PlanningServiceImpl implements PlanningService {
   /** One intake pass per mission at a time: refinement and planning may both ask for it at once. */
   readonly #intakes = new Map<MissionId, Promise<readonly ArtifactManifest[]>>();
 
+  /**
+   * What a replan in progress was asked with, until its card is filed. Lost on
+   * a restart, which plans again with no note and resumes to EXECUTING, where
+   * the scheduler finds the mission's real state.
+   */
+  readonly #replans = new Map<MissionId, ReplanIntent>();
+
   constructor(private readonly deps: PlanningDeps) {}
 
   abandon(id: MissionId): void {
@@ -164,6 +177,16 @@ export class PlanningServiceImpl implements PlanningService {
    */
   async begin(id: MissionId): Promise<MissionDetail> {
     const planning = this.#enterPlanning(id);
+    this.#inBackground(planning);
+    return this.deps.projections.missionDetail(id);
+  }
+
+  async replan(
+    id: MissionId,
+    options: { readonly note?: string | null; readonly planFitApprovalId?: ApprovalId | null } = {},
+  ): Promise<MissionDetail> {
+    const note = options.note?.trim() ?? '';
+    const planning = this.#enterPlanning(id, { note: note === '' ? null : note, planFitApprovalId: options.planFitApprovalId ?? null });
     this.#inBackground(planning);
     return this.deps.projections.missionDetail(id);
   }
@@ -201,9 +224,19 @@ export class PlanningServiceImpl implements PlanningService {
     });
   }
 
-  #enterPlanning(id: MissionId): Mission {
+  #enterPlanning(id: MissionId, asked: Omit<ReplanIntent, 'resumeStatus'> = { note: null, planFitApprovalId: null }): Mission {
     const mission = this.#requireMission(id);
     const scope: EventScope = { workspaceId: mission.workspaceId, missionId: mission.id };
+    // Started steps make any plan a replan of the rest: they are never replaced.
+    const { kept } = this.#split(id);
+    if (kept.length > 0) {
+      if (isTrialMission(mission)) {
+        throw new TandemiseError('PRECONDITION_FAILED', 'An eval trial is never replanned: nobody is there to approve it.', { details: { missionId: id } });
+      }
+      const live = new Set(this.deps.runs.listByMission(id).filter((r) => LIVE_RUN_STATUSES.includes(r.status)).map((r) => r.taskId as string));
+      const refusal = replanRefusal(this.deps.tasks.listByMission(id), live);
+      if (refusal !== null) throw new TandemiseError('PRECONDITION_FAILED', refusal, { details: { missionId: id } });
+    }
     if (!canTransition(mission.status, 'PLANNING')) {
       throw new TandemiseError(
         'PRECONDITION_FAILED',
@@ -218,12 +251,24 @@ export class PlanningServiceImpl implements PlanningService {
     if (mission.status === 'DRAFT') this.deps.readiness?.assertReady(id);
     // A re-plan replaces the tasks the pending plan approval describes, so that
     // approval would authorize a plan that no longer exists.
+    // A replan asked for again while its card waits keeps the status the first one would return to.
+    let resumeStatus: MissionStatus = mission.status === 'AWAITING_PLAN_APPROVAL' ? 'EXECUTING' : mission.status;
     for (const approval of this.deps.approvals.list({ missionId: id, statuses: ['PENDING'] })) {
       if (approval.kind !== 'plan') continue;
+      resumeStatus = this.deps.proposals.get(approval.id)?.resumeStatus ?? resumeStatus;
+      this.deps.proposals.delete(approval.id);
       this.deps.approvals.update(approval.id, { status: 'CANCELLED', decidedAt: this.deps.clock.now() });
       this.deps.recorder.invalidate('approvals', id);
     }
-    return this.#setStatus(mission, scope, 'PLANNING', 'Planning the mission.');
+    if (kept.length === 0) return this.#setStatus(mission, scope, 'PLANNING', 'Planning the mission.');
+    this.#replans.set(id, { ...asked, resumeStatus });
+    return this.#setStatus(mission, scope, 'PLANNING', `Planning the rest: ${kept.length} ${kept.length === 1 ? 'step' : 'steps'} already started.`);
+  }
+
+  /** Started steps (kept by any plan) and the ones that never started. */
+  #split(id: MissionId): ReturnType<typeof splitForReplan> {
+    const withRuns = new Set(this.deps.runs.listByMission(id).map((r) => r.taskId as string));
+    return splitForReplan(this.deps.tasks.listByMission(id), withRuns);
   }
 
   async #planFrom(planning: Mission): Promise<MissionDetail> {
@@ -273,6 +318,14 @@ export class PlanningServiceImpl implements PlanningService {
     // dependency graph.
     const repositories = this.deps.repositories.listByWorkspace(workspace.id);
 
+    // A mission with started steps plans only the rest, through the planner even
+    // on an authored workflow: recompiling the file gives back the plan that no
+    // longer fits. Never a replace-all: that deleted finished steps' history.
+    const split = this.#split(mission.id);
+    if (split.kept.length > 0) {
+      return this.#replanWithin(planning, workspace, repository ?? null, roles, repositories, preexisting, split, scope);
+    }
+
     // A workflow the team wrote wins over anything this repository ships. It is
     // compiled rather than proposed: the author already decided what the steps
     // are, and asking a model to re-derive them would be both slower and less
@@ -307,6 +360,129 @@ export class PlanningServiceImpl implements PlanningService {
 
     this.#requestApprovalOrAccept(planning, workspace, outcome, scope, tasks);
     return this.deps.projections.missionDetail(mission.id);
+  }
+
+  /**
+   * Plans what is left (replan spec). Nothing on the mission changes here: the
+   * new steps wait on the plan card, which a replan always files whatever the
+   * project's autonomy, because it changes a plan the person already approved.
+   * A planner that cannot plan the rest is not replaced by the preset, which
+   * would plan the whole mission again: the mission goes back to where it was.
+   */
+  async #replanWithin(
+    planning: Mission,
+    workspace: Workspace,
+    repository: Repository | null,
+    roles: readonly RoleTemplate[],
+    repositories: readonly Repository[],
+    preexisting: readonly ArtifactManifest[],
+    split: ReturnType<typeof splitForReplan>,
+    scope: EventScope,
+  ): Promise<MissionDetail> {
+    const id = planning.id;
+    const intent = this.#replans.get(id) ?? { note: null, planFitApprovalId: null, resumeStatus: 'EXECUTING' as const };
+    try {
+      const preset = findPreset(planning.workflowPreset || DEFAULT_PRESET_ID);
+      const rest: RestContext = { kept: split.kept, alreadyDone: this.#alreadyDone(split.kept, intent) };
+      const outcome = await this.#producePlan(planning, workspace, repository, roles, preset, scope, repositories, preexisting, rest);
+      if (!this.#stillPlanning(planning, scope)) return this.deps.projections.missionDetail(id);
+      const after = Math.max(-1, ...split.kept.map((t) => t.orderHint)) + 1;
+      const tasks = materializePlan(outcome.plan, id, this.deps.clock, repositories, {
+        inferInputs: true,
+        upstream: split.kept,
+        ...skillPinner(this.deps.skills, workspace.id, roles),
+      }).map((t, i) => ({ ...t, orderHint: after + i }));
+      await this.#storePlanDocument(planning, outcome.plan, workspace, replanLine(split, tasks));
+      this.#fileReplan(planning, outcome, scope, tasks, split, intent);
+    } catch (e) {
+      this.#abandonReplan(id, scope, intent, `Could not plan the rest: ${sentence(errorMessage(e))} Nothing changed.`);
+    } finally {
+      this.#replans.delete(id);
+    }
+    return this.deps.projections.missionDetail(id);
+  }
+
+  /** The kept steps as the planner reads them: what each found, and why a new plan is wanted. */
+  #alreadyDone(kept: readonly MissionTask[], intent: ReplanIntent): AlreadyDone {
+    let stop: string | null = null;
+    const steps = kept.map((task) => {
+      const live = this.deps.artifacts.listByTask(task.id).filter((a) => (a.withdrawnAt ?? null) === null);
+      const superseded = new Set(live.map((a) => a.supersedes).filter((x) => x !== null));
+      const outputs = live.filter((a) => !superseded.has(a.id));
+      const primary = outputs.find((a) => task.expectedOutputs.includes(a.type)) ?? outputs[0];
+      stop = primary?.handoff?.stop ?? stop;
+      return {
+        key: task.key, title: task.title, roleId: task.roleId, status: task.status, round: task.round ?? 1,
+        headline: primary?.handoff?.headline ?? null,
+        points: primary?.handoff?.points ?? [],
+        stop: primary?.handoff?.stop ?? null,
+        outputs: outputs.map((a) => ({ id: a.id, type: a.type })),
+      };
+    });
+    return { reason: intent.note ?? stop, steps };
+  }
+
+  /** The replan's plan card, with its new steps held beside it until it is decided. */
+  #fileReplan(
+    mission: Mission,
+    outcome: PlanOutcome,
+    scope: EventScope,
+    tasks: readonly MissionTask[],
+    split: ReturnType<typeof splitForReplan>,
+    intent: ReplanIntent,
+  ): void {
+    const counts = replanLine(split, tasks);
+    const artifact = this.deps.artifacts.latest(mission.id, 'MissionPlan');
+    const approval = this.deps.approvalFactory.createOrThrow({
+      workspaceId: mission.workspaceId,
+      missionId: mission.id,
+      taskId: null,
+      kind: 'plan',
+      risk: 'read',
+      title: `Approve the new plan for the rest of ${mission.title}?`,
+      rationale: `The planner proposed a new plan for what is left. ${counts}.`,
+      effect: 'Approving replaces the steps that have not started with these and carries on from what is done. '
+        + 'Rejecting leaves the mission exactly as it was.',
+      evidence: [
+        { kind: 'text', label: 'Replan', value: counts },
+        ...(intent.note === null ? [] : [{ kind: 'text' as const, label: 'Your note', value: summarize(intent.note, 600) }]),
+        { kind: 'text', label: 'Summary', value: summarize(outcome.plan.summary || describePlan(outcome.plan), 600) },
+        ...tasks.slice(0, 12).map((t) => ({
+          kind: 'text' as const,
+          label: `${t.key} (${t.roleId})`,
+          value: summarize(t.objective, 240),
+        })),
+        ...(artifact === undefined ? [] : [{ kind: 'artifact' as const, label: 'MissionPlan', value: artifact.id }]),
+      ],
+      addressees: this.#planAddressees(mission),
+      escalateAfterMs: DEFAULT_ESCALATE_AFTER_MS,
+    });
+    this.deps.approvals.create(approval);
+    this.deps.proposals.put({
+      approvalId: approval.id,
+      missionId: mission.id,
+      tasks,
+      replaces: split.replaced.map((t) => t.id),
+      resumeStatus: intent.resumeStatus,
+      planFitApprovalId: intent.planFitApprovalId,
+      createdAt: this.deps.clock.now(),
+    });
+    this.deps.recorder.record(scope, { type: 'approval.requested', approvalId: approval.id });
+    this.deps.recorder.invalidate('approvals', mission.id);
+    this.#setStatus(mission, scope, 'AWAITING_PLAN_APPROVAL', `Waiting for approval of the new plan for the rest: ${counts}.`);
+  }
+
+  /**
+   * Back to where the mission was before the replan, and the plan-fit card
+   * that asked for it open again, so the steps it held stay held.
+   */
+  #abandonReplan(id: MissionId, scope: EventScope, intent: ReplanIntent, reason: string): void {
+    const current = this.deps.missions.get(id);
+    if (current?.status !== 'PLANNING') return;
+    if (intent.planFitApprovalId !== null) reopenCard(this.deps.approvals, intent.planFitApprovalId);
+    this.deps.recorder.note(scope, reason, 'warn');
+    this.deps.recorder.invalidate('approvals', id);
+    this.#setStatus(current, scope, intent.resumeStatus, reason);
   }
 
   /**
@@ -635,8 +811,11 @@ export class PlanningServiceImpl implements PlanningService {
     scope: EventScope,
     repositories: readonly Repository[],
     preexisting: readonly ArtifactManifest[],
+    rest?: RestContext,
   ): Promise<PlanOutcome> {
     const fallback = (reason: string): PlanOutcome => {
+      // The preset is a whole mission's shape: falling back to it on a replan would redo what is done.
+      if (rest !== undefined) throw new TandemiseError('PRECONDITION_FAILED', sentence(reason.charAt(0).toUpperCase() + reason.slice(1)));
       this.deps.recorder.note(
         scope,
         `Planning fell back to the "${preset.name}" preset: ${reason} `
@@ -660,7 +839,7 @@ export class PlanningServiceImpl implements PlanningService {
       );
     }
     try {
-      return await this.#planWith(selected.value, mission, repository, roles, preset, scope, repositories, workspace, fallback, preexisting);
+      return await this.#planWith(selected.value, mission, repository, roles, preset, scope, repositories, workspace, fallback, preexisting, rest);
     } finally {
       selected.value.reservation.release();
     }
@@ -704,6 +883,7 @@ export class PlanningServiceImpl implements PlanningService {
     workspace: Workspace,
     fallback: (reason: string) => PlanOutcome,
     preexisting: readonly ArtifactManifest[],
+    rest?: RestContext,
   ): Promise<PlanOutcome> {
     const selected = { value: selection };
 
@@ -736,7 +916,7 @@ export class PlanningServiceImpl implements PlanningService {
     try {
       let issues: readonly PlanValidationIssue[] = [];
       for (let attempt = 1; attempt <= MAX_PLANNER_ATTEMPTS; attempt++) {
-        const prompt = this.#prompt(mission, repository, roles, preset, context, issues, attempt, repositories, apps, preexisting);
+        const prompt = this.#prompt(mission, repository, roles, preset, context, issues, attempt, repositories, apps, preexisting, rest?.alreadyDone);
         const response = await this.#runPlanner(
           selected.value.profile, prompt, target, scope, attempt, selected.value.reservation,
         );
@@ -753,7 +933,7 @@ export class PlanningServiceImpl implements PlanningService {
           continue;
         }
 
-        const validated = validateMissionPlan(parsed.value, context);
+        const validated = rest === undefined ? validateMissionPlan(parsed.value, context) : validateRest(parsed.value, rest.kept, context);
         if (validated.ok) {
           this.deps.recorder.note(
             scope,
@@ -785,6 +965,7 @@ export class PlanningServiceImpl implements PlanningService {
     repositories: readonly Repository[],
     connectedApps: readonly ConnectedApp[] = [],
     preexisting: readonly ArtifactManifest[] = [],
+    alreadyDone?: AlreadyDone,
   ): string {
     const answers = (this.deps.questions?.listByMission(mission.id) ?? [])
       .flatMap((q) => (q.status === 'answered' && q.answer !== null ? [{ key: q.key, text: q.text, answer: q.answer }] : []));
@@ -794,6 +975,7 @@ export class PlanningServiceImpl implements PlanningService {
       answers,
       connectedApps,
       uploads: preexisting.map((a) => ({ id: a.id, type: a.type, title: a.title })),
+      ...(alreadyDone === undefined ? {} : { alreadyDone }),
       mission,
       repository,
       repositories,
@@ -975,10 +1157,10 @@ way to write that file, reply with the JSON object instead.`;
 
   // -------------------------------------------------------------- acceptance
 
-  async #storePlanDocument(mission: Mission, plan: MissionPlan, workspace: Workspace): Promise<void> {
+  async #storePlanDocument(mission: Mission, plan: MissionPlan, workspace: Workspace, replan?: string): Promise<void> {
     try {
       const previous = this.deps.artifacts.latest(mission.id, 'MissionPlan');
-      const handoff = this.#planHandoff(plan, workspace);
+      const handoff = this.#planHandoff(plan, workspace, replan);
       const body = renderPlanDocument(plan, mission.title, handoff);
       const manifest = await this.deps.artifactStore.write({
         workspaceId: mission.workspaceId,
@@ -1016,22 +1198,24 @@ way to write that file, reply with the JSON object instead.`;
    * reader hide once the plan is decided; a point saying it would outlive the
    * approval and repeat the needs line while it lasts.
    */
-  #planHandoff(plan: MissionPlan, workspace: Workspace): ArtifactHandoff {
+  #planHandoff(plan: MissionPlan, workspace: Workspace, replan?: string): ArtifactHandoff {
     const description = describePlan(plan);
-    const awaitsApproval = workspace.autonomy.planApproval === 'ask';
+    // A replan always asks, and leads with what it keeps, replaces and adds: in the
+    // feed it otherwise read like the first plan, with nothing to say finished work stays.
+    const awaitsApproval = replan !== undefined || workspace.autonomy.planApproval === 'ask';
     const summary = plan.summary.trim().length > 0 ? plan.summary.trim() : description;
     const stop = plan.tasks.find((t) => t.completionGate !== null || t.approvalPolicy.beforeStart || t.approvalPolicy.onCompletion);
     const stopLine = stop === undefined ? null
       : stop.completionGate !== null ? `First gate: ${stop.key} passes when ${stop.completionGate}`
         : `${stop.title} needs approval ${stop.approvalPolicy.beforeStart ? 'before it starts' : 'when it finishes'}`;
-    const points = [description, stopLine]
+    const points = [replan ?? null, description, stopLine]
       .filter((p): p is string => p !== null)
       .map((p) => clip(p, 140));
     return {
       // Cut on a word boundary at 90 characters, the same rule a person's text gets.
       headline: clip(this.deps.measure.deriveHandoff(summary.split('\n')[0] ?? summary).headline, 90),
       points,
-      needs: awaitsApproval ? 'Approve the plan to start' : null,
+      needs: replan !== undefined ? 'Approve the new steps to carry on' : awaitsApproval ? 'Approve the plan to start' : null,
       changed: [],
       links: [],
     };
@@ -1133,6 +1317,19 @@ way to write that file, reply with the JSON object instead.`;
   }
 }
 
+interface ReplanIntent {
+  readonly note: string | null;
+  readonly planFitApprovalId: ApprovalId | null;
+  /** The status the mission had before the replan, and goes back to if it does not happen. */
+  readonly resumeStatus: MissionStatus;
+}
+
+/** A replan's planning: the kept steps the plan builds on, and what the planner is told of them. */
+interface RestContext {
+  readonly kept: readonly MissionTask[];
+  readonly alreadyDone: AlreadyDone;
+}
+
 interface PlanOutcome {
   readonly plan: MissionPlan;
   /** `workflow` is a file the team wrote; the other two are this repo's. */
@@ -1153,4 +1350,29 @@ function describeChecks(repository: Repository): string {
 function safeFilename(name: string): string {
   const flat = name.replace(/[\\/]+/g, '_').replace(/^\.+/, '').trim();
   return flat.length > 0 ? flat : 'upload';
+}
+
+/**
+ * A replan's new steps, judged in the graph they will run in (replan spec):
+ * kept steps plus new ones, so a dependency on a kept key is known and a
+ * required input a kept step produced is upstream. Only what the new plan
+ * says is held against it: kept steps were accepted under their own day's
+ * rules and are not the planner's to fix.
+ */
+function validateRest(
+  plan: MissionPlan,
+  kept: readonly MissionTask[],
+  context: Parameters<typeof validateMissionPlan>[1],
+): ReturnType<typeof validateMissionPlan> {
+  const renamed = renameAgainst(plan, new Set(kept.map((t) => t.key)));
+  const combined = validateMissionPlan({ summary: renamed.summary, tasks: [...kept, ...renamed.tasks] }, context);
+  if (combined.ok) return { ok: true, value: renamed };
+  const added = new Set(renamed.tasks.map((t) => t.key));
+  const errors = combined.error.filter((i) => i.severity === 'error' && (i.taskKey === null || added.has(i.taskKey)));
+  return errors.length === 0 ? { ok: true, value: renamed } : { ok: false, error: errors };
+}
+
+/** "Keeps 1 step already started · replaces 2 steps not started · adds 2 steps". */
+function replanLine(split: ReturnType<typeof splitForReplan>, added: readonly MissionTask[]): string {
+  return describeReplan(split.kept.length, split.replaced.filter((t) => t.status !== 'SKIPPED').length, added.length);
 }
