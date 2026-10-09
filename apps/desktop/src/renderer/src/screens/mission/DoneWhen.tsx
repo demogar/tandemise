@@ -85,6 +85,14 @@ function statusOf(row: MissionCriterionView): { label: string; tone: Tone } {
   return { label: 'Not verified', tone: 'pending' };
 }
 
+/** What the plan will do with a line nothing covers or verifies yet. */
+const PLANNED_CHECK = {
+  spec: 'The spec will cover this',
+  qa: 'QA will verify this',
+  none: 'Nothing in this plan verifies this',
+  unplanned: 'Waiting for the plan',
+} as const;
+
 /** What traces this criterion, in words: what covers it, what it covers, what QA saw. */
 function traceLine(row: MissionCriterionView): string {
   const parts: string[] = [];
@@ -94,7 +102,9 @@ function traceLine(row: MissionCriterionView): string {
         ? 'Nothing in the spec covers this yet'
         : row.coveredBy.length > 0
           ? `Covered by ${row.coveredBy.join(', ')}`
-          : 'The spec will cover this',
+          : row.qaArtifactId !== null
+            ? 'Reported by QA'
+            : PLANNED_CHECK[row.plannedCheck ?? 'unplanned'],
     );
   } else {
     parts.push(row.covers.length > 0 ? `Covers ${row.covers.join(', ')}` : 'From the spec');

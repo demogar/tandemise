@@ -884,6 +884,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
     bind(t.CRITERIA_SERVICE, (r) => new CriteriaServiceImpl({
       missions: r.resolve(t.MISSION_REPOSITORY),
       artifacts: r.resolve(t.ARTIFACT_REPOSITORY),
+      tasks: r.resolve(t.TASK_REPOSITORY),
       gates: r.resolve(t.GATE_SERVICE),
     }), { source: SOURCE });
 

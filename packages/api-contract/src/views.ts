@@ -275,6 +275,11 @@ export interface MissionCriterionView {
   readonly counted: boolean;
   /** A user criterion the current spec leaves uncovered. */
   readonly uncovered: boolean;
+  /**
+   * What in the plan answers this line next: a spec step that will cover it,
+   * a QA step that will verify it, nothing (`none`), or null before there is a plan.
+   */
+  readonly plannedCheck: 'spec' | 'qa' | 'none' | null;
   readonly createdAt: string;
 }
 
