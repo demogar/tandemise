@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { TandemiseError, asId } from '@tandemise/shared';
 import {
-  addRepositoryRequest, cancelMissionRequest, connectIntegrationRequest, createIntegrationRequest, createMissionRequest,
+  addRepositoryRequest, cancelMissionRequest, replanMissionRequest, connectIntegrationRequest, createIntegrationRequest, createMissionRequest,
   createRuntimeProfileRequest, createWorkspaceRequest, decideApprovalRequest, listMissionsQuery,
   missionEventsQuery, probeRepositoryRequest, retryTaskRequest, updateIntegrationRequest,
   updateRuntimeProfileRequest, updateWorkspaceRequest, upsertRoleRequest,
@@ -237,6 +237,8 @@ export function buildRouter(services: TandemiseServices, options: { readonly tes
   }
 
   r.post('/v1/missions/:id/plan', (ctx) => services.planning.begin(asId(ctx.params.id!)));
+  r.post('/v1/missions/:id/replan', async (ctx) =>
+    services.planning.replan(asId(ctx.params.id!), { note: (await ctx.body(replanMissionRequest)).note ?? null }));
   r.post('/v1/missions/:id/start', (ctx) => services.missions.start(asId(ctx.params.id!)));
   r.post('/v1/missions/:id/pause', (ctx) => services.missions.pause(asId(ctx.params.id!)));
   r.post('/v1/missions/:id/resume', (ctx) => services.missions.resume(asId(ctx.params.id!)));

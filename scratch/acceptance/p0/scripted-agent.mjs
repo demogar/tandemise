@@ -156,6 +156,29 @@ if (/^You are the Planner for Tandemise/.test(prompt) && mode('SCRIPTED_PLAN_SKI
   }
 }
 
+// Replan spec. SCRIPTED_REPLAN (env, or its name in the goal): a planner prompt with an "Already done"
+// section is answered with two new steps after the last kept one - ask first, then tailor - as a model
+// told to plan only the rest would. Without the mode a replan prompt gets no JSON, and the replan fails.
+if (/^You are the Planner for Tandemise/.test(prompt) && mode('SCRIPTED_REPLAN') && prompt.includes('# Already done: plan only the rest')) {
+  const kept = [...prompt.matchAll(/^- `([a-z0-9_]+)` \(/gm)].map((m) => m[1]);
+  const last = kept.at(-1);
+  const step = (key, title, dependsOn, inputs) => ({
+    key, title, objective: `${title}.`, roleId: 'design', dependsOn,
+    requiredCapabilities: [], inputArtifacts: inputs.map((type) => ({ type, required: true })), expectedOutputs: ['DesignBrief'],
+    executionPolicy: { isolation: 'none', maxWallTimeMs: 600000, capabilities: [] },
+    approvalPolicy: { beforeStart: false, onCompletion: false }, retryPolicy: { maxAttempts: 2, backoffMs: 0, onExhausted: 'fail' },
+    completionGate: null,
+  });
+  console.log(JSON.stringify({
+    summary: 'Ask first, then tailor the application for the Americas from what intake found.',
+    tasks: [
+      step('ask_first', 'Ask whether Panama counts as Americas for this role', last === undefined ? [] : [last], []),
+      step('tailor', 'Tailor the application for the Americas', ['ask_first'], ['DesignBrief']),
+    ],
+  }));
+  process.exit(0);
+}
+
 if (SLOW) await new Promise((r) => setTimeout(r, 20_000));
 if (FAIL_UNTIL_NOTE) { console.log('SCRIPTED_FAIL_UNTIL_NOTE: nothing written'); process.exit(0); }
 if (mode('SCRIPTED_FAIL_RELEASE') && outputs.some((o) => o.type === 'ReleaseCandidate')) { console.log('SCRIPTED_FAIL_RELEASE: nothing written'); process.exit(0); }

@@ -1,9 +1,9 @@
 import type {
   Approval, ApprovalRepositoryPort, ArtifactRepositoryPort, MemberRepositoryPort, Mission, MissionRepositoryPort, MissionTask,
-  RoleRepositoryPort, RunRepositoryPort, TaskRepositoryPort, UnitOfWork,
+  PlanProposal, PlanProposalRepositoryPort, RoleRepositoryPort, RunRepositoryPort, TaskRepositoryPort, UnitOfWork,
 } from '@tandemise/domain';
 import {
-  ACCEPT_RESULT_OPTION, FINISHED_TASK_STATUSES, NEEDS_CHANGES_OPTION, REQUEST_CHANGES_OPTION, SKIP_REST_OPTION, canTransition, isAffirmative, isPlanFitCard,
+  ACCEPT_RESULT_OPTION, FINISHED_TASK_STATUSES, NEEDS_CHANGES_OPTION, REPLAN_REST_OPTION, REQUEST_CHANGES_OPTION, SKIP_REST_OPTION, canTransition, isAffirmative, isPlanFitCard, isStarted,
 } from '@tandemise/domain';
 import type { ApprovalView, DecideApprovalRequest } from '@tandemise/api-contract';
 import type { ApprovalId, Clock, Logger } from '@tandemise/shared';
@@ -23,6 +23,7 @@ import type { LimitService } from './limit-service.js';
 import { parsePlanResponse } from '../planning/parse.js';
 import { upstreamTaskIds } from '../support/lineage.js';
 import { skippedForPlanFit } from '../engine/plan-fit.js';
+import { reopenCard, sentence } from '../support/replan.js';
 
 export interface ApprovalDeps {
   readonly approvals: ApprovalRepositoryPort;
@@ -51,6 +52,10 @@ export interface ApprovalDeps {
   readonly limits?: Pick<LimitService, 'incidentFor' | 'validateDecision' | 'decide'>;
   /** The skills library (P13): an edited plan's tasks get their pins like a planned one's. */
   readonly skills?: SkillPinning;
+  /** A replan's new steps, waiting on its plan card (replan spec). Optional so older harnesses compose. */
+  readonly proposals?: PlanProposalRepositoryPort;
+  /** Plan fit's "Plan the rest again": starts the replan once the card is decided. Resolved late, as planning composes after this. */
+  readonly replanRest?: (missionId: Mission['id'], note: string | null, planFitApprovalId: Approval['id']) => Promise<unknown>;
   readonly clock: Clock;
   readonly log: Logger;
 }
@@ -149,6 +154,19 @@ export class ApprovalServiceImpl implements ApprovalService {
       return { decided: written, begun: round };
     }));
 
+    // Started after the commit, as a round is: planning runs in the background and must
+    // not begin inside the transaction. A replan that cannot start now (a step is still
+    // running, say) leaves the card open and says why.
+    if (isPlanFitCard(decided) && decided.selectedOptionId === REPLAN_REST_OPTION && decided.missionId !== null && this.deps.replanRest !== undefined) {
+      try {
+        await this.deps.replanRest(decided.missionId, decided.decisionNote, decided.id);
+      } catch (e) {
+        reopenCard(this.deps.approvals, decided.id);
+        this.deps.recorder.invalidate('approvals', decided.missionId);
+        throw e;
+      }
+    }
+
     // A worker blocked mid-call gets its answer as soon as the decision stands:
     // it is holding a concurrency slot and a target while it waits.
     this.deps.waiter.settle(decided, approved);
@@ -167,6 +185,12 @@ export class ApprovalServiceImpl implements ApprovalService {
     if (mission === undefined) return;
     const scope: EventScope = { workspaceId: mission.workspaceId, missionId: mission.id };
 
+    const proposal = this.deps.proposals?.get(approval.id);
+    if (proposal !== undefined) {
+      this.#resumeReplan(mission, { ...scope, ...(approval.decidedBy === null ? {} : { actorId: approval.decidedBy }) }, proposal, approved, request.note ?? null);
+      return;
+    }
+
     if (!approved) {
       this.#setMissionStatus(
         mission, scope, 'BLOCKED',
@@ -183,6 +207,48 @@ export class ApprovalServiceImpl implements ApprovalService {
     if (mission.startedAt === null) {
       this.deps.missions.update(mission.id, { startedAt: this.deps.clock.now() });
     }
+  }
+
+  /**
+   * A replan's card (replan spec). Approve writes the new steps beside the
+   * kept ones; the steps it replaces never started, so removing them takes no
+   * history. Reject only drops the proposal: the mission is exactly as it was,
+   * and a plan-fit card that asked for it is open again, holding what it held.
+   */
+  #resumeReplan(mission: Mission, scope: EventScope, proposal: PlanProposal, approved: boolean, note: string | null): void {
+    this.deps.proposals?.delete(proposal.approvalId);
+    if (!approved) {
+      if (proposal.planFitApprovalId !== null) reopenCard(this.deps.approvals, proposal.planFitApprovalId);
+      this.deps.recorder.invalidate('approvals', mission.id);
+      this.#setMissionStatus(
+        mission, scope, proposal.resumeStatus,
+        `${sentence(`The new plan for the rest was rejected${note === null ? '' : `: ${summarize(note, 300)}`}`)} The mission is as it was.`,
+      );
+      return;
+    }
+    const current = this.deps.tasks.listByMission(mission.id);
+    const replaced = new Set<string>(proposal.replaces);
+    const withRuns = new Set(this.deps.runs.listByMission(mission.id).map((r) => r.taskId as string));
+    // A replaced step that somehow started since stays: planning never removes history.
+    const kept = current.filter((t) => !replaced.has(t.id) || isStarted(t, withRuns.has(t.id)));
+    const keys = new Set(kept.map((t) => t.key));
+    const added = proposal.tasks.filter((t) => !keys.has(t.key));
+    this.deps.tasks.replaceAll(mission.id, [...kept, ...added]);
+    // The new plan is the answer to "the plan no longer fits": a stop card still open
+    // (the replan came from the header, or the route) would hold the new steps behind it.
+    for (const card of this.deps.approvals.list({ missionId: mission.id, statuses: ['PENDING'] }).filter(isPlanFitCard)) {
+      const answered = this.deps.approvals.update(card.id, {
+        status: isAffirmative(card.kind, REPLAN_REST_OPTION) ? 'APPROVED' : 'REJECTED',
+        selectedOptionId: REPLAN_REST_OPTION,
+        decisionNote: 'Answered by the new plan for the rest.',
+        decidedBy: scope.actorId ?? null,
+        decidedAt: this.deps.clock.now(),
+      });
+      this.deps.recorder.record(scope, { type: 'approval.resolved', approvalId: answered.id, status: answered.status, option: REPLAN_REST_OPTION });
+    }
+    this.deps.recorder.note(scope, `New plan for the rest approved: ${kept.length} kept, ${current.length - kept.length} replaced, ${added.length} added.`);
+    this.deps.recorder.invalidate('tasks', mission.id);
+    this.#setMissionStatus(mission, scope, 'EXECUTING', 'New plan for the rest approved; executing.');
   }
 
   /**
@@ -446,7 +512,4 @@ export class ApprovalServiceImpl implements ApprovalService {
   }
 }
 
-/** Ends `text` as a sentence: a note that already ends one keeps its own mark instead of gaining a period. */
-function sentence(text: string): string {
-  return /[.!?…]$/.test(text.trim()) ? text.trim() : `${text.trim()}.`;
-}
+

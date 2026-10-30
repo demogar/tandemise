@@ -365,7 +365,7 @@ export class DaemonClient {
     return this.#get(`/workspaces/${workspaceId}/usage${month === undefined ? '' : `?month=${encodeURIComponent(month)}`}`);
   }
 
-  missionAction(id: string, action: 'plan' | 'start' | 'pause' | 'resume' | 'cancel', body?: unknown): Promise<MissionDetail> {
+  missionAction(id: string, action: 'plan' | 'replan' | 'start' | 'pause' | 'resume' | 'cancel', body?: unknown): Promise<MissionDetail> {
     return this.#request('POST', `/missions/${id}/${action}`, body ?? {});
   }
 

@@ -1,0 +1,44 @@
+{
+  "id": "R2",
+  "title": "Rejecting the new plan leaves the mission as it was, still waiting on the stop",
+  "ok": true,
+  "checks": [
+    {
+      "label": "proof (API): the mission is back to executing, saying so",
+      "ok": true,
+      "observed": "The new plan for the rest was rejected: Not like that. The mission is as it was."
+    },
+    {
+      "label": "proof (API): the steps are as they were",
+      "ok": true,
+      "observed": [
+        "draft",
+        "intake",
+        "polish"
+      ]
+    },
+    {
+      "label": "proof (API): draft is still held behind the stop",
+      "ok": true,
+      "observed": {
+        "s": "PENDING",
+        "r": "Waiting for you: 'intake' says the plan no longer fits."
+      }
+    },
+    {
+      "label": "proof (API): the plan-fit card is open again",
+      "ok": true,
+      "observed": "PENDING"
+    },
+    {
+      "label": "the Inbox lists the plan-fit card again",
+      "ok": true,
+      "observed": "Inbox\nWhat is waiting on a person.\n‘intake’ says the plan no longer fits\nEvidence ready for the hello page\nFor you·Apply to the role, reject SCRIPTED_REPLAN SCRIPTED_STOP\nPlan no longer fits\njust now\nDecided\n5 decisions\nApprove the new plan for the rest of Apply to the role, reject SCRIPTED_REPLAN SCRIPTED_STOP?\nRejected·\nby\nYou\n · “Not like that.”\nApply to the role, reject SCRIPTED_REPLAN SCRIPTED_STOP\nApprove the plan for Apply to the role, reject SCRIPTED_REPLAN SCRIPTED_STOP?\nApproved·\nby\nYou\nApply to the role, reject SCRIPTED_REPLAN SCRIPTED_STOP\nApprove the new plan for the rest of Apply"
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/tmp/claude-1000/-home-demogar-projects-tandemise/7b30c050-0cfe-490e-8e18-179b54363d52/scratchpad/rp-evidence/R2-inbox-new-plan-rejected.png",
+    "/tmp/claude-1000/-home-demogar-projects-tandemise/7b30c050-0cfe-490e-8e18-179b54363d52/scratchpad/rp-evidence/R2-inbox-stop-card-open-again.png"
+  ]
+}

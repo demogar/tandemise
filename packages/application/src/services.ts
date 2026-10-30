@@ -209,6 +209,12 @@ export interface PlanningService {
   plan(id: MissionId): Promise<MissionDetail>;
   /** Moves the mission to PLANNING and plans in the background; resolves at once. */
   begin(id: MissionId): Promise<MissionDetail>;
+  /**
+   * A new plan for what is left of the mission (replan spec): steps that
+   * started are kept as they are, the rest is planned again, and nothing
+   * changes until the plan card is approved. Resolves at once, in PLANNING.
+   */
+  replan(id: MissionId, options?: { readonly note?: string | null; readonly planFitApprovalId?: ApprovalId | null }): Promise<MissionDetail>;
   /** Re-plans missions a previous daemon left in PLANNING. */
   resumeInterrupted(): readonly MissionId[];
   /**

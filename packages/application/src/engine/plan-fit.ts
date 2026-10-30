@@ -1,7 +1,7 @@
 import type {
   Approval, ApprovalRepositoryPort, ArtifactManifest, ArtifactRepositoryPort, Mission, MissionTask,
 } from '@tandemise/domain';
-import { CONTINUE_PLAN_OPTION, REQUEST_CHANGES_OPTION, SKIP_REST_OPTION, isPlanFitCard, isTrialMission } from '@tandemise/domain';
+import { CONTINUE_PLAN_OPTION, REPLAN_REST_OPTION, REQUEST_CHANGES_OPTION, SKIP_REST_OPTION, isPlanFitCard, isTrialMission } from '@tandemise/domain';
 import type { ApprovalFactory } from '@tandemise/policy';
 import type { WorkspaceId } from '@tandemise/shared';
 import type { EventRecorder } from '../support/event-recorder.js';
@@ -82,7 +82,8 @@ export class PlanFit {
       title: `‘${task.title}’ says the plan no longer fits`,
       rationale: stop,
       effect: 'Skip the steps after it and the mission finishes on what was done. Send it back and it goes again as its next round, '
-        + 'briefed by your note. Continue as planned and the next steps start on what it wrote.',
+        + 'briefed by your note. Plan the rest again and the planner writes new steps from what is done, for you to approve. '
+        + 'Continue as planned and the next steps start on what it wrote.',
       evidence: [
         { kind: 'artifact', label: stopped.title, value: stopped.id },
         ...(stopped.handoff?.needs ? [{ kind: 'text' as const, label: 'It needs', value: stopped.handoff.needs }] : []),
@@ -90,6 +91,7 @@ export class PlanFit {
       options: [
         { id: SKIP_REST_OPTION, label: 'Skip the steps after it', recommended: true },
         { id: REQUEST_CHANGES_OPTION, label: 'Send it back with a note' },
+        { id: REPLAN_REST_OPTION, label: 'Plan the rest again' },
         { id: CONTINUE_PLAN_OPTION, label: 'Continue as planned' },
       ],
       recommendedOptionId: SKIP_REST_OPTION,

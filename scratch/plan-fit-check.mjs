@@ -199,8 +199,8 @@ section('engine: the steps after a stop wait for a person');
   check('the mission keeps EXECUTING while it waits', h.repo.missions.get(one.mission.id).status === 'EXECUTING', h.repo.missions.get(one.mission.id).status);
   check('exactly one card, however many ticks', cards(one.mission.id).length === 1, cards(one.mission.id).length);
   check('the card is an intervention on the stopping step, its rationale the stop', card?.kind === 'intervention' && card.taskId === one.t.intake && card.rationale === STOP, card);
-  check('it offers skip, send back and continue, skip recommended',
-    JSON.stringify(card?.options.map((o) => o.id)) === JSON.stringify(['skip_rest', 'request_changes', 'continue_plan']) && card.recommendedOptionId === 'skip_rest', card?.options);
+  check('it offers skip, send back, plan the rest again and continue, skip recommended',
+    JSON.stringify(card?.options.map((o) => o.id)) === JSON.stringify(['skip_rest', 'request_changes', 'replan_rest', 'continue_plan']) && card.recommendedOptionId === 'skip_rest', card?.options);
   check('it names the stopped output and what it needs', card?.evidence.some((e) => e.kind === 'artifact' && e.value === live(one.t.intake)[0]?.id) && card.evidence.some((e) => e.value === 'Decide whether to skip it'), card?.evidence);
   check('it goes to the person responsible', card?.addressees?.includes(owner), card?.addressees);
 

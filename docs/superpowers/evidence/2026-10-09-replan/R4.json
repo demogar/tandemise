@@ -1,0 +1,19 @@
+{
+  "id": "R4",
+  "title": "A mission with a step still running refuses a replan and stays as it was",
+  "ok": true,
+  "checks": [
+    {
+      "label": "proof (API): refused with the reason, naming the step",
+      "ok": true,
+      "observed": "POST /v1/missions/msn_01m4h09q41y6pfxv8zfn/replan -> 412 {\"error\":{\"code\":\"PRECONDITION_FAILED\",\"message\":\"Wait for 'intake' to finish, or stop it, before planning the rest again.\",\"details\":{\"missionId\":\"msn_01m4h09q41y6pfxv8zfn\"},\"retryable\":false}}"
+    },
+    {
+      "label": "proof (API): the mission kept executing",
+      "ok": true,
+      "observed": "EXECUTING"
+    }
+  ],
+  "notes": [],
+  "shots": []
+}

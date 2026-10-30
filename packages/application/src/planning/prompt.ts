@@ -39,6 +39,61 @@ export interface PlannerPromptInput {
    * check, so the planner is never offered a skip validation would refuse.
    */
   readonly uploads?: readonly { readonly id: string; readonly type: string; readonly title: string }[];
+  /**
+   * A replan of the rest (replan spec): the steps that already started, kept
+   * as they are, and why the person wants a new plan for what is left.
+   */
+  readonly alreadyDone?: AlreadyDone;
+}
+
+export interface AlreadyDone {
+  /** The person's note, else the stopping step's `stop` sentence, else null. */
+  readonly reason: string | null;
+  readonly steps: readonly {
+    readonly key: string;
+    readonly title: string;
+    readonly roleId: string;
+    readonly status: string;
+    readonly round: number;
+    readonly headline: string | null;
+    readonly points: readonly string[];
+    readonly stop: string | null;
+    readonly outputs: readonly { readonly id: string; readonly type: string }[];
+  }[];
+}
+
+/**
+ * What the planner of a replan must know before anything else: what is done,
+ * what it found, and that only the rest is to be planned. Without it a planner
+ * re-plans from the goal and repeats work the mission already has.
+ */
+function renderAlreadyDone(done: AlreadyDone | undefined): string {
+  if (done === undefined || done.steps.length === 0) return '';
+  const steps = done.steps.map((s) => [
+    `- \`${s.key}\` (${s.roleId}, ${s.status.toLowerCase()}${s.round > 1 ? `, round ${s.round}` : ''}): ${s.title}`,
+    ...(s.headline === null ? [] : [`  Found: ${s.headline}`]),
+    ...s.points.map((p) => `    - ${p}`),
+    ...(s.stop === null ? [] : [`  Said the plan no longer fits: ${s.stop}`]),
+    ...(s.outputs.length === 0 ? [] : [`  Outputs: ${s.outputs.map((o) => `${o.type} (${o.id})`).join(', ')}`]),
+  ].join('\n')).join('\n');
+  return `# Already done: plan only the rest
+
+This mission is under way. The steps below already ran and are kept exactly as
+they are; you are planning only what is still needed after them.
+${done.reason === null ? '' : `
+Why the person wants a new plan for the rest:
+${fence(done.reason)}
+`}
+${steps}
+
+- Do not plan any of this work again, and never reuse one of these keys.
+- A new task that builds on a kept step lists that step's key in \`dependsOn\`
+  and the types it reads in \`inputArtifacts\`; that is how it is handed the output.
+- If nothing more is needed, return a plan with one short task that says why.
+- The preset below shows the usual shape of the whole mission; most of it may
+  already be covered by what is done.
+
+`;
 }
 
 /**
@@ -127,7 +182,7 @@ A task may only require capabilities this installation can actually satisfy:
 
 ${availableCapabilities.join(', ')}
 
-${renderConnectedApps(input.connectedApps ?? [])}# The starting shape
+${renderConnectedApps(input.connectedApps ?? [])}${renderAlreadyDone(input.alreadyDone)}# The starting shape
 
 The "${preset.name}" preset is a known-good plan for this kind of work. Start
 from it and adapt it to THIS mission. Adaptation is expected and encouraged:
@@ -150,7 +205,7 @@ ${fence(JSON.stringify(presetPlan, null, 2), 'json')}
 # Structural rules — a plan violating any of these is rejected outright
 
 1. \`key\` is lowercase letters, digits and underscores, unique within the plan.
-2. \`dependsOn\` references keys that exist in this plan. The graph must be acyclic.
+2. \`dependsOn\` references keys that exist in this plan${input.alreadyDone !== undefined && input.alreadyDone.steps.length > 0 ? ', or the keys under Already done' : ''}. The graph must be acyclic.
 3. If a task lists an input artifact with \`required: true\`, some **transitive
    dependency** of that task must list that artifact in its \`expectedOutputs\`.
    Producing it elsewhere in the plan is not sufficient — it must be upstream.

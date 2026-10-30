@@ -62,7 +62,10 @@ Request → Refine → Done when → Backlog + WIP limit → Run within limits
    unverified. The mission shows it as a checklist.
 7. **Inbox for anything stuck.** A mission nothing moves and nothing asks
    about gets one **Stalled** row with the one action that moves it; an agent
-   that goes quiet gets a **Quiet** row. → [The Inbox](docs/guides/inbox.md)
+   that goes quiet gets a **Quiet** row. A step can say the plan no longer
+   fits; **Plan the rest again** gets new steps for what is left, keeping what
+   is done. → [The Inbox](docs/guides/inbox.md),
+   [Plan the rest again](docs/guides/replan.md)
 8. **Desk and status report.** Home counts what needs you, what is in
    progress, what is verified, what it cost and what is stuck. **Status
    report** writes the same picture from stored facts, no model involved.
@@ -196,6 +199,7 @@ Task-oriented, one per concept:
 | [Backlog and work in progress](docs/guides/backlog.md) | rank requests and limit how many run at once |
 | [Limits](docs/guides/limits.md) | cap agent minutes, tokens or dollars per mission and per month |
 | [The Inbox](docs/guides/inbox.md) | find stalled missions and quiet agents, and unstick them |
+| [Plan the rest again](docs/guides/replan.md) | change course partway through without losing what is done |
 | [The desk and the status report](docs/guides/desk-and-status-report.md) | read Home at a glance and write a report from facts |
 | [Routines](docs/guides/routines.md) | put standing work on a schedule |
 | [Notifications](docs/guides/notifications.md) | hear about new Inbox items while the window is in the background |

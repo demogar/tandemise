@@ -163,6 +163,8 @@ export function limitUnit(metric: LimitMetric): string {
 /** Mirrors the plan-fit answers in `@tandemise/domain`: skip the steps after a stop, or run them as planned. */
 export const SKIP_REST_OPTION = 'skip_rest';
 export const CONTINUE_PLAN_OPTION = 'continue_plan';
+/** Mirrors `REPLAN_REST_OPTION`: plan fit's "Plan the rest again" (replan spec). */
+export const REPLAN_REST_OPTION = 'replan_rest';
 
 /** A plan-fit card: a step said the plan no longer fits, and the steps after it wait on this answer. */
 export function isPlanFitCard(approval: Approval): boolean {

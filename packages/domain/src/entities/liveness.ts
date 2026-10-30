@@ -120,6 +120,14 @@ export interface LivenessVerdict {
 }
 
 const REPLAN: StalledAction = { kind: 'replan', label: 'Re-plan', taskId: null, taskKey: null };
+
+/**
+ * Where the Stalled row offers Re-plan (P9). Not `canTransition(…, 'PLANNING')`:
+ * EXECUTING may enter PLANNING for a replan of the rest, which the replan
+ * service guards; a working mission's row keeps offering what P9 specified.
+ */
+const REPLANNABLE: readonly MissionStatus[] = ['AWAITING_PLAN_APPROVAL', 'BLOCKED', 'PAUSED', 'FAILED'];
+const replannable = (status: MissionStatus): boolean => REPLANNABLE.includes(status);
 const REFINE: StalledAction = { kind: 'refine', label: 'Refine', taskId: null, taskKey: null };
 const CANCEL: StalledAction = { kind: 'cancel', label: 'Cancel mission', taskId: null, taskKey: null };
 
@@ -219,7 +227,7 @@ function classifyWork(
 ): LivenessVerdict {
   const working = WORKING.includes(input.status);
   if (input.tasks.length === 0) {
-    return verdict('stalled', 'L14', input.statusReason ?? 'It has no steps to run.', canTransition(input.status, 'PLANNING') ? REPLAN : CANCEL);
+    return verdict('stalled', 'L14', input.statusReason ?? 'It has no steps to run.', replannable(input.status) ? REPLAN : CANCEL);
   }
   const byKey = new Map(input.tasks.map((t) => [t.key, t]));
   const carded = new Set(cards.flatMap((c) => (c.taskId === null ? [] : [c.taskId])));
@@ -242,7 +250,7 @@ function classifyWork(
   }
   // Nothing has started (a rejected plan leaves every step waiting): planning again is the way on.
   const unstarted = input.tasks.every((t) => (t.status === 'PENDING' || t.status === 'READY') && t.attempts === 0);
-  if (unstarted && canTransition(input.status, 'PLANNING')) {
+  if (unstarted && replannable(input.status)) {
     return verdict('stalled', 'L18', input.statusReason ?? 'Nothing has started and nothing will: re-plan it.', REPLAN, tasks);
   }
   return verdict('stalled', 'L18', input.statusReason ?? 'Nothing can move this mission.', CANCEL, tasks);

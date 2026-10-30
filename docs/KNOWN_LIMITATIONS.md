@@ -113,8 +113,8 @@ A task names its repository when the plan is materialized, and a retry reruns it
 in the same one. That is right for a retry of the same work, but a plan that put
 a task in the wrong repository has to be re-planned rather than corrected in
 place - there is no way to move a single task to another repository from the
-mission view. Worth adding once it is clear whether people correct plans or
-simply re-plan.
+mission view. A step that has not started can be moved by **Plan the rest
+again**, which keeps what is done; one that already ran cannot.
 
 ## A wait step polls; it is not woken
 
@@ -154,6 +154,16 @@ and config lives in the database. That is correct for a project ref or a
 `--read-only` flag and wrong for an access token. Hosted servers do not have
 this problem — their credentials are in the Keychain — so prefer the connector
 when a vendor has one.
+
+## A replan in progress forgets its note on a daemon restart
+
+What a replan was asked with (your note, and which status to go back to if
+it does not happen) is held in memory until its plan card is filed. If the
+daemon restarts while the planner is still writing, the mission is planned
+again without the note, and a replan that then fails goes back to Executing,
+where the scheduler finds the mission's real state. A paused mission that was
+being replanned is not paused again in that case. Once the card is filed,
+everything it needs is stored with it.
 
 ## A worker's question does not survive a daemon restart
 

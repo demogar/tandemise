@@ -248,6 +248,31 @@ export interface FeedbackRepositoryPort {
  * Downstream impact is read from this rather than guessed from the plan
  * (spec §3); runs from before migration 010 have no rows here.
  */
+/**
+ * A replan waiting on its plan card (replan spec). Nothing on the mission
+ * changes until the card is approved: the new steps live here, and a reject
+ * only has to drop the row.
+ */
+export interface PlanProposal {
+  readonly approvalId: ApprovalId;
+  readonly missionId: MissionId;
+  /** The new steps, materialised, written beside the kept ones on approval. */
+  readonly tasks: readonly MissionTask[];
+  /** The unstarted steps the new ones replace. */
+  readonly replaces: readonly TaskId[];
+  /** Where the mission goes back to if the card is rejected. */
+  readonly resumeStatus: MissionStatus;
+  /** The plan-fit card that asked for this replan, reopened on a reject. */
+  readonly planFitApprovalId: ApprovalId | null;
+  readonly createdAt: Timestamp;
+}
+
+export interface PlanProposalRepositoryPort {
+  put(proposal: PlanProposal): void;
+  get(approvalId: ApprovalId): PlanProposal | undefined;
+  delete(approvalId: ApprovalId): void;
+}
+
 export interface RunInputRepositoryPort {
   /** Idempotent: a run records what it was given once, and a restart may record it again. */
   record(runId: RunId, artifactIds: readonly ArtifactId[]): void;

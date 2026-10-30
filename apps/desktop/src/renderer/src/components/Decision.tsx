@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { ApprovalView } from '@tandemise/api-contract';
 import type { Approval, ApprovalOption, RiskClass } from '@tandemise/domain';
-import { NEEDS_CHANGES_OPTION, REJECT_OPTION, REQUEST_CHANGES_OPTION, SKIP_REST_OPTION, isLimitCard, isPlanFitCard } from '../lib/domain.js';
+import { NEEDS_CHANGES_OPTION, REJECT_OPTION, REPLAN_REST_OPTION, REQUEST_CHANGES_OPTION, SKIP_REST_OPTION, isLimitCard, isPlanFitCard } from '../lib/domain.js';
 import { ConfirmDialog } from './Modal.js';
 import { ErrorState } from './primitives.js';
 import { RecordingFor, behalfOf } from './ActorChip.js';
@@ -102,7 +102,9 @@ export function useApprovalDecision(view: ApprovalView): ApprovalDecision {
         ? 'Nothing is waiting on this; your note is kept with the work.'
         : optionId === REQUEST_CHANGES_OPTION
           ? 'The next round works from your note.'
-          : confirm ? 'You will be asked to confirm.' : 'Applies immediately.';
+          : optionId === REPLAN_REST_OPTION
+            ? 'Nothing changes until you approve the new steps.'
+            : confirm ? 'You will be asked to confirm.' : 'Applies immediately.';
     return { copy, confirm, danger, hint };
   };
 
@@ -377,14 +379,17 @@ export function copyFor(approval: Approval, selectedId: string | undefined, revi
   // A step said the plan no longer fits: the answer is what happens to the steps after it, not a yes or no.
   if (isPlanFitCard(approval)) {
     const requestsChanges = selectedId === REQUEST_CHANGES_OPTION;
+    const replans = selectedId === REPLAN_REST_OPTION;
     return {
       question: false,
       kindLabel: 'Plan no longer fits',
       effectQuestion: 'What happens when you decide?',
       notePlaceholder: requestsChanges
         ? 'What should it do instead? It goes again as the next round, using exactly what you write.'
-        : 'Add a note for the record (optional).',
-      noteShort: requestsChanges ? 'What should it do instead?' : 'Add a note for the record (optional)',
+        : replans
+          ? 'What should the rest of the mission do now? The planner reads exactly this (optional).'
+          : 'Add a note for the record (optional).',
+      noteShort: requestsChanges ? 'What should it do instead?' : replans ? 'What should the rest do now? (optional)' : 'Add a note for the record (optional)',
       noteRequired: requestsChanges,
     };
   }

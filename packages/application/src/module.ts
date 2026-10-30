@@ -584,6 +584,8 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       workflows: r.resolve(t.WORKFLOW_SOURCE),
       missions: r.resolve(t.MISSION_REPOSITORY),
       tasks: r.resolve(t.TASK_REPOSITORY),
+      runs: r.resolve(t.RUN_REPOSITORY),
+      proposals: r.resolve(t.PLAN_PROPOSAL_REPOSITORY),
       roles: r.resolve(t.ROLE_REPOSITORY),
       runtimeProfiles: r.resolve(t.RUNTIME_PROFILE_REPOSITORY),
       approvals: r.resolve(t.APPROVAL_REPOSITORY),
@@ -629,6 +631,8 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       artifacts: r.resolve(t.ARTIFACT_REPOSITORY),
       limits: r.resolve(t.LIMIT_SERVICE),
       skills: r.resolve(t.SKILL_SERVICE),
+      proposals: r.resolve(t.PLAN_PROPOSAL_REPOSITORY),
+      replanRest: (missionId, note, planFitApprovalId) => r.resolve(t.PLANNING_SERVICE).replan(missionId, { note, planFitApprovalId }),
       clock: clock(r),
       log: log(r).child({ component: 'approvals' }),
     }), { source: SOURCE });

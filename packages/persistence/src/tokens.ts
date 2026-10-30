@@ -4,7 +4,7 @@ import type {
   CheckpointRepositoryPort, DecisionRepositoryPort, EvalRepositoryPort, EvaluationRepositoryPort,
   EventRepositoryPort, ExecutionTargetRepositoryPort, FeedbackRepositoryPort, IntegrationRepositoryPort,
   LeaseRepositoryPort, MemberRepositoryPort, MissionCriteriaRepositoryPort, MissionQuestionRepositoryPort, MissionRepositoryPort, LimitRepositoryPort, PersonRepositoryPort, RoutineRepositoryPort, RunScoreRepositoryPort, SkillRepositoryPort, IssueRepositoryPort,
-  RepoRepositoryPort, RoleRepositoryPort, RunInputRepositoryPort,
+  PlanProposalRepositoryPort, RepoRepositoryPort, RoleRepositoryPort, RunInputRepositoryPort,
   RunRepositoryPort, RuntimeProfileRepositoryPort, TaskRepositoryPort, UnitOfWork,
   WorkspaceRepositoryPort,
 } from '@tandemise/domain';
@@ -44,6 +44,7 @@ export const PERSON_REPOSITORY = token<PersonRepositoryPort>('persistence.Person
 export const MEMBER_REPOSITORY = token<MemberRepositoryPort>('persistence.MemberRepository');
 export const FEEDBACK_REPOSITORY = token<FeedbackRepositoryPort>('persistence.FeedbackRepository');
 export const RUN_INPUT_REPOSITORY = token<RunInputRepositoryPort>('persistence.RunInputRepository');
+export const PLAN_PROPOSAL_REPOSITORY = token<PlanProposalRepositoryPort>('persistence.PlanProposalRepository');
 export const MISSION_CRITERIA_REPOSITORY = token<MissionCriteriaRepositoryPort>('persistence.MissionCriteriaRepository');
 export const MISSION_QUESTION_REPOSITORY = token<MissionQuestionRepositoryPort>('persistence.MissionQuestionRepository');
 export const LIMIT_REPOSITORY = token<LimitRepositoryPort>('persistence.LimitRepository');
