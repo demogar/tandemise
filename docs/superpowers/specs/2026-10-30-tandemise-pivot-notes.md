@@ -80,61 +80,61 @@ Manager pueda desarrollar funcionalidades.
 
 ## Dudas abiertas
 
-## Decisiones de la conversación (2026-10-30)
+## Decisions from the conversation (2026-10-30)
 
-Recogidas durante la sesión de brainstorming. Todavía no son un diseño aprobado.
+Gathered during the brainstorming session. Not an approved design yet.
 
-**Por qué no se usa hoy.**
-- El proceso es rígido.
-- No se entiende qué está haciendo.
-- No aprende de las correcciones.
-- No se puede iterar como en Claude Code.
+**Why it isn't used today.**
+- The process is rigid.
+- You can't tell what it's doing.
+- It doesn't learn from corrections.
+- You can't iterate the way you can in Claude Code.
 
-**Distribución.**
+**Distribution.**
 - Open source.
-- Cada equipo levanta su propia instancia. No es SaaS multi-cliente.
+- Each team self-hosts its own instance. It is not multi-tenant SaaS.
 
-**Ejecución.**
-- Todo corre en la máquina de cada persona, con sus suscripciones y su entorno.
-- El servidor es opcional y muy ligero. Solo guarda datos "tontos":
-  - quién trabaja en qué
-  - accesos
-  - un buzón para webhooks
-- Sin servidor, esos datos viven en una DB local con la misma forma, para poder mudarlos después.
+**Execution.**
+- Everything runs on each person's machine, with their own subscriptions and environment.
+- The server is optional and very thin. It only stores "dumb" data:
+  - who is working on what
+  - access
+  - a mailbox for webhooks
+- Without a server, the same data lives in a local DB with the same shape, so it can be moved later.
 
-**Cerebro.**
-- Vive en su propio repo git, uno por proyecto. Un proyecto puede tener varios repos.
-- Contiene la memoria (lecciones, convenciones, decisiones, historial).
-- Contiene también la definición de la fábrica: pasos, skills, modelos, gates y MCPs.
-- Las mejoras que la fábrica propone sobre sí misma llegan como PR a ese repo.
-- Lo personal y los secretos quedan fuera.
+**Brain.**
+- It lives in its own git repo, one per project. A project can span several repos.
+- It holds memory: lessons, conventions, decisions, history.
+- It also holds the factory definition: steps, skills, models, gates and MCPs.
+- Improvements the factory proposes to itself arrive as PRs to that repo.
+- Personal data and secrets stay out.
 
 **Board.**
-- Hay un solo board por proyecto: el tracker principal (por ejemplo YouTrack).
-- Las demás fuentes (GitHub, Sentry, PostHog, Slack, Discord, WhatsApp…) entran por un contrato agnóstico, a través de runners. Tandemise trae algunos; para el resto, cada uno conecta el suyo.
-- Tandemise crea o enlaza la tarea en el tracker principal, sin duplicar.
-- Cuando la tarea termina, cierra el ciclo en el origen.
+- There is one board per project: the primary tracker, for example YouTrack.
+- Other sources (GitHub, Sentry, PostHog, Slack, Discord, WhatsApp…) come in through an agnostic contract and runners. Tandemise ships some runners; anything else, people connect themselves.
+- Tandemise creates or links the task in the primary tracker without duplicating it.
+- When the task is done, it closes the loop at the source.
 
-**Arranque.**
-- Todo lo que entra queda registrado, pero nada empieza hasta que alguien lo inicia.
-- No se impone metodología: scrum, XP, kanban o ninguna.
+**Starting work.**
+- Everything that comes in is recorded, but nothing starts until someone starts it.
+- No methodology is imposed: scrum, XP, kanban or none.
 
-**Iterar.**
-- "Pausar e interactuar" en cualquier punto del proceso, con la terminal real de Claude Code dentro de Tandemise.
-- Cuando le dices que continúe, retoma el flujo autónomo.
-- Lo que se corrige en la pausa alimenta el cerebro.
+**Iterating.**
+- "Hold and interact" at any point in the process, using the real Claude Code terminal inside Tandemise.
+- When you tell it to continue, the autonomous flow resumes.
+- What you correct during the hold feeds the brain.
 
-**Lo que puede diferenciarlo** (según la investigación de unos 30 sistemas):
-- deducir pasos, modelos y gates
-- decidir el merge según el riesgo
-- un cerebro único para personas y agentes
-- entrada desde varias fuentes
-- un board que un PM pueda usar
+**Where it can stand out.** Research across about 30 systems found nobody doing these well:
+- inferring steps, models and gates
+- deciding merges by risk
+- a single brain for people and agents
+- intake from several sources
+- a board a PM can use
 
-**Orden propuesto (pendiente de confirmar).**
-1. Motor con sesiones vivas
-2. Repo cerebro
-3. Entrada y tracker principal
-4. Planificador inteligente y merge según el riesgo
-5. Servidor opcional
-6. mola-ui (aparcado)
+**Proposed order (to be confirmed).**
+1. Engine with live sessions
+2. Brain repo
+3. Intake and primary tracker
+4. Smart planner and risk-based merge
+5. Optional server
+6. mola-ui (parked)
