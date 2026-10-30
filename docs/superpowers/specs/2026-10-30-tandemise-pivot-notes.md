@@ -1,30 +1,26 @@
-# Giro de Tandemise: notas
+# Tandemise pivot: notes
 
-> Borrador abierto el 2026-10-30. Escríbelo como te salga; no hace falta orden ni formato.
-> Las secciones de abajo son solo puntos de partida: borra, añade o ignora las que quieras.
+> Draft opened on 2026-10-30. The owner's notes, translated from Spanish.
 
-## La idea en una frase
+## The idea in one sentence
 
-La idea principal es que Tandemise permita a equipos, personas/individuos y
-organizaciones completas a completar trabajo de manera más rápida y eficiente.
+Tandemise lets teams, individuals and whole organisations get work done faster
+and more efficiently.
 
-Que este trabajo no solamente sea de código, pero que a grandes rasgos sea el
-primer uso dirigido: una fábrica de software.
+That work isn't only code, but the first target use is a software factory.
 
-## Por qué ahora: qué no te funciona hoy de Tandemise
+## Why now: what doesn't work about Tandemise today
 
-Realmente ni yo mismo lo estoy utilizando y siempre vuelvo a utilizar claude code
-directamente.  Mayormente porque es más rápido y más sencillo.  Lo que me gustaría
-es poder tener todo en tandemise.
+Not even the owner uses it. They keep going back to Claude Code directly, mostly
+because it's faster and simpler. The goal is to have everything in Tandemise.
 
-Digamos que voy a crear un nuevo proyecto, Garipass y agrego todos los
-repositorios:
+Say we create a new project, Garipass, and add all its repositories:
 - /garipass/garipass
 - /garipass/claude
 - /garipass/ops
 
-Luego conecto los MCP y los servicios que estoy utilizando:
-- Github
+Then we connect the MCPs and services we use:
+- GitHub
 - 1Password
 - Docker
 - YouTrack
@@ -33,52 +29,51 @@ Luego conecto los MCP y los servicios que estoy utilizando:
 - Claude Design
 - Open Design
 - Supabase
-- Cualquier otra vaina que sea posible,
+- anything else that's possible
 
-Y el sistema pueda determinar directamente varios flujos que puedan utilizar.
+From there, the system works out on its own the flows it can use.
 
-## Un día normal con la nueva Tandemise
+## A normal day with the new Tandemise
 
-1. Abro Tandemise
-2. Analizo el board y veo que puedo trabajar.  Si no hay nada, puedo pedirle
-que sincronice con YouTrack, Sentry, PostHog, GitHub, lo que sea que esté conectado
-y que funcione para buscar qué hacer.
-3. Selecciono una tarea y la arranco.
-4. El sistema de forma totalmente autónoma lleva la tarea desde la idea hasta
-tenerla en un PR y automáticamente determina los pasos siguientes: si puede
-mergearla completamente o si necesita que alguien la revise en ese momento.
+1. Open Tandemise.
+2. Look at the board for what can be worked on. If there's nothing, ask it to
+   sync with YouTrack, Sentry, PostHog, GitHub, or whatever is connected, to find
+   something to do.
+3. Pick a task and start it.
+4. Fully autonomously, the system takes the task from idea to a PR. Then it
+   decides what comes next: merge it completely, or ask someone to review it at
+   that point.
 
-Lo importante tambien es ver quiénes están trabajando en otras cosas, que se ha
-hecho anteriormente, saber si hay algo que necesita mi atención.  Y este board
-siempre está conectado en todas las líneas.
+It also matters to see who is working on other things, what has been done
+before, and whether anything needs my attention. The board is always connected
+across every line.
 
-Este board es el single source of truth y está en algún lado que podemos todos
-consumir y acceder pero a través de Tandemise (por lo que quizás necesitemos
-un Tandemise server o relay o lo que sea, donde todos se conectan y bajan todo).
+The board is the single source of truth. It lives somewhere we can all consume
+and access, but through Tandemise. That may need a Tandemise server or relay
+that everyone connects to and pulls everything from.
 
-Los procesos siempre se pueden tweakear, pero el sistema debe ser lo más inteligente
-para determinar:
-- los pasos que se requieren
-- los skills se requieren por paso
-- los modelos que se requieren implementar en cada uno de esos pasos
-- qué pasos requieren una validación o aprobación humana
+Processes can always be tweaked, but the system should be as smart as possible
+at deciding:
+- the steps that are required
+- the skills each step requires
+- the models to use in each step
+- which steps need human validation or approval
 
-Entre muchas otras cosas
+Among many other things.
 
-## Qué tomar de las referencias
+## What to take from the references
 - **Paperclip:**
 - **super-board:**
-- **Warp: la "software factory":**
+- **Warp, the "software factory":**
 
-## Lo que NO debe ser
-- Un sistema de mensajeria, ni nada similar.  Esto es para que incluso un Product
-Manager pueda desarrollar funcionalidades.
+## What it must NOT be
+- A messaging system, or anything like one. This is so that even a product
+  manager can build features.
 
-## Interfaz: migración a mola-ui
-- Por ahora, ignora esto
+## UI: migrating to mola-ui
+- Ignore this for now.
 
-
-## Dudas abiertas
+## Open questions
 
 ## Decisions from the conversation (2026-10-30)
 
