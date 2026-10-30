@@ -234,10 +234,10 @@ const bugInvestigation: WorkflowPreset = {
 const quickChange: WorkflowPreset = {
   id: 'quick-change',
   name: 'Quick change',
-  description: 'Implement and review a small, well-understood change. No design or architecture phase.',
-  stages: ['Implementation', 'Review'],
+  description: 'Implement, review and verify a small, well-understood change. No design or architecture phase.',
+  stages: ['Implementation', 'Review', 'QA'],
   build: () => ({
-    summary: 'Small change with an independent review.',
+    summary: 'Small change with an independent review, verified against what done means.',
     tasks: [
       task({
         key: 'implement', title: 'Implement the change', roleId: 'development',
@@ -256,6 +256,18 @@ const quickChange: WorkflowPreset = {
         executionPolicy: policy('worktree', [...READ_ONLY, CORE_CAPABILITIES.shell], 20),
         requiredCapabilities: READ_ONLY,
         completionGate: 'artifact.ReviewReport.exists',
+      }),
+      // Planning needs a Done-when line, and only a QAReport verifies one: without
+      // this step a quick change finished "0 of 3 verified" on a real mission.
+      task({
+        key: 'verify', title: 'Verify the change', roleId: 'qa',
+        objective: 'Check every Done-when line against the changed code by running it, and report a result for each one by id.',
+        dependsOn: ['review'],
+        inputArtifacts: [{ type: 'ChangeSet', required: true }, { type: 'ReviewReport', required: true }],
+        expectedOutputs: ['QAReport'],
+        executionPolicy: policy('worktree', QA_CAPS, 20),
+        requiredCapabilities: QA_CAPS,
+        completionGate: QA_CRITERIA_GATE,
       }),
     ],
   }),
