@@ -12,7 +12,7 @@ const ev = new Evidence('A15', 'Real runtime: your Design agent on Claude Code')
 let claude = (await api.get('/v1/runtimes')).map((r) => r.profile ?? r).find((p) => p.adapterId === 'claude-code');
 if (!claude) {
   // Setup: the same account setting the user's own installation uses.
-  claude = await api.post('/v1/runtimes', { adapterId: 'claude-code', name: 'Claude Code', workspaceId: null, executablePath: `${process.env.HOME}/.local/bin/claude`, settings: { configDir: '~/.claude-home' }, maxConcurrent: 1, enabled: true });
+  claude = await api.post('/v1/runtimes', { adapterId: 'claude-code', name: 'Claude Code', workspaceId: null, executablePath: `${process.env.HOME}/.local/bin/claude`, settings: process.env.ACCEPTANCE_CLAUDE_CONFIG_DIR ? { configDir: process.env.ACCEPTANCE_CLAUDE_CONFIG_DIR } : {}, maxConcurrent: 1, enabled: true });
   claude = claude.profile ?? claude;
 }
 

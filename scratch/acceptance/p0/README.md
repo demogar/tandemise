@@ -18,7 +18,7 @@ offer no people presets. The suite builds that team: you, plus seven agents on t
 | `s02-team.mjs` | TEAM, A14 | Adds seven agents and sets presets in the Team screen. Editing one role or agent moves nothing else. |
 | `s03-team-mission.mjs` | PLAN, A2, A2d, A8, A9a, A3, A7q, A9b, A13 | One mission run by your agents, with every decision made in the window. |
 | `s05-midway.mjs` | A12 | Changing staffing mid-mission moves only the tasks that have not reached READY. |
-| `s06-real-claude.mjs` | A15 | Your Design agent on real Claude Code. Skipped by `--skip-claude`. |
+| `s06-real-claude.mjs` | A15 | Your Design agent on real Claude Code, signed in as you. Set `ACCEPTANCE_CLAUDE_CONFIG_DIR` to run it under another Claude config directory. Skipped by `--skip-claude`. |
 | `s07-remove-agent.mjs` | A11 | Removing an agent stops work from routing to it, and its history keeps its name. Restoring it brings it back. |
 | `s08-reassign-task.mjs` | A18 | A task that has not started is handed to another agent from its Change drawer. A task that already ran refuses. |
 
