@@ -10,7 +10,7 @@ Until 1.0, only the latest release gets security fixes.
 ## Reporting a vulnerability
 
 **Do not open a public issue.** Report it privately with GitHub's
-[private vulnerability reporting](https://github.com/demogar/tandemise/security/advisories/new).
+[private vulnerability reporting](https://github.com/tandemise/tandemise/security/advisories/new).
 
 Please include:
 

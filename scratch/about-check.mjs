@@ -95,9 +95,9 @@ section('pure: uptime and versions');
   check('uptime texts', t(20_000) === 'under a minute' && t(5 * 60_000) === '5m' && t(3 * 3_600_000 + 12 * 60_000) === '3h 12m' && t(2 * 86_400_000 + 4 * 3_600_000) === '2d 4h', [t(20_000), t(5 * 60_000), t(3 * 3_600_000 + 12 * 60_000), t(2 * 86_400_000 + 4 * 3_600_000)]);
   check('an unreadable start is unknown, a clock behind the start is under a minute', About.uptimeText('nope', NOW) === 'unknown' && About.uptimeText(start, Date.parse(start) - 5000) === 'under a minute');
   check('version with build', About.versionWithBuild('0.5.0', 'a1b2c3d') === '0.5.0 (a1b2c3d)' && About.versionWithBuild('0.5.0', 'dev') === '0.5.0 (dev build)');
-  check('links point at the repository', About.TANDEMISE_REPOSITORY_URL === 'https://github.com/demogar/tandemise'
-    && About.TANDEMISE_NEW_ISSUE_URL.startsWith('https://github.com/demogar/tandemise/issues/new')
-    && About.TANDEMISE_DOCS_URL.startsWith('https://github.com/demogar/tandemise/'));
+  check('links point at the repository', About.TANDEMISE_REPOSITORY_URL === 'https://github.com/tandemise/tandemise'
+    && About.TANDEMISE_NEW_ISSUE_URL.startsWith('https://github.com/tandemise/tandemise/issues/new')
+    && About.TANDEMISE_DOCS_URL.startsWith('https://github.com/tandemise/tandemise/'));
 }
 
 // ------------------------------------------------------------------ build stamp

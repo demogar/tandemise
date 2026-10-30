@@ -7,7 +7,7 @@ import { context } from '../../p0/lib/ctx.mjs';
 import { Evidence } from '../../p0/lib/evidence.mjs';
 import { appVersion, electronPid, gitSha, noticeCopyright, systemEvents } from '../common.mjs';
 
-const REPO = 'https://github.com/demogar/tandemise';
+const REPO = 'https://github.com/tandemise/tandemise';
 const c = await context();
 const ev = new Evidence('A3', 'The About panel shows version, build, copyright, license and the repository');
 const options = await c.page.evaluate('window.tandemiseTest ? window.tandemiseTest.aboutPanelOptions() : null');

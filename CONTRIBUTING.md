@@ -75,7 +75,7 @@ with resolved conversations and passing `Build & typecheck`, `Offline checks` an
 To change it, edit the file and re-apply it:
 
 ```bash
-gh api -X PUT repos/demogar/tandemise/rulesets/<id> --input .github/rulesets/main.json
+gh api -X PUT repos/tandemise/tandemise/rulesets/<id> --input .github/rulesets/main.json
 ```
 
 ## Releases
