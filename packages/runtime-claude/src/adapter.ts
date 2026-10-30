@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
 import type {
-  AgentEvent, RuntimeCapability, RuntimeDiscovery, RuntimeHealth, RuntimeProfile,
+  AgentEvent, InteractiveInvocation, RuntimeCapability, RuntimeDiscovery, RuntimeHealth, RuntimeProfile,
 } from '@tandemise/domain';
 import { SKILLS_FOLDER } from '@tandemise/domain';
 import {
@@ -14,7 +14,7 @@ import { CLAUDE_SETTINGS_SCHEMA, PARENT_SESSION_ENV, resolveConfigDir } from './
 import type { AgentRuntimeAdapter, RunRequest, SupervisedChild } from '@tandemise/runtimes-core';
 import { TandemiseError, systemClock } from '@tandemise/shared';
 import type { Clock, RunId } from '@tandemise/shared';
-import { buildInvocation } from './cli-args.js';
+import { buildInteractiveInvocation, buildInvocation } from './cli-args.js';
 import { ClaudeEventMapper } from './event-mapper.js';
 import { findExecutable, probeVersion, requireExecutable } from './discovery.js';
 
@@ -54,7 +54,7 @@ const SIGNED_OUT_TTL_MS = 2 * 60_000;
  */
 export const CLAUDE_CAPABILITIES: readonly RuntimeCapability[] = [
   'reasoning', 'vision', 'shell', 'filesystem', 'git', 'web',
-  'mcp', 'structured_output', 'session_resume', 'tool_calling',
+  'mcp', 'structured_output', 'session_resume', 'tool_calling', 'interactive_resume',
 ];
 
 /** A quota observation older than this no longer describes the current state. */
@@ -177,6 +177,26 @@ export class ClaudeCodeAdapter implements AgentRuntimeAdapter {
     return this.#run(request, sessionRef);
   }
 
+  /** The interactive CLI for a hold, resumed in the agent's session (or fresh with an initial prompt). */
+  interactive(
+    sessionRef: string | null,
+    request: RunRequest,
+    opts: { readonly sessionFile: string; readonly initialPrompt: string | null },
+  ): InteractiveInvocation {
+    const file = requireExecutable(request.profile.executablePath);
+    const env: Record<string, string> = {};
+    for (const [name, value] of Object.entries(this.#env(request, resolveConfigDir(request.profile.settings)))) {
+      if (value !== undefined) env[name] = value;
+    }
+    env['TERM'] = 'xterm-256color';
+    return {
+      file,
+      ...buildInteractiveInvocation(request, sessionRef, opts),
+      env,
+      cwd: absoluteWorkingDirectory(request.workingDirectory),
+    };
+  }
+
   pid(runId: RunId): number | null {
     return this.#children.get(runId)?.pid ?? null;
   }
@@ -215,20 +235,7 @@ export class ClaudeCodeAdapter implements AgentRuntimeAdapter {
     // makes two Claude profiles two independent workers rather than one account
     // wearing two names. It is an override, so it wins over anything inherited.
     const configDir = resolveConfigDir(request.profile.settings);
-    const childEnv = buildRuntimeEnv({
-      allowedPrefixes: ['ANTHROPIC_', 'CLAUDE_'],
-      allowedNames: ['SSH_AUTH_SOCK', 'GIT_ASKPASS', 'COLORTERM'],
-      deniedNames: PARENT_SESSION_ENV,
-      overrides: {
-        ...(configDir === null ? {} : { CLAUDE_CONFIG_DIR: configDir }),
-        // A tool call may legitimately block for as long as the run may live:
-        // `ask_human` waits on a person. Claude Code's own MCP tool timeout is
-        // an undocumented default we should not bet a worker's question on, so
-        // it is pinned to the run's wall-time backstop. Verified that Claude
-        // Code honours a blocking call across minutes, not only seconds.
-        ...(request.maxWallTimeMs > 0 ? { MCP_TOOL_TIMEOUT: String(request.maxWallTimeMs) } : {}),
-      },
-    });
+    const childEnv = this.#env(request, configDir);
     log.debug('spawning claude code', {
       executablePath,
       argc: args.length,
@@ -298,6 +305,24 @@ export class ClaudeCodeAdapter implements AgentRuntimeAdapter {
       this.#children.delete(request.runId);
       stream.dispose();
     }
+  }
+
+  /** The environment a Claude Code child runs under, headless or interactive. */
+  #env(request: RunRequest, configDir: string | null): NodeJS.ProcessEnv {
+    return buildRuntimeEnv({
+      allowedPrefixes: ['ANTHROPIC_', 'CLAUDE_'],
+      allowedNames: ['SSH_AUTH_SOCK', 'GIT_ASKPASS', 'COLORTERM'],
+      deniedNames: PARENT_SESSION_ENV,
+      overrides: {
+        ...(configDir === null ? {} : { CLAUDE_CONFIG_DIR: configDir }),
+        // A tool call may legitimately block for as long as the run may live:
+        // `ask_human` waits on a person. Claude Code's own MCP tool timeout is
+        // an undocumented default we should not bet a worker's question on, so
+        // it is pinned to the run's wall-time backstop. Verified that Claude
+        // Code honours a blocking call across minutes, not only seconds.
+        ...(request.maxWallTimeMs > 0 ? { MCP_TOOL_TIMEOUT: String(request.maxWallTimeMs) } : {}),
+      },
+    });
   }
 
   #handleLine(line: string, sink: NormalizingEventSink, mapper: ClaudeEventMapper): void {

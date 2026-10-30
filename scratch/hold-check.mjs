@@ -117,6 +117,88 @@ section('persistence: migration 022 and the hold repository');
   db.close();
 }
 
+section('runtime: interactive invocations');
+{
+  const { ids, nullLogger } = await import('@tandemise/shared');
+  const { buildInvocation, buildInteractiveInvocation, ClaudeCodeAdapter } = await import('@tandemise/runtime-claude');
+  const { FakeRuntimeAdapter } = await import('@tandemise/runtime-generic');
+  const { spawn } = await import('node:child_process');
+  const { mkdtempSync, existsSync, readFileSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const now = new Date().toISOString();
+  const profile = (adapterId, settings = {}) => ({
+    id: ids.runtimeProfile(), workspaceId: ids.workspace(), adapterId, name: 'p', executablePath: null, args: [],
+    settings, capabilities: [], enabled: true, maxConcurrent: 1, createdAt: now, updatedAt: now,
+  });
+  const req = (p, extra = {}) => ({
+    runId: ids.run(), profile: p, prompt: 'do it', workingDirectory: tmpdir(), grants: ['filesystem.write'], allowedRoots: [],
+    mcpConfigPath: '/tmp/mcp.json', maxWallTimeMs: 1000, signal: new AbortController().signal, log: nullLogger, ...extra,
+  });
+  const after = (args, flag) => args[args.indexOf(flag) + 1];
+
+  const p = profile('claude-code', { configDir: '/tmp/cfg-x' });
+  const r = req(p);
+  const opts = { sessionFile: '/tmp/some dir/it\'s.session', initialPrompt: 'start here' };
+  const headless = buildInvocation(r, 'sess_1').args;
+  const inter = buildInteractiveInvocation(r, 'sess_1', opts);
+  const a = inter.args;
+  check('interactive args have no -p, stream-json or --verbose',
+    !a.includes('-p') && !a.includes('stream-json') && !a.includes('--output-format') && !a.includes('--verbose'), a);
+  check('interactive resumes the session', after(a, '--resume') === 'sess_1');
+  for (const f of ['--permission-mode', '--mcp-config', '--setting-sources', '--allowed-tools']) {
+    check(`${f} matches the headless value`, after(a, f) === after(headless, f), [after(a, f), after(headless, f)]);
+  }
+  check('--strict-mcp-config is present', a.includes('--strict-mcp-config'));
+  const settings = JSON.parse(after(a, '--settings'));
+  const hook = settings.hooks.SessionStart[0].hooks[0];
+  check('SessionStart hook is a node -e command naming the session file',
+    hook.type === 'command' && hook.command.startsWith("node -e '") && hook.command.includes('/tmp/some dir/it'), hook);
+  // The hook command really works through a shell, quotes and spaces in the path included.
+  const dir = mkdtempSync(join(tmpdir(), 'hold-rt-'));
+  const sf = join(dir, "it's here.session");
+  const hookCmd = JSON.parse(after(buildInteractiveInvocation(r, null, { sessionFile: sf, initialPrompt: null }).args, '--settings'))
+    .hooks.SessionStart[0].hooks[0].command;
+  await new Promise((done) => {
+    const sh = spawn('sh', ['-c', hookCmd], { stdio: ['pipe', 'ignore', 'ignore'] });
+    sh.stdin.end(JSON.stringify({ session_id: 'sess_hook', hook_event_name: 'SessionStart' }));
+    sh.on('close', done);
+  });
+  check('the hook writes session_id to the session file', existsSync(sf) && readFileSync(sf, 'utf8') === 'sess_hook');
+  const whole = new ClaudeCodeAdapter().interactive('sess_1', req({ ...p, executablePath: process.execPath }), opts);
+  check('env carries CLAUDE_CONFIG_DIR and TERM', whole.env.CLAUDE_CONFIG_DIR === '/tmp/cfg-x' && whole.env.TERM === 'xterm-256color', whole.env);
+  check('cwd is the worktree and sessionFile is passed through',
+    whole.cwd === tmpdir() && whole.sessionFile === opts.sessionFile && whole.file === process.execPath && whole.args.includes('--resume'));
+  const fresh = buildInteractiveInvocation(r, null, opts).args;
+  check('a fresh session passes the initial prompt last, without --resume',
+    fresh.at(-1) === 'start here' && !fresh.includes('--resume'), fresh.slice(-3));
+  check('adapter declares interactive_resume', new ClaudeCodeAdapter().baseCapabilities.includes('interactive_resume'));
+
+  const fake = new FakeRuntimeAdapter();
+  check('the fake declares interactive_resume', fake.baseCapabilities.includes('interactive_resume'));
+  const fsf = join(dir, 'fake.session');
+  const inv = fake.interactive('abc', req(profile('fake'), { workingDirectory: dir }), { sessionFile: fsf, initialPrompt: null });
+  const out = await new Promise((done) => {
+    const c = spawn(inv.file, inv.args, { cwd: inv.cwd, env: { ...process.env, ...inv.env }, stdio: ['pipe', 'pipe', 'inherit'] });
+    let buf = '';
+    c.stdout.on('data', (d) => { buf += d; });
+    c.stdin.write('hello\nwrite a.txt\n/exit\n');
+    c.on('close', (code) => done({ buf, code }));
+  });
+  check('the fake echoes input, writes files and exits 0',
+    out.code === 0 && out.buf.includes('Fake session abc') && out.buf.includes('> hello') && out.buf.includes('> write a.txt')
+    && existsSync(join(dir, 'a.txt')), out);
+  check('the fake records its session id', /^fake-session-/.test(readFileSync(fsf, 'utf8')));
+  rmSync(dir, { recursive: true, force: true });
+
+  const { RuntimeManager, RuntimeRegistry } = await import('@tandemise/runtimes-core');
+  const mgr = new RuntimeManager({ registry: new RuntimeRegistry([fake, { ...fake, id: 'no-interactive', interactive: undefined }]) });
+  let refusal;
+  try { mgr.interactive(profile('no-interactive'), null, req(profile('no-interactive')), opts); } catch (e) { refusal = e; }
+  check('the manager refuses an adapter without interactive support',
+    refusal?.code === 'CONFLICT' && /Only Claude Code steps can be held/.test(refusal.message), refusal);
+}
+
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) {
   console.log(failures.map((f) => `  - ${f}`).join('\n'));

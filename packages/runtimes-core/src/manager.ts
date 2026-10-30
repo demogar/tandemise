@@ -1,5 +1,5 @@
 import type {
-  AgentEvent, RuntimeCapability, RuntimeDiscovery, RuntimeHealth, RuntimeProfile,
+  AgentEvent, InteractiveInvocation, RuntimeCapability, RuntimeDiscovery, RuntimeHealth, RuntimeProfile,
 } from '@tandemise/domain';
 import { Err, Ok, TandemiseError, errorMessage, nullLogger, systemClock } from '@tandemise/shared';
 import type { Clock, Logger, Result, RunId, RuntimeProfileId } from '@tandemise/shared';
@@ -335,6 +335,20 @@ export class RuntimeManager {
     }
     if (!this.#inherit(request)) this.#claim(request.profile.id);
     return this.#tracked(request.profile.id, adapter.resume(sessionRef, request), request.retainSlot);
+  }
+
+  /** The interactive invocation for a hold, or a conflict when the runtime has none. */
+  interactive(
+    profile: RuntimeProfile,
+    sessionRef: string | null,
+    request: RunRequest,
+    opts: { readonly sessionFile: string; readonly initialPrompt: string | null },
+  ): InteractiveInvocation {
+    const adapter = this.#registry.adapter(profile.adapterId);
+    if (adapter.interactive === undefined) {
+      throw new TandemiseError('CONFLICT', 'Only Claude Code steps can be held for now.');
+    }
+    return adapter.interactive(sessionRef, request, opts);
   }
 
   async cancel(profile: RuntimeProfile, runId: RunId): Promise<void> {
