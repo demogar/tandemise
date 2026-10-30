@@ -5,7 +5,7 @@ import type {
   PlannedTask, Repository, RoleRepositoryPort, RoleTemplate, RuntimeProfile, RuntimeProfileRepositoryPort, SkillPin,
   TaskRepositoryPort, Workspace, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
-import { ARTIFACT_OUT_DIR, CORE_CAPABILITIES, RUNTIME_ACTOR, SYSTEM_ACTOR, DEFAULT_ESCALATE_AFTER_MS, canTransition, indexTeam, isActiveMember, compileWorkflow, validateMissionPlan } from '@tandemise/domain';
+import { ARTIFACT_OUT_DIR, CORE_CAPABILITIES, RUNTIME_ACTOR, SYSTEM_ACTOR, DEFAULT_ESCALATE_AFTER_MS, canTransition, describeGate, indexTeam, isActiveMember, compileWorkflow, validateMissionPlan } from '@tandemise/domain';
 import type { MissionDetail } from '@tandemise/api-contract';
 import type { ArtifactMeasurePort, ArtifactParserPort, ArtifactTemplatePort, WorkflowSourcePort } from '../ports.js';
 import type { ReadinessService } from './readiness.js';
@@ -1022,7 +1022,7 @@ way to write that file, reply with the JSON object instead.`;
     const summary = plan.summary.trim().length > 0 ? plan.summary.trim() : description;
     const stop = plan.tasks.find((t) => t.completionGate !== null || t.approvalPolicy.beforeStart || t.approvalPolicy.onCompletion);
     const stopLine = stop === undefined ? null
-      : stop.completionGate !== null ? `First gate: ${stop.key} passes when ${stop.completionGate}`
+      : stop.completionGate !== null ? `First gate: ${stop.key} passes when ${describeGate(stop.completionGate)}`
         : `${stop.title} needs approval ${stop.approvalPolicy.beforeStart ? 'before it starts' : 'when it finishes'}`;
     const points = [description, stopLine]
       .filter((p): p is string => p !== null)

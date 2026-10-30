@@ -1,0 +1,10 @@
+{
+  "missionId": "msn_01m4gvt5hga87dqvbst4",
+  "final": "COMPLETE implement:SUCCEEDED review:SUCCEEDED verify:SUCCEEDED",
+  "shellByRoleOutcome": {
+    "development:ok": 4,
+    "review:ok": 8,
+    "qa:ok": 5
+  },
+  "refused": []
+}

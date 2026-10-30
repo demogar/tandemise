@@ -85,7 +85,7 @@ export function MissionDetail({ id, tab }: { id: string; tab: MissionTab }): JSX
         actions={
           <>
             <StatusBadge status={status} tone={tone} />
-            {actionsFor(status, isPlanUnstarted(detail.tasks)).map((action) => {
+            {actionsFor(status, isPlanUnstarted(detail.tasks), detail.approvals.some((a) => a.kind === 'plan' && a.status === 'PENDING')).map((action) => {
               const gated = action.id === 'plan' && status === 'DRAFT';
               const notReady = gated && readiness?.ready !== true;
               return (
@@ -268,7 +268,7 @@ interface MissionAction {
  * of what the user might want - offering Start on a running mission is how a
  * UI teaches people that its buttons are unreliable.
  */
-function actionsFor(status: MissionStatus, planUnstarted: boolean): readonly MissionAction[] {
+function actionsFor(status: MissionStatus, planUnstarted: boolean, planAsked: boolean): readonly MissionAction[] {
   if (isTerminalMissionStatus(status)) return [];
   switch (status) {
     case 'DRAFT':
@@ -278,8 +278,10 @@ function actionsFor(status: MissionStatus, planUnstarted: boolean): readonly Mis
     case 'AWAITING_PLAN_APPROVAL':
       // Re-plan is how a user answers a plan that does not fit the goal - a
       // preset fallback, say - without cancelling and retyping the mission.
+      // While the plan card asks, Approve on it is how the mission starts:
+      // Start beside it only ever answered "The plan is waiting for your approval".
       return [
-        { id: 'start', label: 'Start', icon: 'play', primary: true },
+        ...(planAsked ? [] : [{ id: 'start', label: 'Start', icon: 'play', primary: true } as const]),
         { id: 'plan', label: 'Re-plan', icon: 'sparkle' },
         { id: 'cancel', label: 'Cancel', icon: 'x' },
       ];

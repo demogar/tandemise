@@ -5,7 +5,7 @@ import type {
   MemberRepositoryPort, PlanValidationIssue, RepoRepositoryPort, RoleRepositoryPort, RunEventRecord, RunRepositoryPort,
   RuntimeProfileRepositoryPort, Run, TaskRepositoryPort, TaskStatus, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
-import { PENDING_FEEDBACK_STATUSES, isTrialMission, planLevels } from '@tandemise/domain';
+import { PENDING_FEEDBACK_STATUSES, RUNTIME_ACTOR, isTrialMission, planLevels } from '@tandemise/domain';
 import type {
   ActorRef, FeedCard, HomeView, InboxView, MissionDetail, MissionFeedView, MissionLimitsView, MissionSummary, RuntimeView, TaskView,
 } from '@tandemise/api-contract';
@@ -293,7 +293,7 @@ export class ProjectionServiceImpl implements ProjectionService {
       const section: FeedCard['section'] = mine !== undefined || humanAction !== null
         ? 'needs_you'
         : FEED_DONE_STATUSES.includes(task.status) ? 'done' : 'in_progress';
-      const doneBy = actorRef(named, primary?.authorId ?? task.assigneeId);
+      const doneBy = this.#runtimeNamed(actorRef(named, primary?.authorId ?? task.assigneeId), primary?.createdByRunId ?? null, runsByTask.get(task.id) ?? []);
 
       const card: FeedCard = {
         taskId: task.id,
@@ -354,7 +354,9 @@ export class ProjectionServiceImpl implements ProjectionService {
       const askingMe = planDecision === 'pending' && standing.forMe;
       // A rejection that still stops the mission waits for a re-plan, on the person who was asked.
       const rejectedOpen = planDecision === 'rejected' && standing.open;
-      const doneBy = actorRef(named, planArtifact?.authorId);
+      // The planner has no run to name a runtime from (KNOWN_LIMITATIONS).
+      const planAuthor = actorRef(named, planArtifact?.authorId);
+      const doneBy = planAuthor?.id === RUNTIME_ACTOR ? { ...planAuthor, name: 'Planner' } : planAuthor;
       const plan: FeedCard = {
         taskId: null,
         key: 'plan',
@@ -431,6 +433,19 @@ export class ProjectionServiceImpl implements ProjectionService {
       planIssues: this.#planIssues(mission, tasks),
       uploads: this.#uploads(id),
     };
+  }
+
+  /**
+   * Work no agent member staffs is authored by the runtime actor, which read
+   * "by Runtime" on every card of a fresh install. The run says which runtime
+   * it was, so the card can say "by Claude Code".
+   */
+  #runtimeNamed(ref: ActorRef | null, runId: string | null, runs: readonly Run[]): ActorRef | null {
+    if (ref?.id !== RUNTIME_ACTOR) return ref;
+    const run = (runId === null ? undefined : runs.find((r) => r.id === runId))
+      ?? [...runs].sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
+    const profile = run === undefined ? undefined : this.deps.runtimeProfiles.get(asId<'RuntimeProfileId'>(run.runtimeProfileId));
+    return profile === undefined ? ref : { ...ref, name: profile.name };
   }
 
   /** The pinned uploads and what intake made of each, if anything yet (spec A7). */

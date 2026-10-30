@@ -130,7 +130,7 @@ function RuntimeCard({
           <div className="row" style={{ gap: 'var(--s2)' }}>
             <span style={{ fontWeight: 600, fontSize: 'var(--fs-base)' }}>{profile.name}</span>
             <span className="chip chip--muted">{view.adapterDisplayName}</span>
-            {health.version ? <span className="chip">v{health.version}</span> : null}
+            {health.version ? <span className="chip">{versionLabel(health.version)}</span> : null}
           </div>
           <div className="dim" style={{ fontSize: 'var(--fs-xs)', marginTop: 2 }}>
             {health.detail} · checked {dateTime(health.checkedAt)}
@@ -253,12 +253,21 @@ function Detail({ label, children }: { label: string; children: React.ReactNode 
   );
 }
 
+/** "2.1.295" reads "v2.1.295"; a label like "built-in" stays as it is, not "vbuilt-in". */
+function versionLabel(version: string): string {
+  return /^\d/.test(version) ? `v${version}` : version;
+}
+
 function DiscoveryModal({ results, onClose }: { results: readonly RuntimeDiscoveryView[]; onClose: () => void }): JSX.Element {
   // A runtime belongs to the project. Two projects frequently want the same CLI
   // under different logins - a different `configDir` is the whole point of a
   // second profile - so a runtime configured here is this project's, not the
   // machine's.
   const workspaceId = useWorkspaceId();
+  // The results are a snapshot from when discovery ran. Without this, a runtime
+  // just added still offered a plain "Add", as if the click had done nothing.
+  const [added, setAdded] = useState<ReadonlySet<string>>(new Set());
+  const configured = (discovery: RuntimeDiscoveryView): boolean => discovery.configured || added.has(discovery.adapterId);
   const create = useDaemonMutation(
     (daemon, discovery: RuntimeDiscoveryView) =>
       daemon.createRuntime({
@@ -266,7 +275,7 @@ function DiscoveryModal({ results, onClose }: { results: readonly RuntimeDiscove
         adapterId: discovery.adapterId,
         // A second profile of the same adapter would otherwise be
         // indistinguishable from the first in every list that shows a name.
-        name: discovery.configured ? `${discovery.displayName} (2)` : discovery.displayName,
+        name: configured(discovery) ? `${discovery.displayName} (2)` : discovery.displayName,
         executablePath: discovery.executablePath,
         settings: discovery.suggestedSettings as Record<string, unknown>,
         enabled: true,
@@ -287,7 +296,7 @@ function DiscoveryModal({ results, onClose }: { results: readonly RuntimeDiscove
                 <div className="list__title">{discovery.displayName}</div>
                 <div className="list__subtitle truncate">
                   {discovery.detected
-                    ? `${discovery.version ? `v${discovery.version} · ` : ''}${discovery.executablePath ?? 'on PATH'}`
+                    ? `${discovery.version ? `${versionLabel(discovery.version)} · ` : ''}${discovery.executablePath ?? 'on PATH'}`
                     : discovery.detail}
                 </div>
               </div>
@@ -295,12 +304,12 @@ function DiscoveryModal({ results, onClose }: { results: readonly RuntimeDiscove
                 <span className="chip chip--muted">not found</span>
               ) : (
                 <div className="row" style={{ gap: 'var(--s2)' }}>
-                  {discovery.configured ? <span className="badge badge--succeeded">Configured</span> : null}
+                  {configured(discovery) ? <span className="badge badge--succeeded">Configured</span> : null}
                   {/* Still offered once configured: a second profile of the same
                       adapter is a normal setup, not a mistake - one login for
                       deep work, another for review. */}
-                  <button type="button" className="btn btn--primary" disabled={create.isPending} onClick={() => create.mutate(discovery)}>
-                    {discovery.configured ? 'Add another' : 'Add'}
+                  <button type="button" className="btn btn--primary" disabled={create.isPending} onClick={() => create.mutate(discovery, { onSuccess: () => setAdded((prev) => new Set(prev).add(discovery.adapterId)) })}>
+                    {configured(discovery) ? 'Add another' : 'Add'}
                   </button>
                 </div>
               )}
