@@ -4,7 +4,7 @@ import type {
   CheckpointRepositoryPort, DecisionRepositoryPort, EvalBlobPort, EvalRepositoryPort, EvaluationRepositoryPort, EventBusPort,
   EventRepositoryPort, ExecutionTargetRepositoryPort, FeedbackRepositoryPort, IntegrationRepositoryPort,
   LeaseRepositoryPort, MemberRepositoryPort, MissionCriteriaRepositoryPort, MissionQuestionRepositoryPort, MissionRepositoryPort, LimitRepositoryPort, RoutineRepositoryPort, RunScoreRepositoryPort, SkillRepositoryPort, IssueRepositoryPort, IssueTrackerPort, PullRequestSnapshotPort, PersonRepositoryPort, ProjectionBusPort, RepoRepositoryPort,
-  PlanProposalRepositoryPort, RoleRepositoryPort, RunInputRepositoryPort, RunRepositoryPort, RuntimeProfileRepositoryPort, SecretStorePort,
+  PlanProposalRepositoryPort, TaskHoldRepositoryPort, RoleRepositoryPort, RunInputRepositoryPort, RunRepositoryPort, RuntimeProfileRepositoryPort, SecretStorePort,
   TaskRepositoryPort, UnitOfWork, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
 import type { ArtifactMeasurePort, ArtifactParserPort, ArtifactTemplatePort, ProcessLivenessPort, SettingsStorePort, SystemEnvironmentPort, WorkflowSourcePort, OAuthCallbackPort, SkillFilesPort } from './ports.js';
@@ -89,6 +89,7 @@ export const MEMBER_REPOSITORY = token<MemberRepositoryPort>('port.MemberReposit
 export const FEEDBACK_REPOSITORY = token<FeedbackRepositoryPort>('port.FeedbackRepository');
 export const RUN_INPUT_REPOSITORY = token<RunInputRepositoryPort>('port.RunInputRepository');
 export const PLAN_PROPOSAL_REPOSITORY = token<PlanProposalRepositoryPort>('port.PlanProposalRepository');
+export const TASK_HOLD_REPOSITORY = token<TaskHoldRepositoryPort>('port.TaskHoldRepository');
 export const MISSION_CRITERIA_REPOSITORY = token<MissionCriteriaRepositoryPort>('port.MissionCriteriaRepository');
 export const MISSION_QUESTION_REPOSITORY = token<MissionQuestionRepositoryPort>('port.MissionQuestionRepository');
 export const LIMIT_REPOSITORY = token<LimitRepositoryPort>('port.LimitRepository');
@@ -234,5 +235,6 @@ export const PERSISTENCE_PORT_TOKENS = {
   FEEDBACK_REPOSITORY,
   RUN_INPUT_REPOSITORY,
   PLAN_PROPOSAL_REPOSITORY,
+  TASK_HOLD_REPOSITORY,
   MISSION_CRITERIA_REPOSITORY,
 } as const satisfies Readonly<Record<string, Token<unknown>>>;

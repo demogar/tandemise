@@ -1,6 +1,6 @@
 import type {
   ApprovalId, ArtifactId, CriterionId, EventId, QuestionId, FeedbackId, MemberId, MissionId, PersonId, RepositoryId, RunId, RuntimeProfileId,
-  ExecutionTargetId, EvalCaseId, EvalRunId, EvalSuiteId, EvalTrialId, IntegrationId, IssueLinkId, RoutineId, SkillId, TaskId, Timestamp, WorkerAssignmentId, WorkspaceId,
+  ExecutionTargetId, EvalCaseId, EvalRunId, EvalSuiteId, EvalTrialId, IntegrationId, IssueLinkId, RoutineId, SkillId, TaskHoldId, TaskId, Timestamp, WorkerAssignmentId, WorkspaceId,
 } from '@tandemise/shared';
 import type { Mission, MissionDraft, MissionProgress, MissionStatus } from '../entities/mission.js';
 import type {
@@ -25,6 +25,7 @@ import type { MissionCriterion, SpecCriterionInput } from '../entities/criteria.
 import type { MissionQuestion, QuestionInput } from '../entities/refinement.js';
 import type { LimitIncident, LimitIncidentStatus, LimitMetric, LimitThreshold, UsageTotals } from '../entities/limits.js';
 import type { Routine, RoutineDraft, RoutineRun } from '../entities/routine.js';
+import type { TaskHold } from '../entities/hold.js';
 import type { Skill, SkillVersion } from '../entities/skill.js';
 import type {
   EvalCase, EvalCaseCriterion, EvalRun, EvalSuite, EvalTrial, RunScore,
@@ -271,6 +272,18 @@ export interface PlanProposalRepositoryPort {
   put(proposal: PlanProposal): void;
   get(approvalId: ApprovalId): PlanProposal | undefined;
   delete(approvalId: ApprovalId): void;
+}
+
+/** A person's holds on agent steps (hold-and-interact spec); see migration 022. */
+export interface TaskHoldRepositoryPort {
+  create(hold: TaskHold): void;
+  get(id: TaskHoldId): TaskHold | undefined;
+  /** The task's hold that has not ended; at most one exists. */
+  openFor(taskId: TaskId): TaskHold | undefined;
+  /** An ended hold the agent's next run has not yet read: ending 'continued' and no `consumedAt`. */
+  pendingContinuation(taskId: TaskId): TaskHold | undefined;
+  update(id: TaskHoldId, patch: Partial<TaskHold>): void;
+  listByMission(missionId: MissionId): TaskHold[];
 }
 
 export interface RunInputRepositoryPort {

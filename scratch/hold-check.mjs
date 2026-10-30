@@ -62,6 +62,61 @@ section('pure: nowLine and describeHoldEnd');
   check('describeHoldEnd names the outcome', /continu/i.test(D.describeHoldEnd(hold({}))) && /releas/i.test(D.describeHoldEnd(hold({ ending: 'released' }))));
 }
 
+section('persistence: migration 022 and the hold repository');
+{
+  const { mkdtempSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { Container, compose } = await import('@tandemise/kernel');
+  const P = await import('@tandemise/persistence');
+  const container = new Container();
+  const dir = mkdtempSync(join(tmpdir(), 'tandemise-hold-'));
+  compose(container, P.persistenceModule({ path: join(dir, 'h.db') }));
+  const db = container.resolve(P.DATABASE);
+  db.handle.exec(`
+    INSERT INTO workspaces (id,name,autonomy,concurrency,routing,default_autonomy_level,knowledge,created_at,updated_at)
+      VALUES ('ws1','W','balanced','{}','{}','balanced','{}','2026-01-01','2026-01-01');
+    INSERT INTO missions (id,workspace_id,title,goal,constraints,success_criteria,status,autonomy,workflow_preset,created_at,updated_at)
+      VALUES ('m1','ws1','T','G','[]','[]','EXECUTING','balanced','p','2026-01-01','2026-01-01');
+    INSERT INTO mission_tasks (id,mission_id,key,title,objective,role_id,required_capabilities,input_artifacts,expected_outputs,execution_policy,approval_policy,retry_policy,status,created_at,updated_at)
+      VALUES ('t1','m1','k1','T1','O','design','[]','[]','[]','{}','{}','{}','RUNNING','2026-01-01','2026-01-01');
+  `);
+  let held = null;
+  try { db.handle.prepare("UPDATE mission_tasks SET status = 'HELD' WHERE id = 't1'").run(); } catch (e) { held = String(e.message); }
+  check('a task row can be written with status HELD', held === null, held);
+  const sql = db.handle.prepare("SELECT sql FROM sqlite_master WHERE name = 'mission_tasks'").get().sql;
+  check("sqlite_master for mission_tasks contains 'HELD'", sql.includes("'HELD'"));
+
+  const repo = container.resolve(P.TASK_HOLD_REPOSITORY);
+  const hold = (id, extra = {}) => ({
+    id, taskId: 't1', missionId: 'm1', heldBy: 'mem1', fromStatus: 'RUNNING', runtimeProfileId: 'rp1',
+    sessionBefore: 's-1', sessionAfter: null, ptyPid: null, startedAt: '2026-01-02T00:00:00.000Z',
+    endedAt: null, endedBy: null, ending: null, consumedAt: null, diffStat: null, dir: '/h/hld1', ...extra,
+  });
+  repo.create(hold('hld1'));
+  check('openFor finds the open hold', repo.openFor('t1')?.id === 'hld1');
+  let second = null;
+  try { repo.create(hold('hld2')); } catch (e) { second = String(e.message); }
+  check('a second open hold for the same task throws', second !== null && /UNIQUE/i.test(second), second);
+  check('no pending continuation while open', repo.pendingContinuation('t1') === undefined);
+
+  const stat = { files: 2, insertions: 5, deletions: 1 };
+  repo.update('hld1', { endedAt: '2026-01-02T01:00:00.000Z', endedBy: 'mem1', ending: 'continued', sessionAfter: 's-2', diffStat: stat });
+  check('openFor is empty once ended', repo.openFor('t1') === undefined);
+  const pending = repo.pendingContinuation('t1');
+  check('pendingContinuation returns the ended continued hold', pending?.id === 'hld1' && pending.sessionAfter === 's-2'
+    && JSON.stringify(pending.diffStat) === JSON.stringify(stat), pending);
+  repo.update('hld1', { consumedAt: '2026-01-02T02:00:00.000Z' });
+  check('pendingContinuation returns nothing once consumedAt is set', repo.pendingContinuation('t1') === undefined);
+  repo.create(hold('hld3', { startedAt: '2026-01-03T00:00:00.000Z' }));
+  check('a new hold may open after the first ended', repo.openFor('t1')?.id === 'hld3');
+  repo.update('hld3', { endedAt: '2026-01-03T01:00:00.000Z', ending: 'released' });
+  check('a released hold is never a pending continuation', repo.pendingContinuation('t1') === undefined);
+  check('listByMission lists in start order', repo.listByMission('m1').map((h) => h.id).join() === 'hld1,hld3');
+  check('get round-trips', repo.get('hld1')?.consumedAt === '2026-01-02T02:00:00.000Z');
+  db.close();
+}
+
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) {
   console.log(failures.map((f) => `  - ${f}`).join('\n'));
