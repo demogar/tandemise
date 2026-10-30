@@ -38,6 +38,7 @@ export type EvalSuiteId = Brand<string, 'EvalSuiteId'>;
 export type EvalCaseId = Brand<string, 'EvalCaseId'>;
 export type EvalRunId = Brand<string, 'EvalRunId'>;
 export type EvalTrialId = Brand<string, 'EvalTrialId'>;
+export type TaskHoldId = Brand<string, 'TaskHoldId'>;
 
 const ALPHABET = '0123456789abcdefghjkmnpqrstvwxyz';
 

@@ -365,6 +365,7 @@ const STATUS_LABELS: Readonly<Record<TaskStatus, string>> = {
   AWAITING_HUMAN: 'Person step',
   AWAITING_EXTERNAL: 'Waiting',
   AWAITING_APPROVAL: 'In review',
+  HELD: 'Held',
   BLOCKED: 'Blocked',
   SUCCEEDED: 'Done',
   FAILED: 'Failed',

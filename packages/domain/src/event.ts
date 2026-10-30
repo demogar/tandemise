@@ -1,8 +1,10 @@
 import type {
-  ApprovalId, ArtifactId, EventId, MissionId, RunId, TaskId, Timestamp, WorkspaceId,
+  ApprovalId, ArtifactId, EventId, MemberId, MissionId, RunId, TaskHoldId, TaskId, Timestamp, WorkspaceId,
 } from '@tandemise/shared';
 import type { FeedbackStatus } from './entities/feedback.js';
 import type { ArtifactType } from './entities/artifact.js';
+import type { TaskStatus } from './entities/task.js';
+import type { HoldEnding, HoldDiffStat } from './entities/hold.js';
 
 /**
  * The canonical event vocabulary (MVP.md §10.4).
@@ -92,6 +94,13 @@ export type OrchestrationEvent =
   | { readonly type: 'task.unparked'; readonly tool: string }
   /** A parked task's hand-back landed as a human-authored round; which outputs, and whether the contribution was a file or a link. */
   | { readonly type: 'task.handed_back'; readonly artifactIds: readonly ArtifactId[]; readonly round: number; readonly contribution: 'file' | 'link' }
+  /** A person took the keyboard on an agent step: the task is HELD from `fromStatus`, in the agent's own session. */
+  | { readonly type: 'task.held'; readonly holdId: TaskHoldId; readonly fromStatus: TaskStatus; readonly heldBy: MemberId; readonly sessionBefore: string | null }
+  /** A hold ended: continued (the agent picks the work up again) or released; `diffStat` is what changed while held. */
+  | {
+    readonly type: 'task.hold_ended'; readonly holdId: TaskHoldId; readonly ending: HoldEnding; readonly endedBy: MemberId | null;
+    readonly sessionAfter: string | null; readonly durationMs: number; readonly diffStat: HoldDiffStat | null;
+  }
   /** Mission intake (spec A2) ran once over the mission's pinned uploads: what it produced and what it could not convert. */
   | {
     readonly type: 'mission.intake_completed'; readonly uploads: number;
@@ -135,6 +144,7 @@ export const SEMANTIC_EVENT_TYPES: ReadonlySet<string> = new Set([
   'artifact.tighten_requested', 'artifact.over_budget',
   'feedback.given', 'feedback.addressed', 'feedback.dismissed', 'task.round_started', 'mission.pulled',
   'task.parked_external', 'task.unparked', 'task.handed_back', 'mission.intake_completed',
+  'task.held', 'task.hold_ended',
 ]);
 
 export function isSemanticEvent(body: TandemiseEventBody): boolean {
