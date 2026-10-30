@@ -1,0 +1,99 @@
+msn_01m4gvt5hga87dqvbst4
+Missions
+quick-change
+Add a --top N option to the tally CLI so it prints only the N most frequent w…
+Add a --top N option to the tally CLI so it prints only the N most frequent words.
+Complete
+Feed
+Plan
+3
+Timeline
+Artifacts
+4
+Checks & Gates
+2
+Metrics
+Done when
+3 of 3 verified
+U1
+node src/cli.js --top 2 <file> prints exactly the 2 most frequent words
+Reported by QA · `node src/cli.js --top 2 sample.txt` printed exactly `3 apple` / `3 zebra` (2 lines, exit 0)
+Verified
+U2
+Words with equal counts are ordered alphabetically, so output is deterministic
+Reported by QA · Ties sorted a→z (banana, mango, pear at count 2); 20 runs of full output all had md5 0a1d9740…
+Verified
+U3
+npm test passes, with new tests covering --top and the tie order
+Reported by QA · npm test: tests 12, pass 12, fail 0; test/cli.test.js covers --top, and both test files cover tie order
+Verified
+Done
+4
+QA ENGINEER
+Verify U1-U3 by running the CLI and tests
+Done
+just now
+by
+Runtime
+·
+responsible
+You
+Full doc
+Save as eval case
+Request changes
+
+U1–U3 all pass on f0f25d7 with no blocking defects; ready to ship
+
+--top 2 prints exactly 2 lines, and ties come out alphabetically (apple before zebra). 20 repeated runs gave byte-identical output
+npm test passes 12/12. Removing the tie-break makes 2 tests fail, so the new tests really check the order
+Invalid N (0, -1, abc, 1.5, 01, empty, missing) exits 2 with empty stdout and an error on stderr
+REVIEWER
+Review the --top change
+Done
+1m ago
+by
+Runtime
+·
+responsible
+You
+Full doc
+Save as eval case
+Request changes
+
+The --top N change is correct and meets U1–U3, with no blocking issues
+
+npm test passes 12/12. I ran it myself, and the tie test fails against the old comparator, so it really checks the order
+Invalid N (0, -1, abc, 1.5, 01, missing) exits 2 with an error on stderr. stdin still works
+Two nits only: the test temp dirs are never cleaned up, and the CLI path comes from URL.pathname
+DEVELOPER
+Add --top N and alphabetical tie order
+Done
+3m ago
+by
+Runtime
+·
+responsible
+You
+Full doc
+Save as eval case
+Request changes
+
+tally now supports --top N, ties sort alphabetically, and npm test passes 12/12
+
+U1: `node src/cli.js --top 2 <file>` prints exactly the top 2 lines; tested by spawning the CLI
+U2: equal counts sort by word using code-unit order (not locale), so the output is the same everywhere
+Invalid N (0, -1, abc, 1.5, missing) prints an error on stderr and exits with code 2
+Plan for Add a --top N option to the tally CLI so it prints…
+Approved
+4m ago
+by
+Runtime
+·
+responsible
+You
+Full doc
+
+Quick change: one developer task adds --top N and the alphabetical tie-break with tests…
+
+3 tasks: development → review → qa
+First gate: implement passes when artifact.ChangeSet.exists && checks.tests == PASS
