@@ -6,11 +6,11 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/demogar/tandemise.git"
+    "url": "git+https://github.com/tandemise/tandemise.git"
   },
-  "homepage": "https://github.com/demogar/tandemise#readme",
+  "homepage": "https://github.com/tandemise/tandemise#readme",
   "bugs": {
-    "url": "https://github.com/demogar/tandemise/issues"
+    "url": "https://github.com/tandemise/tandemise/issues"
   },
   "type": "module",
   "engines": {

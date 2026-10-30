@@ -27,7 +27,7 @@ Set the title when you create the PR. `gh pr edit --title` can hit a GitHub
 through the REST API instead:
 
 ```bash
-gh api -X PATCH repos/demogar/tandemise/pulls/<n> -f title="feat: …"
+gh api -X PATCH repos/tandemise/tandemise/pulls/<n> -f title="feat: …"
 ```
 
 ## Before you open a pull request

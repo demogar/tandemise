@@ -14,9 +14,9 @@
  * carries one) cannot reach the clipboard by being passed along.
  */
 
-export const TANDEMISE_REPOSITORY_URL = 'https://github.com/demogar/tandemise';
-export const TANDEMISE_DOCS_URL = 'https://github.com/demogar/tandemise/tree/main/docs';
-export const TANDEMISE_NEW_ISSUE_URL = 'https://github.com/demogar/tandemise/issues/new?template=bug_report.yml';
+export const TANDEMISE_REPOSITORY_URL = 'https://github.com/tandemise/tandemise';
+export const TANDEMISE_DOCS_URL = 'https://github.com/tandemise/tandemise/tree/main/docs';
+export const TANDEMISE_NEW_ISSUE_URL = 'https://github.com/tandemise/tandemise/issues/new?template=bug_report.yml';
 
 /** What the desktop app knows about itself (the main process answers it). */
 export interface AppAboutFacts {
