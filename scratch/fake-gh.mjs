@@ -49,7 +49,7 @@
 // The state directory is passed by the wrapper script (--fake-state <dir>)
 // because the daemon hands child processes an allow-listed environment only.
 import { execFileSync } from 'node:child_process';
-import { appendFileSync, chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -66,12 +66,26 @@ export function installFakeGh(dir, initial = {}) {
   return join(dir, 'bin');
 }
 
+/**
+ * The state file is written whole (temp file, then rename), so a reader never sees half of it. A parse error is still
+ * retried briefly, for a reader on a filesystem where rename isn't atomic.
+ */
 export function readState(dir) {
-  return JSON.parse(readFileSync(join(dir, 'state.json'), 'utf8'));
+  const path = join(dir, 'state.json');
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return JSON.parse(readFileSync(path, 'utf8'));
+    } catch (e) {
+      if (!(e instanceof SyntaxError) || attempt >= 50) throw e;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+    }
+  }
 }
 
 export function writeState(dir, state) {
-  writeFileSync(join(dir, 'state.json'), JSON.stringify(state, null, 2));
+  const tmp = join(dir, `state.json.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`);
+  writeFileSync(tmp, JSON.stringify(state, null, 2));
+  renameSync(tmp, join(dir, 'state.json'));
 }
 
 /** Adds or replaces an issue; `labels` are names. */
