@@ -6,7 +6,7 @@ import type {
   WorkspaceBrain, WorkspaceBrainRepositoryPort, WriterId,
 } from '@tandemise/domain';
 import { TERMINAL_MISSION_STATUSES, foldLedger, isTrialMission, isValidAt, makeWriterId } from '@tandemise/domain';
-import type { BrainAdoptPreview, BrainEntryView, BrainView, RememberView, SetupItemView } from '@tandemise/api-contract';
+import type { BrainAdoptPreview, BrainEntryView, BrainView, RememberView, RunBrainView, SetupItemView } from '@tandemise/api-contract';
 import type { Clock, Logger, MissionId, TaskId, TandemisePaths, WorkspaceId } from '@tandemise/shared';
 import { TandemiseError, asId, errorMessage, slugify } from '@tandemise/shared';
 import { LedgerReader, type LedgerAt } from './memory.js';
@@ -520,6 +520,54 @@ export class BrainService {
       .filter((e) => q.scope === undefined || q.scope === '' || scopeMatchesFilter(e, q.scope))
       .map((e) => this.#entryView(workspaceId, e, loaded))
       .sort((a, b) => (b.lastConfirmedAt < a.lastConfirmedAt ? -1 : b.lastConfirmedAt > a.lastConfirmedAt ? 1 : 0) || (a.id < b.id ? -1 : 1));
+  }
+
+  /** The ledger events about one entry at a commit (its history, for brain.read). */
+  async eventsFor(workspaceId: WorkspaceId, sha: string, entryId: string): Promise<readonly LedgerEvent[]> {
+    const row = this.#require(workspaceId);
+    const { events } = await this.#reader.eventsAt(row.clonePath, sha);
+    const memory = foldLedger(events, [], this.deps.clock.now());
+    const ids = new Set([entryId, ...Object.entries(memory.aliases).filter(([, to]) => to === entryId).map(([from]) => from)]);
+    return events.filter((e) => ids.has(e.id)).sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
+  }
+
+  /** An entry as the screens show it. */
+  entryView(workspaceId: WorkspaceId, entry: BrainEntry): BrainEntryView {
+    return this.#entryView(workspaceId, entry, this.#loadedIndex(workspaceId));
+  }
+
+  /** "What it knew" for one run (spec §11). */
+  async runBrain(runId: string): Promise<RunBrainView> {
+    const run = this.deps.runs?.get(asId<'RunId'>(runId));
+    if (run === undefined) throw TandemiseError.notFound('Run', runId);
+    const brain = run.brain ?? null;
+    if (brain === null) throw TandemiseError.notFound('Brain record for run', runId);
+    const mission = this.deps.missions?.get(run.missionId);
+    const workspaceId = mission?.workspaceId;
+    const link = workspaceId === undefined ? undefined : this.deps.brains.get(workspaceId);
+    const views = (ids: readonly string[]): BrainEntryView[] => {
+      if (workspaceId === undefined || link === undefined) return [];
+      const current = this.memory(workspaceId);
+      const loaded = this.#loadedIndex(workspaceId);
+      return ids.flatMap((id) => {
+        const e = current.entries.find((x) => x.id === (current.aliases[id] ?? id));
+        return e === undefined ? [] : [this.#entryView(workspaceId, e, loaded)];
+      });
+    };
+    const loaded = views(brain.loaded.map((l) => l.id));
+    const fetched = views(brain.fetched);
+    const proposed = views(brain.proposed);
+    const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
+    const summary = `Loaded ${plural(brain.rules.length, 'rules file', 'rules files')} and ${plural(brain.loaded.length, 'lesson', 'lessons')}`
+      + (brain.fetched.length > 0 ? `; read ${brain.fetched.length} more.` : '.');
+    const remote = link?.remote ?? null;
+    return {
+      sha: brain.sha,
+      shortSha: brain.sha.slice(0, 7),
+      commitUrl: remote !== null && remote.startsWith('github.com/') ? `https://${remote}/commit/${brain.sha}` : null,
+      rules: brain.rules,
+      loaded, fetched, proposed, summary,
+    };
   }
 
   /** One entry by id, wherever this machine has it. */

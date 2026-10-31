@@ -1701,7 +1701,8 @@ export class TaskExecutor {
         workingDirectory: target.workingDirectory,
         completionGate: task.completionGate,
         notes: [
-          ...this.#contractNotes(task, target, input.tools, input.feedback, input.tighten, input.round ?? null),
+          // #51: a project with no brain is not told about the brain's tools.
+          ...this.#contractNotes(task, target, brain === undefined ? input.tools.filter((name) => !name.startsWith('brain.')) : input.tools, input.feedback, input.tighten, input.round ?? null),
           ...ledgerNotes(task, ledger),
         ],
       },
@@ -1761,6 +1762,8 @@ export class TaskExecutor {
         + 'Every call is checked against this task\'s grants; one that needs a human is paused, not refused.',
       );
     }
+    // #51: the "propose additions after" half of the brain.
+    if (tools.includes('brain.propose')) notes.push('If you learned something the next person doing this step should know, call brain.propose with one short sentence.');
     // The retry feedback loop: the previous attempt's failure, stated verbatim.
     // Quoted rather than paraphrased on purpose - the worker needs the exact
     // condition Tandemise measured, not this system's opinion about it.

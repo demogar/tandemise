@@ -7,6 +7,8 @@ import * as b from './tokens.js';
 import { BrainService } from './brain-service.js';
 import { BrainSyncLoop } from './sync-loop.js';
 import { BrainContextSupply } from './context-supply.js';
+import { BUILT_IN_TOOLS } from '@tandemise/integrations-core';
+import { createBrainTools } from '../tools/brain-tools.js';
 
 const SOURCE = '@tandemise/application:brain';
 
@@ -58,6 +60,14 @@ export function bindBrain(container: Container): void {
   }), { source: SOURCE });
 
   container.bind(b.BRAIN_CONTEXT_SUPPLY, (r) => new BrainContextSupply(r.resolve(b.BRAIN_SERVICE), clock(r), log(r).child({ component: 'brain-context' })), { source: SOURCE });
+
+  // The brain.* tools (spec §10): every worker with repository.read can read and propose.
+  const tools = (r: Resolver) => createBrainTools({
+    brain: () => r.resolve(b.BRAIN_SERVICE), runs: r.resolve(t.RUN_REPOSITORY), missions: r.resolve(t.MISSION_REPOSITORY), clock: clock(r),
+  });
+  container.contribute(BUILT_IN_TOOLS, (r) => tools(r)[0]!, { source: SOURCE });
+  container.contribute(BUILT_IN_TOOLS, (r) => tools(r)[1]!, { source: SOURCE });
+  container.contribute(BUILT_IN_TOOLS, (r) => tools(r)[2]!, { source: SOURCE });
 
   container.bind(b.BRAIN_SYNC_LOOP, (r) => new BrainSyncLoop(
     r.resolve(b.BRAIN_SERVICE), r.resolve(b.WORKSPACE_BRAIN_REPOSITORY), log(r).child({ component: 'brain-sync' }),

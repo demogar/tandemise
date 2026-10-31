@@ -143,3 +143,4 @@ export { LedgerReader } from './brain/memory.js';
 export { historyEntry } from './brain/history.js';
 export { BrainContextSupply } from './brain/context-supply.js';
 export type { BrainAttemptInput } from './brain/context-supply.js';
+export { BRAIN_PROPOSE_TOOL, BRAIN_READ_TOOL, BRAIN_SEARCH_TOOL, MAX_PROPOSALS_PER_RUN, SEARCH_MAX, createBrainTools } from './tools/brain-tools.js';

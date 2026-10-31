@@ -936,6 +936,55 @@ if (H1 !== null && (wants('loading') || wants('tools') || wants('signals') || wa
   check('a trial with brain rules gets rules only', trialOn?.request.rules[0]?.text === 'CANDIDATE RULE' && trialOn.request.lessons.length === 0 && trialOn.request.index.length === 0, trialOn?.request);
 }
 
+// ------------------------------------------------------------------ tools
+if (H1 !== null && (wants('tools') || wants('signals') || wants('promotion') || wants('intake'))) {
+  section('tools: brain.read, brain.search, brain.propose, and what each run knew');
+  const { services: s1, caller: c1, ws: ws1 } = H1;
+  // A case in the brain's evals/ that nothing an agent sees may ever contain.
+  scratchEdit({ 'evals/cases/c1/case.json': '{"marker":"SECRET-EVAL-MARKER"}\n' });
+  await s1.brain.sync(ws1, 'person');
+  const npmLesson = await s1.brain.remember(c1, ws1, { text: 'NPM: run npm ci, not npm install, in CI.', scope: { role: 'development' } });
+  await s1.brain.sync(ws1, 'person');
+  const ran = await runTaskIn(H1, { title: 'Tools run' });
+  check('the tools run succeeded', ran.task.status === 'SUCCEEDED', [ran.task.status, ran.task.statusReason]);
+  const { BUILT_IN_TOOLS } = await import('@tandemise/integrations-core');
+  const tools = Object.fromEntries(H1.container.resolveAll(BUILT_IN_TOOLS).filter((t) => t.name.startsWith('brain.')).map((t) => [t.name, t]));
+  check('three brain tools are built in, read-only, on repository.read', ['brain.read', 'brain.search', 'brain.propose'].every((n) => tools[n]?.capability === 'repository.read' && tools[n]?.risk === 'read'), Object.keys(tools));
+  const assignment = H1.r(app.ASSIGNMENT_REPOSITORY).get(ran.run.assignmentId);
+  const ctx = { assignment, assignmentId: assignment.id, runId: ran.run.id, workingDirectory: H1.home, logger: quiet, exec: { run: async () => ({}) }, signal: new AbortController().signal };
+  const call = async (name, input) => { try { return (await tools[name].execute(ctx, tools[name].inputSchema.parse(input))).output; } catch (e) { return { thrown: e.message }; } };
+  const outputs = [];
+  const read = await call('brain.read', { id: npmLesson.entry.id });
+  outputs.push(read);
+  check('brain.read returns the lesson', read?.entry?.text === 'NPM: run npm ci, not npm install, in CI.' && Array.isArray(read.history), read);
+  check('and records it as fetched on the run', H1.r(app.RUN_REPOSITORY).get(ran.run.id).brain?.fetched.includes(npmLesson.entry.id));
+  const search = await call('brain.search', { query: 'npm' });
+  outputs.push(search);
+  check('brain.search finds at most 20, each matching', Array.isArray(search?.results) && search.results.length >= 1 && search.results.length <= 20 && search.results.every((r) => r.text.toLowerCase().includes('npm')), search);
+  const proposed = [];
+  for (let i = 0; i < 6; i++) proposed.push(await call('brain.propose', { text: `Proposal ${i}: cache node_modules.`, scope: { role: 'development' } }));
+  outputs.push(...proposed);
+  const runBrain = H1.r(app.RUN_REPOSITORY).get(ran.run.id).brain;
+  check('five proposals are recorded on the run', runBrain?.proposed.length === 5, runBrain?.proposed);
+  check('the sixth is refused in words', proposed[5]?.message === "You've proposed 5 lessons in this run; that's the limit.", proposed[5]);
+  check('a proposal is a candidate from an agent', s1.brain.entries(ws1, {}).some((e) => e.id === runBrain?.proposed[0] && e.state === 'candidate' && e.sourceLabel === 'an agent'));
+  const evalRead = await call('brain.read', { id: 'evals/cases/c1/case.json' });
+  outputs.push(evalRead);
+  check('brain.read of an evals path is just an unknown id', evalRead?.message === 'No lesson with that id in this brain.', evalRead);
+  outputs.push(await call('brain.search', { query: 'SECRET' }), await call('brain.search', { query: 'marker' }));
+  const view = await s1.brain.runBrain(ran.run.id);
+  check('no tool result, prompt or run view contains anything from evals/', ![...outputs, view].some((o) => JSON.stringify(o).includes('SECRET-EVAL-MARKER')) && !H1.prompts.some((p) => p.prompt.includes('SECRET-EVAL-MARKER')));
+  const NOTE = 'If you learned something the next person doing this step should know, call brain.propose with one short sentence.';
+  const listsPropose = /Integration tools available to you:[^\n]*brain\.propose/.test(ran.prompt);
+  check('the run was offered brain.propose', listsPropose, ran.prompt.match(/Integration tools available to you:[^\n]*/)?.[0]);
+  check("the prompt's contract notes carry the brain.propose line once", ran.prompt.split(NOTE).length === 2);
+  const unlinked = (await s1.workspaces.create(c1, { name: 'No brain', repositoryPath: H1.repoDir })).workspace.id;
+  const bare1 = await runTaskIn({ ...H1, ws: unlinked }, { title: 'No brain run' });
+  check('without a brain there is no brain.propose line', bare1.task.status === 'SUCCEEDED' && !bare1.prompt.includes(NOTE) && bare1.run.brain === null, [bare1.task.status, bare1.run?.brain]);
+  check('the run view summarises what it knew', view.summary === 'Loaded 1 rules file and 2 lessons; read 1 more.' || /^Loaded 1 rules file and \d+ lessons?; read 1 more\.$/.test(view.summary), view.summary);
+  check('the run view lists the fetched lesson and the proposals', view.fetched.some((e) => e.id === npmLesson.entry.id) && view.proposed.length === 5 && view.shortSha === view.sha.slice(0, 7));
+}
+
 // ------------------------------------------------------------------ end
 rmSync(HOME, { recursive: true, force: true });
 console.log(`\n${passed} passed, ${failures.length} failed`);

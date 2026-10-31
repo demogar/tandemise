@@ -31,5 +31,6 @@ export function brainRoutes(r: Router, services: TandemiseServices): void {
   r.post('/v1/brain/entries/:id/vote', async (ctx) => services.brain.vote(ctx.caller, decodeURIComponent(ctx.params.id!), await ctx.body(voteEntryRequest)));
   r.post('/v1/brain/entries/:id/accept', (ctx) => services.brain.accept(ctx.caller, decodeURIComponent(ctx.params.id!)));
   r.post('/v1/brain/entries/:id/reject', (ctx) => services.brain.reject(ctx.caller, decodeURIComponent(ctx.params.id!)));
+  r.get('/v1/runs/:id/brain', (ctx) => services.brain.runBrain(ctx.params.id!));
   r.post('/v1/brain/entries/:id/retire', async (ctx) => services.brain.retire(ctx.caller, decodeURIComponent(ctx.params.id!), await ctx.body(retireEntryRequest)));
 }

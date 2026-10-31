@@ -117,3 +117,17 @@ export interface BrainAdoptPreview {
   readonly items: readonly SetupItemView[];
   readonly brain: { readonly rules: number; readonly lessons: number; readonly mcpsNeeded: readonly string[] };
 }
+
+/** "What it knew" for one run (#51 spec §11). */
+export interface RunBrainView {
+  readonly sha: string;
+  readonly shortSha: string;
+  /** A link to the commit on GitHub, when the brain is there. */
+  readonly commitUrl: string | null;
+  readonly rules: readonly string[];
+  readonly loaded: readonly BrainEntryView[];
+  readonly fetched: readonly BrainEntryView[];
+  readonly proposed: readonly BrainEntryView[];
+  /** "Loaded 3 rules files and 5 lessons; read 1 more." */
+  readonly summary: string;
+}
