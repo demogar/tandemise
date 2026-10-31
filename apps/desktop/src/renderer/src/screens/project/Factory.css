@@ -1,0 +1,79 @@
+/* Project → Factory (#53 §10): the factory files and the routing per step class. */
+
+.factory__path,
+.factory__muted,
+.factory__hint {
+  color: var(--text-secondary);
+}
+
+.factory__hint {
+  margin: var(--s2) 0 0;
+  font-size: var(--fs-sm);
+}
+
+.factory__file[data-problems='true'] .list__title {
+  color: var(--status-failed);
+}
+
+.factory__problems {
+  margin: var(--s1) 0 0;
+  padding-left: var(--s5);
+  font-size: var(--fs-sm);
+  color: var(--status-failed);
+}
+
+.factory__routing {
+  margin-top: var(--s5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+.factory__title {
+  margin: 0;
+  font-size: var(--fs-md);
+  font-weight: 600;
+}
+
+.factory__empty {
+  margin: 0;
+  padding: var(--s3);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+
+.factory__class {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  font-size: var(--fs-sm);
+}
+
+.factory__bucket {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  overflow-x: auto;
+}
+
+.factory__bucket-head {
+  font-size: var(--fs-sm);
+}
+
+.factory__num,
+.table th.factory__num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.factory__model[data-starting='true'] td {
+  background: var(--accent-soft);
+}
+
+.factory__starts {
+  color: var(--accent);
+  font-family: var(--font-sans);
+  font-size: var(--fs-xs);
+}

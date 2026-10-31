@@ -8,6 +8,8 @@ import { useDaemonMutation } from '../lib/queries.js';
 import { useWorkspace } from '../lib/workspace.js';
 import { shortenPath } from '../lib/format.js';
 import { Limits } from './project/Limits.js';
+import { Factory } from './project/Factory.js';
+import { Merge } from './project/Merge.js';
 import { Issues } from './project/Issues.js';
 import { SetupAsCode } from './project/SetupAsCode.js';
 import { BrainLink } from './project/BrainLink.js';
@@ -201,6 +203,9 @@ export function Project(): JSX.Element {
                             </section>
 
               <Limits workspaceId={workspace.id} monthly={workspace.monthlyLimits ?? []} perMission={workspace.defaultMissionLimits ?? []} />
+
+              <Factory key={workspace.id} workspaceId={workspace.id} />
+              <Merge key={`merge-${workspace.id}`} workspaceId={workspace.id} />
 
               <BrainLink key={`brain-${workspace.id}`} workspaceId={workspace.id} ownerHint={workspace.name.toLowerCase().replace(/[^a-z0-9-]+/g, '-')} />
 

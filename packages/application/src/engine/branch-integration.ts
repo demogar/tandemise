@@ -122,6 +122,11 @@ export class BranchIntegrationService {
    * Only a run's worktree branch is merged, as before; the ChangeSet's own
    * branch is taken as it stands only when a person brought it in.
    */
+  /** The branches a mission would ship, in plan order (#53: the ship step pushes one when there is nothing to integrate). */
+  branchesFor(mission: Mission): ReadonlyArray<{ taskKey: string; branch: string }> {
+    return this.#branchesToMerge(mission, this.tasks.listByMission(mission.id));
+  }
+
   #branchesToMerge(
     mission: Mission,
     missionTasks: readonly MissionTask[],

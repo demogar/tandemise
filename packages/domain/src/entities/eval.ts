@@ -90,7 +90,7 @@ export interface EvalCaseSnapshot {
   };
   readonly criteria: readonly EvalCaseCriterion[];
 }
-export interface EvalCaseCriterion { readonly key: string; readonly statement: string; readonly source: 'user' | 'spec'; readonly covers: readonly string[] }
+export interface EvalCaseCriterion { readonly key: string; readonly statement: string; readonly source: 'user' | 'spec' | 'implicit'; readonly covers: readonly string[] }
 export interface EvalCaseProvenance {
   readonly missionId: MissionId;
   readonly missionTitle: string;

@@ -428,9 +428,8 @@ try {
     dbh.pragma('foreign_keys = ON');
     const result = P.migrate(db, undefined, P.MIGRATIONS.filter((m) => m.version <= 20));
     check('only migration 020 applies', eq(result.applied, [20]), result.applied);
-    // The repository is today's, so it reads today's columns: bring the rest of
-    // the schema up first (later migrations add mission columns too, e.g. 022).
-    P.migrate(db);
+    // The repository reads the current schema: bring the rest of the migrations on, as the daemon does.
+    P.migrate(db, undefined, P.MIGRATIONS);
     const missions = new P.SqliteMissionRepository(db, clock);
     check('an old mission has evalTrialId null', missions.get('msn_old').evalTrialId === null);
     db.close();

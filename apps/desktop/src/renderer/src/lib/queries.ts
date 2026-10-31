@@ -36,6 +36,10 @@ export const keys = {
   skillVersion: (id: string, version: number) => ['workspaces', 'skill-version', id, String(version)] as const,
   // Under 'workspaces': an export or an import changes what it says.
   setup: (ws?: string) => ['workspaces', 'setup', ws ?? 'all'] as const,
+  // Under 'workspaces': writing the defaults changes where the files come from; routing moves as outcomes land.
+  factory: (ws?: string) => ['workspaces', 'factory', ws ?? 'all'] as const,
+  routing: (ws?: string) => ['workspaces', 'routing', ws ?? 'all'] as const,
+  mergePolicy: (ws?: string) => ['workspaces', 'merge-policy', ws ?? 'all'] as const,
   // The brain (#51): under 'workspaces', so a sync, a link or a lesson refreshes them.
   brain: (ws?: string) => ['workspaces', 'brain', ws ?? 'all'] as const,
   brainEntries: (ws: string | undefined, q: string) => ['workspaces', 'brain-entries', ws ?? 'all', q] as const,
@@ -51,6 +55,9 @@ export const keys = {
   // Under 'mission' too: artifacts and tasks changing refresh it with the rest of the mission.
   missionCriteria: (id: string) => ['mission', id, 'criteria'] as const,
   missionRefinement: (id: string) => ['mission', id, 'refinement'] as const,
+  // Under 'mission' too: planning, a lane switch and the ship step all change the mission's tasks.
+  planDecision: (id: string) => ['mission', id, 'plan-decision'] as const,
+  ship: (id: string) => ['mission', id, 'ship'] as const,
   missionEvents: (id: string) => ['mission-events', id] as const,
   // Not under 'mission': the drawer and the reader read it outside a mission's screen, so it is refreshed with every task change.
   taskFeedback: (id: string) => ['mission-task-feedback', id] as const,
@@ -98,6 +105,8 @@ const TOPIC_KEYS: Readonly<Record<ProjectionTopic, readonly (readonly string[])[
   // A refinement decision changes the mission's readiness and the inbox row that asks for it.
   // The backlog shows each draft's readiness too.
   refinement: [['mission'], ['inbox'], ['home'], ['missions']],
+  // A pull request opened (#53): the ship card, and later the Inbox's review rows.
+  ship: [['mission'], ['inbox']],
   // A signal that needs a decision is an Inbox card (intake, plan Task 7).
   intake: [['inbox'], ['home'], ['intake']],
   // Claims with the team: Home's "Who's working on what", a mission's claim banner and its Inbox row.
@@ -164,6 +173,27 @@ export function useSetupStatus() {
     queryFn: () => daemon.setupStatus(workspaceId ?? ''),
     enabled: Boolean(workspaceId),
   });
+}
+
+/** Project → Factory (#53): the factory files and where each came from. */
+export function useFactory() {
+  const daemon = useDaemon();
+  const workspaceId = useWorkspaceId();
+  return useQuery({ queryKey: keys.factory(workspaceId), queryFn: () => daemon.factory(workspaceId ?? ''), enabled: Boolean(workspaceId) });
+}
+
+/** Project → Merge: the merge policy (#53 §8.4). */
+export function useMergePolicy() {
+  const daemon = useDaemon();
+  const workspaceId = useWorkspaceId();
+  return useQuery({ queryKey: keys.mergePolicy(workspaceId), queryFn: () => daemon.mergePolicy(workspaceId ?? ''), enabled: Boolean(workspaceId) });
+}
+
+/** Project → Factory → Routing: measured outcomes per step class and bucket. */
+export function useRouting() {
+  const daemon = useDaemon();
+  const workspaceId = useWorkspaceId();
+  return useQuery({ queryKey: keys.routing(workspaceId), queryFn: () => daemon.routing(workspaceId ?? ''), enabled: Boolean(workspaceId), refetchInterval: 30_000 });
 }
 
 /** The project's brain: link, sync and counts (#51). */
@@ -328,6 +358,25 @@ export function useMissionRefinement(id: string, enabled = true) {
     placeholderData: (previous) => previous,
     // The stream says when a pass lands; polling while one runs covers a dropped frame.
     refetchInterval: (query) => (query.state.data?.state === 'running' ? 2_000 : false),
+  });
+}
+
+/** "Why these steps" for a mission the factory planned; null before it is planned. */
+export function usePlanDecision(id: string) {
+  const daemon = useDaemon();
+  return useQuery({ queryKey: keys.planDecision(id), queryFn: () => daemon.planDecision(id), enabled: id.length > 0, placeholderData: (previous) => previous });
+}
+
+/** The ship step and the pull requests it opened (#53). */
+export function useShip(id: string, enabled = true) {
+  const daemon = useDaemon();
+  return useQuery({
+    queryKey: keys.ship(id),
+    queryFn: () => daemon.ship(id),
+    enabled: enabled && id.length > 0,
+    placeholderData: (previous) => previous,
+    // Opening takes a push and a `gh` call; polling while it does covers a dropped frame.
+    refetchInterval: (query) => (query.state.data?.stage === 'opening' ? 2_000 : false),
   });
 }
 

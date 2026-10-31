@@ -15,6 +15,7 @@ import {
   applySetupRequest, exportSetupRequest, previewSetupRequest,
   parkTaskRequest, handBackRequest, resolveWorkspaceLinkRequest,
   createEvalSuiteRequest, saveEvalCaseRequest, startEvalRunRequest, runScoresQuery,
+  planMissionRequest, setLaneRequest, mergePolicyRequest,
   ACCEPTED_INTAKE_SCHEMAS, intakeSignalsQuery, mintIntakeTokenRequest,
   decideIntakeSignalRequest,
   startBoardItemRequest,
@@ -322,7 +323,26 @@ export function buildRouter(services: TandemiseServices, options: {
     });
   }
 
-  r.post('/v1/missions/:id/plan', (ctx) => services.planning.begin(asId(ctx.params.id!)));
+  // Plan, or Plan quick / Plan careful for a mission the factory plans (#53 §10).
+  r.post('/v1/missions/:id/plan', async (ctx) =>
+    services.factory.plan(asId(ctx.params.id!), (await ctx.body(planMissionRequest)).lane, ctx.caller));
+  r.get('/v1/missions/:id/plan-decision', (ctx) => services.factory.planDecision(asId(ctx.params.id!)));
+  r.post('/v1/missions/:id/lane', async (ctx) =>
+    services.factory.setLane(asId(ctx.params.id!), (await ctx.body(setLaneRequest)).lane, ctx.caller));
+  r.get('/v1/missions/:id/ship', (ctx) => services.factory.ship(asId(ctx.params.id!)));
+  // Project → Factory (#53 §10, §11): where the factory files came from, the routing they give, and writing the defaults.
+  r.get('/v1/workspaces/:id/factory', (ctx) => services.factory.factory(asId(ctx.params.id!)));
+  r.get('/v1/workspaces/:id/routing', (ctx) => services.factory.routing(asId(ctx.params.id!)));
+  r.post('/v1/workspaces/:id/factory/defaults', (ctx) => services.factory.writeDefaults(asId(ctx.params.id!), ctx.caller));
+  // Project → Merge (#53 §8.4): the policy, its backtest, a person's edit and the kill switch.
+  r.get('/v1/workspaces/:id/merge-policy', (ctx) => services.mergePolicy.get(asId(ctx.params.id!)));
+  r.put('/v1/workspaces/:id/merge-policy', async (ctx) =>
+    services.mergePolicy.update(asId(ctx.params.id!), (await ctx.body(mergePolicyRequest)).policy, ctx.caller));
+  r.post('/v1/workspaces/:id/merge-policy/backtest', async (ctx) =>
+    services.mergePolicy.backtest(asId(ctx.params.id!), (await ctx.body(mergePolicyRequest)).policy));
+  r.post('/v1/ship/:decisionId/merge', (ctx) => services.shipActions.merge(ctx.params.decisionId!, ctx.caller));
+  r.post('/v1/ship/:decisionId/revert', (ctx) => services.shipActions.revert(ctx.params.decisionId!, ctx.caller));
+  r.post('/v1/workspaces/:id/merge-policy/stop', (ctx) => services.mergePolicy.stop(asId(ctx.params.id!), ctx.caller));
   r.post('/v1/missions/:id/replan', async (ctx) =>
     services.planning.replan(asId(ctx.params.id!), { note: (await ctx.body(replanMissionRequest)).note ?? null }));
   r.post('/v1/missions/:id/start', (ctx) => services.missions.start(asId(ctx.params.id!)));

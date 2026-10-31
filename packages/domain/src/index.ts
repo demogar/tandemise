@@ -7,6 +7,10 @@ export * from './plan.js';
 export * from './event.js';
 export * from './staffing.js';
 export * from './staffing-presets.js';
+export * from './planner/index.js';
+export * from './planner/decision.js';
+export * from './merge/types.js';
+export * from './brain/outcomes.js';
 
 export * from './entities/mission.js';
 export * from './entities/member.js';
@@ -49,6 +53,14 @@ export * from './ports/event-bus.js';
 export * from './ports/secrets.js';
 export * from './ports/snapshot.js';
 export * from './ports/eval-blobs.js';
+export * from './planner/routing.js';
+export * from './merge/policy.js';
+export * from './planner/words.js';
+export * from './merge/pr-text.js';
+export * from './merge/decide.js';
+export * from './merge/words.js';
+export * from './merge/backtest.js';
+export * from './brain/proposals.js';
 export * from './ports/intake.js';
 export * from './ports/interactive-sessions.js';
 

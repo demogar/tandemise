@@ -55,6 +55,17 @@ daemon printed while starting, is in `~/.tandemise/logs/daemon-launch.log`.
    Leave **Done when** empty and the button reads **Create and refine**
    instead: a product agent proposes criteria for you to decide first.
 
+**How much process a task gets.** New mission's workflow defaults to **Let
+the factory decide**. A small, low-risk task skips refinement and plan approval
+and runs as one step and a pull request; a risky one gets the careful lane.
+The Plan tab's **Why these steps** says why, and **Plan quick** / **Plan
+careful** let you choose instead.
+
+**Merging.** The ship step opens a non-draft pull request, waits for CI, and
+files **Review and merge** in the Inbox. Turn auto-merge on in **Project
+settings → Merge** (after reading its backtest) and low-risk changes merge on
+their own, bound to the commit that was checked. See [The factory](FACTORY.md).
+
 ## Next
 
 The guides in [`docs/guides/`](guides/) each answer one "how do I…":

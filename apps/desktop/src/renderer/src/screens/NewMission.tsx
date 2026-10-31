@@ -29,6 +29,9 @@ const AUTONOMY: readonly { value: AutonomyLevel; label: string; hint: string }[]
   { value: 'autonomous', label: 'Autonomous', hint: 'Only releases and financial actions stop for a human.' },
 ];
 
+/** The factory's workflow id (`FACTORY_WORKFLOW_ID` in the domain): it plans by lane. */
+const FACTORY_WORKFLOW = 'auto';
+
 /**
  * The product's front door (MVP.md §23.2).
  *
@@ -43,7 +46,8 @@ export function NewMission(): JSX.Element {
 
   const [goal, setGoal] = useState('');
   const [repositoryId, setRepositoryId] = useState<string>('');
-  const [preset, setPreset] = useState('feature-delivery');
+  // `auto`: the factory chooses the steps from what the task looks like (#53).
+  const [preset, setPreset] = useState(FACTORY_WORKFLOW);
   const [workflowInputs, setWorkflowInputs] = useState<Record<string, string>>({});
 
   const chosen = (workflows.data ?? []).find((w) => w.id === preset) ?? null;
@@ -194,10 +198,13 @@ export function NewMission(): JSX.Element {
 
               <Field
                 label="Workflow"
-                hint={chosen?.description ?? (workflows.isPending ? 'Loading…' : 'How this mission will be broken into tasks.')}
+                hint={preset === FACTORY_WORKFLOW
+                  ? 'The factory reads the task and chooses the steps: small work gets one step and a pull request, risky work gets more.'
+                  : chosen?.description ?? (workflows.isPending ? 'Loading…' : 'How this mission will be broken into tasks.')}
               >
                 <select className="select" value={preset} onChange={(event) => setPreset(event.target.value)}>
-                  {(workflows.data ?? []).map((option) => (
+                  <option value={FACTORY_WORKFLOW}>Let the factory decide</option>
+                  {(workflows.data ?? []).filter((option) => option.id !== FACTORY_WORKFLOW).map((option) => (
                     <option key={option.id} value={option.id}>
                       {option.name}
                       {option.path === null ? '' : '  ·  yours'}

@@ -54,6 +54,10 @@ export interface ApprovalDeps {
   readonly skills?: SkillPinning;
   /** A replan's new steps, waiting on its plan card (replan spec). Optional so older harnesses compose. */
   readonly proposals?: PlanProposalRepositoryPort;
+  /** A "make it quick" card was approved (#53 §5.4). */
+  readonly laneApproved?: (approval: Approval) => void;
+  /** A "Review and merge" card was answered (#53 §8.1); runs after the commit. */
+  readonly shipDecided?: (approval: Approval) => Promise<void>;
   /** Plan fit's "Plan the rest again": starts the replan once the card is decided. Resolved late, as planning composes after this. */
   readonly replanRest?: (missionId: Mission['id'], note: string | null, planFitApprovalId: Approval['id']) => Promise<unknown>;
   /** Claims the mission's tracker item before an approved plan starts it (relay spec). Optional for older harnesses. */
@@ -158,6 +162,8 @@ export class ApprovalServiceImpl implements ApprovalService {
       let round: RoundBegun | null = null;
       if (written.kind === 'plan') this.#resumePlan(written, approved, request);
       else if (isPlanFitCard(written)) round = this.#resumePlanFit(written, actorId, recordedBy);
+      // A ship card's answer is the ship step's to act on, after the commit (#53 §8.1).
+      else if (written.taskId !== null && this.#isShipCard(written)) round = null;
       else if (written.taskId !== null) round = this.#resumeTask(written, approved, actorId, recordedBy);
       else if (this.deps.limits?.incidentFor(written) !== undefined) this.deps.limits.decide(written, option.id, request.raiseTo, actorId);
       return { decided: written, begun: round };
@@ -187,6 +193,8 @@ export class ApprovalServiceImpl implements ApprovalService {
     // Only after the commit: a stopped pass re-reads its row as it settles and must find the round there.
     if (begun !== null) this.deps.rounds.stopOvertaken(begun);
 
+    // The ship step acts on it in the background: a person's Merge never waits on GitHub or CI.
+    if (this.#isShipCard(decided)) void this.deps.shipDecided?.(decided).catch(() => undefined);
     this.deps.recorder.invalidate('approvals', decided.missionId ?? undefined);
     this.deps.scheduler.wake();
     return toApprovalView(this.deps, decided);
@@ -202,6 +210,7 @@ export class ApprovalServiceImpl implements ApprovalService {
     const proposal = this.deps.proposals?.get(approval.id);
     if (proposal !== undefined) {
       this.#resumeReplan(mission, { ...scope, ...(approval.decidedBy === null ? {} : { actorId: approval.decidedBy }) }, proposal, approved, request.note ?? null);
+      if (approved) this.deps.laneApproved?.(approval);
       return;
     }
 
@@ -290,6 +299,10 @@ export class ApprovalServiceImpl implements ApprovalService {
   }
 
   /** Returns the round the decision started, for the caller to act on once it has committed. */
+  #isShipCard(approval: Approval): boolean {
+    return approval.kind === 'release' && approval.taskId !== null && this.deps.tasks.get(approval.taskId)?.executor === 'ship';
+  }
+
   #resumeTask(approval: Approval, approved: boolean, actorId: string, recordedBy: string): RoundBegun | null {
     if (approval.taskId === null) return null;
     const task = this.deps.tasks.get(approval.taskId);

@@ -5,7 +5,7 @@ import type {
   EventRepositoryPort, ExecutionTargetRepositoryPort, FeedbackRepositoryPort, IntegrationRepositoryPort, InteractiveSessionsPort,
   LeaseRepositoryPort, MemberRepositoryPort, MissionCriteriaRepositoryPort, MissionQuestionRepositoryPort, MissionRepositoryPort, LimitRepositoryPort, RoutineRepositoryPort, RunScoreRepositoryPort, SkillRepositoryPort, IssueRepositoryPort, IssueTrackerPort, PullRequestSnapshotPort, PersonRepositoryPort, ProjectionBusPort, RepoRepositoryPort,
   PlanProposalRepositoryPort, TaskHoldRepositoryPort, RoleRepositoryPort, RunInputRepositoryPort, RunRepositoryPort, RuntimeProfileRepositoryPort, SecretStorePort,
-  TaskRepositoryPort, UnitOfWork, WorkspaceRepositoryPort,
+  TaskRepositoryPort, UnitOfWork, WorkspaceRepositoryPort, PlanDecisionRepositoryPort, MergeDecisionRepositoryPort, OutcomeRepositoryPort,
 } from '@tandemise/domain';
 import type { ArtifactMeasurePort, ArtifactParserPort, ArtifactTemplatePort, ProcessLivenessPort, SettingsStorePort, SystemEnvironmentPort, WorkflowSourcePort, OAuthCallbackPort, SkillFilesPort } from './ports.js';
 import type {
@@ -90,6 +90,10 @@ export const MEMBER_REPOSITORY = token<MemberRepositoryPort>('port.MemberReposit
 export const FEEDBACK_REPOSITORY = token<FeedbackRepositoryPort>('port.FeedbackRepository');
 export const RUN_INPUT_REPOSITORY = token<RunInputRepositoryPort>('port.RunInputRepository');
 export const PLAN_PROPOSAL_REPOSITORY = token<PlanProposalRepositoryPort>('port.PlanProposalRepository');
+/** The planner and risk-based merge's records (#53). */
+export const PLAN_DECISION_REPOSITORY = token<PlanDecisionRepositoryPort>('port.PlanDecisionRepository');
+export const MERGE_DECISION_REPOSITORY = token<MergeDecisionRepositoryPort>('port.MergeDecisionRepository');
+export const OUTCOME_REPOSITORY = token<OutcomeRepositoryPort>('port.OutcomeRepository');
 export const TASK_HOLD_REPOSITORY = token<TaskHoldRepositoryPort>('port.TaskHoldRepository');
 export const MISSION_CRITERIA_REPOSITORY = token<MissionCriteriaRepositoryPort>('port.MissionCriteriaRepository');
 export const MISSION_QUESTION_REPOSITORY = token<MissionQuestionRepositoryPort>('port.MissionQuestionRepository');
@@ -105,6 +109,25 @@ export const EVAL_BLOBS = token<EvalBlobPort>('port.EvalBlobs');
 export const ARTIFACT_STORE = token<ArtifactStorePort>('port.ArtifactStore');
 /** Workflow files, read from the project's repositories. */
 export const WORKFLOW_SOURCE = token<WorkflowSourcePort>('port.WorkflowSource');
+/** The factory's planner, routing and merge files (#53). The daemon binds the real one. */
+export const FACTORY_CONFIG_SOURCE = token<import('./ports.js').FactoryConfigSourcePort>('port.FactoryConfigSource');
+/** The factory files outside a brain: project repository, this computer, built in. The daemon binds the file one. */
+export const LOCAL_FACTORY_CONFIG_SOURCE = token<import('./ports.js').FactoryConfigSourcePort>('port.LocalFactoryConfigSource');
+/** Outcomes, local and from the brain's ledger (#53 Task 20). */
+export const OUTCOME_HISTORY = token<import('./brain/outcome-history.js').OutcomeHistory>('application.OutcomeHistory');
+/** The factory's cheap classifier pass (#53 §2). Bound to a runtime-backed runner. */
+export const TIEBREAK_RUNNER = token<import('./planning/tiebreak.js').TiebreakRunnerPort>('port.TiebreakRunner');
+/** The factory planner (#53 §5). */
+export const PLANNER_SERVICE = token<import('./planning/planner-service.js').PlannerService>('application.PlannerService');
+/** Pull requests the ship step opens and merges (#53 §8). The daemon binds the `gh` one. */
+export const PULL_REQUEST_FLOW = token<import('@tandemise/domain').PullRequestPort>('port.PullRequestFlow');
+/** The daemon-owned ship step (#53 §8.1). */
+export const SHIP_SERVICE = token<import('./engine/ship.js').ShipService>('application.ShipService');
+/** Outcomes for routing and learning (#53 §9.1). */
+export const MERGE_WATCH = token<import('./engine/merge-watch.js').MergeWatch>('application.MergeWatch');
+export const SHIP_REVERT = token<import('./engine/ship-revert.js').ShipRevert>('application.ShipRevert');
+export const PROPOSAL_SERVICE = token<import('./services/proposal-service.js').ProposalService>('application.ProposalService');
+export const OUTCOME_RECORDER = token<import('./engine/outcomes.js').OutcomeRecorder>('application.OutcomeRecorder');
 /** The `.tandemise` setup folder on disk (P15). The daemon binds the real one. */
 export const SETUP_FOLDER = token<import('./ports.js').SetupFolderPort>('port.SetupFolder');
 export const WORKFLOW_SERVICE = token<WorkflowService>('service.Workflow');
@@ -202,6 +225,10 @@ export const PULL_REQUEST_SNAPSHOTS = token<PullRequestSnapshotPort>('port.PullR
 /** The git credential variables (ssh-agent, askpass) a pull request fetch may pass to git; see `pickGitCredentialEnv`. */
 export const GIT_CREDENTIAL_ENV = token<() => Readonly<Record<string, string>>>('port.GitCredentialEnv');
 export const SETUP_SERVICE = token<import('./services/setup-service.js').SetupService>('application.SetupService');
+/** "Why these steps", the lane switch and the opened pull request (#53 §10). */
+export const FACTORY_SERVICE = token<import('./services/factory-service.js').FactoryService>('application.FactoryService');
+/** Project settings → Merge (#53 §8.4). */
+export const MERGE_POLICY_SERVICE = token<import('./services/merge-policy-service.js').MergePolicyService>('application.MergePolicyService');
 /** Eval suites, saved cases and the run-score summary (P3b). */
 export const EVAL_SERVICE = token<import('./services/eval-service.js').EvalService>('application.EvalService');
 /**

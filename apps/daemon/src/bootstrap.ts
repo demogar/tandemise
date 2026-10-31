@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import { Container, LifecycleHost, compose, token, type Token } from '@tandemise/kernel';
 import { adjustableClock, createLogger, systemClock, type AdjustableClock, type Clock, type Logger } from '@tandemise/shared';
 import type { EventBusPort, ProjectionBusPort } from '@tandemise/domain';
@@ -28,7 +29,7 @@ import {
   integrationsCoreModule,
   BACKGROUND_PROCESS_LAUNCHER, COMMAND_EXECUTOR as TOOL_COMMAND_EXECUTOR,
 } from '@tandemise/integrations-core';
-import { GhBrainHost, GhIssueTracker, GhPullRequestSnapshots, githubIntegrationModule } from '@tandemise/integration-github';
+import { GhBrainHost, GhIssueTracker, GhPullRequestFlow, GhPullRequestSnapshots, githubIntegrationModule } from '@tandemise/integration-github';
 import { mcpIntegrationModule } from '@tandemise/integration-mcp';
 import { youtrackIntegrationModule } from '@tandemise/integration-youtrack';
 import { intakeRunnersModule } from '@tandemise/intake-runners';
@@ -36,9 +37,10 @@ import { browserIntegrationModule } from '@tandemise/browser';
 import { terminalModule, TERMINAL_HOST } from '@tandemise/terminal';
 import { createApplicationModule, createServices, EVAL_RUNNER, SCHEDULER, type TandemiseServices,
   WORKFLOW_SOURCE,
+  LOCAL_FACTORY_CONFIG_SOURCE,
   SKILL_FILES,
   ISSUE_TRACKER,
-  PULL_REQUEST_SNAPSHOTS, GIT_CREDENTIAL_ENV, pickGitCredentialEnv,
+  PULL_REQUEST_SNAPSHOTS, PULL_REQUEST_FLOW, GIT_CREDENTIAL_ENV, pickGitCredentialEnv,
   SETUP_FOLDER,
   EVAL_BLOBS,
   INTAKE_BLOBS,
@@ -54,6 +56,7 @@ import { createBackgroundProcessLauncher, createToolCommandExecutor } from './to
 import { oauthCallbacks } from './oauth-callback.js';
 import { FileSetupFolder } from './setup-folder.js';
 import { FileWorkflowSource } from './workflow-source.js';
+import { FileFactoryConfigSource } from './factory-config-source.js';
 import { DaemonSkillFiles } from './skill-files.js';
 import { startWebhookListener, type WebhookListener } from './http/webhook-listener.js';
 import { SwitchableCoordination, type RelayFactory } from './coordination.js';
@@ -126,6 +129,8 @@ export function bootstrap(config: DaemonConfig, options: { readonly localPersonN
     createApplicationModule({
       ...(options.localPersonName === undefined ? {} : { localPersonName: options.localPersonName }),
       quietAfterMs: config.quietMs,
+      ...(process.env['TANDEMISE_SHIP_POLL_MS'] === undefined ? {} : { shipPollMs: Number(process.env['TANDEMISE_SHIP_POLL_MS']) }),
+      ...(process.env['TANDEMISE_SHIP_CI_GRACE_MS'] === undefined ? {} : { shipCiGraceMs: Number(process.env['TANDEMISE_SHIP_CI_GRACE_MS']) }),
     }),
   );
 
@@ -159,6 +164,9 @@ export function bootstrap(config: DaemonConfig, options: { readonly localPersonN
   // nothing, so a container without a filesystem still resolves.
   container.rebind(WORKFLOW_SOURCE, (r) =>
     new FileWorkflowSource(r.resolve(LOGGER).child({ component: 'workflows' })), { source: 'bootstrap' });
+  // The factory's planner, routing and merge files (#53): the same reasoning.
+  container.rebind(LOCAL_FACTORY_CONFIG_SOURCE, (r) =>
+    new FileFactoryConfigSource(join(r.resolve(CONFIG).home, 'factory')), { source: 'bootstrap' });
   // The project's setup as files (P15): the same reasoning, for `.tandemise/`.
   container.rebind(SETUP_FOLDER, (r) =>
     new FileSetupFolder(r.resolve(LOGGER).child({ component: 'setup' })), { source: 'bootstrap' });
@@ -179,6 +187,8 @@ export function bootstrap(config: DaemonConfig, options: { readonly localPersonN
   container.rebind(ISSUE_TRACKER, (r) => new GhIssueTracker(r.resolve(TOOL_COMMAND_EXECUTOR)), { source: 'bootstrap' });
   // A handed-back pull request (P3) is read the same way.
   container.rebind(PULL_REQUEST_SNAPSHOTS, (r) => new GhPullRequestSnapshots(r.resolve(TOOL_COMMAND_EXECUTOR)), { source: 'bootstrap' });
+  // The ship step's pull requests (#53 §8), through the person's own `gh` session.
+  container.rebind(PULL_REQUEST_FLOW, (r) => new GhPullRequestFlow(r.resolve(TOOL_COMMAND_EXECUTOR)), { source: 'bootstrap' });
   // Fetching that pull request's head is the person's own git reaching their
   // remote, so it may use their ssh-agent or askpass helper. Given to that
   // fetch alone, read when it runs; the tool runner's allowlist stays as it is.
@@ -256,6 +266,8 @@ export function bootstrap(config: DaemonConfig, options: { readonly localPersonN
   }
   lifecycle.add(container.resolve(applicationTokens.BRAIN_SYNC_LOOP));
   lifecycle.add(container.resolve(applicationTokens.BRAIN_SIGNALS));
+  // Holds ending (#50) become outcomes for routing (#53).
+  lifecycle.add(container.resolve(applicationTokens.OUTCOME_RECORDER));
 
   return { container, services, lifecycle, events, projections, log, testClock };
 }

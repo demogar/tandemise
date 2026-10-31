@@ -9,6 +9,8 @@ export interface GhOptions {
   /** Exit codes that are a *result*, not a failure - `gh pr checks` uses them. */
   readonly tolerateExitCodes?: readonly number[];
   readonly timeoutMs?: number;
+  /** Text for `--body-file -` and the like (#53: a pull request body is never a shell argument). */
+  readonly stdin?: string;
 }
 
 /**
@@ -41,6 +43,7 @@ export async function gh(
     ...(ctx.workingDirectory === undefined ? {} : { cwd: ctx.workingDirectory }),
     timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
     ...(ctx.signal === undefined ? {} : { signal: ctx.signal }),
+    ...(options.stdin === undefined ? {} : { stdin: options.stdin }),
     // `GH_PROMPT_DISABLED` keeps gh from blocking on a TTY it does not have.
     env: { GH_PROMPT_DISABLED: '1', GH_NO_UPDATE_NOTIFIER: '1' },
   });

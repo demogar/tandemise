@@ -1,4 +1,21 @@
 import { defineModule, type Container, type Resolver, type TandemiseModule } from '@tandemise/kernel';
+import { SHIPPED_FACTORY_SOURCE } from './planning/factory-config.js';
+import { PlannerService } from './planning/planner-service.js';
+import { SHIP_CI_GRACE_MS, SHIP_CI_POLL_MS, SHIP_CI_TIMEOUT_MS, ShipService } from './engine/ship.js';
+import { policyRef } from './planning/planner-service.js';
+import { OutcomeRecorder } from './engine/outcomes.js';
+import { MergeWatch } from './engine/merge-watch.js';
+import { ShipRevert } from './engine/ship-revert.js';
+import { ProposalService } from './services/proposal-service.js';
+import { MergePolicyService, autoMergeAuthorized } from './services/merge-policy-service.js';
+import { actorFor } from './support/identity.js';
+import type { PullRequestPort } from '@tandemise/domain';
+
+/** Until the daemon binds the `gh` flow: every pull request call says there is no GitHub here. */
+const NO_PULL_REQUESTS: PullRequestPort = new Proxy({} as PullRequestPort, {
+  get: () => async () => { throw new Error('This daemon has no GitHub connection for pull requests.'); },
+});
+import { runtimeTiebreakRunner } from './planning/tiebreak-runner.js';
 import type { Clock, Logger, TandemisePaths } from '@tandemise/shared';
 import { TandemiseError, asId, createPaths, nullLogger, systemClock } from '@tandemise/shared';
 import { APPROVAL_FACTORY, GRANT_BUILDER, POLICY_ENGINE } from '@tandemise/policy';
@@ -36,7 +53,9 @@ import { RuntimeOverrides } from './support/runtime-overrides.js';
 import { ApprovalWaiter, createApprovalGate, createPolicyEngineToolGate } from './support/tool-policy.js';
 import { createAskHumanTool } from './tools/ask-human.js';
 import { bindBrain, brainEdits, brainWorkflows } from './brain/module.js';
-import { BRAIN_CONTEXT_SUPPLY, BRAIN_INTAKE_CONFIG, BRAIN_SERVICE } from './brain/tokens.js';
+import { BRAIN_CONTEXT_SUPPLY, BRAIN_HOST, BRAIN_INTAKE_CONFIG, BRAIN_REPO, BRAIN_SERVICE } from './brain/tokens.js';
+import { BrainFirstFactoryConfigSource } from './brain/brain-factory-config-source.js';
+import { OutcomeHistory } from './brain/outcome-history.js';
 import { RunDeadlines } from './engine/run-deadline.js';
 import { ConnectFlow } from './services/connect-flow.js';
 import { IntegrationCredentials } from './support/integration-credentials.js';
@@ -64,6 +83,7 @@ import { SkillInstaller } from './engine/skill-installer.js';
 import { DEFAULT_QUIET_AFTER_MS, reachedReason, type IssueTrackerPort, type PullRequestSnapshotPort } from '@tandemise/domain';
 import { lexicalSimilarity } from '@tandemise/domain';
 import { SetupService } from './services/setup-service.js';
+import { FactoryService } from './services/factory-service.js';
 import { RefinementServiceImpl } from './services/refinement-service.js';
 import { EvalService } from './services/eval-service.js';
 import { CoordinationService } from './services/coordination-service.js';
@@ -100,6 +120,10 @@ export interface ApplicationModuleOptions {
   readonly localPersonName?: string;
   /** A run is quiet after this long without an agent event (P9). The daemon passes TANDEMISE_QUIET_MS. */
   readonly quietAfterMs?: number;
+  /** How often the ship step reads CI and a waiting pull request (#53). The daemon passes TANDEMISE_SHIP_POLL_MS. */
+  readonly shipPollMs?: number;
+  /** How long no CI right after a push counts as CI not started yet. The daemon passes TANDEMISE_SHIP_CI_GRACE_MS. */
+  readonly shipCiGraceMs?: number;
   /** How long a hold waits for the run it stopped (10 s by default); a check shortens it. */
   readonly holdStopWaitMs?: number;
   /** How often a hold renews its checkout leases (every 10 minutes by default); a check shortens it. */
@@ -122,6 +146,7 @@ export interface ApplicationModuleOptions {
  * worse diagnostic than one that logs nowhere.
  */
 export function createApplicationModule(options: ApplicationModuleOptions = {}): TandemiseModule {
+  const shipPollMs = options.shipPollMs ?? SHIP_CI_POLL_MS;
   return defineModule(SOURCE, (container: Container) => {
     const bind = container.bind.bind(container);
 
@@ -354,12 +379,91 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
     ), { source: SOURCE });
 
     bind(t.FEEDBACK_ROUNDS, (r) => new FeedbackRounds({
+      outcomes: () => r.tryResolve(t.OUTCOME_RECORDER),
       missions: r.resolve(t.MISSION_REPOSITORY), tasks: r.resolve(t.TASK_REPOSITORY), runs: r.resolve(t.RUN_REPOSITORY),
       artifacts: r.resolve(t.ARTIFACT_REPOSITORY), artifactStore: r.resolve(t.ARTIFACT_STORE), approvals: r.resolve(t.APPROVAL_REPOSITORY),
       evaluations: r.resolve(t.EVALUATION_REPOSITORY), feedback: r.resolve(t.FEEDBACK_REPOSITORY), runInputs: r.resolve(t.RUN_INPUT_REPOSITORY),
       members: r.resolve(t.MEMBER_REPOSITORY), events: r.resolve(t.EVENT_REPOSITORY), unitOfWork: r.resolve(t.UNIT_OF_WORK),
       recorder: r.resolve(t.EVENT_RECORDER), clock: clock(r),
       cancelTask: (taskId) => r.resolve(t.SCHEDULER).cancelTask(taskId),
+    }), { source: SOURCE });
+
+    bind(t.PULL_REQUEST_FLOW, () => NO_PULL_REQUESTS, { source: SOURCE });
+    bind(t.MERGE_WATCH, (r) => new MergeWatch({
+      workspaces: r.resolve(t.WORKSPACE_REPOSITORY), missions: r.resolve(t.MISSION_REPOSITORY), tasks: r.resolve(t.TASK_REPOSITORY),
+      repositories: r.resolve(t.REPO_REPOSITORY), mergeDecisions: r.resolve(t.MERGE_DECISION_REPOSITORY), outcomeRows: r.resolve(t.OUTCOME_HISTORY),
+      pullRequests: r.resolve(t.PULL_REQUEST_FLOW), approvals: r.resolve(t.APPROVAL_REPOSITORY), approvalFactory: r.resolve(APPROVAL_FACTORY),
+      outcomes: () => r.tryResolve(t.OUTCOME_RECORDER), recorder: r.resolve(t.EVENT_RECORDER), clock: clock(r), log: log(r).child({ component: 'merge-watch' }),
+    }), { source: SOURCE });
+    bind(t.SHIP_REVERT, (r) => new ShipRevert({
+      missions: r.resolve(t.MISSION_REPOSITORY), tasks: r.resolve(t.TASK_REPOSITORY), repositories: r.resolve(t.REPO_REPOSITORY),
+      mergeDecisions: r.resolve(t.MERGE_DECISION_REPOSITORY), planDecisions: r.resolve(t.PLAN_DECISION_REPOSITORY), pullRequests: r.resolve(t.PULL_REQUEST_FLOW),
+      exec: r.tryResolve(INTEGRATION_COMMAND_EXECUTOR) ?? null,
+      ...(r.has(t.GIT_CREDENTIAL_ENV) ? { credentialEnv: r.resolve(t.GIT_CREDENTIAL_ENV) } : {}),
+      outcomes: () => r.tryResolve(t.OUTCOME_RECORDER), recorder: r.resolve(t.EVENT_RECORDER), clock: clock(r),
+      wake: () => r.resolve(t.SCHEDULER).wake(), tmpRoot: `${paths(r).root}/ship-reverts`,
+    }), { source: SOURCE });
+    bind(t.PROPOSAL_SERVICE, (r) => new ProposalService({
+      workspaces: r.resolve(t.WORKSPACE_REPOSITORY), planner: r.resolve(t.PLANNER_SERVICE), outcomes: r.resolve(t.OUTCOME_HISTORY),
+      pullRequests: r.resolve(t.PULL_REQUEST_FLOW), mergePolicy: () => r.resolve(t.MERGE_POLICY_SERVICE),
+      exec: r.tryResolve(INTEGRATION_COMMAND_EXECUTOR) ?? null,
+      ...(r.has(t.GIT_CREDENTIAL_ENV) ? { credentialEnv: r.resolve(t.GIT_CREDENTIAL_ENV) } : {}),
+      clock: clock(r), log: log(r).child({ component: 'proposals' }), tmpRoot: `${paths(r).root}/proposals`,
+      brain: () => r.tryResolve(BRAIN_SERVICE), brainHost: () => r.tryResolve(BRAIN_HOST),
+    }), { source: SOURCE });
+    bind(t.OUTCOME_RECORDER, (r) => new OutcomeRecorder({
+      outcomes: r.resolve(t.OUTCOME_REPOSITORY),
+      sink: (workspaceId, event) => { void r.resolve(t.OUTCOME_HISTORY).send(workspaceId, event); },
+      bus: r.resolve(t.EVENT_BUS),
+      tasks: r.resolve(t.TASK_REPOSITORY),
+      missions: r.resolve(t.MISSION_REPOSITORY),
+      planDecisions: r.resolve(t.PLAN_DECISION_REPOSITORY),
+      runScores: r.resolve(t.RUN_SCORE_REPOSITORY),
+      recorder: r.resolve(t.EVENT_RECORDER),
+      clock: clock(r),
+      log: log(r).child({ component: 'outcomes' }),
+    }), { source: SOURCE });
+    bind(t.SHIP_SERVICE, (r) => new ShipService({
+      tasks: r.resolve(t.TASK_REPOSITORY),
+      repositories: r.resolve(t.REPO_REPOSITORY),
+      integration: r.resolve(t.BRANCH_INTEGRATION_SERVICE),
+      pullRequests: r.resolve(t.PULL_REQUEST_FLOW),
+      exec: r.tryResolve(INTEGRATION_COMMAND_EXECUTOR) ?? null,
+      ...(r.has(t.GIT_CREDENTIAL_ENV) ? { credentialEnv: r.resolve(t.GIT_CREDENTIAL_ENV) } : {}),
+      planDecisions: r.resolve(t.PLAN_DECISION_REPOSITORY),
+      criteria: r.resolve(t.MISSION_CRITERIA_REPOSITORY),
+      recorder: r.resolve(t.EVENT_RECORDER),
+      clock: clock(r),
+      log: log(r).child({ component: 'ship' }),
+      escalate: (mission, paths) => r.resolve(t.PLANNER_SERVICE).escalate(mission, paths, { fromShip: true }),
+      revert: (decisionId, by) => r.resolve(t.SHIP_REVERT).revert(decisionId, by),
+      pushedSha: (mission, pr) => {
+        const opened = r.resolve(t.EVENT_REPOSITORY).listByMission(mission.id)
+          .filter((e) => e.body.type === 'ship.pr_opened' && e.body.repo === pr.repo && e.body.number === pr.number);
+        const last = opened.at(-1)?.body;
+        return last !== undefined && last.type === 'ship.pr_opened' ? last.headSha : null;
+      },
+      decide: {
+        missions: r.resolve(t.MISSION_REPOSITORY),
+        mergeDecisions: r.resolve(t.MERGE_DECISION_REPOSITORY),
+        approvals: r.resolve(t.APPROVAL_REPOSITORY),
+        approvalFactory: r.resolve(APPROVAL_FACTORY),
+        evaluations: r.resolve(t.EVALUATION_REPOSITORY),
+        runScores: r.resolve(t.RUN_SCORE_REPOSITORY),
+        outcomeRows: r.resolve(t.OUTCOME_HISTORY),
+        unitOfWork: r.resolve(t.UNIT_OF_WORK),
+        rounds: () => r.resolve(t.FEEDBACK_ROUNDS),
+        outcomes: () => r.tryResolve(t.OUTCOME_RECORDER),
+        holds: r.tryResolve(t.TASK_HOLD_REPOSITORY),
+        factory: async (workspaceId) => {
+          const config = await r.resolve(t.PLANNER_SERVICE).config(asId(workspaceId));
+          const authorized = r.resolve(t.MERGE_POLICY_SERVICE).reconcile(asId(workspaceId), config);
+          return { planner: config.planner, merge: config.merge, policyRef: policyRef(config), autoMergeAuthorized: authorized };
+        },
+        pollMs: shipPollMs,
+        timeoutMs: SHIP_CI_TIMEOUT_MS,
+        ciGraceMs: options.shipCiGraceMs ?? SHIP_CI_GRACE_MS,
+      },
     }), { source: SOURCE });
 
     bind(t.SCHEDULER, (r) => new SchedulerService({
@@ -376,6 +480,10 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       }),
       remediation: r.resolve(t.REMEDIATION_PLANNER),
       integration: r.resolve(t.BRANCH_INTEGRATION_SERVICE),
+      outcomes: r.resolve(t.OUTCOME_RECORDER),
+      ship: r.resolve(t.SHIP_SERVICE),
+      shipPollMs,
+      watchMerges: () => { r.resolve(t.MERGE_WATCH).tick(); r.resolve(t.PROPOSAL_SERVICE).tick(); },
       recorder: r.resolve(t.EVENT_RECORDER),
       staffing: r.resolve(t.STAFFING_RESOLVER),
       members: r.resolve(t.MEMBER_REPOSITORY),
@@ -596,6 +704,49 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
     // can read the filesystem rebinds it; one that cannot - a test, an embedder
     // - still gets the built-in presets rather than an unresolved token.
     bind(t.WORKFLOW_SOURCE, () => ({ list: async () => [] }), { source: SOURCE });
+    bind(t.LOCAL_FACTORY_CONFIG_SOURCE, () => SHIPPED_FACTORY_SOURCE, { source: SOURCE });
+    // A linked brain's factory/ first, then the local files (#53 Task 20).
+    bind(t.FACTORY_CONFIG_SOURCE, (r) => new BrainFirstFactoryConfigSource(
+      () => r.tryResolve(BRAIN_SERVICE), () => r.tryResolve(BRAIN_REPO), r.resolve(t.LOCAL_FACTORY_CONFIG_SOURCE),
+      () => {
+        const exec = r.tryResolve(INTEGRATION_COMMAND_EXECUTOR);
+        const host = r.tryResolve(BRAIN_HOST);
+        if (exec === undefined || host === undefined) return undefined;
+        return { exec, host, tmpRoot: `${paths(r).root}/brain-edits`, ...(r.has(t.GIT_CREDENTIAL_ENV) ? { credentialEnv: r.resolve(t.GIT_CREDENTIAL_ENV) } : {}) };
+      },
+    ), { source: SOURCE });
+    bind(t.OUTCOME_HISTORY, (r) => new OutcomeHistory(
+      r.resolve(t.OUTCOME_REPOSITORY), () => r.tryResolve(BRAIN_SERVICE), () => r.tryResolve(BRAIN_REPO), log(r).child({ component: 'outcomes' }),
+    ), { source: SOURCE });
+    bind(t.TIEBREAK_RUNNER, (r) => runtimeTiebreakRunner({
+      runtimeManager: r.resolve(RUNTIME_MANAGER),
+      runtimeProfiles: r.resolve(t.RUNTIME_PROFILE_REPOSITORY),
+      workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
+      paths: paths(r),
+      log: log(r),
+    }), { source: SOURCE });
+    bind(t.PLANNER_SERVICE, (r) => new PlannerService({
+      factory: r.resolve(t.FACTORY_CONFIG_SOURCE),
+      workflows: r.resolve(t.WORKFLOW_SOURCE),
+      workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
+      missions: r.resolve(t.MISSION_REPOSITORY),
+      criteria: r.resolve(t.MISSION_CRITERIA_REPOSITORY),
+      repositories: r.resolve(t.REPO_REPOSITORY),
+      roles: r.resolve(t.ROLE_REPOSITORY),
+      planDecisions: r.resolve(t.PLAN_DECISION_REPOSITORY),
+      recorder: r.resolve(t.EVENT_RECORDER),
+      clock: clock(r),
+      log: log(r).child({ component: 'planner' }),
+      tiebreak: r.resolve(t.TIEBREAK_RUNNER),
+      trackerItems: { get: (id) => r.tryResolve(it.TRACKER_ITEM_REPOSITORY)?.get(id as import('@tandemise/shared').TrackerItemId) },
+      skills: r.resolve(t.SKILL_SERVICE),
+      tasks: r.resolve(t.TASK_REPOSITORY),
+      approvals: r.resolve(t.APPROVAL_REPOSITORY),
+      approvalFactory: r.resolve(APPROVAL_FACTORY),
+      proposals: r.resolve(t.PLAN_PROPOSAL_REPOSITORY),
+      members: r.resolve(t.MEMBER_REPOSITORY),
+      outcomes: r.resolve(t.OUTCOME_HISTORY),
+    }), { source: SOURCE });
 
     bind(t.WORKFLOW_SERVICE, (r) => new WorkflowServiceImpl(
       r.resolve(t.WORKFLOW_SOURCE),
@@ -638,6 +789,8 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       skills: r.resolve(t.SKILL_SERVICE),
       parser: r.resolve(t.ARTIFACT_PARSER),
       templates: r.resolve(t.ARTIFACT_TEMPLATES),
+      planner: r.resolve(t.PLANNER_SERVICE),
+      wake: () => r.resolve(t.SCHEDULER).wake(),
       // Resolved per plan, not at construction: the integration service is
       // composed after planning, and a plan should see what is connected now.
       connectedApps: async (workspaceId) => (await r.resolve(t.INTEGRATION_SERVICE).list(asId(workspaceId)))
@@ -650,6 +803,8 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
     }), { source: SOURCE });
 
     bind(t.APPROVAL_SERVICE, (r) => new ApprovalServiceImpl({
+      laneApproved: (approval) => r.resolve(t.PLANNER_SERVICE).laneApproved(approval),
+      shipDecided: (approval) => r.resolve(t.SHIP_SERVICE).personDecided(approval),
       approvals: r.resolve(t.APPROVAL_REPOSITORY),
       missions: r.resolve(t.MISSION_REPOSITORY),
       tasks: r.resolve(t.TASK_REPOSITORY),
@@ -1149,6 +1304,37 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       runner: () => r.resolve(t.EVAL_RUNNER),
     }), { source: SOURCE });
 
+    bind(t.FACTORY_SERVICE, (r) => new FactoryService({
+      planner: r.resolve(t.PLANNER_SERVICE),
+      planning: r.resolve(t.PLANNING_SERVICE),
+      projections: r.resolve(t.PROJECTION_SERVICE),
+      readiness: r.resolve(t.READINESS_SERVICE),
+      missions: r.resolve(t.MISSION_REPOSITORY),
+      tasks: r.resolve(t.TASK_REPOSITORY),
+      planDecisions: r.resolve(t.PLAN_DECISION_REPOSITORY),
+      events: r.resolve(t.EVENT_REPOSITORY),
+      recorder: r.resolve(t.EVENT_RECORDER),
+      approvals: r.resolve(t.APPROVAL_REPOSITORY),
+      mergeDecisions: r.resolve(t.MERGE_DECISION_REPOSITORY),
+      factorySource: r.resolve(t.FACTORY_CONFIG_SOURCE),
+    }), { source: SOURCE });
+
+    bind(t.MERGE_POLICY_SERVICE, (r) => new MergePolicyService({
+      planner: r.resolve(t.PLANNER_SERVICE),
+      factorySource: r.resolve(t.FACTORY_CONFIG_SOURCE),
+      workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
+      mergeDecisions: r.resolve(t.MERGE_DECISION_REPOSITORY),
+      outcomes: r.resolve(t.OUTCOME_REPOSITORY),
+      decisions: r.resolve(t.DECISION_REPOSITORY),
+      tasks: r.resolve(t.TASK_REPOSITORY),
+      members: r.resolve(t.MEMBER_REPOSITORY),
+      recorder: r.resolve(t.EVENT_RECORDER),
+      clock: clock(r),
+      wake: () => r.resolve(t.SCHEDULER).wake(),
+      brainLinked: (workspaceId) => r.tryResolve(BRAIN_SERVICE)?.linkOf(workspaceId) !== undefined,
+      cancelQueued: (decision) => r.resolve(t.SHIP_SERVICE).cancelQueued(decision),
+    }), { source: SOURCE });
+
     bind(t.TANDEMISE_SERVICES, (r): TandemiseServices => ({
       system: r.resolve(t.SYSTEM_SERVICE),
       workspaces: r.resolve(t.WORKSPACE_SERVICE),
@@ -1176,6 +1362,23 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       skills: r.resolve(t.SKILL_SERVICE),
       issues: r.resolve(t.ISSUE_SERVICE),
       setup: r.resolve(t.SETUP_SERVICE),
+      factory: r.resolve(t.FACTORY_SERVICE),
+      mergePolicy: r.resolve(t.MERGE_POLICY_SERVICE),
+      shipActions: {
+        merge: async (decisionId, caller) => {
+          const decision = r.resolve(t.MERGE_DECISION_REPOSITORY).get(decisionId);
+          const card = decision === undefined ? undefined : r.resolve(t.APPROVAL_REPOSITORY).list({ missionId: decision.missionId, statuses: ['PENDING'] })
+            .find((a) => a.evidence.some((e) => e.label === 'Decision' && e.value === decisionId));
+          if (card === undefined) throw new TandemiseError('CONFLICT', 'This pull request isn\'t waiting for your review any more.');
+          return r.resolve(t.APPROVAL_SERVICE).decide(caller, card.id, { optionId: 'approve' });
+        },
+        revert: async (decisionId, caller) => {
+          const decision = r.resolve(t.MERGE_DECISION_REPOSITORY).get(decisionId);
+          if (decision === undefined) throw TandemiseError.notFound('Merge decision', decisionId);
+          const { actorId } = actorFor({ members: r.resolve(t.MEMBER_REPOSITORY) }, decision.workspaceId, caller);
+          return r.resolve(t.SHIP_REVERT).revert(decisionId, actorId);
+        },
+      },
       contributions: r.resolve(t.CONTRIBUTION_SERVICE),
       evals: r.resolve(t.EVAL_SERVICE),
       intake: r.resolve(it.INTAKE_SERVICE),

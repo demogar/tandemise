@@ -98,7 +98,7 @@ export class ArtifactServiceImpl implements ArtifactService {
     // The same signal FeedCard uses: a wait step reads no notes, and a cancelled mission takes no more rounds.
     const task = row.taskId === null ? null : this.requests.tasks.get(row.taskId);
     const mission = this.requests.missions.get(row.missionId);
-    const canRequestChanges = task !== null && task !== undefined && task.executor !== 'wait' && mission !== undefined && missionTakesRounds(mission);
+    const canRequestChanges = task !== null && task !== undefined && task.executor !== 'wait' && task.executor !== 'ship' && mission !== undefined && missionTakesRounds(mission);
     const rounds = { withdrawnAt, round: row.round ?? null, versions, changes, canRequestChanges };
     // Only Markdown has headings; a JSON or binary body has no appendix to find.
     if (manifest.mediaType !== 'text/markdown') return { manifest, body: loaded.body, appendixWords: null, split: null, openRequest, ...rounds };

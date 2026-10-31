@@ -293,6 +293,21 @@ function describe(record: RunEventRecord, roleNames: ReadonlyMap<string, string>
         detail: pulledDetail(body),
         link: null,
       };
+    // The factory (#53): the lane it chose, the pull request it opened, and what the merge decision said.
+    case 'plan.decided':
+      return { ...base, icon: 'sparkle', tone: 'pending', title: `The factory chose the ${body.lane} lane`, detail: null, link: null };
+    case 'ship.pr_opened':
+      return { ...base, icon: 'externalLink', tone: 'succeeded', title: `Pull request #${body.number} opened`, detail: body.url, link: null };
+    case 'task.outcome':
+      return { ...base, icon: 'info', tone: 'pending', title: 'Outcome recorded', detail: null, link: null };
+    case 'merge.decided':
+      return { ...base, icon: 'shield', tone: 'pending', title: body.verdict === 'merge' ? 'Decided to merge on its own' : 'Decided to ask for your review', detail: null, link: null };
+    case 'merge.merged':
+      return { ...base, icon: 'check', tone: 'succeeded', title: 'Merged', detail: null, link: null };
+    case 'merge.asked':
+      return { ...base, icon: 'approvals', tone: 'blocked', title: 'Asked for your review', detail: body.reasons.join(' ') || null, link: null };
+    case 'merge.reverted':
+      return { ...base, icon: 'refresh', tone: 'blocked', title: 'Reverted', detail: body.revertPr, link: null };
     case 'note':
       return {
         ...base,

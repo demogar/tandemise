@@ -6,6 +6,7 @@ import type {
   PlannedTask, Repository, RoleRepositoryPort, RoleTemplate, RuntimeProfile, RuntimeProfileRepositoryPort, SkillPin,
   TaskRepositoryPort, Workspace, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
+import { FACTORY_WORKFLOW_ID } from '@tandemise/domain';
 import { ARTIFACT_OUT_DIR, CORE_CAPABILITIES, RUNTIME_ACTOR, SYSTEM_ACTOR, DEFAULT_ESCALATE_AFTER_MS, LIVE_RUN_STATUSES, canTransition, describeGate, describeReplan, indexTeam, isActiveMember, isTrialMission, compileWorkflow, replanRefusal, splitForReplan, validateMissionPlan } from '@tandemise/domain';
 import type { MissionDetail } from '@tandemise/api-contract';
 import type { ArtifactMeasurePort, ArtifactParserPort, ArtifactTemplatePort, WorkflowSourcePort } from '../ports.js';
@@ -24,6 +25,7 @@ import { DEFAULT_PRESET_ID, findPreset, type WorkflowPreset } from '../planning/
 import { buildPlannerPrompt, describePlan, type AlreadyDone, type ConnectedApp } from '../planning/prompt.js';
 import { parsePlanResponse } from '../planning/parse.js';
 import { clip, materializePlan, planTitle, renameAgainst, renderPlanDocument } from '../planning/materialize.js';
+import type { FactoryPlan, PlannerService } from '../planning/planner-service.js';
 import { ensureTandemiseIgnore } from '../support/ignore.js';
 import { reopenCard, sentence } from '../support/replan.js';
 import { listProjectWorkflows, type BrainWorkflowReader } from '../brain/workflows.js';
@@ -100,6 +102,10 @@ export interface PlanningDeps {
    */
   readonly parser?: ArtifactParserPort;
   readonly templates?: ArtifactTemplatePort;
+  /** The factory planner (#53): the first rung for `auto` missions. Optional for older harnesses. */
+  readonly planner?: PlannerService;
+  /** Wakes the scheduler after a factory plan starts the mission on its own. */
+  readonly wake?: () => void;
 }
 
 /** What planning asks of the skills library (P13). */
@@ -164,6 +170,7 @@ export class PlanningServiceImpl implements PlanningService {
   }
 
   async plan(id: MissionId): Promise<MissionDetail> {
+    await this.deps.planner?.warm(id);
     const planning = this.#enterPlanning(id);
     return this.#planFrom(planning);
   }
@@ -179,6 +186,7 @@ export class PlanningServiceImpl implements PlanningService {
    * outcome reach the UI the way everything else does: over the event stream.
    */
   async begin(id: MissionId): Promise<MissionDetail> {
+    await this.deps.planner?.warm(id);
     const planning = this.#enterPlanning(id);
     this.#inBackground(planning);
     return this.deps.projections.missionDetail(id);
@@ -251,7 +259,9 @@ export class PlanningServiceImpl implements PlanningService {
     // button, POST /plan, planNow - comes through here, so none can skip it.
     // Only the first plan is gated: a mission that already left DRAFT was
     // judged ready then, and one from before P6 must stay re-plannable.
-    if (mission.status === 'DRAFT') this.deps.readiness?.assertReady(id);
+    // The factory's quick and standard lanes skip it (#53 §4): the person's
+    // Done-when lines are kept when given and never asked for.
+    if (mission.status === 'DRAFT' && this.deps.planner?.skipsReadiness(mission) !== true) this.deps.readiness?.assertReady(id);
     // A re-plan replaces the tasks the pending plan approval describes, so that
     // approval would authorize a plan that no longer exists.
     // A replan asked for again while its card waits keeps the status the first one would return to.
@@ -329,6 +339,14 @@ export class PlanningServiceImpl implements PlanningService {
       return this.#replanWithin(planning, workspace, repository ?? null, roles, repositories, preexisting, split, scope);
     }
 
+    // The factory plans `auto` missions first (#53 §5): profile, lane, modules,
+    // with no model for quick and standard work. Null falls to today's ladder.
+    if (mission.workflowPreset === FACTORY_WORKFLOW_ID && this.deps.planner !== undefined) {
+      const ctx = { roles, repositories, workspace, repository: repository ?? null };
+      const factory = await this.deps.planner.plan(planning, ctx);
+      if (factory !== null) return this.#planFactory(planning, factory, ctx, preexisting, scope);
+    }
+
     // A workflow the team wrote wins over anything this repository ships. It is
     // compiled rather than proposed: the author already decided what the steps
     // are, and asking a model to re-derive them would be both slower and less
@@ -363,6 +381,35 @@ export class PlanningServiceImpl implements PlanningService {
 
     this.#requestApprovalOrAccept(planning, workspace, outcome, scope, tasks);
     return this.deps.projections.missionDetail(mission.id);
+  }
+
+  /** A factory plan, through the careful lane's planner run when it has one, then materialized and decided. */
+  async #planFactory(
+    planning: Mission,
+    planned: FactoryPlan,
+    ctx: { roles: readonly RoleTemplate[]; repositories: readonly Repository[]; workspace: Workspace; repository: Repository | null },
+    preexisting: readonly ArtifactManifest[],
+    scope: EventScope,
+  ): Promise<MissionDetail> {
+    const planner = this.deps.planner!;
+    let factory = planned;
+    if (factory.preset !== null) {
+      const outcome = await this.#producePlan(planning, ctx.workspace, ctx.repository, ctx.roles, factory.preset, scope, ctx.repositories, preexisting);
+      factory = planner.finish(factory, outcome.plan, ctx, await planner.config(planning.workspaceId));
+    }
+    if (!this.#stillPlanning(planning, scope)) return this.deps.projections.missionDetail(planning.id);
+    const tasks = materializePlan(factory.plan, planning.id, this.deps.clock, ctx.repositories, {
+      inferInputs: factory.preset !== null,
+      ...skillPinner(this.deps.skills, ctx.workspace.id, ctx.roles),
+      uploadFilename: (artifactId) => this.#uploadFilename(planning.id, artifactId),
+    });
+    this.deps.tasks.replaceAll(planning.id, tasks);
+    planner.record(factory, scope);
+    await this.#storePlanDocument(planning, factory.plan, ctx.workspace, undefined, planner.front(factory));
+    this.deps.recorder.invalidate('tasks', planning.id);
+    this.#requestApprovalOrAccept(planning, ctx.workspace,
+      { plan: factory.plan, source: 'factory', fallbackReason: null, issues: [], lane: factory.lane }, scope, tasks);
+    return this.deps.projections.missionDetail(planning.id);
   }
 
   /**
@@ -1160,11 +1207,11 @@ way to write that file, reply with the JSON object instead.`;
 
   // -------------------------------------------------------------- acceptance
 
-  async #storePlanDocument(mission: Mission, plan: MissionPlan, workspace: Workspace, replan?: string): Promise<void> {
+  async #storePlanDocument(mission: Mission, plan: MissionPlan, workspace: Workspace, replan?: string, front?: { readonly lane: string; readonly profile: string }): Promise<void> {
     try {
       const previous = this.deps.artifacts.latest(mission.id, 'MissionPlan');
-      const handoff = this.#planHandoff(plan, workspace, replan);
-      const body = renderPlanDocument(plan, mission.title, handoff);
+      const handoff = this.#planHandoff(plan, workspace, replan, front?.lane);
+      const body = renderPlanDocument(plan, mission.title, handoff, front);
       const manifest = await this.deps.artifactStore.write({
         workspaceId: mission.workspaceId,
         missionId: mission.id,
@@ -1201,11 +1248,12 @@ way to write that file, reply with the JSON object instead.`;
    * reader hide once the plan is decided; a point saying it would outlive the
    * approval and repeat the needs line while it lasts.
    */
-  #planHandoff(plan: MissionPlan, workspace: Workspace, replan?: string): ArtifactHandoff {
+  #planHandoff(plan: MissionPlan, workspace: Workspace, replan?: string, lane?: string): ArtifactHandoff {
     const description = describePlan(plan);
     // A replan always asks, and leads with what it keeps, replaces and adds: in the
     // feed it otherwise read like the first plan, with nothing to say finished work stays.
-    const awaitsApproval = replan !== undefined || workspace.autonomy.planApproval === 'ask';
+    // A factory plan asks only in the careful lane (#53 §4).
+    const awaitsApproval = replan !== undefined || (lane === undefined ? workspace.autonomy.planApproval === 'ask' : lane === 'careful');
     const summary = plan.summary.trim().length > 0 ? plan.summary.trim() : description;
     const stop = plan.tasks.find((t) => t.completionGate !== null || t.approvalPolicy.beforeStart || t.approvalPolicy.onCompletion);
     const stopLine = stop === undefined ? null
@@ -1232,7 +1280,16 @@ way to write that file, reply with the JSON object instead.`;
     tasks: readonly MissionTask[],
   ): void {
     const description = describePlan(outcome.plan);
-    if (workspace.autonomy.planApproval !== 'ask') {
+    // A factory plan in the quick or standard lane starts at once (#53 §4): no
+    // plan approval, whatever the project's autonomy. The careful lane always asks.
+    if (outcome.source === 'factory' && outcome.lane !== 'careful') {
+      this.deps.recorder.note(scope, `Plan chosen by the factory (${description}): ${outcome.lane} lane.`);
+      this.#setStatus(mission, scope, 'EXECUTING', `Planned: ${description}. Running.`);
+      if (this.deps.missions.get(mission.id)?.startedAt === null) this.deps.missions.update(mission.id, { startedAt: this.deps.clock.now() });
+      this.deps.wake?.();
+      return;
+    }
+    if (outcome.source !== 'factory' && workspace.autonomy.planApproval !== 'ask') {
       this.deps.recorder.note(
         scope,
         `Plan accepted automatically (${description}). Start the mission when you are ready.`,
@@ -1251,7 +1308,9 @@ way to write that file, reply with the JSON object instead.`;
       kind: 'plan',
       risk: 'read',
       title: `Approve the plan for ${mission.title}?`,
-      rationale: outcome.fallbackReason === null
+      rationale: outcome.source === 'factory'
+        ? `The factory chose the careful lane: ${description}.`
+        : outcome.fallbackReason === null
         ? `The planner proposed ${description}.`
         : `${description}, from the workflow preset because ${outcome.fallbackReason}`,
       effect: 'Approving starts the mission and dispatches its first tasks. '
@@ -1335,8 +1394,10 @@ interface RestContext {
 
 interface PlanOutcome {
   readonly plan: MissionPlan;
-  /** `workflow` is a file the team wrote; the other two are this repo's. */
-  readonly source: 'planner' | 'preset' | 'workflow';
+  /** `workflow` is a file the team wrote; `factory` the factory planner's lane (#53); the other two are this repo's. */
+  readonly source: 'planner' | 'preset' | 'workflow' | 'factory';
+  /** The factory's lane, when `source` is `factory`. */
+  readonly lane?: 'quick' | 'standard' | 'careful';
   /** Set only when the preset was used, and stated verbatim on the timeline. */
   readonly fallbackReason: string | null;
   readonly issues: readonly PlanValidationIssue[];

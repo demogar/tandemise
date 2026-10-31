@@ -187,6 +187,9 @@ one that can never pass, saying why:
 A workflow file with such a gate is listed under New mission with the reason,
 and nothing plans from it until it is fixed.
 
+The factory's own rules (`planner.yaml`, `routing.yaml`, `merge.yaml`) are described in
+[The factory](FACTORY.md); the facts they read are in the last table below.
+
 The table below is generated from `GATE_FACT_VOCABULARY`
 (`packages/domain/src/gate-facts.ts`) by `node scripts/gate-facts-doc.mjs
 --write`; the offline checks fail when it drifts.
@@ -256,6 +259,56 @@ inside a step."
 | `workspace.active_missions` | number | whole project | Missions in progress in the project: not DRAFT, not PAUSED and not finished. Read by the backlog pull. | the backlog pull |
 | `workspace.max_active_missions` | number | whole project | The project's work-in-progress limit. Not measured when the limit is off, so a gate reading it never passes and nothing is pulled. | the backlog pull |
 | `workspace.month_limit_percent` | number | whole project | How much of its most-used monthly limit the project has used this calendar month, in percent. Not measured without a monthly limit. | the limit service |
+
+#### Facts for factory rules
+
+Read only by the factory's own rules: planning rules in `planner.yaml` and merge rules in `merge.yaml` (see
+`docs/FACTORY.md`). A predicate is called with literal arguments, such as `profile.areas_any("auth")`. A merge
+rule may also read `checks.tests` and the `review.*` facts of the mission's last code step.
+
+| Fact | Type | Scope | Meaning | Measured in |
+|---|---|---|---|---|
+| `item.type` | text | planning rule | The tracker item's type as the tracker names it (Bug, Feature), or not measured when it has none. | planner |
+| `item.prefix` | text | planning rule | The Conventional-Commit prefix of the title (fix, docs, feat), or not measured when the title has none. | planner |
+| `item.criteria` | number | planning rule | Done-when lines the task was given. | planner |
+| `item.keywords_any()` | predicate | planning rule | True when the title or description contains any of the words given, ignoring case. | planner |
+| `item.labels_any()` | predicate | planning rule | True when the tracker item has any of the labels given. | planner |
+| `item.source_any()` | predicate | planning rule | True when the task came from any of the source kinds given (sentry, posthog, dependabot, advisory). | planner |
+| `profile.type` | text | planning rule | The task profile's type: fix, feature, refactor, chore, docs, deps, test, security or unknown. | planner |
+| `profile.size` | text | planning rule | The task profile's size: xs, s, m or l. | planner |
+| `profile.risk` | text | planning rule | The task profile's risk: low, medium or high. Never below the sensitivity floor. | planner |
+| `profile.max_sensitivity` | text | planning rule | The highest sensitivity of the areas the task touches: none, sensitive or critical. | planner |
+| `profile.repos` | number | planning rule | Repositories the task names or implies. | planner |
+| `profile.areas_any()` | predicate | planning rule | True when the task touches any of the areas named. | planner |
+| `change.files` | number | merge rule | Files the pull request changes. | ship step |
+| `change.lines_added` | number | merge rule | Lines added, from the diff's numstat. | ship step |
+| `change.lines_removed` | number | merge rule | Lines removed, from the diff's numstat. | ship step |
+| `change.repos` | number | merge rule | Repositories this mission opened pull requests in. | ship step |
+| `change.binary_files` | number | merge rule | Binary files changed. | ship step |
+| `change.deleted_files` | number | merge rule | Files deleted. | ship step |
+| `change.tests_touched` | number | merge rule | Changed files that match the merge policy's test globs. | ship step |
+| `change.dependencies_changed` | boolean | merge rule | A dependency manifest or lockfile changed. | ship step |
+| `change.lockfile_only` | boolean | merge rule | Only lockfiles changed among the dependency files. | ship step |
+| `change.max_sensitivity` | text | merge rule | The highest sensitivity of the areas the change touches: none, sensitive or critical. | ship step |
+| `change.areas_any()` | predicate | merge rule | True when the change touches any of the areas named. | ship step |
+| `change.paths_matching()` | predicate | merge rule | How many changed paths match the glob given. | ship step |
+| `coverage.changed_lines` | number | merge rule | Percent of changed lines covered, only when the checks produce a coverage report. Otherwise not measured. | ship step |
+| `ci.state` | PASS / FAIL / SKIP | merge rule | PASS only when every check on the head commit succeeded and there is at least one. | ship step |
+| `ci.required_present` | boolean | merge rule | The base branch has required status checks. | ship step |
+| `github.review_required` | boolean | merge rule | Branch protection requires an approving review. | ship step |
+| `criteria.unverified` | number | merge rule | Done-when lines the person gave that no QA report verified. | ship step |
+| `criteria.implicit` | boolean | merge rule | The only Done-when line is the implicit one: the task as written. | ship step |
+| `process.lane` | text | merge rule | The lane the mission ran in: quick, standard or careful. | ship step |
+| `process.lightened_by_person` | boolean | merge rule | A person made the mission quick. | ship step |
+| `process.steps_skipped` | number | merge rule | Ceremony the lane skipped. | ship step |
+| `process.holds` | number | merge rule | Times a person held a step of this mission. | ship step |
+| `process.changes_requested` | number | merge rule | Request-changes rounds in this mission. | ship step |
+| `process.escalations` | number | merge rule | Times a step moved to a stronger model. | ship step |
+| `process.gate_retries` | number | merge rule | Attempts after a failed gate across the mission. | ship step |
+| `process.person_commits` | number | merge rule | Commits on the pull request not made by Tandemise or its agents. | ship step |
+| `process.revert_of_auto` | boolean | merge rule | The pull request reverts a change Tandemise merged on its own. | ship step |
+| `history.area_reverts_90d` | number | merge rule | Reverts in the areas touched over the last 90 days. | ship step |
+| `history.area_recent_revert` | boolean | merge rule | An area touched had a revert or broke main in the last 14 days. | ship step |
 
 <!-- gate-facts:end -->
 

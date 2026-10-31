@@ -39,7 +39,8 @@ export function MissionDetail({ id, tab }: { id: string; tab: MissionTab }): JSX
   const terminalTaskId = useOpenTerminal();
 
   const act = useDaemonMutation(
-    (daemon, args: { action: 'plan' | 'replan' | 'start' | 'pause' | 'resume' | 'cancel' }) => daemon.missionAction(id, args.action),
+    (daemon, args: { action: 'plan' | 'replan' | 'start' | 'pause' | 'resume' | 'cancel'; lane?: 'quick' | 'careful' }) =>
+      daemon.missionAction(id, args.action, args.lane === undefined ? undefined : { lane: args.lane }),
     ['missions', 'tasks'],
     id,
   );
@@ -64,6 +65,8 @@ export function MissionDetail({ id, tab }: { id: string; tab: MissionTab }): JSX
 
   const detail = mission.data;
   const status = detail.mission.status;
+  // `auto`: the factory plans it, so you can ask for a lane (#53 §10).
+  const factory = detail.mission.workflowPreset === 'auto';
   const tone = missionTone(status);
   // Only what is addressed to me (or to nobody in particular) is "waiting on you";
   // the rule is the shared one the feed and Inbox use.
@@ -77,7 +80,7 @@ export function MissionDetail({ id, tab }: { id: string; tab: MissionTab }): JSX
     <>
       <PageHeader
         title={detail.mission.title}
-        crumbs={[{ label: 'Missions', href: '/missions' }, { label: detail.mission.workflowPreset }]}
+        crumbs={[{ label: 'Missions', href: '/missions' }, { label: factory ? 'Chosen by the factory' : detail.mission.workflowPreset }]}
         meta={
           <>
             <IdChip id={detail.mission.id} />
@@ -89,17 +92,24 @@ export function MissionDetail({ id, tab }: { id: string; tab: MissionTab }): JSX
         actions={
           <>
             <StatusBadge status={status} tone={tone} />
-            {actionsFor(status, isPlanUnstarted(detail.tasks), detail.approvals.some((a) => a.kind === 'plan' && a.status === 'PENDING')).map((action) => {
-              const gated = action.id === 'plan' && status === 'DRAFT';
+            {actionsFor(status, isPlanUnstarted(detail.tasks), detail.approvals.some((a) => a.kind === 'plan' && a.status === 'PENDING'), factory).map((action) => {
+              // The factory's quick and standard lanes need no Done-when line (#53 §4): the
+              // daemon decides at Plan, and keeps careful work a draft until it is ready.
+              const gated = action.id === 'plan' && status === 'DRAFT'
+                && (!factory || (detail.mission.laneRequest === 'careful' && action.lane === undefined));
               const notReady = gated && readiness?.ready !== true;
               return (
                 <button
-                  key={action.id}
+                  key={`${action.id}${action.lane ?? ''}`}
                   type="button"
                   className={`btn${action.primary ? ' btn--primary' : ''}`}
                   disabled={act.isPending || notReady}
                   title={notReady ? readiness?.detail : undefined}
-                  onClick={() => (action.id === 'cancel' ? setConfirming('cancel') : act.mutate({ action: action.id }))}
+                  onClick={() => (action.id === 'cancel' ? setConfirming('cancel') : act.mutate(
+                    { action: action.id, ...(action.lane === undefined ? {} : { lane: action.lane }) },
+                    // Careful work with no Done-when line stays a draft: Get it ready, on the feed, is where it goes next.
+                    { onSuccess: (next) => { if (action.id === 'plan' && next.mission.status === 'DRAFT' && tab !== 'feed') navigate(`/missions/${id}`); } },
+                  ))}
                 >
                   <Icon name={action.icon} size={13} />
                   {notReady && readiness !== undefined ? readiness.label : action.label}
@@ -284,6 +294,8 @@ interface MissionAction {
   readonly label: string;
   readonly icon: IconName;
   readonly primary?: boolean;
+  /** Plan quick / Plan careful, for a mission the factory plans. */
+  readonly lane?: 'quick' | 'careful';
 }
 
 /**
@@ -291,11 +303,17 @@ interface MissionAction {
  * of what the user might want - offering Start on a running mission is how a
  * UI teaches people that its buttons are unreliable.
  */
-function actionsFor(status: MissionStatus, planUnstarted: boolean, planAsked: boolean): readonly MissionAction[] {
+function actionsFor(status: MissionStatus, planUnstarted: boolean, planAsked: boolean, factory: boolean): readonly MissionAction[] {
   if (isTerminalMissionStatus(status)) return [];
   switch (status) {
     case 'DRAFT':
-      return [{ id: 'plan', label: 'Plan', icon: 'sparkle', primary: true }];
+      return [
+        { id: 'plan', label: 'Plan', icon: 'sparkle', primary: true },
+        // The factory chooses the lane; these let you choose it instead.
+        ...(factory
+          ? [{ id: 'plan', lane: 'quick', label: 'Plan quick', icon: 'sparkle' } as const, { id: 'plan', lane: 'careful', label: 'Plan careful', icon: 'sparkle' } as const]
+          : []),
+      ];
     case 'PLANNING':
       return [{ id: 'cancel', label: 'Cancel', icon: 'x' }];
     case 'AWAITING_PLAN_APPROVAL':

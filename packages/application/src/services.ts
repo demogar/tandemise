@@ -67,6 +67,14 @@ export interface TandemiseServices {
   readonly issues: import('./services/issue-service.js').IssueService;
   /** The project's setup as files in a repository (P15). */
   readonly setup: import('./services/setup-service.js').SetupService;
+  /** Planning by lane, "Why these steps" and the opened pull request (#53). */
+  readonly factory: import('./services/factory-service.js').FactoryService;
+  readonly mergePolicy: import('./services/merge-policy-service.js').MergePolicyService;
+  /** A person's Merge or Revert on a decided pull request (#53 §8.5, §8.7). */
+  readonly shipActions: {
+    merge(decisionId: string, caller: import('./support/identity.js').Caller): Promise<unknown>;
+    revert(decisionId: string, caller: import('./support/identity.js').Caller): Promise<unknown>;
+  };
   /** Files and links handed in from outside a mission, pinned as Evidence (P3). */
   readonly contributions: ContributionService;
   /** Eval suites, saving a finished step as a case, and the run-score summary (P3b). */

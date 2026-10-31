@@ -1,4 +1,5 @@
 import { relative } from 'node:path';
+import { FACTORY_WORKFLOW_ID } from '@tandemise/domain';
 import type {
   CriteriaTrace, ArtifactHandoff, ArtifactManifest, EventRepositoryPort, ExecutionTargetRepositoryPort, ExternalRef, HandoffLink,
   ApprovalRepositoryPort, ArtifactRepositoryPort, MemberRepositoryPort, Mission, MissionCriteriaRepositoryPort, MissionRepositoryPort, MissionStatus,
@@ -142,7 +143,10 @@ export class MissionServiceImpl implements MissionService {
       throw TandemiseError.notFound('Repository', repositoryId);
     }
 
-    if (request.planNow === true) {
+    // The factory's quick and standard lanes don't ask for Done-when lines (#53 §4);
+    // whether this one is careful is known only once it is profiled, at planning.
+    const factoryLane = request.workflowPreset === FACTORY_WORKFLOW_ID && request.lane !== 'careful';
+    if (request.planNow === true && !factoryLane) {
       // The readiness gate a plan would meet, applied before anything is
       // written: a new mission has no proposals or questions, so it is ready
       // exactly when it has a Done-when line. Creating it and then refusing
@@ -191,6 +195,7 @@ export class MissionServiceImpl implements MissionService {
         ...(origin.routineId === undefined ? {} : { routineId: origin.routineId }),
         // Which GitHub issue it came from (P14): a restart finds it by this rather than making another.
         ...(origin.issueLinkId === undefined ? {} : { issueLinkId: origin.issueLinkId }),
+        ...(request.lane === undefined ? {} : { laneRequest: request.lane }),
         // Which tracker item Start made it from (intake spec §7): Start refuses a second mission by this.
         ...(origin.trackerItemId === undefined ? {} : { trackerItemId: origin.trackerItemId }),
       });
@@ -417,7 +422,7 @@ export class MissionServiceImpl implements MissionService {
     // those keep today's framing.
     // A wait step reads no feedback, so its note stays a retry reason.
     const effect = feedbackEffectFor(task, this.deps.approvals.pendingForTask(taskId), this.deps.runs);
-    if (note.length > 0 && !stopping && task.executor !== 'wait' && (effect.kind === 'review' || effect.kind === 'reopen' || effect.kind === 'round_now')) {
+    if (note.length > 0 && !stopping && task.executor !== 'wait' && task.executor !== 'ship' && (effect.kind === 'review' || effect.kind === 'reopen' || effect.kind === 'round_now')) {
       let pending;
       try {
         // One unit with the round, so a round that cannot start leaves the task's access as it was.
@@ -667,8 +672,8 @@ export class MissionServiceImpl implements MissionService {
       throw new TandemiseError('CONFLICT', reason, { details: { taskId, status: task.status, executor: task.executor } });
     };
     if (task.executor !== 'agent') {
-      refuse(task.executor === 'wait'
-        ? `'${task.title}' is a wait step; it finishes on its own check, not in another tool.`
+      refuse(task.executor === 'wait' || task.executor === 'ship'
+        ? `'${task.title}' is a ${task.executor === 'ship' ? 'ship' : 'wait'} step; it finishes on its own check, not in another tool.`
         : `'${task.title}' is already a person's step; complete it instead.`);
     }
     if (!PARKABLE_TASK_STATUSES.includes(task.status)) refuse(`A step in ${task.status} cannot be continued elsewhere.`);

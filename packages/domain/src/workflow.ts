@@ -7,6 +7,7 @@ import type { MissionPlan, PlannedTask } from './plan.js';
 import { MAX_LADDER, MAX_MODEL_NAME, normalizeModelPolicy } from './entities/models.js';
 import { parseSkillRef } from './entities/skill.js';
 import { lintGate } from './gate-lint.js';
+import { STEP_CLASSES } from './planner/types.js';
 
 /**
  * A workflow someone wrote, as opposed to one a model proposed.
@@ -52,7 +53,12 @@ const workflowStep = z.object({
    * work that needs it waits rather than failing, and the mission is honest
    * about what it is waiting for.
    */
-  executor: z.enum(['agent', 'human', 'wait']).default('agent'),
+  executor: z.enum(['agent', 'human', 'wait', 'ship']).default('agent'),
+  /**
+   * What the step is for (#53 §5), independent of its key: the routing table is
+   * keyed on it. Defaulted from the role when absent.
+   */
+  class: z.enum(STEP_CLASSES).optional(),
   /**
    * For `executor: wait` - the command that decides when the wait is over.
    *
@@ -123,6 +129,8 @@ export interface WorkflowIssue {
 export const HUMAN_ROLE_ID = 'human';
 /** Likewise for a step that is only watching something outside this machine. */
 export const WAIT_ROLE_ID = 'wait';
+/** And for the daemon-owned ship step (#53 §8.1): no agent runs in it. */
+export const SHIP_ROLE_ID = 'ship';
 
 const DEFAULT_WALL_TIME_MS = 1_800_000;
 
@@ -215,6 +223,10 @@ export function compileWorkflow(
     if (step.executor !== 'wait' && step.waitFor !== undefined) {
       issues.push({ path: `steps.${index}.waitFor`, message: `Step '${step.key}' sets \`waitFor\` but is not a wait step.` });
     }
+  }
+  const ships = definition.steps.map((step, index) => ({ step, index })).filter(({ step }) => step.executor === 'ship');
+  for (const { step, index } of ships.slice(1)) {
+    issues.push({ path: `steps.${index}.executor`, message: `A workflow has at most one ship step; '${step.key}' is the second.` });
   }
   const byKey = new Map(definition.steps.map((step) => [step.key, step]));
   for (const [index, step] of definition.steps.entries()) {
@@ -314,6 +326,7 @@ function toPlannedTask(
   });
   const human = step.executor === 'human';
   const waiting = step.executor === 'wait';
+  const shipping = step.executor === 'ship';
 
   return {
     key: step.key,
@@ -321,8 +334,9 @@ function toPlannedTask(
     objective,
     // A person's step keeps the role it names, so staffing for that role applies
     // to it; the placeholder is only for a step that names none.
-    roleId: waiting ? WAIT_ROLE_ID : step.role ?? HUMAN_ROLE_ID,
+    roleId: waiting ? WAIT_ROLE_ID : shipping ? SHIP_ROLE_ID : step.role ?? HUMAN_ROLE_ID,
     executor: step.executor,
+    ...(step.class === undefined ? (shipping ? { stepClass: 'ship' as const } : {}) : { stepClass: step.class }),
     waitPolicy: waiting
       ? {
           command: applyTemplate(step.waitFor as string, values, (name) => {
@@ -341,7 +355,7 @@ function toPlannedTask(
       // Neither a person nor a poll is sandboxed. Cutting a worktree on their
       // behalf would leave one nobody ever opens. Everything else takes the
       // step's own answer, then its role's, and only then `none`.
-      isolation: human || waiting
+      isolation: human || waiting || shipping
         ? 'none'
         : step.isolation
           ?? (step.role === undefined ? undefined : ctx.isolationForRole?.(step.role))
@@ -358,7 +372,7 @@ function toPlannedTask(
     retryPolicy: {
       // Retrying a wait means starting the clock again, which is what the
       // timeout already decided against.
-      maxAttempts: human || waiting ? 1 : step.maxAttempts ?? 2,
+      maxAttempts: human || waiting || shipping ? 1 : step.maxAttempts ?? 2,
       backoffMs: 5_000,
       onExhausted: 'block',
     },

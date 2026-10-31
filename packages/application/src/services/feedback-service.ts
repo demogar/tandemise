@@ -245,8 +245,8 @@ export class FeedbackServiceImpl implements FeedbackService {
 
   /** A wait step has no author to read a note. */
   #requireReadsFeedback(task: MissionTask): void {
-    if (task.executor === 'wait') {
-      throw new TandemiseError('PRECONDITION_FAILED', `'${task.key}' is a wait step; nothing reads feedback there.`, {
+    if (task.executor === 'wait' || task.executor === 'ship') {
+      throw new TandemiseError('PRECONDITION_FAILED', `'${task.key}' is a ${task.executor} step; nothing reads feedback there.`, {
         details: { taskId: task.id },
       });
     }

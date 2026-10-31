@@ -6,7 +6,8 @@ import type {
   LeaseRepositoryPort, MemberRepositoryPort, MissionCriteriaRepositoryPort, MissionQuestionRepositoryPort, MissionRepositoryPort, LimitRepositoryPort, PersonRepositoryPort, RoutineRepositoryPort, RunScoreRepositoryPort, SkillRepositoryPort, IssueRepositoryPort,
   PlanProposalRepositoryPort, TaskHoldRepositoryPort, RepoRepositoryPort, RoleRepositoryPort, RunInputRepositoryPort,
   RunRepositoryPort, RuntimeProfileRepositoryPort, TaskRepositoryPort, UnitOfWork,
-  WorkspaceRepositoryPort, WorkspaceBrainRepositoryPort, BrainRecordRepositoryPort,
+  WorkspaceRepositoryPort, PlanDecisionRepositoryPort, MergeDecisionRepositoryPort, OutcomeRepositoryPort,
+  WorkspaceBrainRepositoryPort, BrainRecordRepositoryPort,
 } from '@tandemise/domain';
 import type { IntakeRepositoryPort, TrackerItemRepositoryPort, WebhookMailboxPort } from '@tandemise/domain';
 import type { TandemiseDatabase } from './database.js';
@@ -54,6 +55,9 @@ export const SKILL_REPOSITORY = token<SkillRepositoryPort>('persistence.SkillRep
 export const ISSUE_REPOSITORY = token<IssueRepositoryPort>('persistence.IssueRepository');
 export const RUN_SCORE_REPOSITORY = token<RunScoreRepositoryPort>('persistence.RunScoreRepository');
 export const EVAL_REPOSITORY = token<EvalRepositoryPort>('persistence.EvalRepository');
+export const PLAN_DECISION_REPOSITORY = token<PlanDecisionRepositoryPort>('persistence.PlanDecisionRepository');
+export const MERGE_DECISION_REPOSITORY = token<MergeDecisionRepositoryPort>('persistence.MergeDecisionRepository');
+export const OUTCOME_REPOSITORY = token<OutcomeRepositoryPort>('persistence.OutcomeRepository');
 // Intake (plan Task 2). The application declares the same three names in
 // `intake-tokens.ts`, which is how the daemon's `aliasPorts` binds them.
 export const INTAKE_REPOSITORY = token<IntakeRepositoryPort>('persistence.IntakeRepository');

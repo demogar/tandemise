@@ -14,8 +14,17 @@ import type { CriterionResult } from './evaluation.js';
  * newest QA evaluation every time it is asked, exactly like every other gate
  * fact: a stored result would go stale the moment the spec or QA moved on.
  */
-export const CRITERION_SOURCES = ['user', 'spec'] as const;
+export const CRITERION_SOURCES = ['user', 'spec', 'implicit'] as const;
 export type CriterionSource = (typeof CRITERION_SOURCES)[number];
+
+/**
+ * A quick or standard factory task given no Done-when line gets one implicit
+ * criterion (#53 §4). It is never a user criterion: it reads "Not
+ * independently verified" until a reviewer or QA covers it, and it never
+ * counts in `criteria.unverified`.
+ */
+export const IMPLICIT_CRITERION_KEY = 'I1';
+export const IMPLICIT_CRITERION = 'The task as written in the tracker is done.';
 
 /**
  * Where a criterion stands (P6). Only `accepted` rows are the ledger: a

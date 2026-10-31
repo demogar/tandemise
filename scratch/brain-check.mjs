@@ -80,8 +80,7 @@ if (wants('persistence')) {
   const container = new Container();
   compose(container, P.persistenceModule({ path: join(HOME, 'persist.db'), clock: systemClock }));
   const db = container.resolve(P.DATABASE);
-  // At least 23: later migrations (intake's 024) land on top of the brain's.
-  check('schemaVersion includes 023 (brain)', P.schemaVersion(db) >= 23, P.schemaVersion(db));
+  check('schemaVersion is 23 or later (the brain is 023)', P.schemaVersion(db) >= 23 && P.MIGRATIONS.some((m) => m.version === 23 && m.name === 'brain'), P.schemaVersion(db));
   const ws = ids.workspace();
   container.resolve(P.WORKSPACE_REPOSITORY).create({
     id: ws, name: 'Garipass', defaultRepositoryId: null,

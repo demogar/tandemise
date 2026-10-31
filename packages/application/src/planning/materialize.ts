@@ -234,6 +234,7 @@ function fromPlanned(
     retryPolicy: task.retryPolicy,
     completionGate: task.completionGate,
     modelPolicy: task.modelPolicy ?? null,
+    ...(task.stepClass === undefined || task.stepClass === null ? {} : { stepClass: task.stepClass }),
     status: task.dependsOn.length === 0 ? 'READY' : 'PENDING',
     statusReason: null,
     attempts: 0,
@@ -274,13 +275,15 @@ export function clip(text: string, max: number): string {
   return flat.length <= max ? flat : `${flat.slice(0, max - 1).trimEnd()}…`;
 }
 
-export function renderPlanDocument(plan: MissionPlan, missionTitle: string, handoff: ArtifactHandoff): string {
+export function renderPlanDocument(plan: MissionPlan, missionTitle: string, handoff: ArtifactHandoff, front?: { readonly lane: string; readonly profile: string }): string {
   // JSON strings are valid YAML scalars, so any title or summary is quoted safely.
   const lines: string[] = [
     '---',
     'type: MissionPlan',
     'schemaVersion: 1',
     `title: ${JSON.stringify(planTitle(missionTitle))}`,
+    // How the factory chose it (#53 §5.5), so the plan read on its own says so.
+    ...(front === undefined ? [] : [`lane: ${front.lane}`, `profile: ${JSON.stringify(front.profile)}`]),
     'handoff:',
     `  headline: ${JSON.stringify(handoff.headline)}`,
     ...(handoff.points.length === 0 ? ['  points: []'] : ['  points:', ...handoff.points.map((p) => `    - ${JSON.stringify(p)}`)]),

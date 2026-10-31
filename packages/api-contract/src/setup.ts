@@ -60,7 +60,7 @@ export interface SetupExportView {
   readonly warnings: readonly string[];
 }
 
-export type SetupItemKindView = 'settings' | 'wip' | 'monthly_limits' | 'mission_limits' | 'role' | 'workflow' | 'routine' | 'skill' | 'issues' | 'mcps' | 'tracker' | 'intake';
+export type SetupItemKindView = 'settings' | 'wip' | 'monthly_limits' | 'mission_limits' | 'role' | 'workflow' | 'routine' | 'skill' | 'issues' | 'mcps' | 'tracker' | 'intake' | 'planner' | 'routing' | 'merge';
 export type SetupActionView = 'add' | 'change' | 'remove' | 'same';
 
 export interface SetupItemView {

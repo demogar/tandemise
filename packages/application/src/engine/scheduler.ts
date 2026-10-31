@@ -14,6 +14,8 @@ import type { Clock, Logger, MissionId, TaskId } from '@tandemise/shared';
 import { errorMessage } from '@tandemise/shared';
 import type { LifecycleComponent } from '@tandemise/kernel';
 import type { Waiter } from './waiter.js';
+import type { ShipService } from './ship.js';
+import type { OutcomeRecorder } from './outcomes.js';
 import type { EventRecorder, EventScope } from '../support/event-recorder.js';
 import type { BranchIntegrationService } from './branch-integration.js';
 import type { RemediationPlanner } from './remediation.js';
@@ -35,6 +37,14 @@ export interface SchedulerDeps {
   /** Repositories, so a wait polls in the right checkout. */
   readonly repositories: RepoRepositoryPort;
   readonly waiter: Waiter;
+  /** The daemon-owned ship step (#53 §8). Optional so harnesses built before it still compose. */
+  readonly ship?: ShipService;
+  /** How often a waiting ship step is looked at again. */
+  readonly shipPollMs?: number;
+  /** Watches main after merges (#53 §8.7), throttled and in the background. */
+  readonly watchMerges?: () => void;
+  /** Records each settled attempt for routing (#53 §9.1). Optional for older harnesses. */
+  readonly outcomes?: Pick<OutcomeRecorder, 'stepSettled'>;
   readonly remediation: RemediationPlanner;
   readonly integration: BranchIntegrationService;
   readonly recorder: EventRecorder;
@@ -113,9 +123,15 @@ export class SchedulerService implements LifecycleComponent {
 
   readonly #active = new Map<TaskId, AbortController>();
   /** In-flight waits, which are deliberately not workers. */
+  /** When each waiting ship step was last looked at. */
+  readonly #shipWatched = new Map<string, number>();
   readonly #waiting = new Map<TaskId, AbortController>();
   readonly #inFlight = new Set<Promise<void>>();
   readonly #retryAfter = new Map<TaskId, number>();
+  /** Consecutive failed looks at a waiting ship step: each doubles the wait before the next, up to SHIP_BACKOFF_CAP_MS. */
+  readonly #shipFailures = new Map<TaskId, number>();
+  /** What a waiting ship step said before GitHub started failing, said again once it answers. */
+  readonly #shipReasonBefore = new Map<TaskId, string | null>();
   /** Missions whose task branches have already been merged, so it happens once. */
   readonly #integrated = new Set<MissionId>();
   #timer: NodeJS.Timeout | undefined;
@@ -213,6 +229,7 @@ export class SchedulerService implements LifecycleComponent {
   }
 
   async #pass(): Promise<void> {
+    try { this.deps.watchMerges?.(); } catch (e) { this.deps.log.warn('scheduler.merge_watch_failed', { error: errorMessage(e) }); }
     this.#sweepStrandedFeedback();
     // First, so a step re-resolved to an agent is dispatched in this same pass.
     this.#sweepEscalations();
@@ -360,6 +377,17 @@ export class SchedulerService implements LifecycleComponent {
     // A wait lives in memory. One left AWAITING_EXTERNAL by a previous daemon
     // has no poller, and nothing else would ever move it: adopt it again.
     for (const task of tasks) {
+      // A ship step waiting on CI, GitHub or a person is watched again every so often (#53 §8.1),
+      // and adopted again after a restart.
+      if ((task.status === 'AWAITING_EXTERNAL' || task.status === 'AWAITING_APPROVAL') && task.executor === 'ship' && !this.#waiting.has(task.id)) {
+        const last = this.#shipWatched.get(task.id) ?? 0;
+        const failures = this.#shipFailures.get(task.id) ?? 0;
+        const every = Math.min((this.deps.shipPollMs ?? 30_000) * 2 ** failures, SHIP_BACKOFF_CAP_MS);
+        if (now - last >= every) {
+          this.#shipWatched.set(task.id, now);
+          this.#startShip(mission, task);
+        }
+      }
       if (task.status === 'AWAITING_EXTERNAL' && task.executor === 'wait' && !this.#waiting.has(task.id)) {
         this.#startWait(mission, task);
       }
@@ -387,6 +415,11 @@ export class SchedulerService implements LifecycleComponent {
       // deploy wait block agent work that could run alongside it.
       if (task.executor === 'wait') {
         this.#startWait(mission, task);
+        continue;
+      }
+      // The ship step is the daemon's own work (#53 §8.1): like a wait, it holds no model and no worker slot.
+      if (task.executor === 'ship') {
+        this.#startShip(mission, task);
         continue;
       }
       if (this.#occupiedSlots() >= ceiling) return;
@@ -460,6 +493,64 @@ export class SchedulerService implements LifecycleComponent {
       });
   }
 
+  /** Runs the ship step outside the ceiling, tracked like a wait so `stop()` can cancel it. */
+  #startShip(mission: Mission, task: MissionTask): void {
+    const ship = this.deps.ship;
+    if (ship === undefined) {
+      this.#setStatus(task, scopeOf(mission), 'SKIPPED', 'This daemon has no ship step, so no pull request was opened.');
+      return;
+    }
+    if (this.#waiting.has(task.id)) return;
+    const controller = new AbortController();
+    this.#waiting.set(task.id, controller);
+    if (task.status === 'READY' || task.status === 'PENDING') this.#setStatus(task, scopeOf(mission), 'RUNNING', 'Opening the pull request.');
+    if (task.startedAt === null) this.deps.tasks.update(task.id, { startedAt: this.deps.clock.now() });
+    void ship.run(mission, task, controller.signal)
+      .then((outcome) => {
+        this.#shipFailures.delete(task.id);
+        if (this.#shipReasonBefore.has(task.id)) {
+          const before = this.#shipReasonBefore.get(task.id) ?? null;
+          this.#shipReasonBefore.delete(task.id);
+          const now = this.deps.tasks.get(task.id);
+          // Only if the look itself didn't say something newer.
+          if (now !== undefined && /^GitHub didn't answer/.test(now.statusReason ?? '')) this.deps.tasks.update(task.id, { statusReason: before });
+        }
+        const current = this.deps.tasks.get(task.id) ?? task;
+        const finish = (status: 'SUCCEEDED' | 'SKIPPED' | 'BLOCKED', reason: string) => {
+          this.#setStatus(current, scopeOf(mission), status, reason);
+          if (status !== 'BLOCKED') this.deps.tasks.update(task.id, { finishedAt: this.deps.clock.now() });
+        };
+        if (outcome.kind === 'cancelled' || outcome.kind === 'waiting') return;
+        if (outcome.kind === 'merged') finish('SUCCEEDED', outcome.reason);
+        else if (outcome.kind === 'reopened') this.#setStatus(current, scopeOf(mission), 'PENDING', outcome.reason);
+        else if (outcome.kind === 'opened') finish('SUCCEEDED', `Pull request opened: ${outcome.prs.map((p) => p.url).join(', ')}`);
+        else if (outcome.kind === 'skipped') finish('SKIPPED', outcome.reason);
+        else if (outcome.kind === 'blocked') finish('BLOCKED', outcome.reason);
+        else if (outcome.kind === 'escalated') this.#setStatus(current, scopeOf(mission), 'PENDING', `Waiting for ${outcome.added.join(', ')} before opening the pull request.`);
+        else this.#setStatus(current, scopeOf(mission), 'PENDING', `Waiting for ${outcome.taskKey} to resolve the merge conflict.`);
+        this.deps.recorder.invalidate('tasks', mission.id);
+        this.wake();
+      })
+      .catch((e: unknown) => {
+        const current = this.deps.tasks.get(task.id) ?? task;
+        // Once its pull request is open and waiting, a failed call to GitHub is retried on the next look, not a blocked step.
+        if (current.status === 'AWAITING_EXTERNAL' || current.status === 'AWAITING_APPROVAL') {
+          const failures = (this.#shipFailures.get(task.id) ?? 0) + 1;
+          this.#shipFailures.set(task.id, failures);
+          if (!this.#shipReasonBefore.has(task.id)) this.#shipReasonBefore.set(task.id, current.statusReason ?? null);
+          const next = Math.min((this.deps.shipPollMs ?? 30_000) * 2 ** failures, SHIP_BACKOFF_CAP_MS);
+          this.deps.log.warn('ship.look_failed', { missionId: mission.id, taskId: task.id, failures, error: errorMessage(e) });
+          this.deps.tasks.update(task.id, { statusReason: `GitHub didn't answer (${errorMessage(e)}); Tandemise tries again in ${waitWords(next)}.` });
+          this.deps.recorder.invalidate('tasks', mission.id);
+          return;
+        }
+        this.#setStatus(current, scopeOf(mission), 'BLOCKED', `The ship step failed: ${errorMessage(e)}`);
+      })
+      .finally(() => {
+        this.#waiting.delete(task.id);
+      });
+  }
+
   #dispatch(mission: Mission, task: MissionTask): void {
     const controller = new AbortController();
     this.#active.set(task.id, controller);
@@ -504,6 +595,9 @@ export class SchedulerService implements LifecycleComponent {
     }
     if (outcome.retryAfterMs !== undefined) {
       this.#retryAfter.set(task.id, this.deps.clock.epochMs() + outcome.retryAfterMs);
+    }
+    if (outcome.status === 'SUCCEEDED' || outcome.status === 'FAILED' || outcome.status === 'BLOCKED') {
+      this.deps.outcomes?.stepSettled(mission, this.deps.tasks.get(task.id) ?? task);
     }
     if (outcome.status !== 'SUCCEEDED') return;
 
@@ -613,8 +707,9 @@ export class SchedulerService implements LifecycleComponent {
     }
 
     // Integration before completion: merging can insert a conflict-resolution
-    // task, and a mission marked COMPLETE with unmerged work is a lie.
-    if (!this.#integrated.has(mission.id)) {
+    // task, and a mission marked COMPLETE with unmerged work is a lie. A plan
+    // with a ship step integrated there, before its pull request (#53 §8.1).
+    if (!this.#integrated.has(mission.id) && !tasks.some((t) => t.executor === 'ship')) {
       this.#integrated.add(mission.id);
       try {
         const outcome = await this.deps.integration.integrate(mission);
@@ -773,4 +868,12 @@ export class SchedulerService implements LifecycleComponent {
 
 function scopeOf(mission: Mission): EventScope {
   return { workspaceId: mission.workspaceId, missionId: mission.id };
+}
+
+/** The longest wait between looks at a waiting ship step while GitHub keeps failing. */
+const SHIP_BACKOFF_CAP_MS = 10 * 60_000;
+
+function waitWords(ms: number): string {
+  if (ms < 60_000) return `${Math.max(1, Math.round(ms / 1000))} s`;
+  return `${Math.round(ms / 60_000)} min`;
 }

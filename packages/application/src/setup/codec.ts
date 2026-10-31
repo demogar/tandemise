@@ -36,6 +36,8 @@ export const SETUP_TRACKER_FILE = 'tracker.yaml';
 export const SETUP_INTAKE_FILE = 'intake.yaml';
 /** The MCP servers and integrations the project needs, never a credential (#51 spec §2). */
 export const SETUP_MCPS_FILE = 'mcps.yaml';
+/** The factory's planner, routing and merge rules (#53 owns their schemas); carried byte for byte. */
+export const SETUP_FACTORY_FILES = { planner: 'planner.yaml', routing: 'routing.yaml', merge: 'merge.yaml' } as const;
 /** The note an imported routine carries until the person turns it on. */
 export const IMPORTED_ROUTINE_NOTE = 'Imported — review and turn on';
 /** The same note on a repository's imported GitHub issue settings. */
@@ -138,6 +140,10 @@ export interface SetupSnapshot {
   readonly tracker?: string | null;
   /** `intake.yaml`'s raw text, carried byte for byte (#52 owns its meaning). */
   readonly intake?: string | null;
+  /** The factory's rule files' raw text (#53), carried byte for byte. Structural: a person's edit or a promotion PR. */
+  readonly planner?: string | null;
+  readonly routing?: string | null;
+  readonly merge?: string | null;
 }
 
 export interface SetupFile {
@@ -317,6 +323,10 @@ export function renderSetup(snapshot: SetupSnapshot): RenderedSetup {
   }
   if (snapshot.intake !== undefined && snapshot.intake !== null && snapshot.intake.trim() !== '') {
     files.push({ path: SETUP_INTAKE_FILE, content: snapshot.intake });
+  }
+  for (const [key, file] of Object.entries(SETUP_FACTORY_FILES) as [keyof typeof SETUP_FACTORY_FILES, string][]) {
+    const text = snapshot[key];
+    if (text !== undefined && text !== null && text.trim() !== '') files.push({ path: file, content: text });
   }
   if (snapshot.project !== null) {
     const scrub = new Scrubber();
@@ -616,6 +626,9 @@ export function readSetup(files: Readonly<Record<string, string>>): ReadSetup {
       ...(mcps === null ? {} : { mcps }),
       ...(files[SETUP_TRACKER_FILE] === undefined ? {} : { tracker: files[SETUP_TRACKER_FILE] }),
       ...(files[SETUP_INTAKE_FILE] === undefined ? {} : { intake: files[SETUP_INTAKE_FILE] }),
+      ...(files[SETUP_FACTORY_FILES.planner] === undefined ? {} : { planner: files[SETUP_FACTORY_FILES.planner] }),
+      ...(files[SETUP_FACTORY_FILES.routing] === undefined ? {} : { routing: files[SETUP_FACTORY_FILES.routing] }),
+      ...(files[SETUP_FACTORY_FILES.merge] === undefined ? {} : { merge: files[SETUP_FACTORY_FILES.merge] }),
     },
     problems,
   };
@@ -639,7 +652,7 @@ function firstLine(e: unknown): string {
 
 // ---------------------------------------------------------------------- diff
 
-export type SetupItemKind = 'settings' | 'wip' | 'monthly_limits' | 'mission_limits' | 'role' | 'workflow' | 'routine' | 'skill' | 'issues' | 'mcps' | 'tracker' | 'intake';
+export type SetupItemKind = 'settings' | 'wip' | 'monthly_limits' | 'mission_limits' | 'role' | 'workflow' | 'routine' | 'skill' | 'issues' | 'mcps' | 'tracker' | 'intake' | 'planner' | 'routing' | 'merge';
 export type SetupAction = 'add' | 'change' | 'remove' | 'same';
 export type SetupChoice = 'mine' | 'theirs';
 
@@ -950,9 +963,12 @@ export function diffSetup(mine: SetupSnapshot, read: ReadSetup, context: SetupDi
 
   // The brain's files (#51). Tracker and intake compare raw text; #52 owns
   // what they mean, so they are shown, never applied to rows.
-  const raw: { kind: 'tracker' | 'intake'; name: string; file: string; mine: string | null | undefined; theirs: string | null | undefined }[] = [
+  const raw: { kind: 'tracker' | 'intake' | 'planner' | 'routing' | 'merge'; name: string; file: string; mine: string | null | undefined; theirs: string | null | undefined }[] = [
     { kind: 'tracker', name: 'Tracker and state mapping', file: SETUP_TRACKER_FILE, mine: mine.tracker, theirs: theirs.tracker },
     { kind: 'intake', name: 'Intake sources', file: SETUP_INTAKE_FILE, mine: mine.intake, theirs: theirs.intake },
+    { kind: 'planner', name: 'Planning rules', file: SETUP_FACTORY_FILES.planner, mine: mine.planner, theirs: theirs.planner },
+    { kind: 'routing', name: 'Model routing', file: SETUP_FACTORY_FILES.routing, mine: mine.routing, theirs: theirs.routing },
+    { kind: 'merge', name: 'Merge policy', file: SETUP_FACTORY_FILES.merge, mine: mine.merge, theirs: theirs.merge },
   ];
   for (const r of raw) {
     if (r.theirs === undefined || r.theirs === null) continue;

@@ -109,11 +109,19 @@ export interface Mission {
   readonly trackerItemId?: TrackerItemId | null;
   /** Set only on a hidden eval trial mission (P3b). Such a mission is never listed, scheduled or escalated. */
   readonly evalTrialId?: EvalTrialId | null;
+  /** A person's Quick or Careful for a factory-planned mission (#53 §4); null: the factory decides. */
+  readonly laneRequest?: 'quick' | 'careful' | null;
   readonly createdAt: Timestamp;
   readonly updatedAt: Timestamp;
   readonly startedAt: Timestamp | null;
   readonly completedAt: Timestamp | null;
 }
+
+/**
+ * The workflow id that hands a mission to the factory planner (#53): profile,
+ * lane, modules. Every other workflow id plans as before.
+ */
+export const FACTORY_WORKFLOW_ID = 'auto';
 
 /** Whether `m` is a hidden eval trial mission (P3b): never listed, scheduled or escalated. */
 export function isTrialMission(m: Pick<Mission, 'evalTrialId'> | undefined): boolean {
@@ -149,6 +157,8 @@ export interface MissionDraft {
   readonly trackerItemId?: TrackerItemId | null;
   /** Set only on a hidden eval trial mission (P3b). */
   readonly evalTrialId?: EvalTrialId | null;
+  /** A person's Quick or Careful (#53). */
+  readonly laneRequest?: 'quick' | 'careful' | null;
 }
 
 /** Aggregate counters projected for the mission list, computed not stored. */

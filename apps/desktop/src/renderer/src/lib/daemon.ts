@@ -1,5 +1,6 @@
 import type { CoordDeviceView, CoordMemberView, EndpointView, ImportReport } from '@tandemise/api-contract/relay';
 import type {
+  BacktestResponse, MergePolicyResponse, FactoryView, PlanDecisionView, RoutingView, SetLaneRequest, ShipView,
   BrainAdoptPreview, BrainEntryView, BrainFactoryView, BrainProposalView, BrainView, LinkBrainRequest, RememberView, RunBrainView,
   CoordinationClaimRowView, CoordinationStatusView,
   BoardView, IntakeClosureView, IntakeClosuresView, IntakeConfigView, IntakeDecision, IntakeSignalView,
@@ -549,6 +550,58 @@ export class DaemonClient {
 
   missionAction(id: string, action: 'plan' | 'replan' | 'start' | 'pause' | 'resume' | 'cancel', body?: unknown): Promise<MissionDetail> {
     return this.#request('POST', `/missions/${id}/${action}`, body ?? {});
+  }
+
+  /** "Why these steps" (#53 §10); null until the factory planned the mission. */
+  planDecision(id: string): Promise<PlanDecisionView | null> {
+    return this.#get(`/missions/${id}/plan-decision`);
+  }
+
+  /** Make it quick (asks first) or Make it careful (adds steps now). */
+  setLane(id: string, lane: SetLaneRequest['lane']): Promise<PlanDecisionView | null> {
+    return this.#request('POST', `/missions/${id}/lane`, { lane });
+  }
+
+  /** The ship step and the pull requests it opened. */
+  ship(id: string): Promise<ShipView> {
+    return this.#get(`/missions/${id}/ship`);
+  }
+
+  /** Project → Factory: where the factory files came from, and their problems. */
+  factory(workspaceId: string): Promise<FactoryView> {
+    return this.#get(`/workspaces/${workspaceId}/factory`);
+  }
+
+  /** Writes the built-in factory files the project doesn't have into its repository. */
+  writeFactoryDefaults(workspaceId: string): Promise<FactoryView> {
+    return this.#request('POST', `/workspaces/${workspaceId}/factory/defaults`, {});
+  }
+
+  /** Reverts a merged pull request through a revert pull request (#53 §8.7). */
+  revertShip(decisionId: string): Promise<unknown> {
+    return this.#request('POST', `/ship/${decisionId}/revert`, {});
+  }
+
+  /** Project → Merge (#53 §8.4). */
+  mergePolicy(workspaceId: string): Promise<MergePolicyResponse> {
+    return this.#get(`/workspaces/${workspaceId}/merge-policy`);
+  }
+
+  updateMergePolicy(workspaceId: string, policy: Record<string, unknown>): Promise<MergePolicyResponse> {
+    return this.#request('PUT', `/workspaces/${workspaceId}/merge-policy`, { policy });
+  }
+
+  backtestMergePolicy(workspaceId: string, policy: Record<string, unknown>): Promise<BacktestResponse> {
+    return this.#request('POST', `/workspaces/${workspaceId}/merge-policy/backtest`, { policy });
+  }
+
+  stopAutoMerge(workspaceId: string): Promise<MergePolicyResponse> {
+    return this.#request('POST', `/workspaces/${workspaceId}/merge-policy/stop`, {});
+  }
+
+  /** Per step class, per bucket: each model's measured record and where a new step starts. */
+  routing(workspaceId: string): Promise<RoutingView> {
+    return this.#get(`/workspaces/${workspaceId}/routing`);
   }
 
   // ---- coordination (who works on what with the team; relay spec)

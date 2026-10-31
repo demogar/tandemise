@@ -7,6 +7,7 @@ export type { GhOptions } from './gh.js';
 export { githubIntegrationModule } from './module.js';
 export { GhIssueTracker } from './issues.js';
 export { GhPullRequestSnapshots } from './pull-requests.js';
+export { GhPullRequestFlow } from './pull-request-flow.js';
 export type { GhContext } from './gh.js';
 export { GhPrimaryTracker, githubStateLabels, githubTrackerFactory } from './primary-tracker.js';
 export type { GhPrimaryTrackerConfig } from './primary-tracker.js';

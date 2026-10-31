@@ -20,6 +20,7 @@ import { SaveCaseDialog } from '../evals/SaveCaseDialog.js';
 import { ArtifactReader } from '../artifacts/ArtifactReader.js';
 import { HandoffLinkButton, openableLinks } from '../../components/HandoffLinks.js';
 import { useWorkspaceId } from '../../lib/workspace.js';
+import { ShipCard } from '../../components/ShipCard.js';
 import { HoldButton, NowLine, useHoldActions } from '../../components/TerminalPanel.js';
 import { describeError } from '../../lib/daemon.js';
 import { RememberThis, WhatItKnew } from '../../components/WhatItKnew.js';
@@ -264,6 +265,8 @@ export function TaskDetail({ task, detail, onClose }: { task: TaskView; detail: 
             )}
           </div>
         ) : null}
+
+        {task.executor === 'ship' ? <ShipCard missionId={detail.mission.id} /> : null}
 
         <StaffingBlock task={task} detail={detail} actors={actors} />
 

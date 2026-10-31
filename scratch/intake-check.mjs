@@ -357,7 +357,7 @@ section('store: migration and repositories');
     // 1. The schema is at the last migration in the list (022 on this base, Ruling 1).
     const last = P.MIGRATIONS[P.MIGRATIONS.length - 1];
     const max = db.handle.prepare('SELECT MAX(version) AS v FROM schema_migrations').get().v;
-    check('schema_migrations reaches the last migration, which is intake (with credential origins, Ruling 23)', max === last.version && last.name === 'intake' && max === P.SCHEMA_VERSION, { max, last: last?.name });
+    check('schema_migrations reaches the last migration, and 024 is intake (with credential origins, Ruling 23)', max === last.version && P.MIGRATIONS.some((m) => m.version === 24 && m.name === 'intake') && max === P.SCHEMA_VERSION, { max, last: last?.name });
     const tables = new Set(db.handle.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((r) => r.name));
     const want = ['intake_sources', 'intake_tokens', 'intake_signals', 'intake_attachments', 'tracker_items', 'intake_links', 'intake_closures', 'tracker_comments', 'intake_webhook_inbox', 'intake_credential_origins'];
     check('the ten intake tables exist', want.every((n) => tables.has(n)), want.filter((n) => !tables.has(n)));
