@@ -32,7 +32,7 @@ export interface MergeFacts {
   readonly criteria: { readonly unverified: number; readonly implicit: boolean };
   readonly process: {
     readonly lane: Lane; readonly lightenedByPerson: boolean; readonly stepsSkipped: number;
-    /** Null when nothing records holds here (no hold records to count): never satisfies a rule. */
+    /** 0 when the mission had no holds; null only when the daemon has no hold store to read (never satisfies a rule). */
     readonly holds: number | null;
     readonly changesRequested: number; readonly escalations: number; readonly gateRetries: number; readonly personCommits: number;
     readonly revertOfAuto: boolean;

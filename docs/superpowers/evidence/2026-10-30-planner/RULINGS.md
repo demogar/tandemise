@@ -239,5 +239,5 @@ spec (`docs/superpowers/specs/2026-10-30-planner-and-merge-design.md`).
   Decision at the next decision, so on again through the brain needs a fresh in-app
   decision. merge-check's revert test now keeps auto-merge on (off in the brain
   would end the decision that lets a revert of an auto-merge merge on its own).
-- process.holds counts the mission's #50 hold records; with no hold records to count
-  it is null (unmeasured).
+- process.holds counts the mission's #50 hold records: 0 when it had none (so a rule like
+  `process.holds == 0` passes), and null only when the hold store isn't bound.

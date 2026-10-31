@@ -702,7 +702,14 @@ await attempt('review: holds are measured, or unmeasured', async () => {
   await w.h.until(() => w.h.repo.mergeDecisions.listByMission(m.id).length > 0, 60000);
   const facts = w.h.repo.mergeDecisions.listByMission(m.id).at(-1).facts;
   check('process.holds counts the mission\'s holds from the hold records', facts.process?.holds === 1, facts.process?.holds);
-  // Nothing to count holds from: unmeasured, which a rule on it never passes.
+  // A mission with no holds measures 0 (the hold store is there), so a rule requiring none passes.
+  const m0 = await w.mission('fix: typo in the footer');
+  await w.h.until(() => w.h.repo.mergeDecisions.listByMission(m0.id).length > 0, 60000);
+  const facts0 = w.h.repo.mergeDecisions.listByMission(m0.id).at(-1).facts;
+  check('a mission with no holds measures process.holds = 0, not null', facts0.process?.holds === 0, facts0.process?.holds);
+  const none = D.decideMerge(facts0, D.parseMergePolicy({ ...app.SHIPPED_MERGE, autoMerge: 'on', requires: ['ci.state == PASS', 'process.holds == 0'] }));
+  check('…and a requires: process.holds == 0 rule passes for it', !none.reasons.some((r) => r.includes('process.holds')), none.reasons);
+  // Only when the hold store isn't bound: unmeasured, which a rule on it never passes.
   const policy = D.parseMergePolicy({ ...app.SHIPPED_MERGE, autoMerge: 'on', never: [{ when: 'process.holds > 0' }] });
   const d = D.decideMerge({ ...facts, process: { ...facts.process, holds: null } }, policy);
   check('unmeasured holds (null) make a rule on them ask, never pass', d.verdict === 'ask', d.reasons);

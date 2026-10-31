@@ -31,7 +31,7 @@ export interface MeasureInput {
   readonly pushedSha: string | null;
   readonly repos: number;
   readonly stats: Pick<OutcomeStats, 'areas'>;
-  /** Holds on this mission's steps (#50), or null when there are no hold records to count. */
+  /** Holds on this mission's steps (#50): 0 when there were none; null only when the hold store isn't bound. */
   readonly holds: number | null;
   readonly now: number;
 }
