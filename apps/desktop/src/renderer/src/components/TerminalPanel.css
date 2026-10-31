@@ -27,6 +27,19 @@
   border-bottom: 1px solid var(--border);
 }
 
+/* How focus gets out of the terminal, said under it (2.1.2). */
+.terminal-panel__keys {
+  margin: 0;
+  padding: var(--s2) var(--s4);
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-xs);
+  color: var(--text-secondary);
+}
+
+.terminal-panel__actions {
+  flex-wrap: wrap;
+}
+
 .terminal-panel__icon {
   flex: none;
   color: var(--text-secondary);
