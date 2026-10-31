@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { TandemiseError, errorMessage, isTandemiseError, redactSecrets, type Logger } from '@tandemise/shared';
 import { API_PREFIX, API_VERSION, API_VERSION_HEADER, CONTRIBUTION_BASE64_MAX, HTTP_STATUS_BY_CODE, type ApiErrorBody } from '@tandemise/api-contract';
 import { z } from 'zod';
-import type { Caller } from '@tandemise/application';
+import type { Caller, IntakeScope } from '@tandemise/application';
 
 /**
  * A small, explicit HTTP router.
@@ -21,6 +21,11 @@ export interface RequestContext {
   readonly raw: IncomingMessage;
   /** Who the request acts as, resolved from its bearer token. */
   readonly caller: Caller;
+  /**
+   * Set when the request came with an intake token rather than the daemon
+   * token: the one project and source it may push to (spec 2026-10-30-intake-design.md §2).
+   */
+  readonly intake: IntakeScope | null;
   body<T>(schema: z.ZodType<T>): Promise<T>;
 }
 
@@ -36,6 +41,8 @@ type Method = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
 export interface RouteOptions {
   readonly maxBodyBytes?: number;
   readonly overflowMessage?: string;
+  /** The status a successful answer is sent with, when it is not 200 (intake's push answers 202). */
+  readonly status?: number;
 }
 
 interface Route {
@@ -45,6 +52,7 @@ interface Route {
   readonly pattern: string;
   readonly maxBodyBytes: number;
   readonly overflowMessage?: string;
+  readonly status?: number;
 }
 
 /** Marks a response as already-written (used for file/blob streaming). */
@@ -64,6 +72,7 @@ export class Router {
       method, pattern, handler, segments: pattern.split('/').filter(Boolean),
       maxBodyBytes: options.maxBodyBytes ?? MAX_BODY_BYTES,
       overflowMessage: options.overflowMessage,
+      status: options.status,
     });
     return this;
   }
@@ -140,12 +149,13 @@ export function makeContext(
   log: Logger,
   resolveCaller: () => Caller,
   bodyOptions: RouteOptions = {},
+  intake: IntakeScope | null = null,
 ): RequestContext {
   let cached: unknown;
   let read = false;
   let caller: Caller | undefined;
   return {
-    params, query, log, raw: req,
+    params, query, log, raw: req, intake,
     // Resolved on first use, so a route that acts as nobody still answers when
     // the principal cannot be resolved (e.g. the local person was removed).
     get caller(): Caller {

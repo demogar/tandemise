@@ -85,6 +85,8 @@ export async function startDaemon(overrides: Parameters<typeof loadConfig>[0] = 
     // P0 has one token and one person: every request acts as the local person.
     identityResolver: () => ({ personId: services.identity.localPerson().id }),
     port: config.port,
+    // An intake token pushes for its one source only (spec 2026-10-30-intake-design.md §2).
+    intakeTokenResolver: (bearer) => services.intake.resolveToken(bearer),
     onUpgrade: (req, socket, head) => stream?.handleUpgrade(req, socket, head),
   });
 

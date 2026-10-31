@@ -71,6 +71,10 @@ import { TeamServiceImpl } from './services/team-service.js';
 import { StaffingServiceImpl } from './services/staffing-service.js';
 import { StaffingResolver } from './engine/staffing-resolver.js';
 import { DEFAULT_LOCAL_PERSON_NAME, LocalIdentity } from './support/identity.js';
+import * as it from './intake-tokens.js';
+import { IntakeService } from './services/intake-service.js';
+import { LocalIntakeConfigSource } from './intake/config-source.js';
+import { MemoryBlobs } from './intake/memory-blobs.js';
 
 const SOURCE = 'application';
 
@@ -858,6 +862,24 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       log: log(r).child({ component: 'issues' }),
     }), { source: SOURCE });
 
+    // Intake (spec 2026-10-30-intake-design.md, plan Task 3). The config comes
+    // from the local settings until the brain (#51) rebinds the source; inline
+    // attachments stay in memory unless the daemon gives them a disk.
+    bind(it.INTAKE_CONFIG_SOURCE, (r) => new LocalIntakeConfigSource({
+      settings: r.resolve(t.SETTINGS_STORE),
+      log: log(r).child({ component: 'intake' }),
+    }), { source: SOURCE });
+    bind(it.INTAKE_BLOBS, () => new MemoryBlobs(), { source: SOURCE });
+    bind(it.INTAKE_SERVICE, (r) => new IntakeService({
+      intake: r.resolve(it.INTAKE_REPOSITORY),
+      config: r.resolve(it.INTAKE_CONFIG_SOURCE),
+      blobs: r.resolve(it.INTAKE_BLOBS),
+      workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
+      members: r.resolve(t.MEMBER_REPOSITORY),
+      clock: clock(r),
+      log: log(r).child({ component: 'intake' }),
+    }), { source: SOURCE });
+
     // Default: no disk. The daemon rebinds it; a harness without one can still
     // compose, and setup as code answers that there is no folder.
     bind(t.SETUP_FOLDER, () => ({
@@ -958,6 +980,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       setup: r.resolve(t.SETUP_SERVICE),
       contributions: r.resolve(t.CONTRIBUTION_SERVICE),
       evals: r.resolve(t.EVAL_SERVICE),
+      intake: r.resolve(it.INTAKE_SERVICE),
     }), { source: SOURCE });
   });
 }

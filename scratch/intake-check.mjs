@@ -367,6 +367,157 @@ section('store: migration and repositories');
   }
 }
 
+// ------------------------------------------------------------------ ingest
+// Task 3: IntakeService validates and records what custom runners push, over
+// the real application module, the local config source and a hand-moved clock.
+// The HTTP route, the token check at the listener and the CLI are pinned by
+// scratch/intake-daemon-check.mjs.
+section('ingest: validate and record, in process');
+{
+  const { mkdirSync, mkdtempSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { Container, compose } = await import('@tandemise/kernel');
+  const { createLogger, createPaths } = await import('@tandemise/shared');
+  const P = await import('@tandemise/persistence');
+  const A = await import('@tandemise/artifacts');
+  const app = await import('@tandemise/application');
+  const { policyModule } = await import('@tandemise/policy');
+  const { contextModule } = await import('@tandemise/context');
+  const { createEvaluationModule } = await import('@tandemise/evaluation');
+  const { runtimesCoreModule } = await import('@tandemise/runtimes-core');
+  const { genericRuntimeModule } = await import('@tandemise/runtime-generic');
+  const { executionCoreModule, CLOCK: EXEC_CLOCK, LOGGER: EXEC_LOGGER, PATHS: EXEC_PATHS } = await import('@tandemise/execution-core');
+  const { executionLocalModule } = await import('@tandemise/execution-local');
+  const { integrationsCoreModule, CLOCK: INT_CLOCK, LOGGER: INT_LOGGER, COMMAND_EXECUTOR, BACKGROUND_PROCESS_LAUNCHER } = await import('@tandemise/integrations-core');
+  let t = Date.parse('2026-10-30T10:00:00.000Z');
+  const clock = { now: () => new Date(t).toISOString(), epochMs: () => t };
+  const HOME = mkdtempSync(join(tmpdir(), 'tandemise-intake-ingest-'));
+  const paths = createPaths(HOME);
+  mkdirSync(paths.root, { recursive: true });
+  const log = createLogger({ level: 'error', base: { component: 'intake-check' } });
+  const container = new Container();
+  try {
+    compose(
+      container,
+      P.persistenceModule({ path: paths.db, logger: log, clock }),
+      A.createArtifactsModule({ paths }),
+      policyModule, contextModule, createEvaluationModule(), runtimesCoreModule, genericRuntimeModule,
+      executionCoreModule, executionLocalModule, integrationsCoreModule, app.createApplicationModule({ localPersonName: 'Demo' }),
+    );
+    container.bind(EXEC_CLOCK, () => clock, { source: 'check' });
+    container.bind(EXEC_LOGGER, () => log, { source: 'check' });
+    container.bind(EXEC_PATHS, () => paths, { source: 'check' });
+    container.bind(INT_CLOCK, () => clock, { source: 'check' });
+    container.bind(INT_LOGGER, () => log, { source: 'check' });
+    container.bind(COMMAND_EXECUTOR, () => ({ run: async () => { throw new Error('unused'); } }), { source: 'check' });
+    container.bind(BACKGROUND_PROCESS_LAUNCHER, () => ({ launch: async () => { throw new Error('unused'); } }), { source: 'check' });
+    const isToken = (v) => typeof v === 'object' && v !== null && typeof v.description === 'string';
+    for (const name of Object.keys(app)) {
+      const appToken = app[name]; const provider = P[name];
+      if (!isToken(appToken) || !isToken(provider)) continue;
+      if (!container.has(provider) || container.has(appToken)) continue;
+      container.bind(appToken, (r) => r.resolve(provider), { source: `alias:${name}` });
+    }
+    container.bind(app.ARTIFACT_STORE, (r) => r.resolve(A.ARTIFACT_STORE), { source: 'alias' });
+    container.bind(app.ARTIFACT_TEMPLATES, () => ({ render: A.renderArtifactTemplate }), { source: 'check' });
+    container.bind(app.ARTIFACT_PARSER, () => ({ parse: A.parseArtifact }), { source: 'check' });
+    container.bind(app.ARTIFACT_MEASURE, () => ({ measure: A.measureArtifact, deriveHandoff: A.deriveHandoff, splitAppendix: A.splitAppendix }), { source: 'check' });
+    container.bind(app.EVENT_BUS, () => ({ publish: () => {}, subscribe: () => () => {} }), { source: 'check' });
+    container.bind(app.PROJECTION_BUS, () => ({ invalidate: () => {}, subscribe: () => () => {} }), { source: 'check' });
+    container.bind(app.SECRET_STORE, () => ({ backend: 'memory', store: async () => 'x', resolve: async () => undefined, remove: async () => {}, list: async () => [] }), { source: 'check' });
+    container.bind(app.SETTINGS_STORE, () => app.createMemorySettingsStore(), { source: 'check' });
+    container.bind(app.SYSTEM_ENVIRONMENT, () => app.describeEnvironment({ home: HOME, schemaVersion: 1 }), { source: 'check' });
+    container.bind(app.PROCESS_LIVENESS, () => app.osProcessLiveness, { source: 'check' });
+    const services = app.createServices(container);
+    check('the application exposes the intake service', services.intake !== undefined && app.INTAKE_SERVICE !== undefined && app.INTAKE_CONFIG_SOURCE !== undefined && app.INTAKE_BLOBS !== undefined);
+    if (services.intake === undefined) throw new Error('no intake service');
+    const intake = services.intake;
+    const caller = { personId: services.identity.localPerson().id };
+    const ws = (await services.workspaces.create(caller, { name: 'Intake' })).workspace.id;
+    const scope = { workspaceId: ws, sourceId: 'custom-feed', tokenId: null };
+    const signal = (over = {}) => ({
+      schema: 'tandemise.intake/v1', source: { kind: 'custom', instance: 'custom-feed' }, key: 'k1',
+      url: 'https://feed.test/k1', title: 'Checkout is slow', ...over,
+    });
+    const refusal = async (fn) => { try { await fn(); return null; } catch (e) { return e; } };
+
+    // Nothing configured: there is no tracker to land in.
+    const none = await refusal(() => intake.ingest(scope, signal()));
+    check("a push with no tracker is refused: Set this project's tracker first.", none?.code === 'CONFLICT' && none?.message === "Set this project's tracker first.", { code: none?.code, message: none?.message });
+
+    const config = container.resolve(app.INTAKE_CONFIG_SOURCE);
+    check('the local config source reads an empty project', config.origin === 'local' && config.read(ws).tracker === null && config.read(ws).dailyCap === 20);
+    config.write(ws, {
+      tracker: {
+        kind: 'youtrack', url: 'https://yt.test', project: 'GAR', board: 'project: GAR #Unresolved',
+        states: { ready: ['Open'], in_progress: 'In Progress', done: ['Done'], wont_do: ["Won't fix"] }, onComplete: 'done',
+      },
+      intake: { sources: [{ id: 'custom-feed', kind: 'custom', instance: 'custom-feed', closeOnDone: false, closeWontDo: false }], dailyCap: 20, similarity: { link: 0.85, ask: 0.55 } },
+    });
+    const read = config.read(ws);
+    check('the local config source round-trips the tracker and sources', read.tracker?.kind === 'youtrack' && read.sources.length === 1 && read.sources[0].id === 'custom-feed', read);
+    let badWrite = null;
+    try { config.write(ws, { tracker: { kind: 'youtrack', board: 'x', states: { ready: ['Open'], in_progress: 'P', done: ['Done'], wont_do: [] }, onComplete: 'done' } }); } catch (e) { badWrite = e; }
+    check('the local config source refuses a youtrack tracker with no url or project', badWrite?.code === 'VALIDATION' && config.read(ws).tracker?.project === 'GAR', badWrite?.message);
+
+    const unknown = await refusal(() => intake.ingest({ ...scope, sourceId: 'nope' }, signal()));
+    check("an unknown source is refused: This project has no intake source 'nope'.", unknown?.code === 'NOT_FOUND' && unknown?.message === "This project has no intake source 'nope'.", { code: unknown?.code, message: unknown?.message });
+
+    const first = await intake.ingest(scope, signal());
+    t += 1000;
+    const second = await intake.ingest(scope, signal({ title: 'Checkout is slow again' }));
+    check('a valid signal is received, with no reason', first.status === 'received' && first.reason === null && first.fingerprint === 'custom:custom-feed:k1', first);
+    const listed = intake.list(ws, {});
+    check('the same fingerprint twice is one signal with occurrences 2', second.signalId === first.signalId && listed.length === 1 && listed[0].occurrences === 2 && listed[0].status === 'received' && listed[0].title === 'Checkout is slow again', listed);
+
+    const bad = await intake.ingest(scope, signal({ key: 'k2', priority: 'high' }));
+    const rejected = intake.list(ws, { statuses: ['rejected'] });
+    check("an invalid signal is answered and listed as rejected, naming 'priority'", bad.status === 'rejected' && bad.reason?.includes('priority') && rejected.length === 1 && rejected[0].reason?.includes('priority') && rejected[0].fingerprint === 'custom:custom-feed:k2', { bad, rejected });
+    const unreadable = await intake.ingest(scope, { schema: 'tandemise.intake/v1', title: 42 });
+    check('an unreadable signal gets an invalid:<source>:<hash> fingerprint and a placeholder title', /^invalid:custom-feed:[0-9a-f]{16}$/.test(unreadable.fingerprint ?? '') && intake.list(ws, { statuses: ['rejected'] }).some((s) => s.title === '(unreadable signal)'), unreadable);
+
+    // Inline attachments are stored by sha256; links are only recorded.
+    const withFiles = await intake.ingest(scope, signal({ key: 'k3', attachments: [
+      { name: 'note.txt', mediaType: 'text/plain', contentBase64: Buffer.from('hello').toString('base64') },
+      { name: 'trace.txt', mediaType: 'text/plain', url: 'https://feed.test/trace.txt' },
+    ] }));
+    await intake.ingest(scope, signal({ key: 'k3', attachments: [{ name: 'note.txt', mediaType: 'text/plain', contentBase64: Buffer.from('hello').toString('base64') }] }));
+    const repo = container.resolve(app.INTAKE_REPOSITORY);
+    const atts = repo.attachments(withFiles.signalId);
+    const blobs = container.resolve(app.INTAKE_BLOBS);
+    const inline = atts.find((a) => a.name === 'note.txt');
+    check('an inline attachment is stored as a blob, a url attachment as a link, and a repeat adds none',
+      atts.length === 2 && inline?.blobSha256?.length === 64 && new TextDecoder().decode(await blobs.get(inline.blobSha256)) === 'hello'
+      && atts.find((a) => a.name === 'trace.txt')?.url === 'https://feed.test/trace.txt', atts);
+
+    // Tokens: minted once, stored hashed, scoped to one source, rate-limited per signal.
+    const minted = intake.mintToken(caller, ws, 'custom-feed');
+    check('a minted token starts tdi_ and resolves to its source', /^tdi_[A-Za-z0-9_-]{32}$/.test(minted.token) && intake.resolveToken(minted.token)?.sourceId === 'custom-feed' && intake.resolveToken(minted.token)?.tokenId === minted.id, minted);
+    check('only its sha256 is stored', repo.tokens.list(ws).every((r) => r.tokenHash !== minted.token && r.tokenHash.length === 64));
+    check('an unknown token resolves to nothing', intake.resolveToken('tdi_' + 'x'.repeat(32)) === null && intake.resolveToken('nonsense') === null);
+    const tokenScope = intake.resolveToken(minted.token);
+    const foreign = await refusal(() => intake.ingest(tokenScope, signal({ source: { kind: 'custom', instance: 'other-feed' } })));
+    check("a token's push naming another source is refused: This token can only push to 'custom-feed'.", foreign?.code === 'PERMISSION_DENIED' && foreign?.message === "This token can only push to 'custom-feed'.", foreign?.message);
+    let limited = null;
+    for (let i = 0; i < 61; i++) {
+      try { await intake.ingest(tokenScope, signal({ key: `r${i}` })); } catch (e) { limited = { i, e }; break; }
+    }
+    check('the 61st signal in a minute is refused: Too many signals from this source: at most 60 a minute.',
+      limited?.i === 60 && limited.e.code === 'RATE_LIMITED' && limited.e.message === 'Too many signals from this source: at most 60 a minute.', limited && { i: limited.i, code: limited.e.code, message: limited.e.message });
+    t += 60_000;
+    const after = await refusal(() => intake.ingest(tokenScope, signal({ key: 'r-after' })));
+    check('after the minute has passed, a push passes again', after === null, after?.message);
+    const revoked = intake.mintToken(caller, ws, 'custom-feed');
+    intake.revokeToken(caller, revoked.id);
+    check('a revoked token resolves to nothing', intake.resolveToken(revoked.token) === null);
+  } catch (e) {
+    check('the ingest section ran', false, String(e?.stack ?? e));
+  } finally {
+    await container.dispose();
+    rmSync(HOME, { recursive: true, force: true });
+  }
+}
+
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length > 0) {
   for (const f of failures) console.log(`  - ${f}`);

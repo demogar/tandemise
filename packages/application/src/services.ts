@@ -70,6 +70,8 @@ export interface TandemiseServices {
   readonly contributions: ContributionService;
   /** Eval suites, saving a finished step as a case, and the run-score summary (P3b). */
   readonly evals: import('./services/eval-service.js').EvalService;
+  /** Signals from any source, recorded and landed in the project's primary tracker (intake). */
+  readonly intake: import('./services/intake-service.js').IntakeService;
 }
 
 /** One contribution pinned as Evidence, with what a caller needs to type it next. */

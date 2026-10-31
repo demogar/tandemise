@@ -6,6 +6,7 @@ import {
   INTAKE_FILTER_WINDOWS,
   INTAKE_SOURCE_CADENCES,
   KIND_HINTS,
+  SIGNAL_STATUSES,
   TRACKER_KINDS,
   fingerprintOf,
   type Impact,
@@ -448,4 +449,68 @@ export interface InboxIntakeDecisionView {
   readonly candidate: { readonly key: string; readonly title: string; readonly url: string } | null;
   readonly reason: string | null;
   readonly receivedAt: string;
+}
+
+// ------------------------------------------------------------------ requests (plan Task 3)
+
+/** `GET /v1/workspaces/:id/intake/signals?status=a,b&limit=n`. */
+export const intakeSignalsQuery = z
+  .object({
+    status: z
+      .string()
+      .optional()
+      .transform((v, ctx) => {
+        if (v === undefined || v.trim() === '') return undefined;
+        const list = v.split(',').map((s) => s.trim()).filter((s) => s !== '');
+        for (const s of list) {
+          if (!(SIGNAL_STATUSES as readonly string[]).includes(s)) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, message: `'${s.slice(0, 40)}' is not a signal status.` });
+            return z.NEVER;
+          }
+        }
+        return list as SignalStatus[];
+      }),
+    limit: z.coerce.number().int().min(1).max(500).optional(),
+  })
+  .strict();
+export type IntakeSignalsQuery = z.infer<typeof intakeSignalsQuery>;
+
+/**
+ * `PUT /v1/workspaces/:id/intake/config` (local origin only). A part left out
+ * is kept; `tracker: null` clears the tracker.
+ */
+export const updateIntakeConfigRequest = z
+  .object({
+    tracker: trackerConfigFile.nullable().optional(),
+    intake: intakeFileV1.optional(),
+  })
+  .strict();
+export type UpdateIntakeConfigRequest = z.infer<typeof updateIntakeConfigRequest>;
+
+/** `POST /v1/workspaces/:id/intake/tokens`. */
+export const mintIntakeTokenRequest = z
+  .object({ sourceId: intakeSourceFile.shape.id })
+  .strict();
+export type MintIntakeTokenRequest = z.infer<typeof mintIntakeTokenRequest>;
+
+/** The answer to minting: the token is shown this once, and only its sha256 is kept (spec §2). */
+export interface IntakeTokenMintedView {
+  readonly id: string;
+  readonly token: string;
+}
+
+/** A project's intake configuration, and whether it can be edited here. */
+export interface IntakeConfigView {
+  /** `local` is edited in Settings; `brain` in the brain's repository (#51). */
+  readonly origin: 'local' | 'brain';
+  readonly editable: boolean;
+  readonly tracker: TrackerConfig | null;
+  readonly sources: readonly IntakeSourceConfig[];
+  readonly dailyCap: number;
+  readonly similarity: { readonly link: number; readonly ask: number };
+}
+
+/** `POST /v1/intake/signals`'s answer (spec §2). */
+export interface IntakePushView {
+  readonly results: readonly IngestResultView[];
 }

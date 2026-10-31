@@ -58,3 +58,30 @@ was ambiguous or wrong, decided against the spec
   - `intake_attachments` also has `created_at`/`updated_at` ("every table unless noted").
   - The mailbox keeps acked rows (`done_at`) and has no stale-claim sweep yet; a claim
     left by a crash stays claimed until whoever owns the listener (Task 11) releases it.
+- Ruling 7 (push scope and refusals, Task 3): decided from spec §1 "Text is data" and §2 "Auth":
+  - A push whose signal names a source (`source.kind`, `source.instance`) other than the
+    scope's configured source is refused whole, before anything is recorded: with an
+    intake token as `PERMISSION_DENIED` "This token can only push to '<id>'." (the plan's
+    sentence), with the daemon token as `PERMISSION_DENIED` "Signals for '<id>' must name
+    it as their source (<kind>, <instance>)." A token used with `?source=` or `?workspace=`
+    naming anything else gets the token sentence. With the daemon token the push must name
+    `?workspace=&source=` (400 otherwise); the CLI fills `workspace` itself.
+  - Refusal order for a push: project, tracker (409), source (404), source named by a
+    signal (403), rate limit (429). The rate limit counts signals and takes a batch all or
+    none, so a refused batch uses none of the minute; it is keyed by the token id, and
+    daemon-token pushes by `(project, source)`. The window is in memory (a restart forgets
+    it).
+  - The unreadable-signal fingerprint hashes `JSON.stringify` of the signal as pushed. A
+    repeat push adds only attachments not already recorded (same name and blob or url).
+  - `INTAKE_BLOBS` defaults to a working in-memory store (`MemoryBlobs`), as the plan says,
+    unlike `EVAL_BLOBS`' failing default; the daemon rebinds it to `paths.intakeBlobs`.
+  - The router gains a `status` route option so the push answers 202; nothing else changes
+    status. `IntakeService.configure` and `ingestMany` take the body unparsed and parse it
+    themselves, since the file schemas fill defaults (zod input and output differ).
+  - `GET/PUT …/intake/config` answer `IntakeConfigView` (`origin`, `editable`, the config).
+    A PUT when the source cannot write (the brain) is `PRECONDITION_FAILED` "This project's
+    intake is set in its brain. Change it there." Minting needs a seat and a configured
+    source (the 404 sentence). Revoking needs the daemon token only: the token port has no
+    lookup by id to find the project's seat.
+  - The CLI prints `<fingerprint>: <status>` per result, then the reason, indented, on its
+    own line when there is one.

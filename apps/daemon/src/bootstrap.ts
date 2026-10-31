@@ -38,6 +38,7 @@ import { createApplicationModule, createServices, EVAL_RUNNER, SCHEDULER, type T
   PULL_REQUEST_SNAPSHOTS, GIT_CREDENTIAL_ENV, pickGitCredentialEnv,
   SETUP_FOLDER,
   EVAL_BLOBS,
+  INTAKE_BLOBS,
 } from '@tandemise/application';
 import * as applicationTokens from '@tandemise/application';
 
@@ -158,6 +159,8 @@ export function bootstrap(config: DaemonConfig, options: { readonly localPersonN
   // Eval case inputs (P3b) are content-addressed bytes on disk, the same shape as the skills store.
   // The application module binds an in-memory default; this replaces it with the real one.
   container.rebind(EVAL_BLOBS, () => new FileEvalBlobs(config.paths.evalBlobs), { source: 'bootstrap' });
+  // Inline attachments of intake signals (spec 2026-10-30-intake-design.md §1), the same content-addressed shape on disk.
+  container.rebind(INTAKE_BLOBS, () => new FileEvalBlobs(config.paths.intakeBlobs), { source: 'bootstrap' });
 
   // GitHub issues (P14) go through the same `gh` and command executor as the
   // GitHub tools, so `gh` is found on the daemon's own PATH.

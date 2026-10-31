@@ -2,7 +2,7 @@ import { createServer, type Server, type IncomingMessage, type ServerResponse } 
 import type { Duplex } from 'node:stream';
 import type { AddressInfo } from 'node:net';
 import { TandemiseError, type Logger } from '@tandemise/shared';
-import type { Caller } from '@tandemise/application';
+import type { Caller, IntakeScope } from '@tandemise/application';
 import { API_VERSION, API_VERSION_HEADER, AUTH_HEADER, STREAM_PATH } from '@tandemise/api-contract';
 import { HANDLED, Router, makeContext, sendError, sendJson } from './router.js';
 import { verifyBearer } from './identity.js';
@@ -18,6 +18,11 @@ export interface HttpServerOptions {
   readonly onUpgrade: (req: IncomingMessage, socket: Duplex, head: Buffer) => void;
   /** 0 lets the OS pick, which is what MVP.md §7.2 asks for. */
   readonly port?: number;
+  /**
+   * Maps a bearer that is not the daemon token to the intake scope it grants,
+   * or null. Consulted only on the intake routes (spec 2026-10-30-intake-design.md §2).
+   */
+  readonly intakeTokenResolver?: (token: string) => IntakeScope | null;
 }
 
 /**
@@ -141,7 +146,13 @@ export class HttpServer {
       }
 
       const authorization = req.headers[AUTH_HEADER] as string | undefined;
-      if (!verifyBearer(authorization, this.#opts.token)) {
+      // An intake token opens exactly the push and closures routes of its one
+      // source, and nothing else: every other path keeps the daemon-token check.
+      let intake: IntakeScope | null = null;
+      if (!verifyBearer(authorization, this.#opts.token) && authorization !== undefined && isIntakePath(url.pathname)) {
+        intake = this.#opts.intakeTokenResolver?.(bearerToken(authorization)) ?? null;
+      }
+      if (intake === null && !verifyBearer(authorization, this.#opts.token)) {
         log.warn('daemon.unauthenticated_request');
         sendError(res, TandemiseError.permissionDenied('Missing or invalid daemon token.'), log);
         return;
@@ -164,10 +175,10 @@ export class HttpServer {
       const ctx = makeContext(req, matched.params, url.searchParams, log, () => this.#opts.identityResolver(bearer), {
         maxBodyBytes: matched.route.maxBodyBytes,
         overflowMessage: matched.route.overflowMessage,
-      });
+      }, intake);
       const result = await matched.route.handler(ctx);
       if (result === HANDLED) return;
-      sendJson(res, result === undefined ? 204 : 200, result);
+      sendJson(res, result === undefined ? 204 : matched.route.status ?? 200, result);
     } catch (e) {
       sendError(res, e, log);
     } finally {
@@ -195,6 +206,13 @@ export class HttpServer {
     socket.once('close', () => this.#upgraded.delete(socket));
     this.#opts.onUpgrade(req, socket, head);
   }
+}
+
+/** The routes an intake token may reach (spec §2): pushing signals and reading or acking its closures. */
+const INTAKE_PATH = /^\/v1\/intake\/(?:signals|closures|closures\/[^/]+\/ack)$/;
+
+function isIntakePath(pathname: string): boolean {
+  return INTAKE_PATH.test(pathname);
 }
 
 function bearerToken(header: string): string {

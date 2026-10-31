@@ -1,5 +1,8 @@
 import { token } from '@tandemise/kernel';
-import type { IntakeRepositoryPort, TrackerItemRepositoryPort, WebhookMailboxPort } from '@tandemise/domain';
+import type {
+  EvalBlobPort, IntakeConfigSource, IntakeRepositoryPort, TrackerItemRepositoryPort, WebhookMailboxPort,
+} from '@tandemise/domain';
+import type { IntakeService } from './services/intake-service.js';
 
 /**
  * Intake's application tokens (spec 2026-10-30-intake-design.md). They live
@@ -13,3 +16,9 @@ import type { IntakeRepositoryPort, TrackerItemRepositoryPort, WebhookMailboxPor
 export const INTAKE_REPOSITORY = token<IntakeRepositoryPort>('port.IntakeRepository');
 export const TRACKER_ITEM_REPOSITORY = token<TrackerItemRepositoryPort>('port.TrackerItemRepository');
 export const WEBHOOK_MAILBOX = token<WebhookMailboxPort>('port.WebhookMailbox');
+
+/** Where a project's intake configuration is read (plan Task 3): local settings by default, the brain (#51) later. */
+export const INTAKE_CONFIG_SOURCE = token<IntakeConfigSource>('port.IntakeConfigSource');
+export const INTAKE_SERVICE = token<IntakeService>('application.IntakeService');
+/** Inline attachments of signals, content-addressed. In memory by default; the daemon rebinds it to disk. */
+export const INTAKE_BLOBS = token<EvalBlobPort>('port.IntakeBlobs');

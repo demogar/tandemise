@@ -23,6 +23,8 @@ export interface TandemisePaths {
   readonly skills: string;
   /** The eval case blob store (P3b), shared by every project: content-addressed by sha256. */
   readonly evalBlobs: string;
+  /** Inline attachments of intake signals (spec 2026-10-30-intake-design.md §1): content-addressed by sha256. */
+  readonly intakeBlobs: string;
 }
 
 export function createPaths(root = defaultRoot()): TandemisePaths {
@@ -45,6 +47,7 @@ export function createPaths(root = defaultRoot()): TandemisePaths {
     browserProfiles: (w) => join(ws(w), 'browser-profiles'),
     skills: join(abs, 'skills'),
     evalBlobs: join(abs, 'evals', 'blobs'),
+    intakeBlobs: join(abs, 'intake', 'blobs'),
   };
 }
 

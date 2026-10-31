@@ -15,6 +15,7 @@ import {
   applySetupRequest, exportSetupRequest, previewSetupRequest,
   parkTaskRequest, handBackRequest, resolveWorkspaceLinkRequest,
   createEvalSuiteRequest, saveEvalCaseRequest, startEvalRunRequest, runScoresQuery,
+  ACCEPTED_INTAKE_SCHEMAS, intakeSignalsQuery, mintIntakeTokenRequest,
 } from '@tandemise/api-contract';
 import type { EvalSuiteView } from '@tandemise/api-contract';
 import { normalizeLimits } from '@tandemise/domain';
@@ -151,6 +152,25 @@ export function buildRouter(services: TandemiseServices, options: { readonly tes
   r.patch('/v1/repositories/:id/issues', async (ctx) =>
     services.issues.configure(ctx.caller, asId(ctx.params.id!), await ctx.body(updateIssueSettingsRequest)));
   r.post('/v1/repositories/:id/issues/check', (ctx) => services.issues.checkNow(ctx.caller, asId(ctx.params.id!)));
+
+  // Intake (spec 2026-10-30-intake-design.md §2): custom runners push signals
+  // with an intake token (the listener resolves it into ctx.intake) or the
+  // daemon token plus ?workspace=&source=. The push answers 202 per signal.
+  r.get('/v1/intake/schema', () => ({ accepted: [...ACCEPTED_INTAKE_SCHEMAS] }));
+  r.post('/v1/intake/signals', async (ctx) => {
+    const scope = services.intake.pushScope(ctx.intake, ctx.query.get('workspace'), ctx.query.get('source'));
+    return { results: await services.intake.ingestMany(scope, await ctx.body(z.unknown())) };
+  }, { status: 202 });
+  r.get('/v1/workspaces/:id/intake/signals', (ctx) => {
+    const q = query(ctx, intakeSignalsQuery);
+    return services.intake.list(asId(ctx.params.id!), { ...(q.status === undefined ? {} : { statuses: q.status }), ...(q.limit === undefined ? {} : { limit: q.limit }) });
+  });
+  r.get('/v1/workspaces/:id/intake/config', (ctx) => services.intake.config(asId(ctx.params.id!)));
+  r.put('/v1/workspaces/:id/intake/config', async (ctx) =>
+    services.intake.configure(ctx.caller, asId(ctx.params.id!), await ctx.body(z.unknown())));
+  r.post('/v1/workspaces/:id/intake/tokens', async (ctx) =>
+    services.intake.mintToken(ctx.caller, asId(ctx.params.id!), (await ctx.body(mintIntakeTokenRequest)).sourceId));
+  r.delete('/v1/intake/tokens/:id', (ctx) => { services.intake.revokeToken(ctx.caller, asId(ctx.params.id!)); });
 
   // Skills (P13): the project's library, imported by content hash and pinned per run.
   r.get('/v1/workspaces/:id/skills', (ctx) => services.skills.list(asId(ctx.params.id!)));
