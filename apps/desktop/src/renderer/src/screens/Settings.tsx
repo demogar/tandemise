@@ -5,6 +5,7 @@ import { useConnection } from '../lib/connection.js';
 import { useThemePreference, type ThemePreference } from '../lib/theme.js';
 import { dateTime } from '../lib/format.js';
 import { NotificationSettings } from './settings/Notifications.js';
+import { TeamRelay } from './settings/TeamRelay.js';
 import { SettingsAbout } from './SettingsAbout.js';
 
 export function Settings(): JSX.Element {
@@ -43,6 +44,8 @@ export function Settings(): JSX.Element {
               </section>
 
               <NotificationSettings />
+
+              <TeamRelay />
 
               
 

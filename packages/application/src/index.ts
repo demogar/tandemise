@@ -108,6 +108,8 @@ export type { IntakeRunnerHostDeps } from './intake/runner-host.js';
 export { CLOSURE_MAX_ATTEMPTS, ClosureService, closureBackoffMs } from './services/closure-service.js';
 export type { ClosureServiceDeps } from './services/closure-service.js';
 export { SOURCE_NOT_CONFIGURED } from './intake/runner-host.js';
+export { CoordinationService, STOPPED_FOR_CLAIM, PENDING_SENTENCE } from './services/coordination-service.js';
+export type { CoordinationDeps, TrackerItem } from './services/coordination-service.js';
 export { ContributionError, ContributionServiceImpl, pickGitCredentialEnv } from './services/contribution-service.js';
 export type { ContributionDeps, ContributionErrorCode } from './services/contribution-service.js';
 export { EvalError, EvalService } from './services/eval-service.js';

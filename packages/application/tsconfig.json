@@ -37,6 +37,9 @@
     },
     {
       "path": "../../packages/evaluation"
+    },
+    {
+      "path": "../../packages/coordination"
     }
   ]
 }

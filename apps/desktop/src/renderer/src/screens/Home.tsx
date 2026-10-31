@@ -2,6 +2,7 @@ import { Link, useLocation } from 'wouter';
 import type { HomeMetricsView, HomeView, MissionSummary } from '@tandemise/api-contract';
 import { PageHeader } from '../components/PageHeader.js';
 import { Icon } from '../components/Icon.js';
+import { WhoIsWorking } from '../components/WhoIsWorking.js';
 import { Empty, ErrorState, SectionHead, SkeletonCards, SkeletonList, Stat, StatusBadge, StatusDot } from '../components/primitives.js';
 import { ApprovalPreviewCard } from './approvals/ApprovalCard.js';
 import { useDaemonMutation, useHome, useRoles } from '../lib/queries.js';
@@ -150,6 +151,11 @@ export function Home(): JSX.Element {
                 ))}
               </div>
             )}
+          </section>
+
+          <section className="section" aria-label="Who's working on what">
+            <SectionHead title="Who's working on what" />
+            <WhoIsWorking />
           </section>
 
           <div className="split">

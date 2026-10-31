@@ -88,6 +88,8 @@ const TOPIC_KEYS: Readonly<Record<ProjectionTopic, readonly (readonly string[])[
   refinement: [['mission'], ['inbox'], ['home'], ['missions']],
   // A signal that needs a decision is an Inbox card (intake, plan Task 7).
   intake: [['inbox'], ['home'], ['intake']],
+  // Claims with the team: Home's "Who's working on what", a mission's claim banner and its Inbox row.
+  coordination: [['coordination'], ['mission'], ['inbox'], ['team']],
 };
 
 export function invalidateTopic(
@@ -222,6 +224,29 @@ export function useRoutines() {
     queryFn: () => daemon.routines(workspaceId ?? ''),
     enabled: Boolean(workspaceId),
     refetchInterval: 5_000,
+    placeholderData: (previous) => previous,
+  });
+}
+
+/** Where coordination stands: local only, or with a team relay. Polled: "Offline since" is the daemon's word. */
+export function useCoordinationStatus() {
+  const daemon = useDaemon();
+  return useQuery({
+    queryKey: ['coordination', 'status'] as const,
+    queryFn: () => daemon.coordinationStatus(),
+    refetchInterval: 5_000,
+    placeholderData: (previous) => previous,
+  });
+}
+
+/** "Who's working on what" in this project. */
+export function useCoordinationClaims() {
+  const daemon = useDaemon();
+  const workspaceId = useWorkspaceId();
+  return useQuery({
+    queryKey: ['coordination', 'claims', workspaceId ?? ''] as const,
+    queryFn: () => daemon.coordinationClaims(workspaceId ?? ''),
+    enabled: Boolean(workspaceId),
     placeholderData: (previous) => previous,
   });
 }

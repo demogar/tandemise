@@ -44,6 +44,15 @@ end-to-end checks (`npm run check:offline`). The checks that need a signed-in
 runtime, a browser or macOS permissions are listed in `docs/QUICKSTART.md`.
 Run the ones that cover your change by hand.
 
+The optional team relay (`apps/relay`) is checked by `relay-check` (the server
+from its build: invites, racing claims, the stream, take-over, the webhook
+mailbox and its limits, the CLI) and `coordination-daemon-check` (one relay and
+two daemons, online and offline). `npm run check:boundaries` holds
+`apps/relay/src` to `@tandemise/api-contract/relay`, `@tandemise/coordination`,
+`ws`, `better-sqlite3`, `zod` and `node:*`, so it can move to its own repository
+mechanically. Its real-app acceptance is `node scratch/acceptance/relay/run-all.mjs`
+(two windows); its Docker image is built in CI.
+
 ## Branches, pull requests and commits
 
 - `main` is protected. Every change lands through a pull request that passes CI.

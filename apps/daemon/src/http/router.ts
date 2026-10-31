@@ -19,6 +19,8 @@ export interface RequestContext {
   readonly query: URLSearchParams;
   readonly log: Logger;
   readonly raw: IncomingMessage;
+  /** The response, for the few routes that answer with something other than JSON (they return `HANDLED`). */
+  readonly res: ServerResponse;
   /** Who the request acts as, resolved from its bearer token. */
   readonly caller: Caller;
   /**
@@ -144,6 +146,7 @@ export async function readJsonBody(req: IncomingMessage, maxBodyBytes = MAX_BODY
 
 export function makeContext(
   req: IncomingMessage,
+  res: ServerResponse,
   params: Record<string, string>,
   query: URLSearchParams,
   log: Logger,
@@ -155,7 +158,7 @@ export function makeContext(
   let read = false;
   let caller: Caller | undefined;
   return {
-    params, query, log, raw: req, intake,
+    params, query, log, raw: req, res, intake,
     // Resolved on first use, so a route that acts as nobody still answers when
     // the principal cannot be resolved (e.g. the local person was removed).
     get caller(): Caller {

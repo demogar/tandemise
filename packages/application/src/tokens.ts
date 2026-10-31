@@ -123,6 +123,9 @@ export const ARTIFACT_MEASURE = token<ArtifactMeasurePort>('port.ArtifactMeasure
 export const SETTINGS_STORE = token<SettingsStorePort>('port.SettingsStore');
 export const SYSTEM_ENVIRONMENT = token<SystemEnvironmentPort>('port.SystemEnvironment');
 export const PROCESS_LIVENESS = token<ProcessLivenessPort>('port.ProcessLiveness');
+/** Who works on what with the team (relay spec): the local store or a relay client, bound by the daemon. */
+export const COORDINATION = token<import('./ports.js').CoordinationPort>('port.Coordination');
+export const COORDINATION_CONTROL = token<import('./ports.js').CoordinationControlPort>('port.CoordinationControl');
 
 // ------------------------------------------------------------ engine services
 
@@ -186,6 +189,7 @@ export const SKILL_SERVICE = token<SkillService>('application.SkillService');
 /** Skill folders and the content store (P13); rebound by the daemon. */
 export const SKILL_FILES = token<SkillFilesPort>('port.SkillFiles');
 export const ISSUE_SERVICE = token<IssueService>('application.IssueService');
+export const COORDINATION_SERVICE = token<import('./services/coordination-service.js').CoordinationService>('application.CoordinationService');
 /** GitHub issues over `gh` (P14); rebound by the daemon. */
 export const ISSUE_TRACKER = token<IssueTrackerPort>('port.IssueTracker');
 /** Outside contributions pinned as Evidence (P3). */

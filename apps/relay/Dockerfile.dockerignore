@@ -1,0 +1,16 @@
+# The build context is the repository root; the relay needs only the workspaces' manifests and the
+# sources of api-contract (with shared and domain, which it references), coordination and relay.
+**/node_modules
+**/dist
+**/*.tsbuildinfo
+.git
+.github
+.claude
+docs
+scratch
+screenshots
+apps/desktop/**
+!apps/desktop/package.json
+apps/daemon/**
+!apps/daemon/package.json
+apps/relay/.env

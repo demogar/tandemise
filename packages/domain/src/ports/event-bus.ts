@@ -16,7 +16,9 @@ export type ProjectionTopic =
   | 'missions' | 'tasks' | 'approvals' | 'artifacts' | 'runtimes'
   | 'integrations' | 'targets' | 'workspaces' | 'decisions' | 'checks' | 'criteria' | 'refinement'
   /** Intake signals and the Inbox decisions they ask (plan Task 7). */
-  | 'intake';
+  | 'intake'
+  /** Claims, members and presence with the team (relay spec). */
+  | 'coordination';
 
 export interface ProjectionBusPort {
   invalidate(topic: ProjectionTopic, scope?: { missionId?: MissionId }): void;

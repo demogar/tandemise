@@ -63,6 +63,7 @@ import { lexicalSimilarity } from '@tandemise/domain';
 import { SetupService } from './services/setup-service.js';
 import { RefinementServiceImpl } from './services/refinement-service.js';
 import { EvalService } from './services/eval-service.js';
+import { CoordinationService } from './services/coordination-service.js';
 import { PlanningServiceImpl } from './services/planning-service.js';
 import { ProjectionServiceImpl } from './services/projection-service.js';
 import { RoleServiceImpl } from './services/role-service.js';
@@ -574,6 +575,11 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       },
       // Resolved per call: intake is composed after the projections (plan Task 7).
       intakeDecisions: (workspaceId) => r.resolve(it.INTAKE_SERVICE).decisions(workspaceId),
+      // Resolved per call: the claim banner and the Unclaimed rows (relay spec).
+      coordination: {
+        missionClaim: (missionId) => r.resolve(t.COORDINATION_SERVICE).missionClaim(missionId),
+        inboxUnclaimed: (workspaceId) => r.resolve(t.COORDINATION_SERVICE).inboxUnclaimed(workspaceId),
+      },
     }), { source: SOURCE });
 
     // Default: this installation has no workflow files. A composition root that
@@ -649,6 +655,10 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       skills: r.resolve(t.SKILL_SERVICE),
       proposals: r.resolve(t.PLAN_PROPOSAL_REPOSITORY),
       replanRest: (missionId, note, planFitApprovalId) => r.resolve(t.PLANNING_SERVICE).replan(missionId, { note, planFitApprovalId }),
+      claims: {
+        assertMayStart: (mission) => r.resolve(t.COORDINATION_SERVICE).assertMayStart(mission),
+        abandonStart: (mission) => r.resolve(t.COORDINATION_SERVICE).abandonStart(mission),
+      },
       clock: clock(r),
       log: log(r).child({ component: 'approvals' }),
     }), { source: SOURCE });
@@ -707,7 +717,30 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       artifactRoot: (workspaceId) => paths(r).artifacts(workspaceId),
       events: r.resolve(t.EVENT_REPOSITORY),
       targets: r.resolve(t.EXECUTION_TARGET_REPOSITORY),
+      claims: {
+        assertMayStart: (mission) => r.resolve(t.COORDINATION_SERVICE).assertMayStart(mission),
+        abandonStart: (mission) => r.resolve(t.COORDINATION_SERVICE).abandonStart(mission),
+      },
     }), { source: SOURCE });
+
+    // Who works on what with the team (relay spec). The ports are optional: a
+    // composition with no coordination gets a service that does nothing.
+    bind(t.COORDINATION_SERVICE, (r) => {
+      const service = new CoordinationService({
+        coordination: r.tryResolve(t.COORDINATION) ?? null,
+        control: r.tryResolve(t.COORDINATION_CONTROL) ?? null,
+        missions: r.resolve(t.MISSION_REPOSITORY),
+        issues: r.resolve(t.ISSUE_REPOSITORY),
+        repositories: r.resolve(t.REPO_REPOSITORY),
+        settings: r.resolve(t.SETTINGS_STORE),
+        recorder: r.resolve(t.EVENT_RECORDER),
+        cancelMission: (id, reason) => r.resolve(t.MISSION_SERVICE).cancel(id, reason),
+        clock: clock(r),
+        log: log(r).child({ component: 'coordination' }),
+      });
+      r.resolve(t.EVENT_BUS).subscribe((record) => { void service.onEvent(record); });
+      return service;
+    }, { source: SOURCE });
 
     bind(t.REFINEMENT_SERVICE, (r) => new RefinementServiceImpl({
       workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
@@ -1081,6 +1114,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       tracker: r.resolve(it.TRACKER_SERVICE),
       intakeRunners: r.resolve(it.INTAKE_RUNNER_HOST),
       closures: r.resolve(it.CLOSURE_SERVICE),
+      coordination: r.resolve(t.COORDINATION_SERVICE),
     }), { source: SOURCE });
   });
 }

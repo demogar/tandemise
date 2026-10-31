@@ -83,6 +83,11 @@ export interface ProjectionDeps {
   readonly desk?: Pick<DeskService, 'metrics' | 'banners'>;
   /** Intake signals waiting on a person (intake plan Task 7); optional for harnesses built before it. */
   readonly intakeDecisions?: (workspaceId: WorkspaceId) => readonly InboxIntakeDecisionView[];
+  /** The claim banner and the Unclaimed Inbox rows (relay spec); optional for harnesses built before it. */
+  readonly coordination?: {
+    missionClaim(missionId: string): MissionDetail['claim'];
+    inboxUnclaimed(workspaceId: string): NonNullable<InboxView['unclaimed']>;
+  };
 }
 
 /**
@@ -206,6 +211,7 @@ export class ProjectionServiceImpl implements ProjectionService {
       stalled: this.deps.liveness?.stalled(workspaceId) ?? [],
       silentRuns: this.deps.liveness?.silentRuns(workspaceId) ?? [],
       ...(this.deps.intakeDecisions === undefined ? {} : { intakeDecisions: this.deps.intakeDecisions(workspaceId) }),
+      unclaimed: this.deps.coordination?.inboxUnclaimed(workspaceId) ?? [],
     };
   }
 
@@ -436,6 +442,7 @@ export class ProjectionServiceImpl implements ProjectionService {
         : { summary: this.#planSummary(mission, tasks), tasks: asPlannedTasks(tasks) },
       planIssues: this.#planIssues(mission, tasks),
       uploads: this.#uploads(id),
+      claim: this.deps.coordination?.missionClaim(id) ?? null,
     };
   }
 

@@ -23,7 +23,15 @@ export interface HttpServerOptions {
    * or null. Consulted only on the intake routes (spec 2026-10-30-intake-design.md §2).
    */
   readonly intakeTokenResolver?: (token: string) => IntakeScope | null;
+  /**
+   * The local webhook ingress may skip the bearer check, only when the person
+   * explicitly turned `coordination.localHooksUnauthenticated` on (relay spec,
+   * "Solo"). The bind stays loopback either way.
+   */
+  readonly unauthenticatedHooks?: () => boolean;
 }
+
+const LOCAL_HOOK_PATH = /^\/v1\/hooks\/[^/]+$/;
 
 /**
  * The daemon's HTTP surface.
@@ -152,7 +160,8 @@ export class HttpServer {
       if (!verifyBearer(authorization, this.#opts.token) && authorization !== undefined && isIntakePath(url.pathname)) {
         intake = this.#opts.intakeTokenResolver?.(bearerToken(authorization)) ?? null;
       }
-      if (intake === null && !verifyBearer(authorization, this.#opts.token)) {
+      const openHook = LOCAL_HOOK_PATH.test(url.pathname) && this.#opts.unauthenticatedHooks?.() === true;
+      if (!openHook && intake === null && !verifyBearer(authorization, this.#opts.token)) {
         log.warn('daemon.unauthenticated_request');
         sendError(res, TandemiseError.permissionDenied('Missing or invalid daemon token.'), log);
         return;
@@ -171,8 +180,8 @@ export class HttpServer {
         return;
       }
 
-      const bearer = bearerToken(authorization!);
-      const ctx = makeContext(req, matched.params, url.searchParams, log, () => this.#opts.identityResolver(bearer), {
+      const bearer = bearerToken(authorization ?? '');
+      const ctx = makeContext(req, res, matched.params, url.searchParams, log, () => this.#opts.identityResolver(bearer), {
         maxBodyBytes: matched.route.maxBodyBytes,
         overflowMessage: matched.route.overflowMessage,
       }, intake);

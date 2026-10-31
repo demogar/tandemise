@@ -3,7 +3,7 @@ import type { ApprovalView } from '@tandemise/api-contract';
 import type { Approval, ApprovalOption, RiskClass } from '@tandemise/domain';
 import { NEEDS_CHANGES_OPTION, REJECT_OPTION, REPLAN_REST_OPTION, REQUEST_CHANGES_OPTION, SKIP_REST_OPTION, isLimitCard, isPlanFitCard } from '../lib/domain.js';
 import { ConfirmDialog } from './Modal.js';
-import { ErrorState } from './primitives.js';
+import { ClaimAwareError } from './ClaimBanner.js';
 import { RecordingFor, behalfOf } from './ActorChip.js';
 import { useDaemonMutation } from '../lib/queries.js';
 import { useDaemon } from '../lib/connection.js';
@@ -221,7 +221,7 @@ export function DecisionForm({ decision, variant = 'full' }: { decision: Approva
             );
           })}
         </div>
-        {decision.error ? <ErrorState error={decision.error} /> : null}
+        {decision.error ? <ClaimAwareError error={decision.error} onRetry={decision.submit} /> : null}
         <DecisionConfirm decision={decision} />
       </div>
     );
@@ -264,7 +264,7 @@ export function DecisionForm({ decision, variant = 'full' }: { decision: Approva
         onChange={(event) => decision.setNote(event.target.value)}
       />
 
-      {decision.error ? <ErrorState error={decision.error} /> : null}
+      {decision.error ? <ClaimAwareError error={decision.error} onRetry={decision.submit} /> : null}
 
       <div className="row row--wrap" style={{ justifyContent: 'flex-end', marginTop: 4 }}>
         <span className="dim" style={{ fontSize: 'var(--fs-xs)', marginRight: 'auto' }}>

@@ -14,6 +14,7 @@ export const LAYERS = {
   'integrations-core': 3,
   context: 3,
   evaluation: 3,
+  coordination: 3,
   'runtime-claude': 4,
   'runtime-codex': 4,
   'runtime-generic': 4,
@@ -24,6 +25,7 @@ export const LAYERS = {
   'integration-mcp': 4,
   browser: 4,
   'desktop-control': 4,
+  'coordination-relay': 4,
   application: 5,
 };
 
@@ -31,7 +33,7 @@ export const LAYERS = {
 export const PROVIDER_PACKAGES = new Set([
   'runtime-claude', 'runtime-codex', 'runtime-generic',
   'execution-local', 'integration-github', 'integration-mcp', 'browser', 'desktop-control',
-  'persistence', 'artifacts', 'integration-youtrack', 'intake-runners',
+  'persistence', 'artifacts', 'integration-youtrack', 'intake-runners', 'coordination-relay',
 ]);
 
 export const PACKAGES = {
@@ -47,6 +49,7 @@ export const PACKAGES = {
   'integrations-core': { deps: ['shared', 'domain', 'kernel', 'policy'], ext: { zod: '^3.24.1' } },
   context: { deps: ['shared', 'kernel', 'domain', 'policy'], ext: {} },
   evaluation: { deps: ['shared', 'kernel', 'domain'], ext: {} },
+  coordination: { deps: ['api-contract'], ext: { zod: '^3.24.1' } },
   'runtime-claude': { deps: ['shared', 'domain', 'runtimes-core'], ext: {} },
   'runtime-codex': { deps: ['shared', 'kernel', 'domain', 'runtimes-core'], ext: {} },
   'runtime-generic': { deps: ['shared', 'domain', 'runtimes-core'], ext: {} },
@@ -57,13 +60,22 @@ export const PACKAGES = {
   'integration-mcp': { deps: ['shared', 'kernel', 'domain', 'integrations-core'], ext: { zod: '^3.24.1' } },
   browser: { deps: ['shared', 'kernel', 'domain', 'integrations-core'], ext: { playwright: '^1.49.1', zod: '^3.24.1' } },
   'desktop-control': { deps: ['shared', 'domain', 'kernel', 'integrations-core'], ext: {} },
+  // The daemon's relay client (relay spec): a provider, so only bootstrap names it.
+  'coordination-relay': { deps: ['api-contract', 'coordination'], ext: { ws: '^8.18.0' }, dev: { '@types/ws': '^8.5.13' } },
   application: {
-    deps: ['shared', 'kernel', 'domain', 'api-contract', 'policy', 'runtimes-core', 'execution-core', 'integrations-core', 'context', 'evaluation'],
+    deps: ['shared', 'kernel', 'domain', 'api-contract', 'policy', 'runtimes-core', 'execution-core', 'integrations-core', 'context', 'evaluation', 'coordination'],
     ext: { zod: '^3.24.1', yaml: '^2.9.1' },
   },
 };
 
 export const APPS = {
+  // The optional team relay (docs/superpowers/specs/2026-10-30-relay-design.md). check-boundaries holds
+  // apps/relay/src to the two internal modules below plus ws, better-sqlite3, zod and node:*.
+  relay: {
+    deps: ['api-contract', 'coordination'],
+    ext: { ws: '^8.18.0', 'better-sqlite3': '^11.7.0', zod: '^3.24.1' },
+    dev: { '@types/ws': '^8.5.13', '@types/better-sqlite3': '^7.6.12' },
+  },
   daemon: {
     deps: Object.keys(PACKAGES),
     ext: { zod: '^3.24.1', ws: '^8.18.0' },
