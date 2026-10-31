@@ -33,7 +33,7 @@ const section = (t) => console.log(`\n== ${t}`);
 const ts = require('typescript');
 const source = readFileSync(join(root, 'apps/desktop/src/main/node-runtime.ts'), 'utf8');
 const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
-const { bundledDaemonNode, resolveDaemonNode, parseLoginShellPath, LOGIN_PATH_MARKER, MIN_NODE_MAJOR } =
+const { bundledDaemonNode, daemonNeedsReplacing, resolveDaemonNode, parseLoginShellPath, LOGIN_PATH_MARKER, MIN_NODE_MAJOR } =
   await import(`data:text/javascript;base64,${Buffer.from(js).toString('base64')}`);
 
 const ELECTRON = { execPath: '/Apps/Tandemise.app/Contents/MacOS/Tandemise', nodeVersion: '20.18.3' };
@@ -113,6 +113,16 @@ section("a packaged app's bundled daemon runs on Electron's Node, always");
 {
   const r = bundledDaemonNode({ execPath: '/Apps/Tandemise', nodeVersion: '20.18.3' });
   check('an Electron below the floor is a packaging bug, said plainly', !r.ok && r.message.includes('Node 20.18.3') && r.message.includes('Node 22 or newer') && !/\n/.test(r.message), r);
+}
+
+section('after an update, a packaged app replaces a daemon of another release');
+{
+  const base = { packaged: true, entryOverride: false, appVersion: '0.10.0' };
+  check('packaged, older daemon -> replace', daemonNeedsReplacing({ ...base, daemonVersion: '0.9.0' }) === true);
+  check('packaged, a daemon from before the handshake named its version -> replace', daemonNeedsReplacing({ ...base, daemonVersion: null }) === true);
+  check('packaged, same release -> keep', daemonNeedsReplacing({ ...base, daemonVersion: '0.10.0' }) === false);
+  check('a checkout never stops a daemon', daemonNeedsReplacing({ ...base, packaged: false, daemonVersion: '0.9.0' }) === false);
+  check('nor does an explicit TANDEMISE_DAEMON_ENTRY', daemonNeedsReplacing({ ...base, entryOverride: true, daemonVersion: '0.9.0' }) === false);
 }
 
 section('no usable Node: one plain message that says what to do');

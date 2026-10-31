@@ -184,6 +184,26 @@ export function bundledDaemonNode(electron: NodeWorld['electron']): NodeResoluti
   return { ok: true, command: electron.execPath, version, source: 'bundled', env: { ELECTRON_RUN_AS_NODE: '1' }, tried };
 }
 
+/**
+ * Whether a running daemon must make way for the one this app carries.
+ *
+ * Only a packaged app replaces anything, and only a daemon of another release:
+ * after an update the old daemon keeps running (it outlives every window), and
+ * its code, database migrations and API no longer match the new app. A daemon
+ * from before the handshake named its version is from an older release too. A
+ * checkout, or an explicit TANDEMISE_DAEMON_ENTRY, never stops a daemon - a
+ * developer's daemon is theirs to manage.
+ */
+export function daemonNeedsReplacing(input: {
+  readonly packaged: boolean;
+  readonly entryOverride: boolean;
+  readonly appVersion: string;
+  readonly daemonVersion: string | null;
+}): boolean {
+  if (!input.packaged || input.entryOverride) return false;
+  return input.daemonVersion !== input.appVersion;
+}
+
 function splitPath(value: string, sep: string): string[] {
   return value.split(sep).map((d) => d.trim()).filter((d) => d.length > 0);
 }

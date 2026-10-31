@@ -6,12 +6,21 @@ import { join, resolve } from 'node:path';
 import { EventEmitter } from 'node:events';
 import { app } from 'electron';
 import type { DaemonConnection, DaemonStatus } from '../shared/bridge.js';
-import { LOGIN_PATH_MARKER, bundledDaemonNode, parseLoginShellPath, resolveDaemonNode, type NodeResolution } from './node-runtime.js';
+import { LOGIN_PATH_MARKER, bundledDaemonNode, daemonNeedsReplacing, parseLoginShellPath, resolveDaemonNode, type NodeResolution } from './node-runtime.js';
 
 const TANDEMISE_HOME = process.env['TANDEMISE_HOME'] ?? join(homedir(), '.tandemise');
 const HANDSHAKE_FILE = join(TANDEMISE_HOME, 'daemon.json');
 /** Which Node started the daemon, and anything the daemon said on stderr while starting. */
 const LAUNCH_LOG = join(TANDEMISE_HOME, 'logs', 'daemon-launch.log');
+
+/** How long an old daemon gets to shut down cleanly after an update (its own grace is 15s). */
+const REPLACE_TIMEOUT_MS = 20_000;
+
+/** How long the update notice stays on screen at least. */
+const UPDATE_NOTICE_MIN_MS = 3_000;
+
+/** The words the window shows while an updated app replaces the old daemon. */
+export const RESTARTING_AFTER_UPDATE = 'Tandemise was updated; restarting its background service…';
 
 /** Poll budget for a daemon we just spawned. Generous: first start compiles nothing but does open a database. */
 const SPAWN_POLL_INTERVAL_MS = 250;
@@ -52,9 +61,27 @@ export class DaemonConnector extends EventEmitter {
   }
 
   async #discover(): Promise<DaemonStatus> {
+    /** Set when an update made us replace the daemon; the notice stays up long enough to read. */
+    let noticeSince: number | null = null;
     const existing = await readHandshake();
     if (existing && (await isReachable(existing))) {
-      return this.#set('connected', existing, `Connected to daemon on ${existing.url}.`);
+      const replace = daemonNeedsReplacing({
+        packaged: app.isPackaged,
+        entryOverride: Boolean(process.env['TANDEMISE_DAEMON_ENTRY']),
+        appVersion: app.getVersion(),
+        daemonVersion: existing.version,
+      });
+      if (!replace) return this.#set('connected', connectionOf(existing), `Connected to daemon on ${existing.url}.`);
+      this.#set('spawning', null, RESTARTING_AFTER_UPDATE);
+      noticeSince = Date.now();
+      logLaunch(`replacing the daemon of version ${existing.version ?? '(unknown)'} (pid ${existing.pid}) with this app's ${app.getVersion()}`);
+      if (!(await stopDaemon(existing))) {
+        return this.#set(
+          'unavailable',
+          null,
+          `Tandemise was updated, but its background service from version ${existing.version ?? 'an older release'} (process ${existing.pid}) did not stop. End that process, then press Retry.`,
+        );
+      }
     }
 
     // Either no handshake file, or a stale one pointing at a dead process. Both
@@ -105,6 +132,9 @@ export class DaemonConnector extends EventEmitter {
         `Started the daemon but it did not report a connection within ${SPAWN_POLL_TIMEOUT_MS / 1000}s. Check ${LAUNCH_LOG} and the logs next to it.`,
       );
     }
+    // Replacing a daemon takes well under a second, often before the window
+    // has even loaded; the person should still see why the app paused.
+    if (noticeSince !== null) await delay(Math.max(0, UPDATE_NOTICE_MIN_MS - (Date.now() - noticeSince)));
     return this.#set('connected', started, `Connected to daemon on ${started.url}.`);
   }
 
@@ -142,7 +172,7 @@ export class DaemonConnector extends EventEmitter {
       return;
     }
     if (current?.url === next.url && current.token === next.token && this.#status.phase === 'connected') return;
-    this.#set('connected', next, `Connected to daemon on ${next.url}.`);
+    this.#set('connected', connectionOf(next), `Connected to daemon on ${next.url}.`);
   }
 
   #set(phase: DaemonStatus['phase'], connection: DaemonConnection | null, detail: string): DaemonStatus {
@@ -152,7 +182,16 @@ export class DaemonConnector extends EventEmitter {
   }
 }
 
-async function readHandshake(): Promise<DaemonConnection | null> {
+/** The handshake as the daemon wrote it; `version` is null for daemons older than the field. */
+interface Handshake extends DaemonConnection {
+  readonly version: string | null;
+}
+
+function connectionOf(h: Handshake): DaemonConnection {
+  return { url: h.url, token: h.token, pid: h.pid, startedAt: h.startedAt };
+}
+
+async function readHandshake(): Promise<Handshake | null> {
   let raw: string;
   try {
     raw = await readFile(HANDSHAKE_FILE, 'utf8');
@@ -166,9 +205,50 @@ async function readHandshake(): Promise<DaemonConnection | null> {
     return null;
   }
   if (typeof parsed !== 'object' || parsed === null) return null;
-  const { url, token, pid, startedAt } = parsed as Record<string, unknown>;
+  const { url, token, pid, startedAt, version } = parsed as Record<string, unknown>;
   if (typeof url !== 'string' || typeof token !== 'string' || typeof pid !== 'number') return null;
-  return { url, token, pid, startedAt: typeof startedAt === 'string' ? startedAt : new Date(0).toISOString() };
+  return {
+    url, token, pid,
+    startedAt: typeof startedAt === 'string' ? startedAt : new Date(0).toISOString(),
+    version: typeof version === 'string' ? version : null,
+  };
+}
+
+/**
+ * Stops a daemon cleanly and waits for it to go. It is asked over HTTP
+ * (POST /v1/daemon/shutdown), which runs the same coordinated shutdown as
+ * SIGTERM and also works on Windows; a daemon too old to have that route gets
+ * SIGTERM. True once the process is gone.
+ */
+async function stopDaemon(daemon: Handshake): Promise<boolean> {
+  let asked = false;
+  try {
+    const response = await fetch(`${daemon.url}/v1/daemon/shutdown`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${daemon.token}` },
+      signal: AbortSignal.timeout(5_000),
+    });
+    asked = response.ok;
+  } catch {
+    asked = false;
+  }
+  if (!asked) {
+    try {
+      process.kill(daemon.pid, 'SIGTERM');
+    } catch {
+      // Already gone, or not ours to signal; the wait below tells which.
+    }
+  }
+  const deadline = Date.now() + REPLACE_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    if (!isProcessAlive(daemon.pid)) {
+      logLaunch(`the old daemon (pid ${daemon.pid}) stopped`);
+      return true;
+    }
+    await delay(SPAWN_POLL_INTERVAL_MS);
+  }
+  logLaunch(`the old daemon (pid ${daemon.pid}) did not stop within ${REPLACE_TIMEOUT_MS / 1000}s`);
+  return false;
 }
 
 /**
@@ -355,7 +435,7 @@ async function pollForHandshake(launch: Launch): Promise<DaemonConnection | 'exi
   while (Date.now() < deadline) {
     await delay(SPAWN_POLL_INTERVAL_MS);
     const connection = await readHandshake();
-    if (connection && (await isReachable(connection))) return connection;
+    if (connection && (await isReachable(connection))) return connectionOf(connection);
     if (launch.exited()) return 'exited';
   }
   return null;

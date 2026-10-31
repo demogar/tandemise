@@ -21,6 +21,13 @@ export interface DaemonConnectionFile {
   readonly pid: number;
   readonly apiVersion: string;
   readonly startedAt: string;
+  /**
+   * The release this daemon is (`0.9.0`) and the commit it was built from. A
+   * packaged desktop compares the version with its own and replaces a daemon
+   * left running by an older install.
+   */
+  readonly version: string;
+  readonly build: string;
 }
 
 const FILE_NAME = 'daemon.json';

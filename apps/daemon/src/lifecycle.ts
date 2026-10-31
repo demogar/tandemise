@@ -13,7 +13,7 @@ export function installShutdownHandlers(opts: {
   log: Logger;
   shutdown: () => Promise<void>;
   graceMs?: number;
-}): void {
+}): (reason: string) => void {
   const graceMs = opts.graceMs ?? 15_000;
   let shuttingDown = false;
 
@@ -41,6 +41,12 @@ export function installShutdownHandlers(opts: {
     }
   };
 
+  // Windows has no SIGTERM a parent can send, so a client asks over HTTP
+  // (POST /v1/daemon/shutdown) and gets the same coordinated shutdown.
+  const request = (reason: string): void => {
+    if (!shuttingDown) void run(reason);
+  };
+
   process.on('SIGINT', () => void run('SIGINT'));
   process.on('SIGTERM', () => void run('SIGTERM'));
 
@@ -54,4 +60,5 @@ export function installShutdownHandlers(opts: {
     opts.log.error('daemon.uncaught_exception', { error: errorMessage(error), stack: error.stack });
     void run('uncaughtException');
   });
+  return request;
 }
