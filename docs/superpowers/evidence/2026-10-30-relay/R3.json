@@ -6,12 +6,12 @@
     {
       "label": "Invite someone shows a code",
       "ok": true,
-      "observed": "TRI-6MF3H-FPTKK-Z3PVG-DEVSG-8ADPM1"
+      "observed": "TRI-0QP3C-STH5C-95XKC-5MBZJ-V3PVE7"
     },
     {
       "label": "…that \"works once and expires on\" a date, shown only now",
       "ok": true,
-      "observed": "TRI-6MF3H-FPTKK-Z3PVG-DEVSG-8ADPM1\n\nThis code works once and expires on Nov 6, 2026, 8:01 PM. It is shown only now.\n\nCopy\nDone"
+      "observed": "TRI-0QP3C-STH5C-95XKC-5MBZJ-V3PVE7\n\nThis code works once and expires on Nov 6, 2026, 8:29 PM. It is shown only now.\n\nCopy\nDone"
     },
     {
       "label": "window B connects with it",

@@ -10,12 +10,12 @@
     {
       "label": "Home: \"Who's working on what\" has a row for acme/app#7",
       "ok": true,
-      "observed": "Who's working on what\nYou\nacme/app#7\nFix the hello page header\nsince 20:00"
+      "observed": "Who's working on what\nYou\nacme/app#7\nFix the hello page header\nsince 20:29"
     },
     {
       "label": "…and it is yours",
       "ok": true,
-      "observed": "Who's working on what\nYou\nacme/app#7\nFix the hello page header\nsince 20:00"
+      "observed": "Who's working on what\nYou\nacme/app#7\nFix the hello page header\nsince 20:29"
     },
     {
       "label": "a second mission on the same issue is refused in a dialog",

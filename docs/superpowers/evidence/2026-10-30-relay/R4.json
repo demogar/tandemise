@@ -7,14 +7,14 @@
       "label": "B's Home shows Ana on acme/app#11 within 2 s",
       "ok": true,
       "observed": {
-        "row": "Who's working on what\nAna\nacme/app#11\nOffline mode for the hello page\nsince 20:01",
+        "row": "Who's working on what\nAna\nacme/app#11\nOffline mode for the hello page\nsince 20:29",
         "ms": 3
       }
     },
     {
       "label": "B is refused: \"Ana is working on acme/app#11 since …\"",
       "ok": true,
-      "observed": "Someone is working on this\n\nAna is working on acme/app#11 since 20:01.\n\nNot now"
+      "observed": "Someone is working on this\n\nAna is working on acme/app#11 since 20:29.\n\nNot now"
     },
     {
       "label": "…with Not now and no Take over",

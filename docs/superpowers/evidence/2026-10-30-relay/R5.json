@@ -7,7 +7,7 @@
       "label": "after 25 h away, B is offered Take over",
       "ok": true,
       "observed": {
-        "dialog": "Someone is working on this\n\nAna is working on acme/app#11 since 20:01.\n\nNot now\nTake over",
+        "dialog": "Someone is working on this\n\nAna is working on acme/app#11 since 20:29.\n\nNot now\nTake over",
         "buttons": [
           "Not now",
           "Take over"
@@ -47,7 +47,7 @@
     }
   ],
   "notes": [
-    "relay clock now 2026-11-01T02:01:28.850Z"
+    "relay clock now 2026-11-01T02:30:05.826Z"
   ],
   "shots": [
     "/home/demogar/projects/tandemise/tandemise/.claude/worktrees/agent-a7a3a08456d2c2555/docs/superpowers/evidence/2026-10-30-relay/R5-b-take-over.png",
