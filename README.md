@@ -219,7 +219,8 @@ use (Claude Code, Codex, …) on your `PATH`.
   (`sudo apt install libfuse2` on Ubuntu). Without FUSE, run it as
   `NO_CLEANUP=1 ./Tandemise-*.AppImage --appimage-extract-and-run`: the daemon
   keeps running from the extracted copy after the window closes, and
-  `NO_CLEANUP=1` stops the AppImage from deleting that copy under it.
+  `NO_CLEANUP=1` stops the AppImage from deleting that copy under it (when the
+  window closes, or when a second launch exits).
 - **Linux .deb:** `sudo apt install ./Tandemise-*-linux-amd64.deb`, then start
   Tandemise from your applications menu (or `tandemise`).
 - **macOS and Windows:** until a release is signed, the system warns that the
