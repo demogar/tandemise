@@ -16,10 +16,10 @@
     "build": "tsc -b"
   },
   "dependencies": {
-    "@tandemise/shared": "*",
-    "@tandemise/kernel": "*",
     "@tandemise/domain": "*",
-    "better-sqlite3": "^11.7.0"
+    "@tandemise/kernel": "*",
+    "@tandemise/shared": "*",
+    "better-sqlite3": "^13.0.3"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12"
