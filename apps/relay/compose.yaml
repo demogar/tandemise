@@ -1,0 +1,51 @@
+# The optional team relay: one container, one SQLite file on a volume.
+#
+#   cp apps/relay/.env.example apps/relay/.env    # then edit it
+#   docker compose -f apps/relay/compose.yaml up -d --build
+#   docker compose -f apps/relay/compose.yaml logs relay   # the first admin invite
+#
+# With automatic TLS for RELAY_PUBLIC_URL (needs ports 80 and 443 reachable):
+#   docker compose -f apps/relay/compose.yaml --profile tls up -d --build
+services:
+  relay:
+    build:
+      context: ../..
+      dockerfile: apps/relay/Dockerfile
+    image: ghcr.io/tandemise/relay:latest
+    # Values come from apps/relay/.env (compose reads it for interpolation) or the shell.
+    environment:
+      RELAY_TEAM_NAME: ${RELAY_TEAM_NAME:-Team}
+      RELAY_PUBLIC_URL: ${RELAY_PUBLIC_URL:?Set RELAY_PUBLIC_URL in apps/relay/.env (see env.example)}
+      RELAY_INSECURE_HTTP: ${RELAY_INSECURE_HTTP:-}
+      RELAY_HOST: 0.0.0.0
+      RELAY_PORT: "8787"
+      RELAY_DB: /data/relay.db
+      RELAY_STALE_AFTER: ${RELAY_STALE_AFTER:-24h}
+      RELAY_MAILBOX_ACKED_KEEP: ${RELAY_MAILBOX_ACKED_KEEP:-24h}
+      RELAY_MAILBOX_UNACKED_KEEP: ${RELAY_MAILBOX_UNACKED_KEEP:-14d}
+      RELAY_MAILBOX_MAX_MESSAGES: ${RELAY_MAILBOX_MAX_MESSAGES:-10000}
+      RELAY_MAILBOX_MAX_MB: ${RELAY_MAILBOX_MAX_MB:-200}
+      RELAY_LOG_LEVEL: ${RELAY_LOG_LEVEL:-info}
+    ports:
+      - "${RELAY_PORT:-8787}:8787"
+    volumes:
+      - relay-data:/data
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    profiles: [tls]
+    depends_on: [relay]
+    environment:
+      RELAY_PUBLIC_HOST: ${RELAY_PUBLIC_HOST:-localhost}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    restart: unless-stopped
+
+volumes:
+  relay-data:
+  caddy-data:

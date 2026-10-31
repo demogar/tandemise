@@ -235,7 +235,23 @@ const twice = await fcall('POST', '/relay/v1/import', { token: admin, body: { li
 check('a second import is 409 relay_not_empty', twice.status === 409 && twice.body.error.details.reason === 'relay_not_empty', twice.body);
 await fresh.close();
 
-// ---- (Task 10 adds the CLI above this line)
+section('cli');
+const cli = (...args) => execFileSync(process.execPath, ['apps/relay/dist/cli.js', ...args], { env: { ...process.env, RELAY_DB: join(tmp, 'relay.db'), RELAY_LOG_LEVEL: 'error' } }).toString();
+const cliCode = cli('invite', '--role', 'admin', '--name', 'Ops').trim();
+check('`invite --role admin` prints one line, a code', CODE_RE.test(cliCode) && cliCode.split('\n').length === 1, cliCode);
+const viaCli = await call('POST', '/relay/v1/invites/redeem', { body: { code: cliCode, displayName: 'Ops', deviceLabel: 'Ops box' } });
+check('…which redeems on the running relay, as an admin', viaCli.status === 200 && (await call('GET', '/relay/v1/snapshot', { token: viaCli.body.deviceToken })).body.you.role === 'admin', viaCli.body);
+const out = join(tmp, 'backup.jsonl');
+cli('export', '--out', out);
+const first = JSON.parse(readFileSync(out, 'utf8').split('\n')[0]);
+check('`export` writes JSON lines, meta first', first.kind === 'meta' && first.schemaVersion === 1 && first.teamName === 'Check team', first);
+cli('revoke', viaCli.body.deviceId);
+const revokedByCli = await call('GET', '/relay/v1/snapshot', { token: viaCli.body.deviceToken });
+check('`revoke <id>` makes that device\'s next request 401', revokedByCli.status === 401 && reason(revokedByCli) === 'device_revoked', revokedByCli.body);
+const restoreDb = join(tmp, 'restore.db');
+writeFileSync(join(tmp, 'restore.jsonl'), readFileSync(out, 'utf8'));
+const restored = execFileSync(process.execPath, ['apps/relay/dist/cli.js', 'import', join(tmp, 'restore.jsonl')], { env: { ...process.env, RELAY_DB: restoreDb, RELAY_LOG_LEVEL: 'error' } }).toString();
+check('`import <file>` restores an export into an empty database', /claims/.test(restored), restored);
 
 section('failed auth is rate-limited per IP (last: it locks this client out)');
 // Earlier refusals in this run (a used invite, a token in a query) age out of the one-minute window first.

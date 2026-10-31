@@ -288,7 +288,27 @@
         },
         "apps/daemon/src/config.ts",
         "packages/integration-mcp/src/protocol.ts",
-        "packages/integrations-core/src/mcp/stdio-server.ts"
+        "packages/integrations-core/src/mcp/stdio-server.ts",
+        {
+          "type": "json",
+          "path": "packages/coordination/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "package-lock.json",
+          "jsonpath": "$.packages[\"packages/coordination\"].version"
+        },
+        {
+          "type": "json",
+          "path": "apps/relay/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "package-lock.json",
+          "jsonpath": "$.packages[\"apps/relay\"].version"
+        }
       ]
     }
   }
