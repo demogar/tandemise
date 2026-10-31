@@ -64,3 +64,15 @@ spec (`docs/superpowers/specs/2026-10-30-planner-and-merge-design.md`).
 - Ruling: a mission with no repository, an eval trial, or a plan where no step
   changed code ends the ship step SKIPPED with a sentence; it never fails the
   mission.
+- Ruling: the measured re-profile runs when the ship step starts (before
+  integrating or pushing), from `git diff --name-only base...<code branch>`, rather
+  than from `Scheduler#settled`. Promotion would otherwise race the async diff and
+  start the ship step before the added steps exist; at ship start every code
+  step has run, and the added steps still run before the pull request.
+  `Scheduler` is not touched for this.
+- Ruling: "Make it quick" files a plan card through the replan proposal
+  machinery (replacing the unstarted review/verify/spec steps and the ship step
+  with a ship step after the remaining code). The card carries a `Lane: quick`
+  evidence line; approving it calls `PlannerService.laneApproved` (one optional
+  hook in ApprovalService), which sets `laneRequest` and records
+  `lightenedByPerson`, so it survives a restart.

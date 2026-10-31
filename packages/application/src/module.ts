@@ -369,6 +369,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       recorder: r.resolve(t.EVENT_RECORDER),
       clock: clock(r),
       log: log(r).child({ component: 'ship' }),
+      escalate: (mission, paths) => r.resolve(t.PLANNER_SERVICE).escalate(mission, paths, { fromShip: true }),
     }), { source: SOURCE });
 
     bind(t.SCHEDULER, (r) => new SchedulerService({
@@ -612,6 +613,11 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       log: log(r).child({ component: 'planner' }),
       tiebreak: r.resolve(t.TIEBREAK_RUNNER),
       skills: r.resolve(t.SKILL_SERVICE),
+      tasks: r.resolve(t.TASK_REPOSITORY),
+      approvals: r.resolve(t.APPROVAL_REPOSITORY),
+      approvalFactory: r.resolve(APPROVAL_FACTORY),
+      proposals: r.resolve(t.PLAN_PROPOSAL_REPOSITORY),
+      members: r.resolve(t.MEMBER_REPOSITORY),
     }), { source: SOURCE });
 
     bind(t.WORKFLOW_SERVICE, (r) => new WorkflowServiceImpl(
@@ -667,6 +673,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
     }), { source: SOURCE });
 
     bind(t.APPROVAL_SERVICE, (r) => new ApprovalServiceImpl({
+      laneApproved: (approval) => r.resolve(t.PLANNER_SERVICE).laneApproved(approval),
       approvals: r.resolve(t.APPROVAL_REPOSITORY),
       missions: r.resolve(t.MISSION_REPOSITORY),
       tasks: r.resolve(t.TASK_REPOSITORY),

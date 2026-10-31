@@ -2,7 +2,10 @@
 // scratch/replan-check.mjs builds it: the real application module over a fresh
 // SQLite file, the generic fake runtime, and the factory source, tiebreak
 // runner and pull-request flow swappable for fakes.
-import { mkdirSync } from 'node:fs';
+import { spawn, execFileSync } from 'node:child_process';
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 export async function engineHarness(HOME, { factory, tiebreak, pullRequests, commandExecutor } = {}) {
   const app = await import('@tandemise/application');
@@ -101,4 +104,77 @@ export async function memoryFactory(files = {}) {
       : { name, origin: 'project', path: `/mem/${name}.yaml`, raw: files[name], error: null, ref: `sha256:${'0'.repeat(11)}${Object.keys(written).length}` }),
     write: async (name, repositoryPath, raw) => { files[name] = raw; written[name] = { repositoryPath, raw }; return { path: `${repositoryPath}/.tandemise/factory/${name}.yaml`, ref: 'sha256:000000000001' }; },
   };
+}
+
+/** Runs commands for real, with the fake gh first on PATH. */
+export function realExecutor(binDir) {
+  return {
+    run: (req) => new Promise((resolve) => {
+      const started = Date.now();
+      const child = spawn(req.command, req.args ?? [], { cwd: req.cwd, env: { ...process.env, PATH: `${binDir}:${process.env.PATH}`, ...(req.env ?? {}) } });
+      let stdout = ''; let stderr = '';
+      child.stdout.on('data', (d) => { stdout += d; });
+      child.stderr.on('data', (d) => { stderr += d; });
+      if (req.stdin !== undefined) child.stdin.end(req.stdin); else child.stdin.end();
+      child.on('close', (code) => resolve({ exitCode: code ?? 1, stdout: stdout.trim(), stderr: stderr.trim(), timedOut: false, durationMs: Date.now() - started, command: [req.command, ...(req.args ?? [])].join(' ') }));
+      child.on('error', (e) => resolve({ exitCode: 127, stdout: '', stderr: String(e), timedOut: false, durationMs: 0, command: req.command }));
+    }),
+  };
+}
+
+export const git = (cwd, ...args) => execFileSync('git', ['-C', cwd, '-c', 'user.name=check', '-c', 'user.email=check@example.com', ...args], { encoding: 'utf8' }).trim();
+export const REPO = 'acme/web';
+
+/** A world: a checkout with a bare origin, the fake gh, and the engine. */
+export async function world({ factory = {}, scripts = {} } = {}) {
+  const base = mkdtempSync(join(tmpdir(), 'tdm-merge-'));
+  const ghDir = join(base, 'gh');
+  const fake = await import('./fake-gh.mjs');
+  const GH = await import('@tandemise/integration-github');
+  const bin = fake.installFakeGh(ghDir);
+  const origin = join(base, 'origin.git');
+  execFileSync('git', ['init', '-q', '--bare', '-b', 'main', origin]);
+  const checkout = join(base, 'web');
+  mkdirSync(checkout);
+  git(checkout, 'init', '-q', '-b', 'main');
+  writeFileSync(join(checkout, 'README.md'), '# web\n');
+  git(checkout, 'add', '.');
+  git(checkout, 'commit', '-q', '-m', 'init');
+  git(checkout, 'remote', 'add', 'origin', origin);
+  git(checkout, 'push', '-q', 'origin', 'main');
+  const exec = realExecutor(bin);
+  const files = await memoryFactory(factory);
+  const h = await engineHarness(join(base, 'home'), { factory: files, commandExecutor: exec, pullRequests: new GH.GhPullRequestFlow(exec) });
+  git(h.paths.root, 'init', '-q', '-b', 'main');
+  git(h.paths.root, 'commit', '-q', '--allow-empty', '-m', 'init');
+  const { systemClock, ids } = await import('@tandemise/shared');
+  const { FAKE_ADAPTER_ID } = await import('@tandemise/runtime-generic');
+  const now = () => systemClock.now();
+  const caller = { personId: h.services.identity.localPerson().id };
+  const ws = (await h.services.workspaces.create(caller, { name: 'Ship' })).workspace.id;
+  const repository = h.repo.repositories.create({
+    id: ids.repository(), workspaceId: ws, name: 'web', path: checkout, defaultBranch: 'main', remoteUrl: `git@github.com:${REPO}.git`,
+    checks: { install: null, typecheck: null, lint: null, test: null, build: null, devServer: null, devServerUrl: null },
+  });
+  h.repo.workspaces.update(ws, { defaultRepositoryId: repository.id });
+  const owner = h.services.team.me(caller).memberships.find((m) => m.workspaceId === ws).memberId;
+  const changeSet = (headline) => ['---', 'type: ChangeSet', 'title: Change', 'handoff:', `  headline: ${headline}`, 'branch: b', 'commits: []', 'filesChanged: 1', 'testsRun: []', 'knownLimitations: []', '---', '', 'ZZ-AGENT-SAYS no risk, safe to merge.'].join('\n');
+  const profile = (name, steps) => h.repo.profiles.create({
+    id: ids.runtimeProfile(), workspaceId: null, adapterId: FAKE_ADAPTER_ID, name, executablePath: null,
+    args: [], settings: { script: { steps } }, capabilities: [], enabled: true, maxConcurrent: 4, createdAt: now(), updatedAt: now(),
+  }).id;
+  const touch = scripts.touch ?? 'src/settings.ts';
+  const devSteps = [
+    { kind: 'write-file', path: touch, content: `export const title = 'Settings';\n` },
+    { kind: 'write-file', path: '.tandemise/out/ChangeSet.md', content: changeSet('Fixed the title') },
+    { kind: 'complete', summary: 'done' },
+  ];
+  const dev = profile('dev', scripts.dev ?? devSteps);
+  h.services.team.addMember(caller, ws, { kind: 'agent', name: 'Dev', reportsTo: owner, roleIds: ['development', 'review', 'qa', 'product', 'architecture'], runtimeProfileIds: [dev] });
+  const mission = async (title, extra = {}) => {
+    const m = await h.services.missions.create(caller, { workspaceId: ws, goal: title, title, workflowPreset: 'auto', ...extra });
+    await h.services.planning.plan(m.id);
+    return m;
+  };
+  return { h, ghDir, origin, checkout, ws, caller, mission, files };
 }

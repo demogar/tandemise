@@ -54,6 +54,8 @@ export interface ApprovalDeps {
   readonly skills?: SkillPinning;
   /** A replan's new steps, waiting on its plan card (replan spec). Optional so older harnesses compose. */
   readonly proposals?: PlanProposalRepositoryPort;
+  /** A "make it quick" card was approved (#53 §5.4). */
+  readonly laneApproved?: (approval: Approval) => void;
   /** Plan fit's "Plan the rest again": starts the replan once the card is decided. Resolved late, as planning composes after this. */
   readonly replanRest?: (missionId: Mission['id'], note: string | null, planFitApprovalId: Approval['id']) => Promise<unknown>;
   readonly clock: Clock;
@@ -188,6 +190,7 @@ export class ApprovalServiceImpl implements ApprovalService {
     const proposal = this.deps.proposals?.get(approval.id);
     if (proposal !== undefined) {
       this.#resumeReplan(mission, { ...scope, ...(approval.decidedBy === null ? {} : { actorId: approval.decidedBy }) }, proposal, approved, request.note ?? null);
+      if (approved) this.deps.laneApproved?.(approval);
       return;
     }
 

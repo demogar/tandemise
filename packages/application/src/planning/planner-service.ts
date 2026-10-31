@@ -1,13 +1,17 @@
 import {
   FACTORY_WORKFLOW_ID, IMPLICIT_CRITERION, IMPLICIT_CRITERION_KEY,
   addSkillRefs, applyModules, chooseLane, compileWorkflow, isTrialMission, laneWorkflowId, parseSkillRef,
-  profileRuleContext, profileLine, profileTask, stepClassFor, tiebreakReason, validateMissionPlan,
+  profileRuleContext, profileLine, profileTask, stepClassFor, tiebreakReason, validateMissionPlan, matchGlob,
   type Lane, type MissionPlan, type Mission, type MissionCriteriaRepositoryPort, type MissionRepositoryPort,
   type PlanDecision, type PlanDecisionRepositoryPort, type PlannedTask, type PlannerConfig, type ProfileInput,
   type RepoRepositoryPort, type Repository, type RoleRepositoryPort, type RoleTemplate, type SkillRef, type TaskProfile,
   type WorkflowDefinition, type Workspace, type WorkspaceRepositoryPort,
 } from '@tandemise/domain';
-import { ids, type Clock, type Logger, type MissionId, type Timestamp, type WorkspaceId } from '@tandemise/shared';
+import { TandemiseError, ids, type Clock, type Logger, type MissionId, type Timestamp, type WorkspaceId } from '@tandemise/shared';
+import type { ApprovalFactory } from '@tandemise/policy';
+import { DEFAULT_ESCALATE_AFTER_MS, indexTeam, laneStricter, type Approval, type ApprovalRepositoryPort, type MemberRepositoryPort, type MissionTask, type PlanProposalRepositoryPort, type TaskRepositoryPort } from '@tandemise/domain';
+import type { Caller } from '../support/identity.js';
+import { materializePlan } from './materialize.js';
 import type { FactoryConfigSourcePort, WorkflowSourcePort } from '../ports.js';
 import type { EventRecorder, EventScope } from '../support/event-recorder.js';
 import type { WorkflowPreset } from './presets.js';
@@ -50,7 +54,17 @@ export interface PlannerDeps {
   readonly log: Logger;
   readonly tiebreak?: TiebreakRunnerPort;
   readonly skills?: SkillPinning;
+  /** For escalating a running mission and switching its lane (#53 §5.4). Optional for older harnesses. */
+  readonly tasks?: TaskRepositoryPort;
+  readonly approvals?: ApprovalRepositoryPort;
+  readonly approvalFactory?: ApprovalFactory;
+  readonly proposals?: PlanProposalRepositoryPort;
+  readonly members?: MemberRepositoryPort;
 }
+
+/** The evidence label that marks a plan card as "make it quick"; read when the card is approved. */
+export const LANE_CARD_LABEL = 'Lane';
+const STARTABLE: readonly string[] = ['PENDING', 'READY'];
 
 export interface FactoryPlan {
   readonly plan: MissionPlan;
@@ -242,6 +256,190 @@ export class PlannerService {
     return { lane: factory.lane, profile: profileLine(factory.decision.profile).toLowerCase() };
   }
 
+  // ------------------------------------------------- mid-mission (#53 §5.4)
+
+  /**
+   * Re-profiles from what the code steps actually changed, and *adds* the
+   * steps and gate clauses a stricter lane or a newly matching module calls
+   * for, before the ship step, without asking: it only adds. A lighter
+   * measured profile changes nothing. Returns the keys it added.
+   */
+  async escalate(mission: Mission, paths: readonly string[], options: { readonly fromShip?: boolean; readonly person?: 'quick' | 'careful' } = {}): Promise<readonly string[]> {
+    const tasksRepo = this.deps.tasks;
+    if (!this.handles(mission) || tasksRepo === undefined) return [];
+    const tasks = tasksRepo.listByMission(mission.id);
+    const ship = tasks.find((t) => t.executor === 'ship');
+    if (ship === undefined || (!options.fromShip && !STARTABLE.includes(ship.status))) return [];
+    const repositories = this.#orderedRepositories(mission.workspaceId);
+    const config = await this.#config(mission.workspaceId, repositories, true);
+    const before = this.deps.planDecisions.latest(mission.id);
+    const criteria = this.deps.criteria.listActive(mission.id);
+    const input = gatherSignals({ mission, criteria, repositories, extraPaths: paths, basis: 'measured' });
+    const person = options.person ?? mission.laneRequest ?? 'auto';
+    const profile = profileTask({ ...input, person }, config.planner);
+    const measured = chooseLane(profile, config.planner, person);
+    const laneNow = before?.lane ?? 'standard';
+    const stricter = laneStricter(measured.lane, laneNow);
+
+    const { facts, predicates } = profileRuleContext(profile);
+    const current: MissionPlan = { summary: '', tasks };
+    const withModules = applyModules(current, config.planner.modules, facts, predicates);
+    let planned = withModules.plan.tasks.filter((t) => !tasks.some((x) => x.key === t.key));
+    const code = tasks.find((t) => stepClassFor(t) === 'implement' || t.roleId === 'development');
+    if (stricter && code !== undefined) {
+      const lane = laneWorkflows({})[laneWorkflowId(measured.lane, profile.type, config.planner)] ?? laneWorkflows({})[measured.lane];
+      const compiled = lane === undefined ? null : compileWorkflow(lane, {}, { isolationForRole: (id) => this.deps.roles.list(mission.workspaceId).find((r) => r.id === id)?.defaultIsolation });
+      const wanted = ['review', ...(userCriteriaCount(criteria) > 0 ? [VERIFY_STEP_KEY] : [])];
+      let after = code.key;
+      for (const key of wanted) {
+        const step = compiled?.ok === true ? compiled.value.tasks.find((t) => t.key === key) : undefined;
+        if (step === undefined || [...tasks, ...planned].some((t) => stepClassFor(t) === stepClassFor(step))) continue;
+        planned = [...planned, { ...step, dependsOn: [after] }];
+        after = key;
+      }
+    }
+    // Gate clauses only reach steps that haven't started: a finished step's gate was read already.
+    const gateEdits = withModules.plan.tasks.filter((t) => {
+      const was = tasks.find((x) => x.key === t.key);
+      return was !== undefined && STARTABLE.includes(was.status) && was.completionGate !== t.completionGate;
+    });
+    if (planned.length === 0 && gateEdits.length === 0 && !stricter && withModules.applied.every((m) => before?.modules.includes(m))) return [];
+
+    for (const edit of gateEdits) {
+      const was = tasks.find((x) => x.key === edit.key)!;
+      tasksRepo.update(was.id, { completionGate: edit.completionGate });
+    }
+    const made = planned.length === 0 ? [] : materializePlan({ summary: '', tasks: planned }, mission.id, this.deps.clock, repositories)
+      .map((t, i) => ({ ...t, status: 'PENDING' as const, orderHint: ship.orderHint + i }));
+    for (const task of made) tasksRepo.add(task);
+    if (made.length > 0) {
+      // The ship step waits for every added step; a step that waited on the code step now waits on the last added one.
+      const last = made.at(-1)!.key;
+      tasksRepo.update(ship.id, { dependsOn: [...new Set([...ship.dependsOn.filter((d) => d !== code?.key || made.length === 0), last])], orderHint: ship.orderHint + made.length });
+    }
+    const scope: EventScope = { workspaceId: mission.workspaceId, missionId: mission.id };
+    const decision: PlanDecision = {
+      id: ids.planDecision(),
+      missionId: mission.id,
+      policyRef: policyRef(config),
+      basis: 'measured',
+      profile,
+      lane: stricter ? measured.lane : laneNow,
+      laneBecause: stricter ? measured.because : before?.laneBecause ?? measured.because,
+      workflowId: before?.workflowId ?? measured.lane,
+      modules: [...new Set([...(before?.modules ?? []), ...withModules.applied])],
+      dropped: before?.dropped ?? [],
+      steps: decisionSteps({ summary: '', tasks: tasksRepo.listByMission(mission.id) }),
+      approvals: decisionApprovals({ summary: '', tasks: tasksRepo.listByMission(mission.id) }),
+      skipped: before?.skipped ?? [],
+      tiebreak: null,
+      lightenedByPerson: before?.lightenedByPerson ?? false,
+      createdAt: this.deps.clock.now() as Timestamp,
+    };
+    this.deps.planDecisions.create(decision);
+    if (made.length > 0) {
+      const sensitive = profile.areas.filter((a) => a.sensitivity !== 'none').map((a) => a.name);
+      const touched = paths.find((p) => config.planner.areas.some((a) => sensitive.includes(a.name) && a.paths.some((g) => matchGlob(g, p)))) ?? paths[0];
+      const what = made.map((t) => withArticle(t.title.toLowerCase())).join(' and ');
+      this.deps.recorder.note(scope, touched === undefined ? `You made it careful, so I added ${what}.` : `It touched ${touched}, so I added ${what}.`);
+    }
+    this.deps.recorder.invalidate('tasks', mission.id);
+    return made.map((t) => t.key);
+  }
+
+  /**
+   * A person's lane switch (#53 §5.4). Careful adds steps at once; quick asks
+   * first through a plan card, because it removes steps, and only marks the
+   * mission lightened when that card is approved.
+   */
+  async switchLane(missionId: MissionId, lane: 'quick' | 'careful', caller: Caller): Promise<void> {
+    const mission = this.deps.missions.get(missionId);
+    if (mission === undefined) throw TandemiseError.notFound('Mission', missionId);
+    if (!this.handles(mission)) throw new TandemiseError('PRECONDITION_FAILED', 'Only missions the factory planned have a lane.', { details: { missionId } });
+    const tasks = this.deps.tasks?.listByMission(missionId) ?? [];
+    const ship = tasks.find((t) => t.executor === 'ship');
+    if (ship === undefined || !STARTABLE.includes(ship.status)) {
+      throw new TandemiseError('CONFLICT', "The pull request is already on its way; the lane can't change now.", { details: { missionId } });
+    }
+    void caller;
+    if (lane === 'careful') {
+      const updated = this.deps.missions.update(missionId, { laneRequest: 'careful' });
+      await this.escalate(updated, [], { person: 'careful' });
+      return;
+    }
+    this.#fileQuickCard(mission, tasks, ship);
+  }
+
+  #fileQuickCard(mission: Mission, tasks: readonly MissionTask[], ship: MissionTask): void {
+    const { approvals, approvalFactory, proposals } = this.deps;
+    if (approvals === undefined || approvalFactory === undefined || proposals === undefined) {
+      throw new TandemiseError('PRECONDITION_FAILED', 'This daemon cannot change a lane.');
+    }
+    const removable = tasks.filter((t) => STARTABLE.includes(t.status) && t.executor === 'agent' && t.startedAt === null
+      && ['review', 'verify', 'spec', 'architecture', 'design'].includes(stepClassFor(t)));
+    if (removable.length === 0) throw new TandemiseError('PRECONDITION_FAILED', 'There is nothing left to take out: this mission is already as quick as it gets.');
+    const gone = new Set(removable.map((t) => t.key));
+    const keep = tasks.filter((t) => !gone.has(t.key) && t.key !== ship.key);
+    const depended = new Set(keep.flatMap((t) => t.dependsOn));
+    const sinks = keep.filter((t) => !depended.has(t.key)).map((t) => t.key);
+    const newShip: MissionTask = { ...ship, id: ids.task(), dependsOn: sinks, status: 'PENDING', statusReason: null };
+    const scope: EventScope = { workspaceId: mission.workspaceId, missionId: mission.id };
+    const names = removable.map((t) => t.title).join(', ');
+    const approval = approvalFactory.createOrThrow({
+      workspaceId: mission.workspaceId,
+      missionId: mission.id,
+      taskId: null,
+      kind: 'plan',
+      risk: 'read',
+      title: `Make ${mission.title} quick?`,
+      rationale: `Making it quick takes out ${names}. The merge decision then counts that you made it quick.`,
+      effect: 'Approving removes those steps and carries on to the pull request. Rejecting leaves the mission exactly as it was.',
+      evidence: [
+        { kind: 'text', label: LANE_CARD_LABEL, value: 'quick' },
+        { kind: 'text', label: 'Takes out', value: names },
+      ],
+      addressees: this.#addressees(mission),
+      escalateAfterMs: DEFAULT_ESCALATE_AFTER_MS,
+    });
+    approvals.create(approval);
+    proposals.put({
+      approvalId: approval.id,
+      missionId: mission.id,
+      tasks: [newShip],
+      replaces: [...removable.map((t) => t.id), ship.id],
+      resumeStatus: mission.status,
+      planFitApprovalId: null,
+      createdAt: this.deps.clock.now() as Timestamp,
+    });
+    this.deps.recorder.record(scope, { type: 'approval.requested', approvalId: approval.id });
+    this.deps.recorder.invalidate('approvals', mission.id);
+  }
+
+  /** A plan card was approved: a "make it quick" card marks the mission lightened by a person. */
+  laneApproved(approval: Pick<Approval, 'missionId' | 'evidence'>): void {
+    const lane = approval.evidence.find((e) => e.label === LANE_CARD_LABEL)?.value;
+    if (lane !== 'quick' || approval.missionId === null) return;
+    const mission = this.deps.missions.update(approval.missionId, { laneRequest: 'quick' });
+    const before = this.deps.planDecisions.latest(mission.id);
+    if (before === undefined) return;
+    this.deps.planDecisions.create({
+      ...before,
+      id: ids.planDecision(),
+      basis: 'measured',
+      lane: 'quick',
+      laneBecause: 'you made it quick',
+      lightenedByPerson: true,
+      steps: this.deps.tasks === undefined ? before.steps : decisionSteps({ summary: '', tasks: this.deps.tasks.listByMission(mission.id) }),
+      createdAt: this.deps.clock.now() as Timestamp,
+    });
+  }
+
+  #addressees(mission: Mission): readonly string[] {
+    if (mission.createdBy !== null && mission.createdBy !== undefined) return [mission.createdBy];
+    if (this.deps.members === undefined) return [];
+    return indexTeam(this.deps.members.listByWorkspace(mission.workspaceId, { includeRemoved: true })).owners.map((m) => m.id);
+  }
+
   // ------------------------------------------------------------------ helpers
 
   /** Modules, area skills, validation; dropping modules (last first) until it validates. */
@@ -388,3 +586,7 @@ function decisionApprovals(plan: MissionPlan): PlanDecision['approvals'] {
   ]);
 }
 
+
+function withArticle(noun: string): string {
+  return /^[aeiou]/.test(noun) ? `an ${noun}` : `a ${noun}`;
+}

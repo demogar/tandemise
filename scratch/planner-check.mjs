@@ -420,6 +420,49 @@ await attempt('ceremony, speed and tiebreak', async () => {
   clearInterval(keepAlive);
 });
 
+await attempt('mid-mission escalation', async () => {
+  section('mid-mission escalation');
+  const keepAlive = setInterval(() => {}, 1000);
+  const { world } = await import('./planner-harness.mjs');
+  const w = await world({ scripts: { touch: 'src/auth/session.ts' } });
+  const planner = w.h.container.resolve(app.PLANNER_SERVICE);
+  const m = await w.mission('fix: typo in the settings title');
+  check('it was planned quick', w.h.repo.planDecisions.latest(m.id)?.lane === 'quick');
+  const task = (key) => w.h.repo.tasks.listByMission(m.id).find((t) => t.key === key);
+  await w.h.until(() => task('security_review') !== undefined, 60000);
+  const tasks = w.h.repo.tasks.listByMission(m.id);
+  check('a security review was added between implement and ship', task('security_review')?.dependsOn.includes('implement') && task('ship').dependsOn.includes('security_review'), tasks.map((t) => [t.key, t.dependsOn, t.status]));
+  check('without an approval card', w.h.repo.approvals.list({ missionId: m.id, statuses: ['PENDING'] }).length === 0);
+  const notes = w.h.repo.events.listByMission(m.id).filter((e) => e.body.type === 'note').map((e) => e.body.text);
+  check('the feed says why', notes.includes('It touched src/auth/session.ts, so I added a security review.'), notes.slice(-5));
+  check('the latest decision is measured', w.h.repo.planDecisions.latest(m.id)?.basis === 'measured' && w.h.repo.planDecisions.latest(m.id)?.modules.includes('security-review'));
+  let late = null;
+  try { await planner.switchLane(m.id, 'careful', w.caller); } catch (e) { late = e; }
+  const shipStatus = task('ship').status;
+  check('switching lanes once the ship step started is refused, or allowed before it', shipStatus === 'PENDING' || shipStatus === 'READY'
+    ? late === null : late?.message === "The pull request is already on its way; the lane can't change now.", [shipStatus, late?.message]);
+
+  const docs = await w.mission('Tidy the docs readme', { successCriteria: ['It reads well.', 'Links work.'] });
+  const before = w.h.repo.tasks.listByMission(docs.id).map((t) => t.key);
+  const added = await planner.escalate(w.h.repo.missions.get(docs.id), ['docs/readme.md']);
+  check('a lighter measured profile changes nothing', added.length === 0 && eq(w.h.repo.tasks.listByMission(docs.id).map((t) => t.key), before), [added, before]);
+
+  const std = await w.mission('fix: the export fails for big files', { successCriteria: ['Exports of 1 GB work.', 'Nothing else changes.'] });
+  check('a fix with two Done-when lines runs the standard fix lane', eq(w.h.repo.tasks.listByMission(std.id).map((t) => t.key), ['implement', 'review', 'verify', 'ship']), w.h.repo.tasks.listByMission(std.id).map((t) => t.key));
+  await planner.switchLane(std.id, 'quick', w.caller);
+  const card = w.h.repo.approvals.list({ missionId: std.id, statuses: ['PENDING'] }).find((a) => a.kind === 'plan');
+  check('making it quick asks first, and removes nothing yet', card !== undefined && w.h.repo.tasks.listByMission(std.id).length === 4, card?.title);
+  await w.h.services.approvals.decide(w.caller, card.id, { optionId: card.options.find((o) => /approve/i.test(o.id))?.id ?? card.options[0].id });
+  const after = w.h.repo.tasks.listByMission(std.id);
+  check('approved, review and verify are gone and ship follows implement', eq(after.map((t) => t.key), ['implement', 'ship']) && after[1].dependsOn.includes('implement'), after.map((t) => [t.key, t.dependsOn]));
+  check('and the lane is quick, made so by you', w.h.repo.missions.get(std.id).laneRequest === 'quick' && w.h.repo.planDecisions.latest(std.id)?.lightenedByPerson === true);
+  let notAuto = null;
+  const preset = await w.h.services.missions.create(w.caller, { workspaceId: w.ws, goal: 'x', title: 'x', workflowPreset: 'quick-change', successCriteria: ['x'] });
+  try { await planner.switchLane(preset.id, 'careful', w.caller); } catch (e) { notAuto = e; }
+  check('a mission the factory did not plan has no lane', notAuto?.message === 'Only missions the factory planned have a lane.', notAuto?.message);
+  clearInterval(keepAlive);
+});
+
 // @sections
 
 console.log(`\n${passed} passed, ${failures.length} failed`);

@@ -484,6 +484,7 @@ export class SchedulerService implements LifecycleComponent {
         if (outcome.kind === 'opened') finish('SUCCEEDED', `Pull request opened: ${outcome.prs.map((p) => p.url).join(', ')}`);
         else if (outcome.kind === 'skipped') finish('SKIPPED', outcome.reason);
         else if (outcome.kind === 'blocked') finish('BLOCKED', outcome.reason);
+        else if (outcome.kind === 'escalated') this.#setStatus(current, scopeOf(mission), 'PENDING', `Waiting for ${outcome.added.join(', ')} before opening the pull request.`);
         else this.#setStatus(current, scopeOf(mission), 'PENDING', `Waiting for ${outcome.taskKey} to resolve the merge conflict.`);
         this.deps.recorder.invalidate('tasks', mission.id);
         this.wake();

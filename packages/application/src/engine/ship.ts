@@ -18,6 +18,8 @@ import type { BranchIntegrationService } from './branch-integration.js';
 export type ShipOutcome =
   | { readonly kind: 'opened'; readonly prs: readonly PullRequestRef[] }
   | { readonly kind: 'conflict'; readonly taskKey: string }
+  /** The measured change called for more steps (#53 §5.4); the ship step waits behind them. */
+  | { readonly kind: 'escalated'; readonly added: readonly string[] }
   | { readonly kind: 'skipped'; readonly reason: string }
   | { readonly kind: 'blocked'; readonly reason: string }
   | { readonly kind: 'cancelled' };
@@ -36,6 +38,8 @@ export interface ShipDeps {
   readonly recorder: EventRecorder;
   readonly clock: Clock;
   readonly log: Logger;
+  /** Re-profiles from the changed paths and adds steps (#53 §5.4); the keys it added. */
+  readonly escalate?: (mission: Mission, paths: readonly string[]) => Promise<readonly string[]>;
 }
 
 export class ShipService {
@@ -46,6 +50,25 @@ export class ShipService {
     if (isTrialMission(mission)) return { kind: 'skipped', reason: 'An eval trial never opens a pull request.' };
     const repository = mission.repositoryId === null ? undefined : this.deps.repositories.get(mission.repositoryId);
     if (repository === undefined) return { kind: 'skipped', reason: 'This mission has no repository, so there is no pull request to open.' };
+
+    // Measured before anything leaves this machine: a change that touched more
+    // than its plan expected gets its steps first, then ships (#53 §5.4).
+    const early = this.#codeBranch(mission);
+    if (early !== null && this.deps.escalate !== undefined) {
+      const base = mission.baseBranch ?? repository.defaultBranch;
+      const diff = await this.#git(repository, ['diff', '--name-only', `${base}...${early}`], false);
+      const paths = diff.exitCode === 0 ? diff.stdout.split('\n').map((l) => l.trim()).filter((l) => l.length > 0) : [];
+      try {
+        const added = await this.deps.escalate(mission, paths);
+        if (added.length > 0) {
+          const current = this.deps.tasks.get(task.id) ?? task;
+          this.deps.tasks.update(task.id, { dependsOn: [...new Set([...current.dependsOn, ...added])] });
+          return { kind: 'escalated', added };
+        }
+      } catch (e) {
+        this.deps.log.warn('ship.escalate_failed', { missionId: mission.id, error: errorMessage(e) });
+      }
+    }
 
     const integrated = await this.deps.integration.integrate(mission);
     if (integrated.conflictTaskKey !== null) {
