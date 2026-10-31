@@ -1,7 +1,7 @@
 import type {
   ApprovalRepositoryPort, MissionTask,
   ExecutionTargetRepositoryPort, LeaseRepositoryPort, MissionRepositoryPort, Run,
-  RunRepositoryPort, RunStatus, RuntimeProfileRepositoryPort, TaskRepositoryPort,
+  RunRepositoryPort, RunStatus, RuntimeProfileRepositoryPort, TaskHoldRepositoryPort, TaskRepositoryPort,
 } from '@tandemise/domain';
 import { isTrialMission } from '@tandemise/domain';
 import type { RuntimeRegistry } from '@tandemise/runtimes-core';
@@ -53,6 +53,8 @@ export class RecoveryService {
     private readonly log: Logger,
     /** Questions a dead run was waiting on, so they can be withdrawn. */
     private readonly approvals: ApprovalRepositoryPort,
+    /** Open holds, whose terminals died with the last daemon. */
+    private readonly holds: TaskHoldRepositoryPort,
   ) {}
 
   /** An eval trial's mission, whose tasks the eval runner recovers, not this (P3b). */
@@ -116,6 +118,17 @@ export class RecoveryService {
             : 'The previous run was interrupted before it finished.',
         });
         tasksRequeued += 1;
+      }
+    }
+
+    // A held task waits for its person whatever happened to its run, so it is
+    // neither requeued nor cancelled: only RUNNING and AWAITING_INPUT are. Its
+    // terminal died with the last daemon, though, and the open hold forgets
+    // that pid; reopening the terminal resumes the captured session.
+    for (const task of this.tasks.listByStatus(['HELD'])) {
+      const hold = this.holds.openFor(task.id);
+      if (hold !== undefined && hold.ptyPid !== null && !this.liveness.isAlive(hold.ptyPid)) {
+        this.holds.update(hold.id, { ptyPid: null });
       }
     }
 

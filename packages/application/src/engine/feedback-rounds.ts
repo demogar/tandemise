@@ -405,8 +405,8 @@ export class FeedbackRounds {
     let moved = 0;
     for (const item of this.deps.feedback.listByStatus(['queued'])) {
       const task = this.deps.tasks.get(item.taskId);
-      // Still running: the pass will read the note when it ends.
-      if (task !== undefined && LIVE_RUN_STATUSES.includes(task.status)) continue;
+      // Still running: the pass will read the note when it ends. Held: the pass that continues from the hold reads it.
+      if (task !== undefined && (LIVE_RUN_STATUSES.includes(task.status) || task.status === 'HELD')) continue;
       this.deps.feedback.update(item.id, { status: 'open', round: null });
       if (task !== undefined) {
         // Otherwise the note would change state with nothing on the timeline to say why.

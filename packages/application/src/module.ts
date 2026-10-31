@@ -280,6 +280,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       reviews: r.resolve(t.REVIEW_PIPELINE),
       rounds: r.resolve(t.FEEDBACK_ROUNDS),
       runInputs: r.resolve(t.RUN_INPUT_REPOSITORY),
+      holds: r.resolve(t.TASK_HOLD_REPOSITORY),
       recorder: r.resolve(t.EVENT_RECORDER),
       deadlines: r.resolve(t.RUN_DEADLINES),
       limits: r.resolve(t.LIMIT_SERVICE),
@@ -400,6 +401,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       clock(r),
       log(r).child({ component: 'recovery' }),
       r.resolve(t.APPROVAL_REPOSITORY),
+      r.resolve(t.TASK_HOLD_REPOSITORY),
     ), { source: SOURCE });
 
     // ---------------------------------------------------------- API services

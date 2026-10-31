@@ -5,13 +5,14 @@ import type {
   CriteriaTrace, GateFacts, GateOutcome, LimitPressure, LoadedArtifact, Member, MemberRepositoryPort, Mission, MissionCriterion, MissionQuestionRepositoryPort, MissionRepositoryPort, MissionTask, RepoRepositoryPort,
   Repository, ResourceLease, RoleRepositoryPort, RoleTemplate, Run, RunEventRecord, RunInputRepositoryPort, RunPurpose,
   ResolvedModel, RunRepositoryPort, RunScoreRepositoryPort, RunSkill, RunUsage, SkillFile, SkillPin, TracedCriterion,
-  RuntimeProfile, RuntimeProfileRepositoryPort, TargetKind, TaskRepositoryPort, TaskStatus,
+  RuntimeProfile, RuntimeProfileRepositoryPort, TargetKind, TaskHold, TaskHoldRepositoryPort, TaskRepositoryPort, TaskStatus,
   Workspace, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
 import {
   ACCEPT_RESULT_OPTION, ARTIFACT_OUT_DIR, CORE_CAPABILITIES, RUNTIME_ACTOR, anyCapabilityMatches, gateDependencies, indexTeam, isActiveMember, isTrialMission, missingSkillReason, resolveModel, responsibleFor,
 } from '@tandemise/domain';
 import { isDaemonStopping } from '../support/shutdown.js';
+import { isTaskHeld } from '../support/held.js';
 import { NO_SKILLS, type InstalledSkills, type SkillInstaller } from './skill-installer.js';
 import { LIVE_RUN_STATUSES } from '../support/downstream.js';
 import { liveArtifacts, upstreamTaskIds } from '../support/lineage.js';
@@ -61,6 +62,14 @@ const MAX_SIGNED_OUT_BACKOFF_MS = 10 * 60_000;
  * forever; later notes wait as open, with "Start round" (plan ruling 7).
  */
 const MAX_FEEDBACK_PASSES = 5;
+
+/**
+ * What the agent is told when it continues the session a person held (spec
+ * "Continue"). The session already holds everything the person and the agent
+ * said; the prompt only hands the work back.
+ */
+export const CONTINUATION_PROMPT = 'A person held this task and worked with you directly in this session. '
+  + 'Their changes are in the worktree. Continue the task from where things stand now and finish it.';
 
 export type TaskAttemptOutcome =
   /** Admission failed for a reason that will resolve on its own. Try again shortly. */
@@ -134,6 +143,8 @@ export interface TaskExecutorDeps {
   readonly rounds: FeedbackRounds;
   /** What each run was given, so a round knows whose work used the old version. */
   readonly runInputs: RunInputRepositoryPort;
+  /** A person's holds: the session the next pass continues and the profile it runs on. */
+  readonly holds: TaskHoldRepositoryPort;
   readonly recorder: EventRecorder;
   /** Live run budgets, so a worker waiting on a person is not timed out. */
   readonly deadlines: RunDeadlines;
@@ -304,10 +315,17 @@ export class TaskExecutor {
       const who = names.length <= 1 ? names[0] ?? 'The staffed agent' : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
       return this.#block(task, scope, `${who} ${names.length > 1 ? 'have' : 'has'} no enabled runtime.`);
     }
-    const { profiles: candidates, agents } = routing;
-    if (candidates.length === 0) {
+    const { profiles: routed, agents } = routing;
+    if (routed.length === 0) {
       return this.#block(task, scope, `No runtime profile is routed to role '${task.roleId}'.`);
     }
+    // A hold the agent has not continued from yet pins the pass to the profile
+    // holding its session: another profile has another config dir, where the
+    // session does not exist. A pinned profile no longer routed here runs the
+    // pass fresh on what is.
+    const continuation = this.#continuationFor(task);
+    const pinned = continuation === null ? [] : routed.filter((p) => p.id === continuation.runtimeProfileId);
+    const candidates = pinned.length > 0 ? pinned : routed;
     const required = runtimeCapabilitiesFor(task);
     const selected = await deps.runtimeManager.select(candidates, required);
     // Selection awaits a health probe; a round upstream can hold this task
@@ -339,13 +357,15 @@ export class TaskExecutor {
     // back here on every path that never gets that far - a failed provision,
     // a vetting block - so an attempt that never ran cannot hold a worker.
     try {
-      return await this.#runRouted(ctx, selected.value, agentFor(agents, selected.value.profile.id));
+      return await this.#runRouted(ctx, selected.value, agentFor(agents, selected.value.profile.id), continuation);
     } finally {
       selected.value.reservation.release();
     }
   }
 
-  async #runRouted(ctx: AttemptContext, selection: RuntimeSelection, agent: Member | null): Promise<TaskAttemptOutcome> {
+  async #runRouted(
+    ctx: AttemptContext, selection: RuntimeSelection, agent: Member | null, continuation: TaskHold | null,
+  ): Promise<TaskAttemptOutcome> {
     const { task, mission, workspace, repository, role, signal } = ctx;
     const { deps } = this;
     const { profile, adapter, reservation } = selection;
@@ -356,9 +376,12 @@ export class TaskExecutor {
     // than starting a new one. Counting it spent the retry budget on restarts:
     // a task with two attempts had used five before it had failed once, so its
     // first real gate failure would have blocked it outright.
-    const resumable = this.#resumableRun(task.id, adapter.resume !== undefined);
-    const resuming = resumable !== null && task.attempts > 0;
-    const attempt = resuming ? task.attempts : task.attempts + 1;
+    const resumable = this.#resumableRun(task.id, profile, adapter.resume !== undefined);
+    const resuming = continuation === null && resumable !== null && task.attempts > 0;
+    // Continuing from a hold spends no attempt either: the person's iteration
+    // is not a failure (spec "Continue"). A task held before it ever ran still
+    // counts this as its first.
+    const attempt = continuation !== null ? Math.max(task.attempts, 1) : resuming ? task.attempts : task.attempts + 1;
     const round = task.round ?? 1;
     // Only counted attempts make a round "started"; a tighten or delivery pass
     // does not. Runs from before rounds existed count as round 1's.
@@ -371,7 +394,7 @@ export class TaskExecutor {
     // the failure and this retry - a busy runtime, a sign-in - rewrote it. The
     // retry was then told it had "failed" because it was queued, and the single
     // highest-value feedback loop in the system silently became a no-op.
-    const feedback = attempt > 1 && !resuming ? task.retryFeedback ?? null : null;
+    const feedback = attempt > 1 && !resuming && continuation === null ? task.retryFeedback ?? null : null;
 
     const running = this.#setStatus(task, scope, 'RUNNING', null, {
       attempts: attempt,
@@ -477,15 +500,29 @@ export class TaskExecutor {
       installed = await this.#installSkills(running, target, profile, adapter, scope);
       // Every pass of this attempt - the first run, a tighten, a delivery - gets the same skills.
       const actx: AttemptContext = { ...ctx, skills: installed };
+      // Notes left while the task was held join this pass, the way a delivery pass takes them.
+      const delivered = continuation === null ? [] : deps.rounds.promoteQueued(running);
       const brief = await deps.rounds.openRound(running);
       const compiled = await this.#compilePrompt({
         ...actx, task: running, workspace, role, grants, target, tools: toolSurface.toolNames, feedback, round: brief,
       });
       const destinations = running.expectedOutputs.map((type) => `${outDirFor(running)}/${type}.md`);
       // Spec §5: a round continues the last settled session whenever the runtime can, whatever that run's status.
-      const session = firstOfRound && round > 1 && !resuming && brief !== null
-        ? this.#settledSession(running.id, profile, adapter)
+      const session = continuation !== null
+        ? this.#heldSession(continuation, profile, adapter)
+        : firstOfRound && round > 1 && !resuming && brief !== null
+          ? this.#settledSession(running.id, profile, adapter)
+          : null;
+      // Continue sends the fixed continuation and the notes owed; Release sends
+      // the normal prompt. A session that cannot be resumed gets the normal prompt too.
+      const notes = brief !== null && brief.toAddress.length > 0
+        ? roundRequest({ ...brief, delivery: delivered.length > 0 }, destinations)
         : null;
+      const prompt = continuation !== null
+        ? session !== null && continuation.ending === 'continued'
+          ? notes === null ? CONTINUATION_PROMPT : `${CONTINUATION_PROMPT}\n\n${notes}`
+          : compiled.prompt
+        : session !== null && brief !== null ? roundRequest(brief, destinations) : compiled.prompt;
 
       // Nothing is started for a task that was reset while its prompt was compiled.
       const overtakenBeforeRun = this.#overtaken(running, scope, signal);
@@ -494,9 +531,9 @@ export class TaskExecutor {
       // 7. Run.
       const outcome = await this.#drive({
         task: running, mission, role, profile, adapter, target, assignment, grants, scope, signal, agent,
-        runId, mcpConfigPath: toolSurface.mcpConfigPath, reservation, retainSlot: retained,
-        prompt: session !== null && brief !== null ? roundRequest(brief, destinations) : compiled.prompt,
+        runId, mcpConfigPath: toolSurface.mcpConfigPath, reservation, retainSlot: retained, prompt,
         ...(session === null ? {} : { continueSession: session, freshPrompt: compiled.prompt }),
+        ...(continuation === null ? {} : { continuation }),
         purpose, round, inputs: compiled.includedArtifactIds, skills: installed.received,
       });
 
@@ -652,8 +689,11 @@ export class TaskExecutor {
     // same handle, so a daemon that dies again loses nothing.
     // A tighten pass names the session it continues: the run that holds it
     // finished successfully and is not a handle waiting to be taken over.
-    const source = input.continueSession === undefined
-      ? this.#resumableRun(task.id, input.adapter.resume !== undefined)
+    // A continuation from a hold names its session too, and takes over any
+    // handle the held run left, so nothing later resumes the session from
+    // before the person's changes.
+    const source = input.continueSession === undefined || input.continuation !== undefined
+      ? this.#resumableRun(task.id, profile, input.adapter.resume !== undefined)
       : null;
     const resumeFrom = input.continueSession === undefined ? source?.externalSessionId ?? null : input.continueSession;
     const { runId } = input;
@@ -693,6 +733,11 @@ export class TaskExecutor {
     });
     // Recorded before the run starts, so a round started while it runs already sees it as a consumer.
     deps.runInputs.record(runId, input.inputs);
+    // The hold is read once the run holding its session exists; an older one
+    // left unread is superseded by it, and is not continued later either.
+    if (input.continuation !== undefined) {
+      for (const hold of this.#endedHolds(task)) deps.holds.update(hold.id, { consumedAt: startedAt });
+    }
     // Only now, with the new run holding the handle, is the old one released:
     // a daemon that dies between the two writes still leaves a run to resume.
     // Consumed whether or not the resume then works - a handle that failed
@@ -805,7 +850,8 @@ export class TaskExecutor {
     // so a resume that failed that way hands the handle on intact: after the
     // sign-in the work continues where the restart left it, not from scratch.
     const resumeUntouched = failure?.code === RUNTIME_SIGNED_OUT && resumeFrom !== null;
-    const status = interrupted || resumeUntouched
+    // A hold pauses the run for a person, as a stop pauses it for a restart: its session is kept.
+    const status = interrupted || resumeUntouched || isTaskHeld(signal)
       ? (session !== null && input.adapter.resume !== undefined ? 'RESUMABLE' : 'INTERRUPTED')
       : cancelled ? 'CANCELLED' : failure === null ? 'SUCCEEDED' : 'FAILED';
     deps.runs.update(runId, {
@@ -1583,6 +1629,11 @@ export class TaskExecutor {
 
   /** The outcome of a run the daemon or a person stopped, or null when it ran to an end. */
   #stopped(outcome: Pick<DriveOutcome, 'cancelled' | 'interrupted'>, running: MissionTask, scope: EventScope): TaskAttemptOutcome | null {
+    if (!outcome.interrupted && !outcome.cancelled) return null;
+    // A person holds the task: it stays HELD however its run stopped, and its
+    // queued notes wait for the pass that continues from the hold.
+    const current = this.deps.tasks.get(running.id);
+    if (current?.status === 'HELD') return { kind: 'settled', status: 'HELD', reason: current.statusReason };
     if (outcome.interrupted) {
       // Back to the queue with its attempt count kept, exactly as recovery
       // treats a run the last daemon left behind; the next start resumes it.
@@ -1594,7 +1645,6 @@ export class TaskExecutor {
       // Cancelled so that something else could happen - a retry with more
       // access requeues the task and stops its run. The run ends after that
       // decision, and settling it CANCELLED here overwrote the retry.
-      const current = this.deps.tasks.get(running.id);
       if (current !== undefined && !LIVE_RUN_STATUSES.includes(current.status)) {
         return { kind: 'settled', status: current.status, reason: current.statusReason };
       }
@@ -2286,11 +2336,34 @@ export class TaskExecutor {
     return last !== undefined && last.runtimeProfileId === profile.id ? last.externalSessionId : null;
   }
 
-  #resumableRun(taskId: TaskId, adapterSupportsResume: boolean): Run | null {
+  #resumableRun(taskId: TaskId, profile: RuntimeProfile, adapterSupportsResume: boolean): Run | null {
     if (!adapterSupportsResume) return null;
     const runs = [...this.deps.runs.listByTask(taskId)].sort((a, b) => b.startedAt.localeCompare(a.startedAt));
     const resumable = runs.find((r) => r.status === 'RESUMABLE' && r.externalSessionId !== null);
-    return resumable ?? null;
+    // As for a settled session: another profile's config dir does not have it, and resuming there silently starts fresh.
+    return resumable !== undefined && resumable.runtimeProfileId === profile.id ? resumable : null;
+  }
+
+  /**
+   * The ended hold the next pass continues from, or null: the latest one no run
+   * has read yet, whether the person continued it or released it.
+   */
+  #continuationFor(task: MissionTask): TaskHold | null {
+    return this.#endedHolds(task)[0] ?? null;
+  }
+
+  /** The task's ended holds no run has read yet, latest first. */
+  #endedHolds(task: MissionTask): TaskHold[] {
+    return this.deps.holds.listByMission(task.missionId)
+      .filter((h) => h.taskId === task.id && h.endedAt !== null && h.ending !== null && h.consumedAt === null)
+      .sort((a, b) => (b.endedAt ?? '').localeCompare(a.endedAt ?? ''));
+  }
+
+  /** The session a hold left, when this profile is the one holding it and can resume it. */
+  #heldSession(hold: TaskHold, profile: RuntimeProfile, adapter: { resume?: unknown }): string | null {
+    if (hold.runtimeProfileId !== profile.id || adapter.resume === undefined) return null;
+    if (!this.deps.runtimeManager.capabilities(profile).includes('session_resume')) return null;
+    return hold.sessionAfter ?? hold.sessionBefore;
   }
 
   #requireTask(id: TaskId): MissionTask {
@@ -2393,6 +2466,8 @@ interface DriveInput {
   readonly continueSession?: string | null;
   /** The prompt for starting over when the session to continue is gone. */
   readonly freshPrompt?: string;
+  /** The hold this pass continues from; read (consumed) once the run row exists. */
+  readonly continuation?: TaskHold;
   /** Keeps the run's slot when it ends; see `RunRequest.retainSlot`. */
   readonly retainSlot?: SlotRetention;
   /** The agent member doing the run, or null when the runtime acts for no agent. */

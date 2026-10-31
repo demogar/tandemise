@@ -199,6 +199,307 @@ section('runtime: interactive invocations');
     refusal?.code === 'CONFLICT' && /Only Claude Code steps can be held/.test(refusal.message), refusal);
 }
 
+// ------------------------------------------------------------------ engine
+async function engineHarness(HOME) {
+  const { mkdirSync } = await import('node:fs');
+  const app = await import('@tandemise/application');
+  const { Container, compose } = await import('@tandemise/kernel');
+  const { createLogger, createPaths, systemClock } = await import('@tandemise/shared');
+  const persistenceTokens = await import('@tandemise/persistence');
+  const A = await import('@tandemise/artifacts');
+  const { policyModule } = await import('@tandemise/policy');
+  const { contextModule } = await import('@tandemise/context');
+  const { createEvaluationModule } = await import('@tandemise/evaluation');
+  const { runtimesCoreModule } = await import('@tandemise/runtimes-core');
+  const { genericRuntimeModule } = await import('@tandemise/runtime-generic');
+  const { executionCoreModule, CLOCK: EXEC_CLOCK, LOGGER: EXEC_LOGGER, PATHS: EXEC_PATHS } = await import('@tandemise/execution-core');
+  const { executionLocalModule } = await import('@tandemise/execution-local');
+  const { integrationsCoreModule, CLOCK: INT_CLOCK, LOGGER: INT_LOGGER, COMMAND_EXECUTOR, BACKGROUND_PROCESS_LAUNCHER } = await import('@tandemise/integrations-core');
+
+  const paths = createPaths(HOME);
+  mkdirSync(paths.root, { recursive: true });
+  const log = createLogger({ level: 'error', base: { component: 'hold-check' } });
+  const container = new Container();
+  compose(
+    container,
+    persistenceTokens.persistenceModule({ path: paths.db, logger: log }),
+    A.createArtifactsModule({ paths }),
+    policyModule, contextModule, createEvaluationModule(), runtimesCoreModule, genericRuntimeModule,
+    executionCoreModule, executionLocalModule, integrationsCoreModule, app.createApplicationModule({ localPersonName: 'Demo' }),
+  );
+  container.bind(EXEC_CLOCK, () => systemClock, { source: 'check' });
+  container.bind(EXEC_LOGGER, () => log, { source: 'check' });
+  container.bind(EXEC_PATHS, () => paths, { source: 'check' });
+  container.bind(INT_CLOCK, () => systemClock, { source: 'check' });
+  container.bind(INT_LOGGER, () => log, { source: 'check' });
+  container.bind(COMMAND_EXECUTOR, () => ({ run: async () => ({ exitCode: 0, stdout: '', stderr: '' }) }), { source: 'check' });
+  container.bind(BACKGROUND_PROCESS_LAUNCHER, () => ({ launch: async () => { throw new Error('unused'); } }), { source: 'check' });
+  const isToken = (v) => typeof v === 'object' && v !== null && typeof v.description === 'string';
+  for (const name of Object.keys(app)) {
+    const appToken = app[name]; const provider = persistenceTokens[name];
+    if (!isToken(appToken) || !isToken(provider)) continue;
+    if (!container.has(provider) || container.has(appToken)) continue;
+    container.bind(appToken, (r) => r.resolve(provider), { source: `alias:${name}` });
+  }
+  container.bind(app.ARTIFACT_STORE, (r) => r.resolve(A.ARTIFACT_STORE), { source: 'alias' });
+  container.bind(app.ARTIFACT_TEMPLATES, () => ({ render: A.renderArtifactTemplate }), { source: 'check' });
+  container.bind(app.ARTIFACT_PARSER, () => ({ parse: A.parseArtifact }), { source: 'check' });
+  container.bind(app.ARTIFACT_MEASURE, () => ({ measure: A.measureArtifact, deriveHandoff: A.deriveHandoff, splitAppendix: A.splitAppendix }), { source: 'check' });
+  container.bind(app.EVENT_BUS, () => ({ publish: () => {}, subscribe: () => () => {} }), { source: 'check' });
+  container.bind(app.PROJECTION_BUS, () => ({ invalidate: () => {}, subscribe: () => () => {} }), { source: 'check' });
+  container.bind(app.SECRET_STORE, () => ({ backend: 'memory', store: async () => 'x', resolve: async () => undefined, remove: async () => {}, list: async () => [] }), { source: 'check' });
+  container.bind(app.SETTINGS_STORE, () => app.createMemorySettingsStore(), { source: 'check' });
+  container.bind(app.SYSTEM_ENVIRONMENT, () => app.describeEnvironment({ home: HOME, schemaVersion: 1 }), { source: 'check' });
+  container.bind(app.PROCESS_LIVENESS, () => app.osProcessLiveness, { source: 'check' });
+
+  const services = app.createServices(container);
+  const scheduler = container.resolve(app.SCHEDULER);
+  const repo = {
+    tasks: container.resolve(app.TASK_REPOSITORY),
+    missions: container.resolve(app.MISSION_REPOSITORY),
+    runs: container.resolve(app.RUN_REPOSITORY),
+    artifacts: container.resolve(app.ARTIFACT_REPOSITORY),
+    profiles: container.resolve(app.RUNTIME_PROFILE_REPOSITORY),
+    approvals: container.resolve(app.APPROVAL_REPOSITORY),
+    events: container.resolve(app.EVENT_REPOSITORY),
+    feedback: container.resolve(app.FEEDBACK_REPOSITORY),
+    holds: container.resolve(app.TASK_HOLD_REPOSITORY),
+  };
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const until = async (fn, ms = 10000, every = 40) => {
+    const end = Date.now() + ms;
+    while (Date.now() < end) {
+      await scheduler.tick();
+      const v = fn();
+      if (v) return v;
+      await sleep(every);
+    }
+    return fn();
+  };
+  return { services, scheduler, repo, paths, until, container, app };
+}
+
+section('engine: stopping into a hold and continuing from it');
+{
+  const { mkdtempSync, mkdirSync, readFileSync, existsSync } = await import('node:fs');
+  const { execFileSync, spawnSync } = await import('node:child_process');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { systemClock, ids, nullLogger } = await import('@tandemise/shared');
+  const { FAKE_ADAPTER_ID } = await import('@tandemise/runtime-generic');
+  const { RUNTIME_MANAGER } = await import('@tandemise/runtimes-core');
+  const { APPROVAL_FACTORY } = await import('@tandemise/policy');
+  const keepAlive = setInterval(() => {}, 1000);
+  const h = await engineHarness(mkdtempSync(join(tmpdir(), 'thold-')));
+  const { app } = h;
+  const now = () => systemClock.now();
+
+  const FB_ALL = '^\\d+\\. (fb_[0-9a-z]{20}) \\(';
+  const brief = ({ headline = 'Onboarding designed', changed = null } = {}) => [
+    '---', 'type: DesignBrief', 'title: Onboarding design', 'handoff:', `  headline: ${headline}`,
+    ...(changed === null ? [] : ['  changed:', ...changed.flatMap((c) => [`    - what: ${JSON.stringify(c.what)}`, `      feedback: ${JSON.stringify(c.feedback)}`])]),
+    'flows:', '  - onboarding', '---', '', '# Onboarding', '', `${headline}.`, '',
+  ].join('\n');
+  const IN_ROUND = { promptIncludes: 'Feedback to address' };
+  const write = (content, when) => ({ kind: 'write-file', path: '.tandemise/out/DesignBrief.md', content, ...(when ? { when } : {}) });
+  const cited = () => write(brief({ headline: 'Onboarding, shorter', changed: [{ what: 'Shortened the intro', feedback: '{{fb}}' }] }), IN_ROUND);
+  const promptFile = { kind: 'write-file', path: 'prompts/{{runId}}.txt', content: '{{prompt}}' };
+  const session = (id) => ({ kind: 'checkpoint', sessionId: id, label: 'session.init' });
+  const done = { kind: 'complete', summary: 'done' };
+  const profile = (name, steps) => h.repo.profiles.create({
+    id: ids.runtimeProfile(), workspaceId: null, adapterId: FAKE_ADAPTER_ID, name, executablePath: null, args: [],
+    settings: { script: { steps, resume: 'ok', captures: { fb: FB_ALL } } }, capabilities: [], enabled: true, maxConcurrent: 4, createdAt: now(), updatedAt: now(),
+  }).id;
+  const P = {
+    slow: profile('slow', [session('sess-slow'), promptFile, write(brief()), { kind: 'delay', ms: 30000 }, done]),
+    quick: profile('quick', [session('sess-quick'), promptFile, write(brief()), { kind: 'delay', ms: 0 }, done]),
+    a: profile('a', [promptFile, write(brief()), cited(), done]),
+    b: profile('b', [promptFile, write(brief()), cited(), done]),
+    a5: profile('a5', [session('sess-a5'), promptFile, write(brief()), done]),
+  };
+  const caller = { personId: h.services.identity.localPerson().id };
+  const ws = (await h.services.workspaces.create(caller, { name: 'Hold' })).workspace.id;
+  const owner = h.services.team.me(caller).memberships.find((m) => m.workspaceId === ws).memberId;
+  const agent = (name, profileIds) => h.services.team.addMember(caller, ws, { kind: 'agent', name, reportsTo: owner, roleIds: ['design'], runtimeProfileIds: profileIds }).id;
+  const AG = {
+    slow: agent('Slow', [P.slow]), quick: agent('Quick', [P.quick]),
+    ab: agent('Two runtimes', [P.a, P.b]), a5b: agent('Moves runtimes', [P.a5, P.b]),
+  };
+
+  let seq = 0;
+  const addTask = async (agentId, extra = {}) => {
+    const mission = await h.services.missions.create(caller, { workspaceId: ws, goal: 'Design onboarding', title: `H${++seq}` });
+    const dir = h.paths.mission(ws, mission.id);
+    mkdirSync(dir, { recursive: true });
+    execFileSync('git', ['init', '-q', '-b', 'main', dir]);
+    execFileSync('git', ['-C', dir, '-c', 'user.name=check', '-c', 'user.email=check@example.com', 'commit', '-q', '--allow-empty', '-m', 'init']);
+    const id = h.repo.tasks.add({
+      id: ids.task(), missionId: mission.id, key: 'doc', title: 'doc', objective: 'o', roleId: 'design',
+      dependsOn: [], requiredCapabilities: [], inputArtifacts: [], expectedOutputs: ['DesignBrief'],
+      executionPolicy: { isolation: 'none', maxWallTimeMs: 60000, capabilities: [] }, approvalPolicy: { beforeStart: false, onCompletion: false },
+      retryPolicy: { maxAttempts: 2, backoffMs: 0, onExhausted: 'block' }, completionGate: null,
+      status: 'READY', statusReason: null, attempts: 0, remediatesTaskId: null, repositoryId: null,
+      executor: 'agent', waitPolicy: null, orderHint: 0, staffingOverride: { assignees: [agentId] },
+      createdAt: now(), updatedAt: now(), startedAt: null, finishedAt: null, ...extra,
+    }).id;
+    h.repo.missions.update(mission.id, { status: 'EXECUTING' });
+    return { mission, dir, id };
+  };
+  const task = (id) => h.repo.tasks.get(id);
+  const runsOf = (id) => [...h.repo.runs.listByTask(id)].sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+  const promptOf = (dir, run) => { const p = join(dir, 'prompts', `${run?.id}.txt`); return existsSync(p) ? readFileSync(p, 'utf8') : ''; };
+  const resumedFrom = (run) => h.repo.events.listByRun(run.id).find((e) => e.body.type === 'checkpoint' && e.body.label === 'session.resumed')?.body.externalSessionId ?? null;
+  const idle = (id) => !h.scheduler.activeTaskIds().includes(id) && !h.repo.runs.listByTask(id).some((r) => r.status === 'RUNNING' || r.status === 'STARTING');
+  const settled = (id) => h.until(() => idle(id) && ['SUCCEEDED', 'FAILED', 'BLOCKED', 'AWAITING_APPROVAL', 'AWAITING_HUMAN'].includes(task(id).status), 20000);
+  const hold = (t, extra = {}) => {
+    const record = {
+      id: `hld_${ids.task()}`, taskId: t.id, missionId: t.mission.id, heldBy: owner, fromStatus: 'RUNNING', runtimeProfileId: P.b,
+      sessionBefore: 's1', sessionAfter: 's2', ptyPid: null, startedAt: now(), endedAt: now(), endedBy: owner, ending: 'continued',
+      consumedAt: null, diffStat: null, dir: join(h.paths.root, 'holds', t.id), ...extra,
+    };
+    h.repo.holds.create(record);
+    return record;
+  };
+  const holdsOf = (t) => h.repo.holds.listByMission(t.mission.id).filter((x) => x.taskId === t.id);
+
+  // ---- 1. A running task is held: the run ends RESUMABLE, the task stays HELD (Review Focus 5)
+  const one = await addTask(AG.slow);
+  await h.until(() => runsOf(one.id).some((r) => r.status === 'RUNNING' && r.externalSessionId === 'sess-slow'));
+  h.repo.tasks.update(one.id, { status: 'HELD', statusReason: 'Held by you.' });
+  h.scheduler.cancelTask(one.id, new app.TaskHeld());
+  await h.until(() => idle(one.id));
+  const heldRun = runsOf(one.id).at(-1);
+  check('1: the held run ends RESUMABLE, keeping its session', heldRun?.status === 'RESUMABLE' && heldRun.externalSessionId === 'sess-slow', heldRun);
+  check('1: the task stays HELD, not READY or CANCELLED', task(one.id).status === 'HELD', task(one.id).status);
+  check('1: isTaskHeld reads the abort reason', (() => { const c = new AbortController(); c.abort(new app.TaskHeld()); return app.isTaskHeld(c.signal) && !app.isTaskHeld(new AbortController().signal); })());
+  for (let i = 0; i < 5; i++) await h.scheduler.tick();
+  check('1: the mission stays EXECUTING across ticks', h.repo.missions.get(one.mission.id).status === 'EXECUTING', h.repo.missions.get(one.mission.id));
+  check('1: a HELD task is never dispatched', task(one.id).status === 'HELD' && runsOf(one.id).length === 1, runsOf(one.id).map((r) => r.status));
+
+  // ---- 2. The hold lands as the stream ends (Review Focus 1)
+  const manager = h.container.resolve(RUNTIME_MANAGER);
+  const triggers = new Map(); // taskId -> the event type the hold lands on
+  const original = manager.start.bind(manager);
+  manager.start = (request) => {
+    const inner = original(request);
+    const taskId = h.repo.runs.get(request.runId)?.taskId;
+    const on = triggers.get(taskId);
+    if (on === undefined) return inner;
+    return (async function* () {
+      for await (const event of inner) {
+        if (event.type === on && triggers.has(taskId)) {
+          triggers.delete(taskId);
+          h.repo.tasks.update(taskId, { status: 'HELD', statusReason: 'Held by you.' });
+          h.scheduler.cancelTask(taskId, new app.TaskHeld());
+        }
+        yield event;
+      }
+    })();
+  };
+  for (const on of ['checkpoint', 'completed']) {
+    const two = await addTask(AG.quick);
+    triggers.set(two.id, on);
+    await h.until(() => !triggers.has(two.id) && idle(two.id));
+    const s = task(two.id).status;
+    check(`2 (${on}): the task is HELD or the pass settled, never READY or CANCELLED`,
+      !triggers.has(two.id) && !['READY', 'CANCELLED', 'RUNNING'].includes(s) && (s === 'HELD' || ['SUCCEEDED', 'AWAITING_APPROVAL', 'FAILED'].includes(s)), { s, reason: task(two.id).statusReason });
+  }
+  manager.start = original;
+
+  // ---- control: without a hold the two-runtime agent runs on runtime A
+  const ctl = await addTask(AG.ab);
+  await settled(ctl.id);
+  check('control: with no hold the agent runs on its first runtime (A)', runsOf(ctl.id)[0]?.runtimeProfileId === P.a, runsOf(ctl.id)[0]);
+
+  // ---- 3. A pending continuation resumes the captured session on the hold's profile, spending no attempt
+  const three = await addTask(AG.ab, { status: 'HELD', attempts: 1 });
+  const h3 = hold(three);
+  h.repo.tasks.update(three.id, { status: 'READY', statusReason: null });
+  await settled(three.id);
+  const [r3] = runsOf(three.id);
+  check('3: the next run is on profile B and resumes s2', r3?.runtimeProfileId === P.b && resumedFrom(r3) === 's2' && r3.externalSessionId === 's2', { r3, resumed: r3 && resumedFrom(r3) });
+  check('3: the task attempts is unchanged', task(three.id).attempts === 1, task(three.id).attempts);
+  check('3: the hold is consumed', h.repo.holds.get(h3.id)?.consumedAt != null, h.repo.holds.get(h3.id));
+  check('3: the prompt starts with the continuation prompt', promptOf(three.dir, r3).startsWith(app.CONTINUATION_PROMPT), promptOf(three.dir, r3).slice(0, 300));
+  check('3: CONTINUATION_PROMPT is the spec text', app.CONTINUATION_PROMPT === 'A person held this task and worked with you directly in this session. Their changes are in the worktree. Continue the task from where things stand now and finish it.');
+  check('3: the pass settles normally', task(three.id).status === 'SUCCEEDED', { s: task(three.id).status, r: task(three.id).statusReason });
+
+  // ---- 4. A note left while HELD is queued and delivered once by the continuation (Review Focus 4)
+  const four = await addTask(AG.ab, { status: 'HELD', attempts: 1 });
+  const NOTE = 'Make the intro one line ZX-NOTE-4';
+  const given = h.services.feedback.give(caller, four.id, { text: NOTE });
+  check('4: a note on a HELD task is queued', h.repo.feedback.get(given.feedback.id)?.status === 'queued', h.repo.feedback.get(given.feedback.id));
+  for (let i = 0; i < 3; i++) await h.scheduler.tick();
+  check('4: the sweep leaves it queued while the task is HELD', h.repo.feedback.get(given.feedback.id)?.status === 'queued', h.repo.feedback.get(given.feedback.id)?.status);
+  hold(four);
+  h.repo.tasks.update(four.id, { status: 'READY', statusReason: null });
+  await settled(four.id);
+  const [r4] = runsOf(four.id);
+  const p4 = promptOf(four.dir, r4);
+  check('4: the continuation prompt carries the note exactly once', p4.startsWith(app.CONTINUATION_PROMPT) && p4.split(NOTE).length === 2, p4.slice(0, 600));
+  check('4: the note was delivered (in the round, then addressed)', ['in_round', 'addressed'].includes(h.repo.feedback.get(given.feedback.id)?.status) && runsOf(four.id).length === 1,
+    { fb: h.repo.feedback.get(given.feedback.id)?.status, runs: runsOf(four.id).map((r) => r.purpose) });
+
+  // ---- released: the captured session is resumed on the hold's profile with the normal prompt
+  const rel = await addTask(AG.ab, { status: 'HELD', attempts: 1 });
+  const hr = hold(rel, { ending: 'released', sessionAfter: 's3' });
+  h.repo.tasks.update(rel.id, { status: 'READY', statusReason: null });
+  await settled(rel.id);
+  const [rr] = runsOf(rel.id);
+  check('released: resumes s3 on profile B, with the normal prompt, no attempt spent',
+    rr?.runtimeProfileId === P.b && resumedFrom(rr) === 's3' && !promptOf(rel.dir, rr).startsWith(app.CONTINUATION_PROMPT) && promptOf(rel.dir, rr).length > 0 && task(rel.id).attempts === 1,
+    { rr, p: promptOf(rel.dir, rr).slice(0, 200), a: task(rel.id).attempts });
+  check('released: the hold is consumed', h.repo.holds.get(hr.id)?.consumedAt != null);
+
+  // ---- 5. A RESUMABLE run on profile A is not resumed on profile B
+  const five = await addTask(AG.a5b);
+  await settled(five.id);
+  const [r5a] = runsOf(five.id);
+  check('5: setup: the first run was on A with a session', r5a?.runtimeProfileId === P.a5 && r5a.externalSessionId === 'sess-a5', r5a);
+  h.repo.runs.update(r5a.id, { status: 'RESUMABLE' });
+  h.repo.profiles.update(P.a5, { enabled: false });
+  h.repo.tasks.update(five.id, { status: 'READY', statusReason: null });
+  h.repo.missions.update(five.mission.id, { status: 'EXECUTING' });
+  await h.until(() => runsOf(five.id).length > 1 && idle(five.id), 20000);
+  const r5b = runsOf(five.id)[1];
+  check('5: the run routed to B does not resume A\'s session', r5b?.runtimeProfileId === P.b && resumedFrom(r5b) === null && r5b.externalSessionId !== 'sess-a5', { r5b, resumed: r5b && resumedFrom(r5b), s: task(five.id).status, why: task(five.id).statusReason, runs: runsOf(five.id).map((r) => [r.status, r.runtimeProfileId]) });
+  h.repo.profiles.update(P.a5, { enabled: true });
+
+  // ---- 6. ask_human while HELD leaves the status HELD
+  {
+    const t = task(one.id);
+    const tool = app.createAskHumanTool({
+      approvals: h.repo.approvals, approvalFactory: h.container.resolve(APPROVAL_FACTORY), tasks: h.repo.tasks,
+      address: (tk, w) => h.container.resolve(app.REVIEW_PIPELINE).questionAddressFor(tk, w), waiter: h.container.resolve(app.APPROVAL_WAITER),
+      deadlines: new app.RunDeadlines(), recorder: h.container.resolve(app.EVENT_RECORDER), clock: systemClock,
+    });
+    const assignment = { id: 'asg_hold_check', workspaceId: ws, missionId: one.mission.id, taskId: t.id, roleId: 'design' };
+    const c = new AbortController();
+    const call = tool.execute({ assignment, assignmentId: assignment.id, runId: null, workingDirectory: one.dir, logger: nullLogger, signal: c.signal }, { question: 'Which style?' });
+    const during = task(one.id).status;
+    c.abort();
+    await call;
+    check('6: ask_human while HELD never writes AWAITING_INPUT', during === 'HELD' && task(one.id).status === 'HELD', { during, after: task(one.id).status });
+  }
+
+  // ---- 7. Recovery leaves a HELD task alone and clears a dead terminal's pid
+  {
+    // A run row left RUNNING under the held task, as a daemon dying mid-hold would leave it.
+    h.repo.runs.update(heldRun.id, { status: 'RUNNING', pid: null });
+    const dead = spawnSync(process.execPath, ['-e', '0']).pid;
+    const h7 = hold(one, { endedAt: null, endedBy: null, ending: null, sessionAfter: null, sessionBefore: 'sess-slow', ptyPid: dead });
+    const live = await addTask(AG.slow, { status: 'HELD' });
+    const h7b = hold(live, { endedAt: null, endedBy: null, ending: null, ptyPid: process.pid });
+    const report = await h.container.resolve(app.RECOVERY_SERVICE).run();
+    check('7: recovery leaves the HELD task HELD', task(one.id).status === 'HELD' && task(live.id).status === 'HELD', { s: task(one.id).status, report });
+    check('7: a dead terminal pid is cleared on the open hold', h.repo.holds.get(h7.id)?.ptyPid === null, h.repo.holds.get(h7.id));
+    check('7: a live terminal pid is kept', h.repo.holds.get(h7b.id)?.ptyPid === process.pid, h.repo.holds.get(h7b.id));
+  }
+
+  clearInterval(keepAlive);
+  await h.container.dispose();
+}
+
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) {
   console.log(failures.map((f) => `  - ${f}`).join('\n'));
