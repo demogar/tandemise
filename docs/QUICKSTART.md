@@ -67,6 +67,15 @@ The guides in [`docs/guides/`](guides/) each answer one "how do I…":
 copy, when something goes wrong). [WORKFLOWS.md](WORKFLOWS.md) covers workflow
 files and every gate fact.
 
+## Working as a team (optional relay)
+
+Nothing here needs a server. When a team wants to see who is working on
+which tracker item, one person runs the relay (`docker compose -f
+apps/relay/compose.yaml up -d`, see [apps/relay/README.md](../apps/relay/README.md))
+and everyone connects from **Settings → Team relay** with an invite code.
+Webhooks from sources that only push (Sentry, WhatsApp) can land on the relay
+and be picked up by one daemon.
+
 ## Where things are
 
 | | |
