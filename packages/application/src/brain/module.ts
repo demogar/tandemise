@@ -49,10 +49,16 @@ export function bindBrain(container: Container): void {
     recorder: r.resolve(t.EVENT_RECORDER),
     clock: clock(r),
     log: log(r).child({ component: 'brain' }),
+    missions: r.resolve(t.MISSION_REPOSITORY),
+    tasks: r.resolve(t.TASK_REPOSITORY),
+    runs: r.resolve(t.RUN_REPOSITORY),
+    runScores: r.resolve(t.RUN_SCORE_REPOSITORY),
+    issues: r.resolve(t.ISSUE_REPOSITORY),
   }), { source: SOURCE });
 
   container.bind(b.BRAIN_SYNC_LOOP, (r) => new BrainSyncLoop(
     r.resolve(b.BRAIN_SERVICE), r.resolve(b.WORKSPACE_BRAIN_REPOSITORY), log(r).child({ component: 'brain-sync' }),
+    r.tryResolve(t.EVENT_BUS) ?? null,
   ), { source: SOURCE });
 }
 

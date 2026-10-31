@@ -1,13 +1,17 @@
 import { randomBytes } from 'node:crypto';
 import { rename, stat } from 'node:fs/promises';
 import type {
-  BrainHostPort, BrainRecordRepositoryPort, BrainRepoPort, BrainWrite, DecisionRepositoryPort, WorkspaceBrain,
-  WorkspaceBrainRepositoryPort, WriterId,
+  BrainEntry, BrainHostPort, BrainMemory, BrainRecordRepositoryPort, BrainRepoPort, BrainWrite, DecisionRepositoryPort,
+  IssueRepositoryPort, LedgerEvent, MissionRepositoryPort, RunRepositoryPort, RunScoreRepositoryPort, TaskRepositoryPort,
+  WorkspaceBrain, WorkspaceBrainRepositoryPort, WriterId,
 } from '@tandemise/domain';
-import { makeWriterId } from '@tandemise/domain';
-import type { BrainAdoptPreview, BrainView, SetupItemView } from '@tandemise/api-contract';
-import type { Clock, Logger, TandemisePaths, WorkspaceId } from '@tandemise/shared';
-import { TandemiseError, errorMessage, slugify } from '@tandemise/shared';
+import { TERMINAL_MISSION_STATUSES, foldLedger, isTrialMission, isValidAt, makeWriterId } from '@tandemise/domain';
+import type { BrainAdoptPreview, BrainEntryView, BrainView, RememberView, SetupItemView } from '@tandemise/api-contract';
+import type { Clock, Logger, MissionId, TaskId, TandemisePaths, WorkspaceId } from '@tandemise/shared';
+import { TandemiseError, asId, errorMessage, slugify } from '@tandemise/shared';
+import { LedgerReader, type LedgerAt } from './memory.js';
+import { LedgerWriter, type LedgerActor, type LedgerEventInput } from './ledger-writer.js';
+import { historyEntry } from './history.js';
 import type { LoadedWorkflow, SettingsStorePort, SkillFilesPort } from '../ports.js';
 import { BrainFactory } from './factory-cache.js';
 import type { WorkspaceService } from '../services.js';
@@ -44,7 +48,17 @@ export interface BrainServiceDeps {
   readonly recorder: EventRecorder;
   readonly clock: Clock;
   readonly log: Logger;
+  /** For the ledger: trial guard, history, "Loaded in N runs" and run links (Task 9). */
+  readonly missions?: Pick<MissionRepositoryPort, 'get' | 'list'>;
+  readonly tasks?: Pick<TaskRepositoryPort, 'get' | 'listByMission'>;
+  readonly runs?: Pick<RunRepositoryPort, 'get' | 'listByMission' | 'update'>;
+  readonly runScores?: Pick<RunScoreRepositoryPort, 'list' | 'listByTask'>;
+  readonly issues?: Pick<IssueRepositoryPort, 'getLink'>;
 }
+
+const SOURCE_LABEL: Readonly<Record<string, string>> = {
+  hold: 'your hold', rejection: 'a change you asked for', gate: 'a failed check', person: 'you', agent: 'an agent', mission: 'a mission',
+};
 
 /** Something that runs after a sync moved `lastPulledSha` (the factory cache, intake config, promotions). */
 export type BrainSyncListener = (workspaceId: WorkspaceId, from: string | null, to: string | null) => Promise<void>;
@@ -79,8 +93,20 @@ export class BrainService {
   readonly #listeners: BrainSyncListener[] = [];
 
   readonly #factory: BrainFactory;
+  readonly #reader: LedgerReader;
+  readonly #writer: LedgerWriter;
+  /** The ledger at each project's `lastPulledSha`, so listing lessons needs no git call. */
+  readonly #ledger = new Map<string, { sha: string; at: LedgerAt }>();
 
   constructor(private readonly deps: BrainServiceDeps) {
+    this.#reader = new LedgerReader(deps.repo);
+    this.#writer = new LedgerWriter(this, {
+      repo: deps.repo,
+      missions: deps.missions ?? { get: () => undefined },
+      workspaces: deps.workspaces,
+      clock: deps.clock,
+      log: deps.log,
+    });
     this.#factory = new BrainFactory(this, {
       repo: deps.repo, host: deps.host, setup: deps.setup, skillFiles: deps.skillFiles, identity: deps.identity,
       recorder: deps.recorder, log: deps.log,
@@ -259,6 +285,8 @@ export class BrainService {
 
   async sync(workspaceId: WorkspaceId, why: 'start' | 'stale' | 'background' | 'person'): Promise<BrainView> {
     if (this.deps.brains.get(workspaceId) === undefined) return this.view(workspaceId);
+    // What this machine learned goes up before the pull, so a person's Sync shares it.
+    await this.#writer.flush(workspaceId);
     await this.#exclusive(workspaceId, () => this.#syncLocked(workspaceId, why));
     return this.view(workspaceId);
   }
@@ -325,9 +353,41 @@ export class BrainService {
       if (rebased.offline === null && rebased.conflicted.length === 0) result = await this.deps.repo.push(row.clonePath, row.defaultBranch);
     }
     const head = await this.deps.repo.head(row.clonePath);
-    if (result === 'pushed') this.deps.brains.update(workspaceId, { lastPushedSha: head, lastPulledSha: head, lastSyncError: null, lastSyncAt: this.deps.clock.now() });
+    if (result === 'pushed') this.deps.brains.update(workspaceId, { lastPushedSha: head, lastPulledSha: head, lastSyncError: null, lastSyncAt: this.deps.clock.now(), fallbackBranch: null });
     else if (result === 'offline') this.deps.brains.update(workspaceId, { lastSyncError: `Couldn't reach ${hostOf(row.remote)}.` });
+    else if (result === 'protected') await this.#ledgerFallback(workspaceId);
     return result;
+  }
+
+  /**
+   * The default branch refuses this daemon's push (spec §4): its commits go to
+   * `tandemise/ledger/<writerId>` and one standing PR, "Lessons from <writerId>".
+   */
+  async #ledgerFallback(workspaceId: WorkspaceId): Promise<void> {
+    const row = this.#require(workspaceId);
+    const branch = `tandemise/ledger/${row.writerId}`;
+    await this.deps.repo.branch(row.clonePath, branch, `refs/heads/${row.defaultBranch}`);
+    const pushed = await this.deps.repo.push(row.clonePath, branch);
+    const head = await this.deps.repo.head(row.clonePath);
+    this.deps.brains.update(workspaceId, { fallbackBranch: branch, lastPulledSha: head, lastSyncAt: this.deps.clock.now() });
+    if (pushed !== 'pushed') {
+      this.reportProblem(workspaceId, `Couldn't push lessons to ${branch}.`);
+      return;
+    }
+    try {
+      const found = await this.deps.host.findPr(row.clonePath, branch);
+      if (found !== null && found.state === 'open') {
+        this.fallbackPr.set(workspaceId, found.url);
+        return;
+      }
+      const pr = await this.deps.host.openPr({
+        clone: row.clonePath, head: branch, base: row.defaultBranch, title: `Lessons from ${row.writerId}`, draft: false,
+        body: `## What and why\n\nThe default branch of this brain is protected, so the lessons and votes ${row.writerId} records go here. Merge it to share them.\n`,
+      });
+      this.fallbackPr.set(workspaceId, pr.url);
+    } catch (e) {
+      this.reportProblem(workspaceId, `Couldn't open the lessons pull request: ${errorMessage(e)}`);
+    }
   }
 
   // ------------------------------------------------------------------ internals
@@ -401,11 +461,193 @@ export class BrainService {
     } catch (e) {
       problems.push(`The brain's factory could not be read: ${errorMessage(e)}`);
     }
-    const prior = this.#info.get(workspaceId);
+    try {
+      const at = await this.#reader.eventsAt(row.clonePath, row.lastPulledSha);
+      this.#ledger.set(workspaceId, { sha: row.lastPulledSha, at });
+      for (const p of at.problems) problems.push(p.problem);
+    } catch (e) {
+      problems.push(`The brain's memory could not be read: ${errorMessage(e)}`);
+    }
+    const memory = this.memory(workspaceId);
+    const now = this.deps.clock.now();
+    const valid = memory.entries.filter((e) => e.kind !== 'history' && isValidAt(e, now));
     this.#info.set(workspaceId, {
-      rules: rules.length, lessons: prior?.lessons ?? 0, candidates: prior?.candidates ?? 0, mcpsNeeded,
+      rules: rules.length,
+      lessons: valid.filter((e) => e.state === 'active' || e.state === 'accepted').length,
+      candidates: valid.filter((e) => e.state === 'candidate').length,
+      mcpsNeeded,
       problems: [...problems, ...(this.extraProblems.get(workspaceId) ?? [])],
     });
+  }
+
+  // ------------------------------------------------------------------ memory
+
+  /** The project's memory: the ledger at its last pull plus what this machine has not committed yet. */
+  memory(workspaceId: WorkspaceId): BrainMemory {
+    const cached = this.#ledger.get(workspaceId);
+    const pending = this.#writer.pending(workspaceId);
+    return foldLedger([...(cached?.at.events ?? []), ...pending], cached?.at.problems ?? [], this.deps.clock.now());
+  }
+
+  /** The memory at one commit (what a run read). */
+  async memoryAt(workspaceId: WorkspaceId, sha: string): Promise<BrainMemory> {
+    const row = this.#require(workspaceId);
+    return this.#reader.memoryAt(row.clonePath, sha, this.deps.clock.now());
+  }
+
+  /** The only way into the ledger: validated, scrubbed, buffered (spec §5). */
+  append(workspaceId: WorkspaceId, events: readonly LedgerEventInput[], opts: { actor: LedgerActor; missionId?: MissionId | null }): Promise<readonly LedgerEvent[]> {
+    return this.#writer.append(workspaceId, events, opts);
+  }
+
+  /** Commits and pushes this machine's buffered ledger events now. */
+  flush(workspaceId: WorkspaceId): Promise<void> {
+    return this.#writer.flush(workspaceId);
+  }
+
+  /** At shutdown: nothing learned is left in memory. */
+  flushAll(): Promise<void> {
+    return this.#writer.flushAll();
+  }
+
+  entries(workspaceId: WorkspaceId, q: { scope?: string | undefined; state?: BrainEntry['state'] | undefined; includeHistory?: boolean | undefined } = {}): readonly BrainEntryView[] {
+    if (this.deps.brains.get(workspaceId) === undefined) return [];
+    const now = this.deps.clock.now();
+    const loaded = this.#loadedIndex(workspaceId);
+    return this.memory(workspaceId).entries
+      .filter((e) => q.includeHistory === true || (e.kind !== 'history' && isValidAt(e, now)))
+      .filter((e) => q.state === undefined || e.state === q.state)
+      .filter((e) => q.scope === undefined || q.scope === '' || scopeMatchesFilter(e, q.scope))
+      .map((e) => this.#entryView(workspaceId, e, loaded))
+      .sort((a, b) => (b.lastConfirmedAt < a.lastConfirmedAt ? -1 : b.lastConfirmedAt > a.lastConfirmedAt ? 1 : 0) || (a.id < b.id ? -1 : 1));
+  }
+
+  /** One entry by id, wherever this machine has it. */
+  entry(entryId: string): { workspaceId: WorkspaceId; entry: BrainEntryView } | null {
+    for (const link of this.deps.brains.list()) {
+      const memory = this.memory(link.workspaceId);
+      const id = memory.aliases[entryId] ?? entryId;
+      const found = memory.entries.find((e) => e.id === id);
+      if (found !== undefined) return { workspaceId: link.workspaceId, entry: this.#entryView(link.workspaceId, found, this.#loadedIndex(link.workspaceId)) };
+    }
+    return null;
+  }
+
+  async remember(caller: Caller, workspaceId: WorkspaceId, req: { text: string; scope?: BrainEntry['scope'] | undefined; taskId?: string | undefined }): Promise<RememberView> {
+    void caller;
+    const mission = this.#missionOfTask(req.taskId);
+    const [event] = await this.append(workspaceId, [{
+      op: 'add',
+      entry: { kind: 'lesson', text: req.text.trim(), scope: cleanScope(req.scope ?? {}), source: { signal: 'person', mission: mission?.title ?? 'Brain screen' }, state: 'active' },
+    }], { actor: 'person', missionId: mission?.id ?? null });
+    if (event === undefined) throw TandemiseError.validation("Lessons aren't saved during an eval trial.");
+    const view = this.entry(event.id);
+    if (view === null) throw TandemiseError.validation('That lesson could not be saved.');
+    const words = view.entry.scopeLabel === 'Whole project' ? 'the whole project' : view.entry.scopeLabel;
+    return { entry: view.entry, message: `Saved. Agents on ${words} will see it from the next run.` };
+  }
+
+  async vote(caller: Caller, entryId: string, req: { vote: 'helpful' | 'harmful'; taskId?: string | undefined }): Promise<BrainEntryView> {
+    void caller;
+    const found = this.#requireEntry(entryId);
+    const mission = this.#missionOfTask(req.taskId);
+    await this.append(found.workspaceId, [{ op: 'vote', id: found.entry.id, vote: req.vote, why: 'person', ...(mission ? { mission: mission.title } : {}) }], { actor: 'person', missionId: mission?.id ?? null });
+    return this.#requireEntry(found.entry.id).entry;
+  }
+
+  async accept(caller: Caller, entryId: string): Promise<BrainEntryView> {
+    return this.#mark(caller, entryId, { op: 'accept' });
+  }
+
+  async reject(caller: Caller, entryId: string): Promise<BrainEntryView> {
+    return this.#mark(caller, entryId, { op: 'reject' });
+  }
+
+  async retire(caller: Caller, entryId: string, req: { reason?: string | undefined } = {}): Promise<BrainEntryView> {
+    return this.#mark(caller, entryId, { op: 'retire', reason: req.reason?.trim() || 'Retired by you.' });
+  }
+
+  async #mark(caller: Caller, entryId: string, input: { op: 'accept' } | { op: 'reject' } | { op: 'retire'; reason: string }): Promise<BrainEntryView> {
+    void caller;
+    const found = this.#requireEntry(entryId);
+    await this.append(found.workspaceId, [{ ...input, id: found.entry.id } as LedgerEventInput], { actor: 'person' });
+    return this.#requireEntry(found.entry.id).entry;
+  }
+
+  /** A mission finished: one history line, written by code (spec §5). Trials teach nothing. */
+  async missionEnded(missionId: MissionId): Promise<void> {
+    const mission = this.deps.missions?.get(missionId);
+    if (mission === undefined || isTrialMission(mission)) return;
+    if (!(TERMINAL_MISSION_STATUSES as readonly string[]).includes(mission.status)) return;
+    if (this.deps.brains.get(mission.workspaceId) === undefined) return;
+    const tasks = this.deps.tasks?.listByMission(missionId) ?? [];
+    const scores = tasks.flatMap((t) => this.deps.runScores?.listByTask(t.id) ?? []);
+    const link = mission.issueLinkId ? this.deps.issues?.getLink(mission.issueLinkId) : undefined;
+    const entry = historyEntry(mission, tasks, scores, { tracker: link?.url ?? null, taskKeys: new Map(tasks.map((t) => [t.id as string, t.key])) });
+    if (entry === null) return;
+    await this.append(mission.workspaceId, [{ op: 'add', entry }], { actor: 'daemon', missionId });
+    await this.flush(mission.workspaceId);
+  }
+
+  #requireEntry(entryId: string): { workspaceId: WorkspaceId; entry: BrainEntryView } {
+    const found = this.entry(entryId);
+    if (found === null) throw TandemiseError.notFound('Lesson', entryId);
+    return found;
+  }
+
+  #missionOfTask(taskId: string | undefined): { id: MissionId; title: string } | null {
+    if (taskId === undefined) return null;
+    const task = this.deps.tasks?.get(asId<'TaskId'>(taskId) as TaskId);
+    const mission = task === undefined ? undefined : this.deps.missions?.get(task.missionId);
+    return mission === undefined ? null : { id: mission.id, title: mission.title };
+  }
+
+  /** "Loaded in N runs": computed here from runs.brain and run scores, never stored (spec §7). */
+  #loadedIndex(workspaceId: WorkspaceId): Map<string, { runs: number; passedFirstTime: number }> {
+    const out = new Map<string, { runs: number; passedFirstTime: number }>();
+    if (this.deps.missions === undefined || this.deps.runs === undefined) return out;
+    const scores = new Map((this.deps.runScores?.list(workspaceId, '1970-01-01T00:00:00.000Z') ?? []).map((s) => [s.runId as string, s]));
+    for (const mission of this.deps.missions.list({ workspaceId })) {
+      for (const run of this.deps.runs.listByMission(mission.id)) {
+        for (const loaded of run.brain?.loaded ?? []) {
+          const row = out.get(loaded.id) ?? { runs: 0, passedFirstTime: 0 };
+          row.runs++;
+          const score = scores.get(run.id);
+          if (score !== undefined && score.gatePassed && score.attempt === 1) row.passedFirstTime++;
+          out.set(loaded.id, row);
+        }
+      }
+    }
+    return out;
+  }
+
+  #entryView(workspaceId: WorkspaceId, e: BrainEntry, loaded: Map<string, { runs: number; passedFirstTime: number }>): BrainEntryView {
+    const row = this.deps.brains.get(workspaceId);
+    const roles = this.deps.workspaces.view(workspaceId).roles;
+    const scopeParts = [
+      e.scope.role === undefined ? null : (roles.find((r) => r.id === e.scope.role)?.name ?? e.scope.role),
+      e.scope.repo ?? null,
+      e.scope.step === undefined ? null : `step ${e.scope.step}`,
+      e.scope.paths === undefined || e.scope.paths.length === 0 ? null : e.scope.paths.join(', '),
+    ].filter((x): x is string => x !== null);
+    const run = e.source.run !== undefined && row !== undefined && e.source.run.daemon === row.writerId
+      ? this.deps.runs?.get(asId<'RunId'>(e.source.run.runId)) : undefined;
+    const counts = loaded.get(e.id) ?? { runs: 0, passedFirstTime: 0 };
+    const notes: string[] = [];
+    if (counts.runs > 0) notes.push(`Loaded in ${counts.runs} ${counts.runs === 1 ? 'run' : 'runs'}, ${counts.passedFirstTime} passed first time`);
+    if (e.flags.stale) notes.push(`Not confirmed since ${e.lastConfirmedAt.slice(0, 10)}`);
+    if (e.flags.harmful) notes.push('Harmful more often than helpful');
+    return {
+      id: e.id, kind: e.kind, text: e.text, scope: e.scope, state: e.state, helpful: e.helpful, harmful: e.harmful, net: e.net,
+      addedAt: e.addedAt, lastConfirmedAt: e.lastConfirmedAt, missions: e.missions, invalidAt: e.invalidAt, supersededBy: e.supersededBy,
+      retired: e.retired, promoted: e.promoted, flags: e.flags,
+      scopeLabel: scopeParts.length === 0 ? 'Whole project' : scopeParts.join(' · '),
+      sourceLabel: SOURCE_LABEL[e.source.signal] ?? 'a mission',
+      sourceMission: e.source.mission,
+      runLink: run === undefined ? null : { missionId: run.missionId, taskId: run.taskId, runId: run.id },
+      loadedIn: counts,
+      notes,
+    };
   }
 
   /** Problems other parts of the brain report for the Brain section (a broken tracker.yaml, say). */
@@ -566,6 +808,25 @@ export type LinkRequest =
   | { readonly mode: 'create'; readonly owner: string; readonly name: string }
   | { readonly mode: 'adopt'; readonly remote: string }
   | { readonly mode: 'local' };
+
+function cleanScope(scope: BrainEntry['scope']): BrainEntry['scope'] {
+  const out: { repo?: string; role?: string; step?: string; paths?: readonly string[] } = {};
+  if (scope.repo !== undefined && scope.repo !== '') out.repo = scope.repo;
+  if (scope.role !== undefined && scope.role !== '') out.role = scope.role;
+  if (scope.step !== undefined && scope.step !== '') out.step = scope.step;
+  if (scope.paths !== undefined && scope.paths.length > 0) out.paths = [...scope.paths];
+  return out;
+}
+
+/** A Lessons filter: `role:<id>`, `repo:<name>`, `step:<key>` or `project`. */
+function scopeMatchesFilter(e: BrainEntry, filter: string): boolean {
+  if (filter === 'project') return Object.keys(e.scope).length === 0;
+  const [kind, value] = filter.split(':');
+  if (kind === 'role') return e.scope.role === value;
+  if (kind === 'repo') return e.scope.repo === value;
+  if (kind === 'step') return e.scope.step === value;
+  return true;
+}
 
 export function isEvalsPath(path: string): boolean {
   const p = path.replace(/^\.?\/+/, '');

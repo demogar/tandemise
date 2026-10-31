@@ -44,6 +44,73 @@ export interface BrainView {
   readonly counts: { readonly rules: number; readonly lessons: number; readonly candidates: number; readonly mcpsNeeded: number };
 }
 
+const scopeRequest = z.object({
+  repo: z.string().trim().min(1).max(200).optional(),
+  role: z.string().trim().min(1).max(60).optional(),
+  step: z.string().trim().min(1).max(120).optional(),
+  paths: z.array(z.string().trim().min(1).max(400)).max(20).optional(),
+}).strict();
+
+/** "Remember this": a person's lesson, active at once. */
+export const rememberRequest = z.object({
+  text: z.string().trim().min(1).max(400),
+  scope: scopeRequest.optional(),
+  /** The task it was said on, for its mission's title. */
+  taskId: z.string().min(1).optional(),
+});
+export type RememberRequest = z.infer<typeof rememberRequest>;
+
+export const voteEntryRequest = z.object({
+  vote: z.enum(['helpful', 'harmful']),
+  taskId: z.string().min(1).optional(),
+});
+export type VoteEntryRequest = z.infer<typeof voteEntryRequest>;
+
+export const retireEntryRequest = z.object({ reason: z.string().trim().max(400).default('Retired by you.') });
+export type RetireEntryRequest = z.input<typeof retireEntryRequest>;
+
+export const brainEntriesQuery = z.object({
+  scope: z.string().optional(),
+  state: z.enum(['active', 'candidate', 'accepted', 'rejected']).optional(),
+  history: z.enum(['true', 'false']).optional().transform((v) => v === 'true'),
+});
+
+/** One lesson, convention or history line, as the Brain screen shows it. */
+export interface BrainEntryView {
+  readonly id: string;
+  readonly kind: 'lesson' | 'convention' | 'history';
+  readonly text: string;
+  readonly scope: { readonly repo?: string; readonly role?: string; readonly step?: string; readonly paths?: readonly string[] };
+  readonly state: 'active' | 'candidate' | 'accepted' | 'rejected';
+  readonly helpful: number;
+  readonly harmful: number;
+  readonly net: number;
+  readonly addedAt: string;
+  readonly lastConfirmedAt: string;
+  readonly missions: readonly string[];
+  readonly invalidAt: string | null;
+  readonly supersededBy: string | null;
+  readonly retired: { readonly at: string; readonly reason: string } | null;
+  readonly promoted: { readonly target: string; readonly pr: string | null } | null;
+  readonly flags: { readonly harmful: boolean; readonly stale: boolean };
+  /** "Developer · garipass · step build", or "Whole project". */
+  readonly scopeLabel: string;
+  /** "your hold", "a change you asked for", "a failed check", "you", "an agent", "a mission". */
+  readonly sourceLabel: string;
+  readonly sourceMission: string;
+  /** The run it came from, when that run is on this machine. */
+  readonly runLink: { readonly missionId: string; readonly taskId: string; readonly runId: string } | null;
+  /** Computed here from runs.brain and run scores; never stored in the ledger (spec §7). */
+  readonly loadedIn: { readonly runs: number; readonly passedFirstTime: number };
+  /** "Loaded in 14 runs, 11 passed first time", "Not confirmed since …", "Harmful more often than helpful". */
+  readonly notes: readonly string[];
+}
+
+export interface RememberView {
+  readonly entry: BrainEntryView;
+  readonly message: string;
+}
+
 /** What adopting an existing brain would change here, before anything is linked. */
 export interface BrainAdoptPreview {
   readonly hash: string;

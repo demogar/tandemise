@@ -137,3 +137,7 @@ export * from './brain/constants.js';
 export { listProjectWorkflows } from './brain/workflows.js';
 export type { BrainWorkflowReader } from './brain/workflows.js';
 export { BrainFactory } from './brain/factory-cache.js';
+export { LedgerWriter } from './brain/ledger-writer.js';
+export type { LedgerActor, LedgerEventInput } from './brain/ledger-writer.js';
+export { LedgerReader } from './brain/memory.js';
+export { historyEntry } from './brain/history.js';

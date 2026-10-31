@@ -687,6 +687,132 @@ if (H1 !== null && (wants('factory') || wants('ledger') || wants('loading') || w
   await s2.brain.sync(ws2, 'person');
 }
 
+// ------------------------------------------------------------------ ledger
+const ledgerFiles = (dir) => {
+  const out = {};
+  const walk = (rel) => {
+    const abs = join(dir, rel);
+    if (!existsSync(abs)) return;
+    for (const name of readdirSync(abs, { withFileTypes: true })) {
+      const p = rel === '' ? name.name : `${rel}/${name.name}`;
+      if (name.isDirectory()) walk(p); else out[p] = readFileSync(join(dir, p));
+    }
+  };
+  walk('memory/ledger');
+  return out;
+};
+const missionFor = (h, title, extra = {}) => {
+  const id = shared.ids.mission();
+  h.r(app.MISSION_REPOSITORY).create({ id, workspaceId: h.ws, repositoryId: null, title, goal: 'g', constraints: [], successCriteria: [], ...extra });
+  return id;
+};
+
+if (H1 !== null && (wants('ledger') || wants('loading') || wants('tools') || wants('signals') || wants('promotion') || wants('intake'))) {
+  section('ledger: append, batch, history, Remember this');
+  const { services: s1, caller: c1, ws: ws1 } = H1;
+  const { services: s2, caller: c2, ws: ws2 } = H2;
+  const clone1 = H1.r(app.WORKSPACE_BRAIN_REPOSITORY).get(ws1).clonePath;
+  // A recorder on the port: no ledger path may ever be a write or a delete.
+  const badWrites = [];
+  for (const h of [H1, H2]) {
+    const original = h.brainRepo.commit.bind(h.brainRepo);
+    if (!h.brainRepo.__recorded) {
+      h.brainRepo.commit = async (clone, files, ...rest) => {
+        for (const f of files) if (f.path.startsWith('memory/ledger/') && f.mode !== 'append') badWrites.push(f.path);
+        return original(clone, files, ...rest);
+      };
+      h.brainRepo.__recorded = true;
+    }
+  }
+  await s1.brain.sync(ws1, 'person');
+  const r1 = await s1.brain.remember(c1, ws1, { text: 'Run npm run ci before opening a PR.', scope: { role: 'development' } });
+  check('remember answers in words', r1.message === 'Saved. Agents on Developer will see it from the next run.', r1.message);
+  await s1.brain.flush(ws1);
+  const before = ledgerFiles(clone1);
+  const r2 = await s1.brain.remember(c1, ws1, { text: 'Prefer small pull requests.' });
+  await s1.brain.vote(c1, r1.entry.id, { vote: 'helpful' });
+  const cand = await s1.brain.append(ws1, [{ op: 'add', entry: { kind: 'lesson', text: 'Maybe cache the build.', scope: {}, source: { signal: 'agent', mission: 'M' }, state: 'candidate' } }], { actor: 'agent' });
+  await s1.brain.accept(c1, cand[0].id);
+  const cand2 = await s1.brain.append(ws1, [{ op: 'add', entry: { kind: 'lesson', text: 'Skip the tests on Fridays.', scope: {}, source: { signal: 'agent', mission: 'M' }, state: 'candidate' } }], { actor: 'agent' });
+  await s1.brain.reject(c1, cand2[0].id);
+  await s1.brain.retire(c1, r2.entry.id, { reason: 'We changed our mind.' });
+  const done = missionFor(H1, 'Ship onboarding', { status: 'COMPLETE' });
+  H1.r(app.MISSION_REPOSITORY).update(done, { status: 'COMPLETE' });
+  await s1.brain.missionEnded(done);
+  await s1.brain.flush(ws1);
+  const after = ledgerFiles(clone1);
+  const prefixes = Object.entries(before).every(([p, bytes]) => after[p] !== undefined && after[p].subarray(0, bytes.length).equals(bytes));
+  check('every ledger file is a byte prefix of its next version', prefixes && Object.keys(before).length > 0, Object.keys(before));
+  check('no ledger path was ever written or deleted', badWrites.length === 0, badWrites);
+  const listed = s1.brain.entries(ws1, {});
+  check('remembered lessons are listed, active', listed.some((e) => e.id === r1.entry.id && e.state === 'active' && e.sourceLabel === 'you' && e.scopeLabel === 'Developer'), listed.map((e) => [e.text, e.state, e.sourceLabel, e.scopeLabel]));
+  check('a person vote counts three', listed.find((e) => e.id === r1.entry.id)?.net === 3);
+  check('accept and reject are recorded', listed.find((e) => e.id === cand[0].id)?.state === 'accepted' && listed.find((e) => e.id === cand2[0].id)?.state === 'rejected');
+  check('a retired lesson is history, not listed', !listed.some((e) => e.id === r2.entry.id));
+  const withHistory = s1.brain.entries(ws1, { includeHistory: true });
+  check('the retired lesson shows under history', withHistory.some((e) => e.id === r2.entry.id && e.retired !== null));
+  const hist = withHistory.filter((e) => e.kind === 'history');
+  check('a finished mission adds one history entry', hist.length === 1 && hist[0].text.startsWith('Ship onboarding — completed.'), hist.map((e) => e.text));
+  check('history is not in the default list', !listed.some((e) => e.kind === 'history'));
+  const trial = missionFor(H1, 'Trial run', { status: 'COMPLETE', evalTrialId: 'etr_x' });
+  H1.r(app.MISSION_REPOSITORY).update(trial, { status: 'COMPLETE' });
+  await s1.brain.missionEnded(trial);
+  await s1.brain.flush(ws1);
+  check('a trial mission adds nothing', s1.brain.entries(ws1, { includeHistory: true }).filter((e) => e.kind === 'history').length === 1);
+
+  // Scrubbing.
+  const secret = await s1.brain.remember(c1, ws1, { text: `Use token ghp_${'x'.repeat(36)} for the API.` });
+  await s1.brain.flush(ws1);
+  check('a token is saved as [redacted secret]', secret.entry.text.includes('[redacted secret]') && !secret.entry.text.includes('ghp_'), secret.entry.text);
+  check('the remote never sees ghp_x', !git(remoteDir, 'log', '-p', '--all').includes('ghp_x'));
+  let pathRefused = null;
+  try { await s1.brain.remember(c1, ws1, { text: 'see /etc/hosts' }); } catch (e) { pathRefused = e.message; }
+  check('a machine path is refused with the sentence', pathRefused === "A lesson can't name a path on your machine. Name the file inside its repository instead.", pathRefused);
+
+  // Two writers converge.
+  await s2.brain.sync(ws2, 'person');
+  const mine = [];
+  for (const [s, c, w, tag] of [[s1, c1, ws1, 'A'], [s2, c2, ws2, 'B']]) {
+    for (let i = 0; i < 3; i++) mine.push({ s, w, e: (await s.brain.remember(c, w, { text: `Writer ${tag} lesson ${i}.` })).entry });
+  }
+  await s1.brain.sync(ws1, 'person');
+  await s2.brain.sync(ws2, 'person');
+  await s1.brain.sync(ws1, 'person');
+  const bLesson = mine.find((m) => m.e.text === 'Writer B lesson 0.').e.id;
+  const aLesson = mine.find((m) => m.e.text === 'Writer A lesson 0.').e.id;
+  await s1.brain.vote(c1, bLesson, { vote: 'helpful' });
+  await s2.brain.vote(c2, aLesson, { vote: 'harmful' });
+  const both = await Promise.all([s1.brain.sync(ws1, 'person'), s2.brain.sync(ws2, 'person')]);
+  await s1.brain.sync(ws1, 'person');
+  await s2.brain.sync(ws2, 'person');
+  const v1 = s1.brain.view(ws1);
+  const v2 = s2.brain.view(ws2);
+  check('both clones end on the same head', v1.lastPulledSha === v2.lastPulledSha && v1.lastPulledSha !== null, [v1.lastPulledSha, v2.lastPulledSha]);
+  const m1 = await s1.brain.memoryAt(ws1, v1.lastPulledSha);
+  const m2 = await s2.brain.memoryAt(ws2, v2.lastPulledSha);
+  check('both folds are equal', JSON.stringify(m1) === JSON.stringify(m2));
+  check('no sync reported a conflict', both.every((v) => !v.problems.some((p) => p.includes('conflicts'))) && v1.problems.every((p) => !p.includes('conflicts')), both.map((v) => v.problems));
+  check('votes from both writers counted', m1.entries.find((e) => e.id === bLesson)?.helpful === 3 && m1.entries.find((e) => e.id === aLesson)?.harmful === 3);
+
+  // A protected default branch: lessons go to one standing PR.
+  const wsP = (await s1.workspaces.create(c1, { name: 'Guarded', repositoryPath: H1.repoDir })).workspace.id;
+  await s1.brain.link(c1, wsP, { mode: 'create', owner: 'garipass', name: 'guarded' });
+  const guarded = join(FAKE.remotes, 'garipass', 'guarded.git');
+  writeFileSync(join(guarded, 'hooks', 'pre-receive'), '#!/bin/sh\nwhile read old new ref; do if [ "$ref" = "refs/heads/main" ]; then echo "GH006: Protected branch update failed" >&2; exit 1; fi; done\nexit 0\n');
+  chmodSync(join(guarded, 'hooks', 'pre-receive'), 0o755);
+  const ghP = ghLog().length;
+  await s1.brain.remember(c1, wsP, { text: 'Guarded lesson one.' });
+  await s1.brain.flush(wsP);
+  await s1.brain.remember(c1, wsP, { text: 'Guarded lesson two.' });
+  await s1.brain.flush(wsP);
+  const writer = s1.brain.view(wsP).writerId;
+  const prs = ghLog().slice(ghP).filter((l) => l.argv[0] === 'pr' && l.argv[1] === 'create');
+  check('a protected branch gets exactly one standing PR', prs.length === 1 && prs[0].argv[prs[0].argv.indexOf('--title') + 1] === `Lessons from ${writer}`, prs.map((p) => p.argv));
+  check('the lessons are on tandemise/ledger/<writer>', git(guarded, 'log', '--format=%s', `tandemise/ledger/${writer}`).includes(`chore: lessons from ${writer}`));
+  const pv = s1.brain.view(wsP);
+  check('the Brain section says lessons go to a pull request', pv.status === 'protected' && pv.statusLine.startsWith('Your default branch is protected, so lessons go to a pull request: https://'), pv);
+}
+
 // ------------------------------------------------------------------ end
 rmSync(HOME, { recursive: true, force: true });
 console.log(`\n${passed} passed, ${failures.length} failed`);

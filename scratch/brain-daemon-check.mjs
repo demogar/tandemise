@@ -97,6 +97,18 @@ try {
   check('adopt answers a preview with items and a hash', preview.status === 200 && typeof preview.body?.hash === 'string' && Array.isArray(preview.body.items), preview);
   const linked = await d2.api('POST', `/v1/workspaces/${d2.ws}/brain/link`, { hash: preview.body?.hash, choices: {} });
   check('link applies the preview', linked.status === 200 && linked.body?.linked === true, linked);
+  section('daemon: Remember this, votes and the lessons list');
+  const saved = await d2.api('POST', `/v1/workspaces/${d2.ws}/brain/entries`, { text: `Use ghp_${'q'.repeat(36)} never; run npm run ci.`, scope: { role: 'development' } });
+  check('POST entries saves a lesson and says where it applies', saved.status === 200 && saved.body?.message?.startsWith('Saved. Agents on Developer') && saved.body.entry.text.includes('[redacted secret]'), saved);
+  const voted = await d2.api('POST', `/v1/brain/entries/${encodeURIComponent(saved.body?.entry?.id ?? 'x')}/vote`, { vote: 'helpful' });
+  check('a thumbs up counts three', voted.body?.net === 3, voted.body);
+  const listed = await d2.api('GET', `/v1/workspaces/${d2.ws}/brain/entries`);
+  check('GET entries lists it with its source', listed.body?.some?.((e) => e.id === saved.body?.entry?.id && e.sourceLabel === 'you'), listed.body);
+  await d2.api('POST', `/v1/workspaces/${d2.ws}/brain/sync`);
+  check('after sync the remote has the lesson and no token', git(remoteDir, 'log', '-p', '--all').includes('run npm run ci') && !git(remoteDir, 'log', '-p', '--all').includes('ghp_q'));
+  const refused = await d2.api('POST', `/v1/workspaces/${d2.ws}/brain/entries`, { text: 'see /etc/hosts' });
+  check('a machine path is refused in words', refused.status === 400 && refused.body?.error?.message === "A lesson can't name a path on your machine. Name the file inside its repository instead.", refused.body);
+
   const side = (await d2.api('POST', '/v1/workspaces', { name: 'Side', repositoryPath: d2.repoDir })).body?.workspace?.id;
   const local = await d2.api('POST', `/v1/workspaces/${side}/brain`, { mode: 'local' });
   check('local mode is local_only', local.body?.status === 'local_only', local);
