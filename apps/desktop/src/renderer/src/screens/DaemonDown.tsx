@@ -13,7 +13,7 @@ export function DaemonDown(): JSX.Element {
   const busy = reconnecting || status.phase === 'spawning' || status.phase === 'connecting';
 
   return (
-    <div style={{ height: '100%', display: 'grid', placeItems: 'center', padding: 'var(--s8)', background: 'var(--canvas)' }}>
+    <main style={{ minHeight: '100%', display: 'grid', placeItems: 'center', padding: 'var(--s8) var(--s4)', background: 'var(--canvas)' }}>
       <div style={{ maxWidth: 460, textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--s4)' }}>
         {/* The mark only takes its colour while there is something to connect to. */}
         <Logo size={34} muted={!busy} />
@@ -48,6 +48,6 @@ export function DaemonDown(): JSX.Element {
           <code style={{ fontFamily: 'var(--tds-font-mono)' }}>npm run daemon</code> and press Retry.
         </p>
       </div>
-    </div>
+    </main>
   );
 }
