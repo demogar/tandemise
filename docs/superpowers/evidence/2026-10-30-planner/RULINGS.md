@@ -56,3 +56,11 @@ spec (`docs/superpowers/specs/2026-10-30-planner-and-merge-design.md`).
 - Ruling: a skill an area or module adds that the library lacks is taken off
   the step and named in the decision's `dropped`, instead of refusing the plan
   (the shipped `security-review` skill would otherwise block every auth task).
+- Ruling: `PullRequestPort` is declared whole in Task 6 (open, view, checks,
+  protection, comment, reviewers, reviews, merge, updateBranch, repoSettings,
+  commits) with its `gh` implementation and the fake `gh` commands, so later
+  tasks change only the ship step. Checks are read per commit through the
+  check-runs API, so the same call serves a PR head and a merge commit on main.
+- Ruling: a mission with no repository, an eval trial, or a plan where no step
+  changed code ends the ship step SKIPPED with a sentence; it never fails the
+  mission.

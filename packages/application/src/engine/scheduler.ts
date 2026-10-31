@@ -14,6 +14,7 @@ import type { Clock, Logger, MissionId, TaskId } from '@tandemise/shared';
 import { errorMessage } from '@tandemise/shared';
 import type { LifecycleComponent } from '@tandemise/kernel';
 import type { Waiter } from './waiter.js';
+import type { ShipService } from './ship.js';
 import type { EventRecorder, EventScope } from '../support/event-recorder.js';
 import type { BranchIntegrationService } from './branch-integration.js';
 import type { RemediationPlanner } from './remediation.js';
@@ -35,6 +36,8 @@ export interface SchedulerDeps {
   /** Repositories, so a wait polls in the right checkout. */
   readonly repositories: RepoRepositoryPort;
   readonly waiter: Waiter;
+  /** The daemon-owned ship step (#53 §8). Optional so harnesses built before it still compose. */
+  readonly ship?: ShipService;
   readonly remediation: RemediationPlanner;
   readonly integration: BranchIntegrationService;
   readonly recorder: EventRecorder;
@@ -382,6 +385,11 @@ export class SchedulerService implements LifecycleComponent {
         this.#startWait(mission, task);
         continue;
       }
+      // The ship step is the daemon's own work (#53 §8.1): like a wait, it holds no model and no worker slot.
+      if (task.executor === 'ship') {
+        this.#startShip(mission, task);
+        continue;
+      }
       if (this.#occupiedSlots() >= ceiling) return;
       admitted ??= (this.deps.limits?.admit(mission.id) ?? null) === null;
       if (!admitted) return;
@@ -447,6 +455,41 @@ export class SchedulerService implements LifecycleComponent {
       .catch((e: unknown) => {
         this.#setStatus(this.deps.tasks.get(task.id) ?? task, scopeOf(mission), 'BLOCKED',
           `The wait failed outside the poll: ${errorMessage(e)}`);
+      })
+      .finally(() => {
+        this.#waiting.delete(task.id);
+      });
+  }
+
+  /** Runs the ship step outside the ceiling, tracked like a wait so `stop()` can cancel it. */
+  #startShip(mission: Mission, task: MissionTask): void {
+    const ship = this.deps.ship;
+    if (ship === undefined) {
+      this.#setStatus(task, scopeOf(mission), 'SKIPPED', 'This daemon has no ship step, so no pull request was opened.');
+      return;
+    }
+    if (this.#waiting.has(task.id)) return;
+    const controller = new AbortController();
+    this.#waiting.set(task.id, controller);
+    this.#setStatus(task, scopeOf(mission), 'RUNNING', 'Opening the pull request.');
+    if (task.startedAt === null) this.deps.tasks.update(task.id, { startedAt: this.deps.clock.now() });
+    void ship.run(mission, task, controller.signal)
+      .then((outcome) => {
+        const current = this.deps.tasks.get(task.id) ?? task;
+        const finish = (status: 'SUCCEEDED' | 'SKIPPED' | 'BLOCKED', reason: string) => {
+          this.#setStatus(current, scopeOf(mission), status, reason);
+          if (status !== 'BLOCKED') this.deps.tasks.update(task.id, { finishedAt: this.deps.clock.now() });
+        };
+        if (outcome.kind === 'cancelled') return;
+        if (outcome.kind === 'opened') finish('SUCCEEDED', `Pull request opened: ${outcome.prs.map((p) => p.url).join(', ')}`);
+        else if (outcome.kind === 'skipped') finish('SKIPPED', outcome.reason);
+        else if (outcome.kind === 'blocked') finish('BLOCKED', outcome.reason);
+        else this.#setStatus(current, scopeOf(mission), 'PENDING', `Waiting for ${outcome.taskKey} to resolve the merge conflict.`);
+        this.deps.recorder.invalidate('tasks', mission.id);
+        this.wake();
+      })
+      .catch((e: unknown) => {
+        this.#setStatus(this.deps.tasks.get(task.id) ?? task, scopeOf(mission), 'BLOCKED', `The ship step failed: ${errorMessage(e)}`);
       })
       .finally(() => {
         this.#waiting.delete(task.id);
@@ -606,8 +649,9 @@ export class SchedulerService implements LifecycleComponent {
     }
 
     // Integration before completion: merging can insert a conflict-resolution
-    // task, and a mission marked COMPLETE with unmerged work is a lie.
-    if (!this.#integrated.has(mission.id)) {
+    // task, and a mission marked COMPLETE with unmerged work is a lie. A plan
+    // with a ship step integrated there, before its pull request (#53 §8.1).
+    if (!this.#integrated.has(mission.id) && !tasks.some((t) => t.executor === 'ship')) {
       this.#integrated.add(mission.id);
       try {
         const outcome = await this.deps.integration.integrate(mission);

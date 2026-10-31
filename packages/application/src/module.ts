@@ -1,6 +1,13 @@
 import { defineModule, type Container, type Resolver, type TandemiseModule } from '@tandemise/kernel';
 import { SHIPPED_FACTORY_SOURCE } from './planning/factory-config.js';
 import { PlannerService } from './planning/planner-service.js';
+import { ShipService } from './engine/ship.js';
+import type { PullRequestPort } from '@tandemise/domain';
+
+/** Until the daemon binds the `gh` flow: every pull request call says there is no GitHub here. */
+const NO_PULL_REQUESTS: PullRequestPort = new Proxy({} as PullRequestPort, {
+  get: () => async () => { throw new Error('This daemon has no GitHub connection for pull requests.'); },
+});
 import { runtimeTiebreakRunner } from './planning/tiebreak-runner.js';
 import type { Clock, Logger, TandemisePaths } from '@tandemise/shared';
 import { TandemiseError, asId, createPaths, nullLogger, systemClock } from '@tandemise/shared';
@@ -349,6 +356,21 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       cancelTask: (taskId) => r.resolve(t.SCHEDULER).cancelTask(taskId),
     }), { source: SOURCE });
 
+    bind(t.PULL_REQUEST_FLOW, () => NO_PULL_REQUESTS, { source: SOURCE });
+    bind(t.SHIP_SERVICE, (r) => new ShipService({
+      tasks: r.resolve(t.TASK_REPOSITORY),
+      repositories: r.resolve(t.REPO_REPOSITORY),
+      integration: r.resolve(t.BRANCH_INTEGRATION_SERVICE),
+      pullRequests: r.resolve(t.PULL_REQUEST_FLOW),
+      exec: r.tryResolve(INTEGRATION_COMMAND_EXECUTOR) ?? null,
+      ...(r.has(t.GIT_CREDENTIAL_ENV) ? { credentialEnv: r.resolve(t.GIT_CREDENTIAL_ENV) } : {}),
+      planDecisions: r.resolve(t.PLAN_DECISION_REPOSITORY),
+      criteria: r.resolve(t.MISSION_CRITERIA_REPOSITORY),
+      recorder: r.resolve(t.EVENT_RECORDER),
+      clock: clock(r),
+      log: log(r).child({ component: 'ship' }),
+    }), { source: SOURCE });
+
     bind(t.SCHEDULER, (r) => new SchedulerService({
       workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
       missions: r.resolve(t.MISSION_REPOSITORY),
@@ -363,6 +385,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       }),
       remediation: r.resolve(t.REMEDIATION_PLANNER),
       integration: r.resolve(t.BRANCH_INTEGRATION_SERVICE),
+      ship: r.resolve(t.SHIP_SERVICE),
       recorder: r.resolve(t.EVENT_RECORDER),
       staffing: r.resolve(t.STAFFING_RESOLVER),
       members: r.resolve(t.MEMBER_REPOSITORY),

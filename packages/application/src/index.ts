@@ -46,6 +46,8 @@ export type { DownstreamImpact, FeedbackRoundsDeps, RecordFeedbackInput, ReviewR
 export { LIVE_RUN_STATUSES, downstreamConsumers, reviewedTaskOf } from './support/downstream.js';
 export type { Consumer, ConsumerFacts } from './support/downstream.js';
 export { BranchIntegrationService } from './engine/branch-integration.js';
+export { ShipService } from './engine/ship.js';
+export type { ShipOutcome, ShipDeps } from './engine/ship.js';
 export type { IntegrationOutcome, MergedBranch } from './engine/branch-integration.js';
 export { evaluationFrom } from './engine/evaluations.js';
 export type { EvaluationSource } from './engine/evaluations.js';

@@ -15,8 +15,22 @@
 //   gh api [--hostname h] -X POST repos/o/r/issues/N/comments -f body=…
 //   gh api [--hostname h] -X PATCH repos/o/r/issues/comments/ID -f body=…
 //
+// And the pull requests the ship step (#53) opens, checks and merges:
+//
+//   gh pr list --repo o/r --head B --state all --json …
+//   gh pr create --repo o/r --head B --base main --title T --body-file -   (body on stdin)
+//   gh pr view N --repo o/r --json …
+//   gh pr edit N --repo o/r --add-reviewer R…
+//   gh pr merge N --repo o/r --squash|--merge|--rebase --match-head-commit SHA [--auto] --subject S --body B
+//   gh pr update-branch N --repo o/r
+//   gh repo view o/r --json autoMergeAllowed
+//   gh api repos/o/r/commits/SHA/check-runs
+//   gh api repos/o/r/branches/B/protection
+//   gh api repos/o/r/commits?sha=B&since=…
+//
 // The state directory is passed by the wrapper script (--fake-state <dir>)
 // because the daemon hands child processes an allow-listed environment only.
+import { execFileSync } from 'node:child_process';
 import { appendFileSync, chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -85,6 +99,34 @@ export function addComment(dir, repo, number, body, login) {
   return comment;
 }
 
+/** Adds or replaces a pull request (helpers for a check to move its state). */
+export function putPullRequest(dir, repo, pr) {
+  const state = readState(dir);
+  const r = (state.repos[repo] ??= { issues: [], comments: {} });
+  r.prs = [...(r.prs ?? []).filter((p) => p.number !== pr.number), pr];
+  writeState(dir, state);
+  return pr;
+}
+
+export function pullRequests(dir, repo) {
+  return readState(dir).repos[repo]?.prs ?? [];
+}
+
+/** The check runs GitHub reports on a commit: `[{ name, status, conclusion, logTail }]`. */
+export function setChecks(dir, repo, sha, checks) {
+  const state = readState(dir);
+  const r = (state.repos[repo] ??= { issues: [], comments: {} });
+  (r.checks ??= {})[sha] = checks;
+  writeState(dir, state);
+}
+
+export function setRepo(dir, repo, patch) {
+  const state = readState(dir);
+  const r = (state.repos[repo] ??= { issues: [], comments: {} });
+  Object.assign(r, patch);
+  writeState(dir, state);
+}
+
 export function calls(dir) {
   return readFileSync(join(dir, 'calls.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
 }
@@ -123,6 +165,12 @@ function main(argv) {
   const repoOf = (name) => state.repos[name] ?? { issues: [], comments: {} };
 
   const [group, verb] = args;
+  if (group === 'pr') { prCommand(dir, state, args, out); return; }
+  if (group === 'repo' && verb === 'view') {
+    const r = repoOf(args[2]);
+    out({ autoMergeAllowed: r.autoMergeAllowed === true });
+    return;
+  }
   if (group === 'auth' && verb === 'status') { process.stderr.write(`Logged in to github.com account ${state.login}\n`); return; }
   if (group === 'issue') {
     const repo = flag(args, '--repo');
@@ -159,6 +207,24 @@ function main(argv) {
     const body = rest.find((a, i) => rest[i - 1] === '-f' && a.startsWith('body='))?.slice('body='.length);
     if (endpoint === 'user') { out({ login: state.login }); return; }
     const path = (endpoint ?? '').split('?')[0];
+    let c = /^repos\/([^/]+\/[^/]+)\/commits\/([0-9a-f]+)\/check-runs$/.exec(path);
+    if (c) {
+      const runs = (repoOf(c[1]).checks ?? {})[c[2]] ?? [];
+      out({ check_runs: runs.map((k) => ({ name: k.name, status: k.status ?? 'completed', conclusion: k.conclusion ?? null, details_url: k.link ?? null, output: { summary: null, text: k.logTail ?? null } })) });
+      return;
+    }
+    c = /^repos\/([^/]+\/[^/]+)\/branches\/([^/]+)\/protection$/.exec(path);
+    if (c) {
+      const p = repoOf(c[1]).protection;
+      if (p === undefined) fail('gh: Branch not protected (HTTP 404)');
+      out(p);
+      return;
+    }
+    c = /^repos\/([^/]+\/[^/]+)\/commits$/.exec(path);
+    if (c) {
+      out((repoOf(c[1]).mainCommits ?? []).map((k) => ({ sha: k.sha, commit: { message: k.subject } })));
+      return;
+    }
     let m = /^repos\/([^/]+\/[^/]+)\/issues\/(\d+)\/comments$/.exec(path);
     if (m) {
       const r = (state.repos[m[1]] ??= { issues: [], comments: {} });
@@ -187,6 +253,66 @@ function main(argv) {
     fail(`fake gh: unknown api call ${method} ${endpoint}`);
   }
   fail(`fake gh: unknown command ${args.join(' ')}`);
+}
+
+function prCommand(dir, state, args, out) {
+  const verb = args[1];
+  const repo = flag(args, '--repo');
+  if (repo === undefined) fail('fake gh: --repo is required');
+  const r = (state.repos[repo] ??= { issues: [], comments: {} });
+  const prs = (r.prs ??= []);
+  const save = () => writeState(dir, state);
+  if (verb === 'list') {
+    const head = flag(args, '--head');
+    out(prs.filter((p) => head === undefined || p.headRefName === head).map((p) => pick(p, flag(args, '--json'))));
+    return;
+  }
+  if (verb === 'create') {
+    const head = flag(args, '--head');
+    const bodyFile = flag(args, '--body-file');
+    const body = bodyFile === '-' ? readFileSync(0, 'utf8') : bodyFile !== undefined ? readFileSync(bodyFile, 'utf8') : (flag(args, '--body') ?? '');
+    let sha = '0'.repeat(40);
+    try { sha = execFileSync('git', ['rev-parse', `refs/heads/${head}`], { encoding: 'utf8' }).trim(); } catch { /* not a local branch */ }
+    const number = (state.nextPrNumber ?? 1);
+    state.nextPrNumber = number + 1;
+    const pr = {
+      number, url: `https://github.com/${repo}/pull/${number}`, title: flag(args, '--title') ?? '', body,
+      headRefName: head, headRefOid: sha, baseRefName: flag(args, '--base') ?? 'main', state: 'OPEN',
+      isDraft: args.includes('--draft'), mergedBy: null, mergeCommit: null, reviewers: [], reviews: [],
+    };
+    prs.push(pr);
+    save();
+    process.stdout.write(`${pr.url}\n`);
+    return;
+  }
+  const number = Number(args[2]);
+  const pr = prs.find((p) => p.number === number);
+  if (pr === undefined) fail(`GraphQL: Could not resolve to a PullRequest with the number of ${number}.`);
+  if (verb === 'view') { out(pick(pr, flag(args, '--json'))); return; }
+  if (verb === 'edit') {
+    args.forEach((a, i) => { if (a === '--add-reviewer') pr.reviewers.push(args[i + 1]); });
+    save();
+    return;
+  }
+  if (verb === 'update-branch') {
+    pr.headRefOid = `${pr.headRefOid.slice(0, 39)}u`.replace(/[^0-9a-fu]/g, '0').replace('u', 'e');
+    save();
+    return;
+  }
+  if (verb === 'merge') {
+    const match = flag(args, '--match-head-commit');
+    if (match !== pr.headRefOid) fail(`GraphQL: Head branch was modified. Review and try the merge again. (mergePullRequest)`);
+    if (pr.state !== 'OPEN') fail(`GraphQL: Pull request is not open (mergePullRequest)`);
+    if (args.includes('--auto')) { pr.autoMerge = { method: ['--squash', '--merge', '--rebase'].find((m) => args.includes(m)) }; }
+    pr.state = 'MERGED';
+    pr.mergedBy = { login: state.login };
+    pr.mergeCommit = { oid: `${'f'.repeat(32)}${String(number).padStart(8, '0')}` };
+    pr.mergeSubject = flag(args, '--subject');
+    pr.mergeBody = flag(args, '--body');
+    save();
+    return;
+  }
+  fail(`fake gh: unknown pr command ${verb}`);
 }
 
 if (process.argv[1] !== undefined && pathToFileURL(process.argv[1]).href === import.meta.url) main(process.argv.slice(2));

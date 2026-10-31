@@ -113,6 +113,10 @@ export const FACTORY_CONFIG_SOURCE = token<import('./ports.js').FactoryConfigSou
 export const TIEBREAK_RUNNER = token<import('./planning/tiebreak.js').TiebreakRunnerPort>('port.TiebreakRunner');
 /** The factory planner (#53 §5). */
 export const PLANNER_SERVICE = token<import('./planning/planner-service.js').PlannerService>('application.PlannerService');
+/** Pull requests the ship step opens and merges (#53 §8). The daemon binds the `gh` one. */
+export const PULL_REQUEST_FLOW = token<import('@tandemise/domain').PullRequestPort>('port.PullRequestFlow');
+/** The daemon-owned ship step (#53 §8.1). */
+export const SHIP_SERVICE = token<import('./engine/ship.js').ShipService>('application.ShipService');
 /** The `.tandemise` setup folder on disk (P15). The daemon binds the real one. */
 export const SETUP_FOLDER = token<import('./ports.js').SetupFolderPort>('port.SetupFolder');
 export const WORKFLOW_SERVICE = token<WorkflowService>('service.Workflow');

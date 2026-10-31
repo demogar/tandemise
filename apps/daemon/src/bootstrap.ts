@@ -29,7 +29,7 @@ import {
   integrationsCoreModule,
   BACKGROUND_PROCESS_LAUNCHER, COMMAND_EXECUTOR as TOOL_COMMAND_EXECUTOR,
 } from '@tandemise/integrations-core';
-import { GhIssueTracker, GhPullRequestSnapshots, githubIntegrationModule } from '@tandemise/integration-github';
+import { GhIssueTracker, GhPullRequestFlow, GhPullRequestSnapshots, githubIntegrationModule } from '@tandemise/integration-github';
 import { mcpIntegrationModule } from '@tandemise/integration-mcp';
 import { browserIntegrationModule } from '@tandemise/browser';
 import { createApplicationModule, createServices, EVAL_RUNNER, SCHEDULER, type TandemiseServices,
@@ -37,7 +37,7 @@ import { createApplicationModule, createServices, EVAL_RUNNER, SCHEDULER, type T
   FACTORY_CONFIG_SOURCE,
   SKILL_FILES,
   ISSUE_TRACKER,
-  PULL_REQUEST_SNAPSHOTS, GIT_CREDENTIAL_ENV, pickGitCredentialEnv,
+  PULL_REQUEST_SNAPSHOTS, PULL_REQUEST_FLOW, GIT_CREDENTIAL_ENV, pickGitCredentialEnv,
   SETUP_FOLDER,
   EVAL_BLOBS,
 } from '@tandemise/application';
@@ -170,6 +170,8 @@ export function bootstrap(config: DaemonConfig, options: { readonly localPersonN
   container.rebind(ISSUE_TRACKER, (r) => new GhIssueTracker(r.resolve(TOOL_COMMAND_EXECUTOR)), { source: 'bootstrap' });
   // A handed-back pull request (P3) is read the same way.
   container.rebind(PULL_REQUEST_SNAPSHOTS, (r) => new GhPullRequestSnapshots(r.resolve(TOOL_COMMAND_EXECUTOR)), { source: 'bootstrap' });
+  // The ship step's pull requests (#53 §8), through the person's own `gh` session.
+  container.rebind(PULL_REQUEST_FLOW, (r) => new GhPullRequestFlow(r.resolve(TOOL_COMMAND_EXECUTOR)), { source: 'bootstrap' });
   // Fetching that pull request's head is the person's own git reaching their
   // remote, so it may use their ssh-agent or askpass helper. Given to that
   // fetch alone, read when it runs; the tool runner's allowlist stays as it is.
