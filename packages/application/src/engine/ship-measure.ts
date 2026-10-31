@@ -100,10 +100,14 @@ export async function measureMergeFacts(deps: MeasureDeps, input: MeasureInput):
   const agentTasks = tasks.filter((t) => t.executor === 'agent');
   let personCommits = 0;
   if (input.pushedSha !== null && input.pushedSha !== input.pr.headSha) {
-    // Commits after the one Tandemise pushed, except merges and those GitHub itself made (Update branch).
-    const log = await deps.git(['log', '--no-merges', '--format=%ce', `${input.pushedSha}..${input.pr.headSha}`]);
+    // A branch rewritten after Tandemise pushed (a force-push, a rebase in GitHub) can't be told apart: it asks.
+    const kept = await deps.git(['merge-base', '--is-ancestor', input.pushedSha, input.pr.headSha]);
+    if (kept.exitCode !== 0) throw new MeasureError('its branch no longer contains the commit Tandemise pushed');
+    // Non-merge commits on the branch that Tandemise didn't push, by author: a person's edit in GitHub's web UI is
+    // committed by noreply@github.com but authored by them, so the committer says nothing. Merges (Update branch) are left out.
+    const log = await deps.git(['log', '--no-merges', '--format=%ae', `${input.baseRef}..${input.pr.headSha}`, `^${input.pushedSha}`]);
     if (log.exitCode !== 0) throw new MeasureError(firstLine(log.stderr) ?? 'git log failed');
-    personCommits = lines(log.stdout).filter((email) => email !== GITHUB_COMMITTER).length;
+    personCommits = lines(log.stdout).filter((email) => !email.toLowerCase().endsWith(TANDEMISE_DOMAIN)).length;
   }
 
   const touched = areas.map((a) => input.stats.areas[a.name]).filter((a) => a !== undefined);
@@ -144,8 +148,8 @@ export async function measureMergeFacts(deps: MeasureDeps, input: MeasureInput):
   };
 }
 
-/** The committer GitHub uses for commits it makes itself, such as Update branch. */
-const GITHUB_COMMITTER = 'noreply@github.com';
+/** Every identity Tandemise commits as (agents' roles, ship, factory) is at this domain. */
+const TANDEMISE_DOMAIN = '@tandemise.local';
 
 function firstLine(text: string): string | null {
   return text.split('\n').map((l) => l.trim()).find((l) => l.length > 0) ?? null;

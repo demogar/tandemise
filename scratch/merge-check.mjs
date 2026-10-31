@@ -545,9 +545,21 @@ await attempt('review: a diff that cannot be measured asks', async () => {
   let threw = null;
   try { await app.measureMergeFacts(deps(async () => ({ exitCode: 128, stdout: '', stderr: 'fatal: bad revision' })), input(null)); } catch (e) { threw = e.message; }
   check('a failing git diff is an error, never an empty change', typeof threw === 'string' && threw.includes('bad revision'), threw);
-  const ok = async (args) => ({ exitCode: 0, stdout: args[0] === 'log' ? 'noreply@github.com\nsam@example.com' : args.includes('--numstat') ? '1\t0\tsrc/a.ts' : '', stderr: '' });
-  const facts = await app.measureMergeFacts(deps(ok), input('p'.repeat(40)));
-  check('a commit GitHub made (update branch) is not a person\'s commit; a person\'s is', facts.process.personCommits === 1, facts.process.personCommits);
+  // A person's edit in GitHub's web UI: authored by them, committed by noreply@github.com. Merges (Update branch) are
+  // left out by --no-merges; commits by Tandemise's own identities (@tandemise.local) are not a person's.
+  const gitOf = (ancestor) => async (args) => {
+    if (args[0] === 'merge-base') return { exitCode: ancestor ? 0 : 1, stdout: '', stderr: '' };
+    if (args[0] === 'log') {
+      const byAuthor = args.includes('--format=%ae');
+      return { exitCode: 0, stdout: byAuthor ? 'ada@example.com\nbob@example.com\nimplement@tandemise.local' : 'noreply@github.com\nnoreply@github.com\nimplement@tandemise.local', stderr: '' };
+    }
+    return { exitCode: 0, stdout: args.includes('--numstat') ? '1\t0\tsrc/a.ts' : '', stderr: '' };
+  };
+  const facts = await app.measureMergeFacts(deps(gitOf(true)), input('p'.repeat(40)));
+  check('people\'s web-UI commits (committed by noreply@github.com) count as theirs; Tandemise\'s own does not', facts.process.personCommits === 2, facts.process.personCommits);
+  let rewritten = null;
+  try { await app.measureMergeFacts(deps(gitOf(false)), input('p'.repeat(40))); } catch (e) { rewritten = e.message; }
+  check('a branch that no longer contains the commit Tandemise pushed cannot be measured, so it asks', typeof rewritten === 'string' && rewritten.includes('no longer contains'), rewritten);
   // In the engine: a head that can't be fetched is "couldn't measure", and asks.
   const w = await world();
   fake.setRepo(w.ghDir, REPO, { defaultCheckSequence: [[{ name: 'unit', status: 'in_progress' }], [{ name: 'unit', conclusion: 'success' }]] });
