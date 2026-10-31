@@ -30,6 +30,7 @@ export { Switch, type SwitchProps } from './Switch.js';
 export { Chip, IdChip, type ChipProps, type IdChipProps } from './Chip.js';
 export { Stat, type StatProps } from './Stat.js';
 export { Banner, type BannerProps, type BannerTone } from './Banner.js';
+export { SkipLink, type SkipLinkProps } from './SkipLink.js';
 
 /** Every component this subpath exports, by name. Each must have a Storybook story in stories/ (`npm run check:design`). */
-export const COMPONENTS = ['Button', 'Badge', 'StatusPill', 'StatusDot', 'Card', 'Icon', 'Logo', 'Field', 'Dialog', 'Tabs', 'Tab', 'Tooltip', 'Truncate', 'EmptyState', 'Segmented', 'Switch', 'Chip', 'IdChip', 'Stat', 'Banner'] as const;
+export const COMPONENTS = ['Button', 'Badge', 'StatusPill', 'StatusDot', 'Card', 'Icon', 'Logo', 'Field', 'Dialog', 'Tabs', 'Tab', 'Tooltip', 'Truncate', 'EmptyState', 'Segmented', 'Switch', 'Chip', 'IdChip', 'Stat', 'Banner', 'SkipLink'] as const;
