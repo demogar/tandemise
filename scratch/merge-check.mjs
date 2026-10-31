@@ -321,6 +321,8 @@ await attempt('revert and watch', async () => {
   const merges = fake.calls(w.ghDir).filter((c) => c.args[1] === 'merge');
   check('…and its PR merges on its own, bound to its head', revertPr.title === 'revert: fix: typo in the settings title' && revertPr.state === 'MERGED' && merges.at(-1).args.includes('--match-head-commit'), [revertPr.title, revertPr.state, w.h.repo.mergeDecisions.listByMission(revert.id).at(-1)?.reasons]);
   check('the original records merge.reverted and a reverted outcome', w.h.repo.events.listByMission(m.id).some((e) => e.body.type === 'merge.reverted') && w.h.repo.outcomes.listByWorkspace(w.ws, '1970').some((o) => o.mission === m.id && o.kind === 'reverted'));
+  const revertedBy = w.h.repo.events.listByMission(m.id).find((e) => e.body.type === 'merge.reverted')?.body.by;
+  check('…naming who asked for the revert, not Tandemise', typeof revertedBy === 'string' && revertedBy.startsWith('mem_'), revertedBy);
   const migration = D.decideMerge({ ...w.h.repo.mergeDecisions.listByMission(revert.id).at(-1).facts, changedPaths: ['db/migrations/1.sql'] }, D.parseMergePolicy({ ...app.SHIPPED_MERGE, autoMerge: 'off' }));
   check('a revert that touches a migration still asks', migration.verdict === 'ask', migration.reasons);
 

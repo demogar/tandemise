@@ -190,7 +190,7 @@ export class ShipService {
     if (pr.created && revertOf !== undefined) {
       const original = this.deps.decide?.mergeDecisions.get(revertOf);
       if (original !== undefined) {
-        this.deps.recorder.record({ workspaceId: original.workspaceId, missionId: original.missionId }, { type: 'merge.reverted', decisionId: original.id, revertPr: pr.url, by: 'tandemise' });
+        this.deps.recorder.record({ workspaceId: original.workspaceId, missionId: original.missionId }, { type: 'merge.reverted', decisionId: original.id, revertPr: pr.url, by: mission.workflowInputs['revertBy'] ?? 'a person' });
         this.deps.decide?.outcomes()?.reverted(original);
       }
     }

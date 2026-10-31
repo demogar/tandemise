@@ -37,7 +37,7 @@ export class ShipRevert {
 
   constructor(private readonly deps: ShipRevertDeps) {}
 
-  async revert(decisionId: string, _by: string): Promise<Mission> {
+  async revert(decisionId: string, by: string): Promise<Mission> {
     const decision = this.deps.mergeDecisions.get(decisionId);
     if (decision === undefined) throw TandemiseError.notFound('Merge decision', decisionId);
     if (decision.mergeSha === null) throw new TandemiseError('PRECONDITION_FAILED', 'This pull request was never merged, so there is nothing to revert.');
@@ -54,13 +54,13 @@ export class ShipRevert {
     if (this.#inFlight.has(decision.id)) throw new TandemiseError('CONFLICT', 'A revert of this merge is already on its way.');
     this.#inFlight.add(decision.id);
     try {
-      return await this.#revert(merged, original, repository);
+      return await this.#revert(merged, original, repository, by);
     } finally {
       this.#inFlight.delete(decision.id);
     }
   }
 
-  async #revert(decision: NonNullable<ReturnType<MergeDecisionRepositoryPort['get']>> & { mergeSha: string }, original: Mission, repository: NonNullable<ReturnType<RepoRepositoryPort['get']>>): Promise<Mission> {
+  async #revert(decision: NonNullable<ReturnType<MergeDecisionRepositoryPort['get']>> & { mergeSha: string }, original: Mission, repository: NonNullable<ReturnType<RepoRepositoryPort['get']>>, by: string): Promise<Mission> {
     const pr = await this.deps.pullRequests.view(repository.path, decision.repo, decision.prNumber);
     const branch = `revert/${decision.mergeSha.slice(0, 12)}`;
     const dir = `${this.deps.tmpRoot}/${slugify(branch)}-${Date.now()}`;
@@ -90,7 +90,7 @@ export class ShipRevert {
       id, workspaceId: original.workspaceId, repositoryId: original.repositoryId, title,
       goal: `Revert ${pr.url}, merged as ${decision.mergeSha}.`,
       workflowPreset: 'auto',
-      workflowInputs: { revertOf: decision.id, shipBranch: branch, revertOfAuto: decision.mergedBy === 'tandemise' ? 'true' : 'false' },
+      workflowInputs: { revertOf: decision.id, shipBranch: branch, revertOfAuto: decision.mergedBy === 'tandemise' ? 'true' : 'false', revertBy: by },
       baseBranch: pr.baseBranch, createdBy: original.createdBy ?? null, laneRequest: null,
       ...(original.issueLinkId == null ? {} : { issueLinkId: original.issueLinkId }),
     });
