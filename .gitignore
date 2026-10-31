@@ -20,3 +20,6 @@ apps/desktop/electron.vite.config.*.mjs
 
 # Storybook static build (packages/design)
 storybook-static/
+
+# Packaging: the daemon staged for each target, and the installers
+apps/desktop/.daemon-stage/

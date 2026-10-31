@@ -6,7 +6,7 @@ import { join, resolve } from 'node:path';
 import { EventEmitter } from 'node:events';
 import { app } from 'electron';
 import type { DaemonConnection, DaemonStatus } from '../shared/bridge.js';
-import { LOGIN_PATH_MARKER, parseLoginShellPath, resolveDaemonNode, type NodeResolution } from './node-runtime.js';
+import { LOGIN_PATH_MARKER, bundledDaemonNode, parseLoginShellPath, resolveDaemonNode, type NodeResolution } from './node-runtime.js';
 
 const TANDEMISE_HOME = process.env['TANDEMISE_HOME'] ?? join(homedir(), '.tandemise');
 const HANDSHAKE_FILE = join(TANDEMISE_HOME, 'daemon.json');
@@ -59,17 +59,24 @@ export class DaemonConnector extends EventEmitter {
 
     // Either no handshake file, or a stale one pointing at a dead process. Both
     // mean "no daemon"; a stale file is not an error worth showing the user.
-    const entry = daemonEntryPoint();
-    if (!entry) {
+    // A packaged app starts the daemon it carries, on its own Node; a checkout
+    // starts apps/daemon's build on a system Node (node-runtime.ts).
+    const daemon = locateDaemon();
+    if (daemon === null) {
       return this.#set(
         'unavailable',
         null,
-        'Its build was not found at apps/daemon/dist/main.js, so there was nothing to start. Run `npm run build` in the repository, then retry.',
+        app.isPackaged
+          ? `This copy of Tandemise is missing its daemon (${bundledDaemonEntry()}). Reinstall it from the GitHub releases page.`
+          : 'Its build was not found at apps/daemon/dist/main.js, so there was nothing to start. Run `npm run build` in the repository, then retry.',
       );
     }
+    const { entry } = daemon;
 
     this.#set('spawning', null, 'Starting the Tandemise daemon…');
-    const node = await findDaemonNode();
+    const node = daemon.bundled
+      ? bundledDaemonNode({ execPath: process.execPath, nodeVersion: process.versions.node })
+      : await findDaemonNode();
     if (!node.ok) {
       logLaunch(`no usable Node: ${node.message} Tried: ${describeTried(node)}`);
       return this.#set('unavailable', null, node.message);
@@ -191,10 +198,29 @@ function isProcessAlive(pid: number): boolean {
   }
 }
 
-/** `apps/daemon/dist/main.js`, relative to the packaged or checked-out app. */
-function daemonEntryPoint(): string | null {
+/**
+ * Which daemon to start. `TANDEMISE_DAEMON_ENTRY` wins (and is run like a
+ * checkout's, on a system Node); then a packaged app's own copy; then
+ * `apps/daemon/dist/main.js` in the checkout the app was started from.
+ */
+function locateDaemon(): { entry: string; bundled: boolean } | null {
   const override = process.env['TANDEMISE_DAEMON_ENTRY'];
-  if (override) return existsSync(override) ? override : null;
+  if (override) return existsSync(override) ? { entry: override, bundled: false } : null;
+  if (app.isPackaged) {
+    const entry = bundledDaemonEntry();
+    return existsSync(entry) ? { entry, bundled: true } : null;
+  }
+  const entry = checkoutDaemonEntry();
+  return entry === null ? null : { entry, bundled: false };
+}
+
+/** Staged into `resources/daemon` at packaging time (apps/desktop/scripts/stage-daemon.mjs). */
+function bundledDaemonEntry(): string {
+  return join(process.resourcesPath, 'daemon', 'dist', 'main.js');
+}
+
+/** `apps/daemon/dist/main.js`, relative to the checked-out app. */
+function checkoutDaemonEntry(): string | null {
   // In dev, __dirname is apps/desktop/out|dist/main; four levels up is the repo root.
   const candidates = [
     resolve(process.cwd(), 'apps/daemon/dist/main.js'),
@@ -210,9 +236,9 @@ interface Launch {
 }
 
 /**
- * The Node the daemon runs on. Not `process.execPath`: that is Electron's own
- * Node, whose native ABI does not match the better-sqlite3 build `npm install`
- * made, so the daemon could not open its database (see node-runtime.ts).
+ * The Node a checkout's daemon runs on: the developer's own Node first, the
+ * way `npm run daemon` would run it, Electron's only as a fallback (see
+ * node-runtime.ts).
  */
 async function findDaemonNode(): Promise<NodeResolution> {
   const env = process.env;
@@ -268,6 +294,9 @@ async function spawnDaemon(entry: string, node: Extract<NodeResolution, { ok: tr
   let exited = false;
   const child = spawn(node.command, [entry], {
     detached: true,
+    // Not the app's working directory: a packaged app may have been started
+    // from anywhere, and the daemon outlives it.
+    ...(app.isPackaged ? { cwd: homedir() } : {}),
     stdio: ['ignore', 'ignore', stderr ?? 'ignore'],
     // A packaged app's daemon never opens test routes, whatever the environment says.
     env: { ...withoutElectronNode(process.env), ...node.env, ...(app.isPackaged ? { TANDEMISE_PACKAGED: '1', TANDEMISE_TEST_ROUTES: '0' } : {}) },

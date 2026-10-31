@@ -5,9 +5,9 @@
 // the "daemon is not running" screen always ended in "Cannot open database".
 // `resolveDaemonNode` (apps/desktop/src/main/node-runtime.ts) now picks the Node;
 // it is pure, so it is driven here with a fake filesystem and fake versions.
-// Then the real thing: the daemon started with Electron's Node still fails (so
-// the premise holds), and started with the Node the resolver picks on this
-// machine it opens its database.
+// Then the real thing: Electron's Node now loads the same (N-API) SQLite build,
+// which a packaged app relies on (bundledDaemonNode), and started with the Node
+// the resolver picks on this machine the daemon opens its database.
 //
 //   npm run build && node scratch/daemon-node-check.mjs
 import { spawnSync } from 'node:child_process';
@@ -33,7 +33,7 @@ const section = (t) => console.log(`\n== ${t}`);
 const ts = require('typescript');
 const source = readFileSync(join(root, 'apps/desktop/src/main/node-runtime.ts'), 'utf8');
 const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
-const { resolveDaemonNode, parseLoginShellPath, LOGIN_PATH_MARKER, MIN_NODE_MAJOR } =
+const { bundledDaemonNode, resolveDaemonNode, parseLoginShellPath, LOGIN_PATH_MARKER, MIN_NODE_MAJOR } =
   await import(`data:text/javascript;base64,${Buffer.from(js).toString('base64')}`);
 
 const ELECTRON = { execPath: '/Apps/Tandemise.app/Contents/MacOS/Tandemise', nodeVersion: '20.18.3' };
@@ -105,6 +105,16 @@ section("Electron's Node is last, and only if it is new enough");
   check('a real node beats Electron even when Electron would do', r.ok && r.source === 'PATH', r);
 }
 
+section("a packaged app's bundled daemon runs on Electron's Node, always");
+{
+  const r = bundledDaemonNode({ execPath: '/Apps/Tandemise', nodeVersion: '24.21.0' });
+  check('Electron in Node mode, from "bundled"', r.ok && r.command === '/Apps/Tandemise' && r.source === 'bundled' && r.version === '24.21.0' && r.env.ELECTRON_RUN_AS_NODE === '1', r);
+}
+{
+  const r = bundledDaemonNode({ execPath: '/Apps/Tandemise', nodeVersion: '20.18.3' });
+  check('an Electron below the floor is a packaging bug, said plainly', !r.ok && r.message.includes('Node 20.18.3') && r.message.includes('Node 22 or newer') && !/\n/.test(r.message), r);
+}
+
 section('no usable Node: one plain message that says what to do');
 {
   const r = resolveDaemonNode(world({ env: { PATH: '/usr/bin:/bin' } }));
@@ -138,7 +148,7 @@ check('between markers, ignoring banners', parseLoginShellPath(`Welcome!\nnvm: u
 check('no markers -> null', parseLoginShellPath('zsh: command not found') === null);
 check('empty -> null', parseLoginShellPath(`${LOGIN_PATH_MARKER}${LOGIN_PATH_MARKER}`) === null);
 
-section('for real: Electron Node fails to open the database, the resolved Node does not');
+section("for real: Electron's Node and the resolved Node both open the database");
 const entry = join(root, 'apps/daemon/dist/main.js');
 let electronPath = null;
 try { electronPath = require(join(root, 'apps/desktop/node_modules/electron')); } catch {
@@ -147,10 +157,13 @@ try { electronPath = require(join(root, 'apps/desktop/node_modules/electron')); 
 if (!existsSync(entry) || typeof electronPath !== 'string' || !existsSync(electronPath)) {
   console.log('  skip (no daemon build or no electron install)');
 } else {
-  // `better-sqlite3` is loaded exactly as the daemon loads it: the same file, the same ABI.
+  // `better-sqlite3` is loaded exactly as the daemon loads it: the same file.
+  // It used to be built for one Node ABI, so Electron's Node could not load it;
+  // from better-sqlite3 13 it is an N-API addon, and a packaged app depends on
+  // Electron's Node loading it.
   const probe = "try{require('better-sqlite3')(':memory:').close();console.log('OPEN')}catch(e){console.log('FAIL '+String(e.message).replace(/\\s+/g,' '))}";
   const underElectron = spawnSync(electronPath, ['-e', probe], { cwd: root, encoding: 'utf8', env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, timeout: 30_000 });
-  check("Electron's Node cannot load the SQLite module (the bug's cause)", /^FAIL .*(different Node\.js version|NODE_MODULE_VERSION)/m.test(underElectron.stdout), underElectron.stdout + underElectron.stderr);
+  check("Electron's Node loads the same SQLite module (N-API, no rebuild)", underElectron.stdout.trim() === 'OPEN', underElectron.stdout + underElectron.stderr);
 
   const electronVersion = spawnSync(electronPath, ['-p', 'process.versions.node'], { encoding: 'utf8', env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' } }).stdout.trim();
   const r = resolveDaemonNode({
