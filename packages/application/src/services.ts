@@ -70,6 +70,8 @@ export interface TandemiseServices {
   readonly contributions: ContributionService;
   /** Eval suites, saving a finished step as a case, and the run-score summary (P3b). */
   readonly evals: import('./services/eval-service.js').EvalService;
+  /** Who works on which tracker item, alone or with a team relay (relay spec). */
+  readonly coordination: import('./services/coordination-service.js').CoordinationService;
 }
 
 /** One contribution pinned as Evidence, with what a caller needs to type it next. */

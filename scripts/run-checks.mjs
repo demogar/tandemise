@@ -16,6 +16,7 @@ export const OFFLINE_CHECKS = [
   'artifact-write-scope-check',
   'concurrency-check',
   'coordination-check',
+  'coordination-app-check',
   'daemon-node-check',
   'env-leak-check',
   'first-run-words-check',

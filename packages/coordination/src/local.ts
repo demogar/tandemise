@@ -1,6 +1,6 @@
 import type { ClaimView, CoordMemberView, MailboxMessage, PresenceView } from '@tandemise/api-contract/relay';
 import type { CoordinationStore } from './store.js';
-import { heldBySentence } from './rules.js';
+import { DEFAULT_STALE_AFTER_MS, heldBySentence, takeOverRefusal } from './rules.js';
 
 export type CoordinationStatus =
   | { readonly kind: 'local' }
@@ -10,7 +10,7 @@ export type CoordinationStatus =
 
 export type ClaimResult =
   | { readonly kind: 'claimed'; readonly claim: ClaimView }
-  | { readonly kind: 'held_by'; readonly claim: ClaimView; readonly self: boolean; readonly sentence: string }
+  | { readonly kind: 'held_by'; readonly claim: ClaimView; readonly self: boolean; readonly sentence: string; readonly mayTakeOver: boolean }
   | { readonly kind: 'queued_offline'; readonly claim: ClaimView };
 
 export type ClaimSyncState = 'confirmed' | 'pending' | 'conflicted' | 'lost';
@@ -36,6 +36,16 @@ export interface Me {
   readonly role: 'admin' | 'member';
   readonly displayName: string;
   readonly deviceLabel: string;
+}
+
+/** A held item, in the words a person reads, and whether they may take it over. */
+export function heldBy(store: CoordinationStore, claim: ClaimView, self: boolean, actor: { memberId: string; role: 'admin' | 'member' }, staleAfterMs = DEFAULT_STALE_AFTER_MS): ClaimResult {
+  const sentence = heldBySentence({ holderName: claim.memberName, itemRef: claim.itemRef, startedAt: claim.startedAt, self, deviceLabel: claim.deviceLabel });
+  const mayTakeOver = takeOverRefusal({
+    actor, holderMemberId: claim.memberId, holderName: claim.memberName, itemRef: claim.itemRef,
+    holderLastSeenAt: store.holderLastSeenAt(claim.memberId), now: store.clock(), staleAfterMs,
+  }) === null;
+  return { kind: 'held_by', claim, self, sentence, mayTakeOver };
 }
 
 /** A listener set: `onChange` without an event bus. */
@@ -120,10 +130,7 @@ export class LocalCoordination {
       this.#emitter.emit('claims');
       return { kind: 'claimed', claim: out.claim };
     }
-    return {
-      kind: 'held_by', claim: out.claim, self: out.self,
-      sentence: heldBySentence({ holderName: out.claim.memberName, itemRef: out.claim.itemRef, startedAt: out.claim.startedAt, self: out.self, deviceLabel: out.claim.deviceLabel }),
-    };
+    return heldBy(this.store, out.claim, out.self, { memberId: this.#me.memberId, role: this.#me.role });
   }
 
   async release(claimId: string, reason: 'done' | 'released'): Promise<void> {
@@ -151,6 +158,15 @@ export class LocalCoordination {
 
   presence(): readonly PresenceView[] {
     return this.store.presence();
+  }
+
+  holderLastSeenAt(memberId: string): string | null {
+    return this.store.holderLastSeenAt(memberId);
+  }
+
+  markLost(localRef: string, note: string): void {
+    writeClaimSync(this.store, `lost:${localRef}`, { sync: 'lost', note, localRef, decided: null });
+    this.#emitter.emit('claims');
   }
 
   claimSync(claimId: string): ClaimSync {

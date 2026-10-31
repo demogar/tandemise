@@ -228,9 +228,10 @@ export class CoordinationStore {
   }
 
   devices(memberId?: string): CoordDeviceView[] {
+    // `seen:` rows are a daemon mirror's record of when a member was last seen; they are not computers.
     const rows = memberId === undefined
-      ? this.stmt(`SELECT * FROM coord_devices ORDER BY created_at, id`).all()
-      : this.stmt(`SELECT * FROM coord_devices WHERE member_id = ? ORDER BY created_at, id`).all(memberId);
+      ? this.stmt(`SELECT * FROM coord_devices WHERE id NOT LIKE 'seen:%' ORDER BY created_at, id`).all()
+      : this.stmt(`SELECT * FROM coord_devices WHERE member_id = ? AND id NOT LIKE 'seen:%' ORDER BY created_at, id`).all(memberId);
     return (rows as DeviceRow[]).map(deviceFromRow);
   }
 
@@ -368,11 +369,15 @@ export class CoordinationStore {
     });
   }
 
-  /** When the holder was last seen on any computer; an open stream counts as now. */
+  /**
+   * When the holder was last seen on any computer: an authenticated request or
+   * a presence change. An open socket alone does not refresh it; a connected
+   * daemon re-reads its snapshot every few minutes, which does.
+   */
   holderLastSeenAt(memberId: string): string | null {
-    const online = this.stmt(`SELECT 1 FROM coord_presence WHERE member_id = ? LIMIT 1`).get(memberId);
-    if (online) return this.now();
-    const r = this.stmt(`SELECT MAX(last_seen_at) AS t FROM coord_devices WHERE member_id = ?`).get(memberId) as { t: string | null };
+    const r = this.stmt(`SELECT MAX(t) AS t FROM (
+        SELECT MAX(last_seen_at) AS t FROM coord_devices WHERE member_id = ?
+        UNION ALL SELECT MAX(last_seen_at) AS t FROM coord_presence WHERE member_id = ?)`).get(memberId, memberId) as { t: string | null };
     return r.t;
   }
 

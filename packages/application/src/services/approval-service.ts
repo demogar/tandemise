@@ -56,6 +56,8 @@ export interface ApprovalDeps {
   readonly proposals?: PlanProposalRepositoryPort;
   /** Plan fit's "Plan the rest again": starts the replan once the card is decided. Resolved late, as planning composes after this. */
   readonly replanRest?: (missionId: Mission['id'], note: string | null, planFitApprovalId: Approval['id']) => Promise<unknown>;
+  /** Claims the mission's tracker item before an approved plan starts it (relay spec). Optional for older harnesses. */
+  readonly claims?: { assertMayStart(mission: Mission): Promise<void> };
   readonly clock: Clock;
   readonly log: Logger;
 }
@@ -124,6 +126,10 @@ export class ApprovalServiceImpl implements ApprovalService {
     // reading "Figma" back to the worker as a refusal would make the whole
     // asking mechanism useless.
     const approved = isAffirmative(approval.kind, option.id);
+    // Approving a plan starts the mission, so a held tracker item refuses it before the card is answered.
+    const starting = approval.kind === 'plan' && approved && approval.missionId !== null && this.deps.proposals?.get(approval.id) === undefined
+      ? this.deps.missions.get(approval.missionId) : undefined;
+    if (starting !== undefined) await this.deps.claims?.assertMayStart(starting);
     // One unit: a round that fails to start leaves no card decided for it and no
     // note recorded, and nothing reaches subscribers until it has committed.
     const { decided, begun } = this.deps.recorder.deferred(() => this.deps.unitOfWork.transaction(() => {

@@ -56,7 +56,7 @@ export const PACKAGES = {
   browser: { deps: ['shared', 'kernel', 'domain', 'integrations-core'], ext: { playwright: '^1.49.1', zod: '^3.24.1' } },
   'desktop-control': { deps: ['shared', 'domain', 'kernel', 'integrations-core'], ext: {} },
   application: {
-    deps: ['shared', 'kernel', 'domain', 'api-contract', 'policy', 'runtimes-core', 'execution-core', 'integrations-core', 'context', 'evaluation'],
+    deps: ['shared', 'kernel', 'domain', 'api-contract', 'policy', 'runtimes-core', 'execution-core', 'integrations-core', 'context', 'evaluation', 'coordination'],
     ext: { zod: '^3.24.1', yaml: '^2.9.1' },
   },
 };
