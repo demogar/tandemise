@@ -128,6 +128,10 @@ export class SchedulerService implements LifecycleComponent {
   readonly #waiting = new Map<TaskId, AbortController>();
   readonly #inFlight = new Set<Promise<void>>();
   readonly #retryAfter = new Map<TaskId, number>();
+  /** Consecutive failed looks at a waiting ship step: each doubles the wait before the next, up to SHIP_BACKOFF_CAP_MS. */
+  readonly #shipFailures = new Map<TaskId, number>();
+  /** What a waiting ship step said before GitHub started failing, said again once it answers. */
+  readonly #shipReasonBefore = new Map<TaskId, string | null>();
   /** Missions whose task branches have already been merged, so it happens once. */
   readonly #integrated = new Set<MissionId>();
   #timer: NodeJS.Timeout | undefined;
@@ -377,7 +381,9 @@ export class SchedulerService implements LifecycleComponent {
       // and adopted again after a restart.
       if ((task.status === 'AWAITING_EXTERNAL' || task.status === 'AWAITING_APPROVAL') && task.executor === 'ship' && !this.#waiting.has(task.id)) {
         const last = this.#shipWatched.get(task.id) ?? 0;
-        if (now - last >= (this.deps.shipPollMs ?? 30_000)) {
+        const failures = this.#shipFailures.get(task.id) ?? 0;
+        const every = Math.min((this.deps.shipPollMs ?? 30_000) * 2 ** failures, SHIP_BACKOFF_CAP_MS);
+        if (now - last >= every) {
           this.#shipWatched.set(task.id, now);
           this.#startShip(mission, task);
         }
@@ -501,6 +507,14 @@ export class SchedulerService implements LifecycleComponent {
     if (task.startedAt === null) this.deps.tasks.update(task.id, { startedAt: this.deps.clock.now() });
     void ship.run(mission, task, controller.signal)
       .then((outcome) => {
+        this.#shipFailures.delete(task.id);
+        if (this.#shipReasonBefore.has(task.id)) {
+          const before = this.#shipReasonBefore.get(task.id) ?? null;
+          this.#shipReasonBefore.delete(task.id);
+          const now = this.deps.tasks.get(task.id);
+          // Only if the look itself didn't say something newer.
+          if (now !== undefined && /^GitHub didn't answer/.test(now.statusReason ?? '')) this.deps.tasks.update(task.id, { statusReason: before });
+        }
         const current = this.deps.tasks.get(task.id) ?? task;
         const finish = (status: 'SUCCEEDED' | 'SKIPPED' | 'BLOCKED', reason: string) => {
           this.#setStatus(current, scopeOf(mission), status, reason);
@@ -521,7 +535,13 @@ export class SchedulerService implements LifecycleComponent {
         const current = this.deps.tasks.get(task.id) ?? task;
         // Once its pull request is open and waiting, a failed call to GitHub is retried on the next look, not a blocked step.
         if (current.status === 'AWAITING_EXTERNAL' || current.status === 'AWAITING_APPROVAL') {
-          this.deps.log.warn('ship.look_failed', { missionId: mission.id, taskId: task.id, error: errorMessage(e) });
+          const failures = (this.#shipFailures.get(task.id) ?? 0) + 1;
+          this.#shipFailures.set(task.id, failures);
+          if (!this.#shipReasonBefore.has(task.id)) this.#shipReasonBefore.set(task.id, current.statusReason ?? null);
+          const next = Math.min((this.deps.shipPollMs ?? 30_000) * 2 ** failures, SHIP_BACKOFF_CAP_MS);
+          this.deps.log.warn('ship.look_failed', { missionId: mission.id, taskId: task.id, failures, error: errorMessage(e) });
+          this.deps.tasks.update(task.id, { statusReason: `GitHub didn't answer (${errorMessage(e)}); Tandemise tries again in ${waitWords(next)}.` });
+          this.deps.recorder.invalidate('tasks', mission.id);
           return;
         }
         this.#setStatus(current, scopeOf(mission), 'BLOCKED', `The ship step failed: ${errorMessage(e)}`);
@@ -848,4 +868,12 @@ export class SchedulerService implements LifecycleComponent {
 
 function scopeOf(mission: Mission): EventScope {
   return { workspaceId: mission.workspaceId, missionId: mission.id };
+}
+
+/** The longest wait between looks at a waiting ship step while GitHub keeps failing. */
+const SHIP_BACKOFF_CAP_MS = 10 * 60_000;
+
+function waitWords(ms: number): string {
+  if (ms < 60_000) return `${Math.max(1, Math.round(ms / 1000))} s`;
+  return `${Math.round(ms / 60_000)} min`;
 }

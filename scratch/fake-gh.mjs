@@ -209,6 +209,8 @@ function main(argv) {
     writeState(dir, state);
     fail(message);
   }
+  // GitHub down for a while: every call fails while `failAll` is set.
+  if (state.failAll) fail(state.failAll);
   const out = (value) => process.stdout.write(`${JSON.stringify(value)}\n`);
   const repoOf = (name) => state.repos[name] ?? { issues: [], comments: {} };
 

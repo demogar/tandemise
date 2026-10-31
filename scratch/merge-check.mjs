@@ -638,6 +638,27 @@ await attempt('holds reach routing through the real event bus', async () => {
   await outcomes.stop();
 });
 
+await attempt('review: GitHub down while a pull request waits', async () => {
+  section('review: GitHub down while a pull request waits');
+  const fake = await import('./fake-gh.mjs');
+  const w = await world();
+  fake.setRepo(w.ghDir, REPO, { defaultChecks: [{ name: 'unit', conclusion: 'success' }] });
+  const m = await w.mission('fix: typo in the settings title');
+  const ship = () => w.h.repo.tasks.listByMission(m.id).find((t) => t.key === 'ship');
+  await w.h.until(() => ship()?.status === 'AWAITING_APPROVAL', 60000);
+  const state = fake.readState(w.ghDir); state.failAll = 'gh: Something went wrong (HTTP 502)'; fake.writeState(w.ghDir, state);
+  const before = fake.calls(w.ghDir).length;
+  const end = Date.now() + 3000;
+  while (Date.now() < end) { await w.h.scheduler.tick(); await w.h.sleep(50); }
+  const looks = fake.calls(w.ghDir).length - before;
+  // Polling every 150 ms, 3 s is 20 looks; backing off (150, 300, 600, 1200 ms …) is about 5.
+  check('while GitHub fails, the step backs off instead of trying on every look', looks > 0 && looks <= 6, looks);
+  check('…says so on the step, and stays waiting', ship().status === 'AWAITING_APPROVAL' && /GitHub didn't answer/.test(ship().statusReason ?? ''), [ship().status, ship().statusReason]);
+  const ok = fake.readState(w.ghDir); delete ok.failAll; fake.writeState(w.ghDir, ok);
+  await w.h.until(() => !/GitHub didn't answer/.test(ship().statusReason ?? ''), 20000);
+  check('once GitHub answers, the step says what it was waiting for again', ship().status === 'AWAITING_APPROVAL' && ship().statusReason?.startsWith('Waiting for your review'), ship().statusReason);
+});
+
 // @sections
 
 clearInterval(keepAlive);
