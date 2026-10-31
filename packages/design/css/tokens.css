@@ -40,7 +40,7 @@
   --sage-700: #4c6d4f;
   --lichen-300: #b3c6bb;
   --lichen-700: #526962;
-  --lichen-750: #536c69;
+  --lichen-750: #49625f;
   --slate-300: #a7b0cf;
   --indigo-300: #999fdc;
   --indigo-500: #4a4b96;
@@ -61,15 +61,15 @@
   --paper-200: #d0ddd5;
   --paper-300: #bbccc4;
   --signal-blue-bright: #9badf1;
-  --signal-blue-deep: #4a5bac;
+  --signal-blue-deep: #4657a7;
   --signal-green-bright: #7cd591;
-  --signal-green-deep: #317a45;
+  --signal-green-deep: #1e6a36;
   --signal-amber-bright: #efb656;
-  --signal-amber-deep: #a06306;
+  --signal-amber-deep: #8a4f00;
   --signal-red-bright: #f47c6b;
-  --signal-red-deep: #c13e2e;
+  --signal-red-deep: #ae2b1c;
   --signal-violet-bright: #c39dee;
-  --signal-violet-deep: #7847a6;
+  --signal-violet-deep: #7443a1;
 }
 
 /* Roles: what a colour is for, in both themes. */
@@ -105,7 +105,7 @@
   --status-blocked-soft: color-mix(in srgb, var(--status-blocked) 13%, transparent);
   --status-failed-soft: color-mix(in srgb, var(--status-failed) 12%, transparent);
   --status-succeeded-soft: color-mix(in srgb, var(--status-succeeded) 13%, transparent);
-  --status-pending-soft: color-mix(in srgb, var(--status-pending) 13%, transparent);
+  --status-pending-soft: color-mix(in srgb, var(--status-pending) 11%, transparent);
   --status-running-line: color-mix(in srgb, var(--status-running) 40%, transparent);
   --status-blocked-line: color-mix(in srgb, var(--status-blocked) 40%, transparent);
   --status-failed-line: color-mix(in srgb, var(--status-failed) 40%, transparent);

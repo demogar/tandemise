@@ -38,14 +38,8 @@ const DOCS_EXCLUDE = ['.docs-story', '.docblock-argstable'];
  * check catches every new one. Each is a finding about the design system
  * itself; remove the entry in the change that fixes it.
  */
-const KNOWN = [
-  {
-    theme: 'light',
-    rule: 'color-contrast',
-    node: /badge|btn--danger|tab__count/,
-    why: 'light theme: --status-{pending,blocked,failed,succeeded} text on its -soft wash (badge, StatusPill, danger button) measures 3.9-4.5:1 and --text-tertiary on --surface-active (.tab__count) 4.4:1, under the 4.5:1 AA needs at --fs-xs. CONTRAST_PAIRS measures the status roles on plain --surface only.',
-  },
-];
+/** @type {{ theme: string, rule: string, node: RegExp, why: string }[]} */
+const KNOWN = [];
 const known = (theme, rule, node) => KNOWN.find((k) => k.theme === theme && k.rule === rule && k.node.test(node));
 
 if (!existsSync(join(STATIC, 'index.json'))) {

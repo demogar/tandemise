@@ -5,7 +5,7 @@
  * changes with it.
  */
 import { useMemo, useState, type ReactElement, type ReactNode } from 'react';
-import { CONTRAST_PAIRS, contrast } from '../../src/contrast.js';
+import { CONTRAST_PAIRS, pairContrast } from '../../src/contrast.js';
 import { ICON_PATHS } from '../../src/icons.js';
 import { resolveTheme } from '../../src/resolve.js';
 import {
@@ -118,27 +118,44 @@ export function ContrastPairs(): ReactElement {
         </tr>
       </thead>
       <tbody>
-        {CONTRAST_PAIRS.map(([fg, bg, min]) => (
-          <tr key={`${fg}/${bg}`}>
-            <td>
-              <code>--{fg}</code>
-            </td>
-            <td>
-              <code>--{bg}</code>
-            </td>
-            <td>≥ {min}:1</td>
-            {THEMES.map((theme) => {
-              const ratio = contrast(resolved[theme][fg], resolved[theme][bg]);
-              return (
-                <td key={theme} data-theme={theme} style={{ background: 'transparent' }}>
-                  <span className="fd-pair" style={{ color: `var(--${fg})`, background: `var(--${bg})` }}>
-                    {ratio.toFixed(2)}:1 {ratio >= min ? '✓' : '✗'}
-                  </span>
-                </td>
-              );
-            })}
-          </tr>
-        ))}
+        {CONTRAST_PAIRS.map((pair) => {
+          const [fg, bg, min, on] = pair;
+          return (
+            <tr key={`${fg}/${bg}/${on ?? ''}`}>
+              <td>
+                <code>--{fg}</code>
+              </td>
+              <td>
+                <code>--{bg}</code>
+                {on ? (
+                  <>
+                    {' over '}
+                    <code>--{on}</code>
+                  </>
+                ) : null}
+              </td>
+              <td>≥ {min}:1</td>
+              {THEMES.map((theme) => {
+                const ratio = pairContrast(resolved[theme], pair);
+                return (
+                  <td key={theme} data-theme={theme} style={{ background: 'transparent' }}>
+                    <span
+                      className="fd-pair"
+                      style={{
+                        color: `var(--${fg})`,
+                        // A wash is painted over the surface it sits on, as in the app.
+                        backgroundColor: on ? `var(--${on})` : `var(--${bg})`,
+                        backgroundImage: on ? `linear-gradient(var(--${bg}), var(--${bg}))` : undefined,
+                      }}
+                    >
+                      {ratio.toFixed(2)}:1 {ratio >= min ? '✓' : '✗'}
+                    </span>
+                  </td>
+                );
+              })}
+            </tr>
+          );
+        })}
       </tbody>
     </table>
   );
