@@ -464,6 +464,12 @@ await attempt('review: queued auto-merge is cancelled', async () => {
   await w.h.until(() => pr()?.autoMerge != null, 60000);
   const merges = () => fake.calls(w.ghDir).filter((c) => c.args[0] === 'pr' && c.args[1] === 'merge');
   check('with required checks, the merge is queued with --auto', merges().at(-1)?.args.includes('--auto') && pr().state === 'OPEN', merges().map((c) => c.args.join(' ')));
+  // Queued: later looks watch it, and never queue it again.
+  const queuedOnce = merges().length;
+  const lookedBefore = fake.calls(w.ghDir).length;
+  const deadline = Date.now() + 10000;
+  while (fake.calls(w.ghDir).length < lookedBefore + 6 && Date.now() < deadline) { await w.h.scheduler.tick(); await w.h.sleep(100); }
+  check('a queued merge is watched, not queued again on every look', merges().length === queuedOnce && fake.calls(w.ghDir).length >= lookedBefore + 6, merges().map((c) => c.args.join(' ')));
   await w.h.services.mergePolicy.stop(w.ws, w.caller);
   await w.h.until(() => merges().some((c) => c.args.includes('--disable-auto')), 30000);
   check('stopping auto-merge cancels the queued merge on GitHub', merges().some((c) => c.args.includes('--disable-auto')) && pr().autoMerge == null && pr().state === 'OPEN', merges().map((c) => c.args.join(' ')));

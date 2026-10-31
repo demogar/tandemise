@@ -300,6 +300,11 @@ export class ShipService {
 
   /** After a decision: merge, or ask a person and wait (§8.1 step 6). */
   async #settle(mission: Mission, task: MissionTask, repository: Repository, pr: PullRequestRef, decision: MergeDecisionRecord): Promise<ShipOutcome> {
+    // Already queued on GitHub (auto-merge, waiting for its checks): watch it, never queue it again.
+    if (decision.mergedBy !== null && decision.mergedAt === null) {
+      this.#status(mission, task, 'AWAITING_EXTERNAL', 'Queued to merge on GitHub once its required checks pass.');
+      return { kind: 'waiting' };
+    }
     if (decision.verdict === 'merge') return this.mergeDecided(mission, task, repository, decision, 'auto');
     const d = this.deps.decide!;
     const scope: EventScope = { workspaceId: mission.workspaceId, missionId: mission.id, taskId: task.id };
