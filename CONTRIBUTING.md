@@ -58,6 +58,13 @@ two daemons, online and offline). `npm run check:boundaries` holds
 mechanically. Its real-app acceptance is `node scratch/acceptance/relay/run-all.mjs`
 (two windows); its Docker image is built in CI.
 
+The desktop app meets WCAG 2.1 AA (`docs/DESIGN_SYSTEM.md`, "Accessibility").
+A UI change is checked in the real window by
+`node scratch/acceptance/a11y/run-all.mjs --keep-painting` (every screen and
+state in light and dark: axe-core's A+AA rules, one `main` and one `h1`, named
+controls, a keyboard pass, reflow at 320 CSS px and text spacing; `--only=inbox`
+for one screen). CI runs it as "Accessibility (desktop)" under xvfb.
+
 ## Branches, pull requests and commits
 
 - `main` is protected. Every change lands through a pull request that passes CI.
