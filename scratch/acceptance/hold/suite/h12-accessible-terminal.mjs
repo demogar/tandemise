@@ -5,7 +5,7 @@
 import { context } from '../../p0/lib/ctx.mjs';
 import { Evidence } from '../../p0/lib/evidence.mjs';
 import { axe, iconNames, press } from '../../a11y/lib/audit.mjs';
-import { cardHold, openFeed, panelButton, panelLabel, readState, shoot, stepOf } from '../common.mjs';
+import { cardHold, openFeed, panelButton, panelLabel, readState, shoot, stepOf, typeLine } from '../common.mjs';
 
 const c = await context();
 const { page, sleep } = c;
@@ -49,16 +49,23 @@ await shoot(c, ev, 'focus-out-of-terminal');
 let stayed = true;
 for (let i = 0; i < 12; i++) { await press(page, 'Tab'); await sleep(60); if (!(await focused()).inPanel) stayed = false; }
 ev.check('Tab cycles inside the panel (it is a modal dialog)', stayed);
+// The cycle includes the terminal itself; start the way back from one of the buttons.
+if ((await focused()).terminal) { await press(page, 'F6'); await sleep(150); }
 await press(page, 'F6');
 await sleep(200);
 ev.check('F6 again goes back into the terminal', (await focused()).terminal, await focused());
 
-// Escape outside the terminal closes the panel; the hold and its session keep running.
+// The Tabs that reached the program are on its input line: end that line, so H2 types onto a clean one.
+await typeLine(c, '');
+
+// Escape outside the terminal closes the panel; the hold and its session keep running. The focused button's
+// tooltip is showing, and the first Escape dismisses it (1.4.13); the next closes the panel.
 await press(page, 'F6');
 await sleep(150);
 await press(page, 'Escape');
-await sleep(500);
-ev.check('Escape on the panel\'s buttons closes the panel', (await panelLabel(c)) === '', await panelLabel(c));
+await sleep(300);
+if ((await panelLabel(c)) !== '') { await press(page, 'Escape'); await sleep(500); }
+ev.check('Escape on the panel\'s buttons closes the panel (after dismissing the button\'s tooltip)', (await panelLabel(c)) === '', await panelLabel(c));
 const held = await stepOf(c, missionId);
 ev.check('proof (API): the step is still HELD after closing', held.status === 'HELD', held.status);
 

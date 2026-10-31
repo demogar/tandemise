@@ -36,7 +36,7 @@ export async function axe(page, { context = 'document' } = {}) {
 }
 
 /** Landmarks and headings (1.3.1, 2.4.1, 2.4.6): one main, one h1, levels that never skip, a nav. */
-export async function structure(page) {
+export async function structure(page, { nav = true } = {}) {
   const problems = await page.evaluate(`(() => {
     const out = [];
     // Rendered: not display:none, not visibility:hidden, and not inside a closed <details> (content-visibility).
@@ -47,7 +47,7 @@ export async function structure(page) {
     const levelOf = (h) => Number(h.getAttribute('aria-level') || h.tagName.slice(1));
     const h1s = [...document.querySelectorAll('h1,h2,h3,h4,h5,h6,[role=heading]')].filter((h) => visible(h) && levelOf(h) === 1 && !h.closest('[aria-hidden=true]'));
     if (h1s.length !== 1) out.push('expected exactly one visible h1, found ' + h1s.length + (h1s.length ? ': ' + h1s.map((h) => JSON.stringify(h.innerText.slice(0, 40))).join(', ') : ''));
-    if (!document.querySelector('nav, [role=navigation]') && !document.body.dataset.noNav) out.push('no navigation landmark');
+    if (${nav} && !document.querySelector('nav, [role=navigation]')) out.push('no navigation landmark');
     const headings = [...document.querySelectorAll('h1,h2,h3,h4,h5,h6,[role=heading]')].filter(visible)
       .map((h) => ({ level: Number(h.getAttribute('aria-level') || h.tagName.slice(1)), text: h.innerText.trim().slice(0, 50) }));
     let last = 0;
@@ -166,6 +166,8 @@ export async function keyboard(page, { max = 160, expectSkip = true, modal = fal
     if (stop.terminal) { problems.push('Tab entered the terminal; the walk stops there (the terminal has its own exit check)'); break; }
   }
   if (!wrapped && stops.length >= max) problems.push(`no way out after ${max} Tab presses (possible trap)`);
+  // Tab that never lands anywhere is as broken as a trap: a dialog whose trap points at something unfocusable.
+  if (stops.length === 0) problems.push('Tab never moved focus to anything');
   if (expectSkip && !modal && !stops[0]?.skip) problems.push(`the first Tab stop is not a skip link (it is ${JSON.stringify(stops[0]?.name ?? 'nothing')})`);
   for (const s of stops) {
     if (!s.indicator) problems.push(`no visible focus indicator on ${s.tag} ${JSON.stringify(s.name)}`);

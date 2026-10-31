@@ -58,6 +58,8 @@
   .main {
     flex: 1;
     min-height: auto;
+    /* A long path or id breaks rather than widening the page. */
+    overflow-wrap: anywhere;
   }
 
   /* --------------------------------------------------- page scaffolding */

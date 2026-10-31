@@ -203,8 +203,11 @@ if (!only || only.includes('focus')) {
   await page.screenshot(join(EVIDENCE, 'shots', 'focus-nav-light.png'));
   await go(`#/missions/${S.a}/plan`, 2500);
   await clickSelector('.taskcard');
+  await sleep(900);
+  // Two stops into the drawer: a focus ring over its light surface.
   await press(page, 'Tab');
-  await sleep(200);
+  await press(page, 'Tab');
+  await sleep(600);
   await page.screenshot(join(EVIDENCE, 'shots', 'focus-drawer-light.png'));
   await escape();
   await theme('dark');
@@ -248,7 +251,8 @@ async function separateWindow(name, { withDaemon }) {
       await p.evaluate(`localStorage.setItem('tandemise.theme', '${scheme}'); document.documentElement.setAttribute('data-theme', '${scheme}')`);
       await sleep(400);
       record(name, scheme, 'axe', await axe(p));
-      record(name, scheme, 'structure', await structure(p));
+      // A screen of its own, before there is anything to navigate to: a main and an h1, no nav.
+      record(name, scheme, 'structure', await structure(p, { nav: false }));
       record(name, scheme, 'names', await iconNames(p));
       if (doKeyboard) record(name, scheme, 'keyboard', await keyboard(p, { expectSkip: false }));
       if (scheme === 'dark' && doReflow) {
