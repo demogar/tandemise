@@ -1,6 +1,6 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import type { RunnerContext } from '@tandemise/domain';
-import { errorMessage } from '@tandemise/shared';
+import { TandemiseError, errorMessage } from '@tandemise/shared';
 
 /** Plan Task 12: a dropped socket is opened again after 1 s, doubling up to 30 s while it keeps failing. */
 export const FIRST_RETRY_MS = 1_000;
@@ -10,8 +10,25 @@ export const MAX_RETRY_MS = 30_000;
 export interface SocketSession {
   /** Each text frame, in order. Not awaited: slow work goes through a `SerialQueue`. */
   onMessage(socket: WebSocket, data: string): void;
-  /** The socket closed, for whatever reason: clear the session's timers. */
-  onClose?(code: number, reason: string): void;
+  /**
+   * The socket closed, for whatever reason: clear the session's timers.
+   * Answers the sentence for a close the vendor will repeat (Discord's 4004,
+   * Slack's `link_disabled`), which stops the loop for good (Ruling 25).
+   */
+  onClose?(code: number, reason: string): string | undefined;
+}
+
+/**
+ * A refusal the vendor will repeat however long the loop waits (Ruling 25):
+ * thrown from `connect`, it stops the loop and the sentence goes on the
+ * source's `last_error`.
+ */
+export function fatalSocketError(message: string): TandemiseError {
+  return new TandemiseError('INTEGRATION_FAILED', message, { retryable: false, details: { fatal: true } });
+}
+
+function isFatal(e: unknown): e is TandemiseError {
+  return e instanceof TandemiseError && e.details['fatal'] === true;
 }
 
 export interface SocketLoopOptions {
@@ -33,6 +50,13 @@ export interface SocketLoopOptions {
  * real timers: the injected clock is for what Tandemise records, not for
  * waiting on a network. Stops when the host aborts the runner's signal or
  * `stop()` is called, closing the socket.
+ *
+ * Ruling 25: a connect that fails is reported to the host (`ctx.reportError`,
+ * the source's `last_error`) and tried again; a socket that opens clears it
+ * (`ctx.reportConnected`). A refusal the vendor will repeat (a
+ * `fatalSocketError` from `connect`, or a close the session names) is
+ * reported as fatal and the loop stops, so a revoked token is not hammered
+ * every 30 s and the person sees why.
  */
 export class SocketLoop {
   readonly #options: SocketLoopOptions;
@@ -57,6 +81,7 @@ export class SocketLoop {
     let wait = FIRST_RETRY_MS;
     while (!signal.aborted) {
       let heard = false;
+      let fatal: string | undefined;
       try {
         const { url, session } = await this.#options.connect(signal);
         if (signal.aborted) break;
@@ -64,6 +89,7 @@ export class SocketLoop {
           const socket = new WebSocket(url);
           const onAbort = (): void => { socket.close(1000); };
           signal.addEventListener('abort', onAbort, { once: true });
+          socket.addEventListener('open', () => { if (!signal.aborted) ctx.reportConnected(); });
           socket.addEventListener('message', (ev) => {
             heard = true;
             if (typeof ev.data === 'string') {
@@ -76,15 +102,24 @@ export class SocketLoop {
           });
           socket.addEventListener('close', (ev) => {
             signal.removeEventListener('abort', onAbort);
-            session.onClose?.(ev.code, ev.reason);
+            fatal = session.onClose?.(ev.code, ev.reason);
             if (!signal.aborted) ctx.log.info('intake.socket_closed', { source: label, code: ev.code, reason: ev.reason });
             resolve();
           });
         });
       } catch (e) {
-        if (!signal.aborted) ctx.log.warn('intake.socket_connect_failed', { source: label, error: errorMessage(e) });
+        if (isFatal(e)) fatal = e.message;
+        else if (!signal.aborted) {
+          ctx.log.warn('intake.socket_connect_failed', { source: label, error: errorMessage(e) });
+          ctx.reportError(errorMessage(e));
+        }
       }
       if (signal.aborted) break;
+      if (fatal !== undefined) {
+        ctx.log.warn('intake.socket_stopped', { source: label, error: fatal });
+        ctx.reportError(fatal, { fatal: true });
+        break;
+      }
       if (heard) wait = FIRST_RETRY_MS;
       await delay(wait, undefined, { signal }).catch(() => {});
       wait = Math.min(wait * 2, MAX_RETRY_MS);

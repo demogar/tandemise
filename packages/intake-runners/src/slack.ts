@@ -2,7 +2,7 @@ import type { Closure, ClosureResult, IntakeRunner, RunnerContext, RunnerHandle,
 import { TandemiseError, errorMessage } from '@tandemise/shared';
 import { replyAddress, replyPrefix, replyText, mentionTriggers, splitInstance, titleOf, triggerEmoji } from './chat.js';
 import { MAX_DESCRIPTION, SourceHttp, closureFailure, cut, record, secretMissing, text, tokenRefused } from './http.js';
-import { SerialQueue, SocketLoop } from './socket.js';
+import { SerialQueue, SocketLoop, fatalSocketError } from './socket.js';
 
 const LABEL = 'Slack';
 /** Plan Task 12: Slack's Web API unless the source names its own (a fake). */
@@ -13,6 +13,20 @@ const TOKEN_ERRORS = new Set(['invalid_auth', 'not_authed', 'account_inactive', 
 const MISSING_ERRORS = new Set(['channel_not_found', 'thread_not_found', 'message_not_found']);
 /** Slack's answers worth trying again. */
 const RETRY_ERRORS = new Set(['ratelimited', 'internal_error', 'fatal_error', 'service_unavailable', 'request_timeout']);
+/** Ruling 25: what the source says when `apps.connections.open` refuses the app-level token. */
+export const SLACK_APP_TOKEN_REFUSED = 'Slack refused the app-level token. Save a new one in Settings → Intake.';
+/** Ruling 25: Socket Mode switched off for the app (a `disconnect` envelope with reason `link_disabled`). */
+export const SLACK_SOCKET_MODE_OFF = "Slack turned Socket Mode off for this app. Turn it on again in the Slack app's settings, "
+  + 'then switch this source off and on in Settings → Intake.';
+/**
+ * Ruling 25: `apps.connections.open` answers Slack will give again however
+ * long the loop waits, so the runner stops and the source says why.
+ */
+const FATAL_CONNECT: ReadonlyMap<string, string> = new Map([
+  ...[...TOKEN_ERRORS].map((code): [string, string] => [code, SLACK_APP_TOKEN_REFUSED]),
+  ['missing_scope', "Slack's app-level token lacks the connections:write scope. Add it in the Slack app's settings, then save the new token in Settings → Intake."],
+  ['not_allowed_token_type', 'Slack needs the app-level token (xapp-…) to listen, not a bot or user token. Save the app-level token in Settings → Intake.'],
+]);
 /** At most this many pages of a thread are read (200 messages each). */
 const MAX_PAGES = 10;
 
@@ -165,6 +179,8 @@ class SlackListener {
   readonly #queue: SerialQueue;
   /** Channel id → name, for a source that names its channel. */
   readonly #names = new Map<string, string>();
+  /** Set by a `disconnect` Slack will not take back (Ruling 25): the socket's close then stops the loop. */
+  #fatal: string | undefined;
 
   constructor(ctx: RunnerContext) {
     this.#ctx = ctx;
@@ -173,10 +189,15 @@ class SlackListener {
       label: LABEL,
       ctx,
       connect: async () => {
-        const opened = await (await api(ctx, 'appToken')).write('apps.connections.open', {});
+        const opened = await (await api(ctx, 'appToken')).write('apps.connections.open', {}).catch((e: unknown) => {
+          const code = e instanceof TandemiseError ? e.details['slackError'] : undefined;
+          const fatal = typeof code === 'string' ? FATAL_CONNECT.get(code) : undefined;
+          throw fatal === undefined ? e : fatalSocketError(fatal);
+        });
         const url = text(opened['url']);
         if (url === undefined) throw new TandemiseError('INTEGRATION_FAILED', 'Slack opened no Socket Mode connection.', { retryable: true });
-        return { url, session: { onMessage: (socket, data) => { this.#frame(socket, data); } } };
+        this.#fatal = undefined;
+        return { url, session: { onMessage: (socket, data) => { this.#frame(socket, data); }, onClose: () => this.#fatal } };
       },
     });
   }
@@ -191,7 +212,12 @@ class SlackListener {
     // Ack first: Slack sends an envelope again when it is not acked within 3 s.
     const envelopeId = text(frame['envelope_id']);
     if (envelopeId !== undefined) socket.send(JSON.stringify({ envelope_id: envelopeId }));
-    if (frame['type'] === 'disconnect') { socket.close(1000); return; }
+    if (frame['type'] === 'disconnect') {
+      // `refresh_requested` and `warning` are routine: a new socket follows. `link_disabled` is for good (Ruling 25).
+      if (frame['reason'] === 'link_disabled') this.#fatal = SLACK_SOCKET_MODE_OFF;
+      socket.close(1000);
+      return;
+    }
     if (frame['type'] !== 'events_api') return;
     const target = this.#triggered(record(record(frame['payload'])['event']));
     if (target !== null) this.#queue.push(() => this.#file(target));

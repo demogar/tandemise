@@ -1,8 +1,8 @@
 import type { Closure, ClosureResult, IntakeRunner, RunnerContext, RunnerHandle, RunnerSignal } from '@tandemise/domain';
 import { TandemiseError, errorMessage } from '@tandemise/shared';
 import { mentionTriggers, replyAddress, replyPrefix, replyText, splitInstance, titleOf, triggerEmoji } from './chat.js';
-import { MAX_DESCRIPTION, SourceHttp, closureFailure, cut, isoTime, record, secretMissing, text, tokenRefused } from './http.js';
-import { SerialQueue, SocketLoop } from './socket.js';
+import { MAX_DESCRIPTION, SourceHttp, closureFailure, cut, isoTime, record, secretMissing, text } from './http.js';
+import { SerialQueue, SocketLoop, fatalSocketError } from './socket.js';
 
 const LABEL = 'Discord';
 /** Plan Task 12: Discord's v10 REST API unless the source names its own (a fake). */
@@ -14,8 +14,26 @@ const ACK_EMOJI = '👀';
 /** Messages after the original read per page, and at most this many pages, when looking for the bot's own reply. */
 const PAGE = 50;
 const MAX_PAGES = 10;
-/** The gateway's close code for a token it refused. */
-const AUTH_FAILED = 4004;
+/** Ruling 25: what the source says when Discord refuses the bot token (a 401, or the gateway's 4004). */
+export const DISCORD_TOKEN_REFUSED = 'Discord refused the bot token. Save a new one in Settings → Intake.';
+/** Ruling 25: the gateway's 4013/4014, intents the bot may not use. */
+export const DISCORD_INTENTS_REFUSED = 'Discord refused the intents this source needs (message content, reactions). '
+  + 'Turn them on for the bot in the Discord developer portal, then switch this source off and on in Settings → Intake.';
+const closedForGood = (code: number, what: string): string =>
+  `Discord closed the gateway for good (${code}, ${what}). Switch this source off and on in Settings → Intake to try again.`;
+/**
+ * Ruling 25: the gateway close codes Discord documents as "do not reconnect".
+ * Each is refused again however long the loop waits, so the runner stops and
+ * the source says why.
+ */
+const FATAL_CLOSES: ReadonlyMap<number, string> = new Map([
+  [4004, DISCORD_TOKEN_REFUSED],
+  [4010, closedForGood(4010, 'invalid shard')],
+  [4011, closedForGood(4011, 'sharding required')],
+  [4012, closedForGood(4012, 'invalid API version')],
+  [4013, DISCORD_INTENTS_REFUSED],
+  [4014, DISCORD_INTENTS_REFUSED],
+]);
 
 async function client(ctx: RunnerContext): Promise<{ http: SourceHttp; token: string }> {
   const token = await ctx.secrets.get('botToken');
@@ -117,7 +135,12 @@ class DiscordListener {
       ctx,
       connect: async () => {
         const { http, token } = await client(ctx);
-        const url = text(record(await http.getJson('/gateway/bot'))['url']);
+        const gateway = await http.getJson('/gateway/bot').catch((e: unknown) => {
+          // A 401 is the token, and will be until the person saves a new one (Ruling 25).
+          if (e instanceof TandemiseError && e.details['status'] === 401) throw fatalSocketError(DISCORD_TOKEN_REFUSED);
+          throw e;
+        });
+        const url = text(record(gateway)['url']);
         if (url === undefined) throw new TandemiseError('INTEGRATION_FAILED', 'Discord named no gateway to connect to.', { retryable: true });
         this.#sequence = null;
         return {
@@ -126,7 +149,7 @@ class DiscordListener {
             onMessage: (socket, data) => { this.#frame(socket, data, token); },
             onClose: (code) => {
               this.#stopHeartbeat();
-              if (code === AUTH_FAILED) ctx.log.warn('intake.discord_token_refused', { error: tokenRefused(LABEL) });
+              return FATAL_CLOSES.get(code);
             },
           },
         };

@@ -50,16 +50,25 @@ export class SourceHttp {
     this.#options = options;
   }
 
-  getJson(path: string, query: Query = {}): Promise<unknown> {
-    return this.#request('GET', path, query, undefined);
+  async getJson(path: string, query: Query = {}): Promise<unknown> {
+    return (await this.#request('GET', path, query, undefined)).body;
+  }
+
+  /**
+   * One page of a list, and the cursor of the next one when the answer's
+   * `Link` header names one with results (Sentry's pagination, Ruling 25).
+   */
+  async getPage(path: string, query: Query = {}): Promise<{ readonly body: unknown; readonly next: string | undefined }> {
+    const { body, link } = await this.#request('GET', path, query, undefined);
+    return { body, next: nextCursor(link) };
   }
 
   /** An undefined body sends none (Discord's reaction PUT). */
-  sendJson(method: 'POST' | 'PUT' | 'PATCH', path: string, body: unknown): Promise<unknown> {
-    return this.#request(method, path, {}, body === undefined ? undefined : JSON.stringify(body));
+  async sendJson(method: 'POST' | 'PUT' | 'PATCH', path: string, body: unknown): Promise<unknown> {
+    return (await this.#request(method, path, {}, body === undefined ? undefined : JSON.stringify(body))).body;
   }
 
-  async #request(method: string, path: string, query: Query, body: string | undefined): Promise<unknown> {
+  async #request(method: string, path: string, query: Query, body: string | undefined): Promise<{ body: unknown; link: string | null }> {
     const { label } = this.#options;
     const url = new URL(`${this.base}${path}`);
     for (const [k, v] of Object.entries(query)) if (v !== undefined) url.searchParams.set(k, v);
@@ -94,11 +103,30 @@ export class SourceHttp {
       });
     }
     try {
-      return text === '' ? null : (JSON.parse(text) as unknown);
+      return { body: text === '' ? null : (JSON.parse(text) as unknown), link: res.headers.get('link') };
     } catch (e) {
       throw new TandemiseError('INTEGRATION_FAILED', `${label} answered ${method} ${path} with something that is not JSON.`, { cause: e });
     }
   }
+}
+
+/**
+ * The next page's cursor from a `Link` header, Sentry's way:
+ * `<…>; rel="next"; results="true"; cursor="0:100:0"`. Undefined when there
+ * is no next link, it says `results="false"` (Sentry always sends one), or it
+ * names no cursor.
+ */
+export function nextCursor(link: string | null): string | undefined {
+  if (link === null) return undefined;
+  for (const part of link.split(/,\s*(?=<)/)) {
+    const params = new Map<string, string>();
+    for (const m of part.matchAll(/;\s*([a-z]+)="([^"]*)"/gi)) params.set(m[1]!.toLowerCase(), m[2]!);
+    if (params.get('rel') !== 'next') continue;
+    if (params.get('results') === 'false') return undefined;
+    const cursor = params.get('cursor');
+    return cursor === undefined || cursor === '' ? undefined : cursor;
+  }
+  return undefined;
 }
 
 // ------------------------------------------------------------------ reading answers

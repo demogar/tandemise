@@ -29,7 +29,9 @@
 //
 // The gateway sends op 10 Hello, answers each op 1 heartbeat with op 11,
 // answers op 2 Identify (right token) with a READY dispatch, and records
-// every frame it receives. A wrong token closes with 4004, as Discord does.
+// every frame it receives. A wrong token closes with 4004, as Discord does;
+// `failIdentify(code)` closes every later Identify with `code` (4014, intents
+// the bot may not use), until `failIdentify(null)` (Ruling 25).
 import { createRequire } from 'node:module';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
@@ -58,6 +60,8 @@ export async function startFakeDiscord(options = {}) {
   let snowflake = 1_300_000_000_000_000_000n;
   let seq = 0;
   let opened = 0;
+  /** Ruling 25: when set, every Identify is answered by closing with this code. */
+  let identifyClose = null;
 
   if (persist && existsSync(persist)) {
     const saved = JSON.parse(readFileSync(persist, 'utf8'));
@@ -169,6 +173,7 @@ export async function startFakeDiscord(options = {}) {
       if (frame.op === 1) socket.send(JSON.stringify({ op: 11 }));
       if (frame.op === 2) {
         if (frame.d?.token !== token) return socket.close(4004, 'Authentication failed.');
+        if (identifyClose !== null) return socket.close(identifyClose, 'Refused.');
         sessions.add(socket);
         socket.send(JSON.stringify({ op: 0, t: 'READY', s: ++seq, d: { v: 10, user: bot, session_id: `session-${opened}`, resume_gateway_url: `ws://127.0.0.1:${server.address().port}/gateway`, guilds: [{ id: guildId, unavailable: true }] } }));
       }
@@ -205,6 +210,8 @@ export async function startFakeDiscord(options = {}) {
     emit,
     dropSockets,
     get opened() { return opened; },
+    /** Ruling 25: closes every later Identify with `code` (null to stop). */
+    failIdentify(code) { identifyClose = code; },
     get sessions() { return sessions.size; },
     close() {
       for (const s of sockets) s.terminate();

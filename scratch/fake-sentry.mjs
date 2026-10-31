@@ -20,6 +20,11 @@
 //   GET /api/0/projects/<org>/<project>/issues/?query=is:unresolved&statsPeriod=24h
 //   GET /api/0/organizations/<org>/repos/
 //   PUT /api/0/issues/<id>/                 { status, statusDetails }
+//
+// Lists answer in pages of `pageSize` (unlimited unless set) with Sentry's
+// `Link` header (`rel="next"; results="true"; cursor="0:<offset>:0"`), and
+// `releases: false` makes `statusDetails.inNextRelease` answer 400, as a
+// Sentry project without releases does (Ruling 25).
 import { createHmac } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
@@ -46,6 +51,10 @@ export async function startFakeSentry(options = {}) {
   let nextId = 4501234567;
   /** When set, every `PUT /api/0/issues/<id>/` answers this status (intake plan Task 13: a closure that keeps failing). */
   let putStatus = null;
+  /** Ruling 25: a project with no releases refuses "resolve in the next release" with 400. */
+  let releases = options.releases ?? true;
+  /** Ruling 25: items per page of a list; Infinity answers one page. */
+  let pageSize = options.pageSize ?? Infinity;
 
   if (persist && existsSync(persist)) {
     const saved = JSON.parse(readFileSync(persist, 'utf8'));
@@ -91,9 +100,21 @@ export async function startFakeSentry(options = {}) {
       const raw = Buffer.concat(chunks).toString('utf8');
       const u = new URL(req.url, 'http://fake');
       const path = u.pathname;
-      const send = (status, body) => {
-        res.writeHead(status, { 'content-type': 'application/json' });
+      const send = (status, body, headers = {}) => {
+        res.writeHead(status, { 'content-type': 'application/json', ...headers });
         res.end(body === undefined ? '' : JSON.stringify(body));
+      };
+      /** One page of `all` at `?cursor=0:<offset>:0`, with Sentry's Link header for the previous and next pages. */
+      const sendPage = (all) => {
+        const offset = Number((u.searchParams.get('cursor') ?? '0:0:0').split(':')[1] ?? 0) || 0;
+        const size = Number.isFinite(pageSize) ? pageSize : all.length || 1;
+        const page = all.slice(offset, offset + size);
+        const more = offset + size < all.length;
+        const at = (cursor) => { const v = new URL(u.toString()); v.searchParams.set('cursor', cursor); return `http://127.0.0.1:${server.address().port}${v.pathname}${v.search}`; };
+        const prev = `0:${Math.max(0, offset - size)}:1`;
+        const next = `0:${offset + size}:0`;
+        const link = `<${at(prev)}>; rel="previous"; results="${offset > 0}"; cursor="${prev}", <${at(next)}>; rel="next"; results="${more}"; cursor="${next}"`;
+        return send(200, page, { link });
       };
       let body = null;
       try { body = raw === '' ? null : JSON.parse(raw); } catch { return send(400, { detail: 'Malformed JSON' }); }
@@ -112,18 +133,21 @@ export async function startFakeSentry(options = {}) {
       if (list && req.method === 'GET') {
         if (list[1] !== org || list[2] !== project) return send(404, { detail: 'The requested resource does not exist' });
         const unresolvedOnly = (u.searchParams.get('query') ?? '').includes('is:unresolved');
-        return send(200, [...issues.values()].filter((i) => !unresolvedOnly || i.status === 'unresolved'));
+        return sendPage([...issues.values()].filter((i) => !unresolvedOnly || i.status === 'unresolved'));
       }
       const orgRepos = /^\/api\/0\/organizations\/([^/]+)\/repos\/$/.exec(path);
       if (orgRepos && req.method === 'GET') {
         if (orgRepos[1] !== org) return send(404, { detail: 'The requested resource does not exist' });
-        return send(200, repos);
+        return sendPage(repos);
       }
       const one = /^\/api\/0\/issues\/([^/]+)\/$/.exec(path);
       if (one && req.method === 'PUT') {
         if (putStatus !== null) return send(putStatus, { detail: 'Internal Error' });
         const issue = issues.get(one[1]);
         if (!issue) return send(404, { detail: 'The requested resource does not exist' });
+        if (!releases && body?.statusDetails?.inNextRelease) {
+          return send(400, { statusDetails: ["No release data present in the system to form a basis for 'Next Release'"] });
+        }
         if (body?.status !== undefined) issue.status = body.status;
         issue.statusDetails = body?.statusDetails ?? {};
         save();
@@ -144,6 +168,10 @@ export async function startFakeSentry(options = {}) {
     /** Every later issue update answers `status` (e.g. 500) until `failPuts(null)`. */
     failPuts(status) { putStatus = status; },
     get repos() { return repos; },
+    /** Ruling 25: whether the project has releases (`inNextRelease` answers 400 without). */
+    setReleases(on) { releases = on; },
+    /** Ruling 25: items per page of a list (Infinity for one page). */
+    setPageSize(n) { pageSize = n; },
     close() {
       server.closeAllConnections();
       return new Promise((resolve) => server.close(() => resolve()));

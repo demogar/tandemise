@@ -79,9 +79,18 @@ interface Running {
   readonly abort: AbortController;
   /** The source's configuration it was started with: a change restarts it. */
   readonly config: string;
+  /**
+   * Set when the runner reported a fatal error and stopped (Ruling 25): the
+   * source's secret refs then. It is not started again while the
+   * configuration and these refs are unchanged.
+   */
+  stoppedWith: string | null;
 }
 
 const keyOf = (workspaceId: WorkspaceId, sourceId: string): string => `${workspaceId}\u0000${sourceId}`;
+/** A source's secret refs as one comparable string: a saved secret gets a new ref (Ruling 25). */
+const refsKey = (refs: Readonly<Record<string, string>> | undefined): string =>
+  JSON.stringify(Object.entries(refs ?? {}).sort(([a], [b]) => a.localeCompare(b)));
 
 /**
  * A source with no `intake_sources` row yet runs on this machine when the
@@ -324,6 +333,13 @@ export class IntakeRunnerHost {
   async #keepStarted(workspaceId: WorkspaceId, source: IntakeSourceConfig, runner: IntakeRunner): Promise<void> {
     const key = keyOf(workspaceId, source.id);
     try {
+      // Stopped for good (Ruling 25): left so, and its lease left to lapse, until the person changes something.
+      const stopped = this.#running.get(key);
+      if (stopped !== undefined && stopped.stoppedWith !== null) {
+        const secrets = refsKey(this.deps.intake.source(workspaceId, source.id)?.secretRefs);
+        if (stopped.config === JSON.stringify(source) && stopped.stoppedWith === secrets) return;
+        await this.#stop(key);
+      }
       if (!(await this.#claimed(workspaceId, source.id))) {
         if (this.#running.has(key)) await this.#stop(key);
         return;
@@ -365,7 +381,7 @@ export class IntakeRunnerHost {
     if (current !== undefined) this.#track(this.#stop(key));
     const abort = new AbortController();
     const handle = runner.start(this.#context(workspaceId, source, abort.signal));
-    const running: Running = { runner, handle, abort, config };
+    const running: Running = { runner, handle, abort, config, stoppedWith: null };
     this.#running.set(key, running);
     return running;
   }
@@ -405,6 +421,20 @@ export class IntakeRunnerHost {
       cursor: {
         get: () => this.deps.intake.source(workspaceId, source.id)?.cursor ?? null,
         set: (value) => { this.#save(workspaceId, source, { cursor: (value ?? null) as IntakeSourcePatch['cursor'] }); },
+      },
+      // Ruling 25: a socket runner's word on its connection, on the source's row. Nothing once stopped.
+      reportError: (message, options) => {
+        if (signal.aborted) return;
+        if (options?.fatal === true) {
+          const running = this.#running.get(keyOf(workspaceId, source.id));
+          if (running?.abort.signal === signal) running.stoppedWith = refsKey(this.deps.intake.source(workspaceId, source.id)?.secretRefs);
+        }
+        this.#save(workspaceId, source, { lastError: message });
+      },
+      reportConnected: () => {
+        if (signal.aborted) return;
+        const row = this.deps.intake.source(workspaceId, source.id);
+        if (row !== undefined && row.lastError !== null) this.#save(workspaceId, source, { lastError: null, lastCheckedAt: this.deps.clock.now() });
       },
     };
   }

@@ -570,3 +570,42 @@ was ambiguous or wrong, decided against the spec
     "sentry: webhook" (4 minutes read; 6 minutes old or ahead refused; an hour-old timestamp received an hour ago
     read), "webhook listener" (the workspace path, 404s with nothing stored, 60 then 429 per source, pruning after
     24 h); intake-daemon-check (the daemon's listener on the new path, 404 for the old one and an unconfigured source).
+- Ruling 25 (fatal socket errors and Sentry's fallbacks, review fix on PR #73): decided from spec §2, §8 and Ruling 18's
+  open point:
+  - **Runners report.** `RunnerContext` gains `reportError(message, { fatal })` and `reportConnected()`. The host writes
+    `message` to the source's `last_error`, and clears it (with `last_checked_at`) when a socket opens again; neither
+    writes anything once the runner's signal is aborted. `SocketLoop` reports every failed connect (a transient one too,
+    e.g. "Slack answered ratelimited to apps.connections.open.") and keeps the backoff for it; a socket's `open` is the
+    successful connect.
+  - **What is fatal.** A refusal the vendor will repeat however long the loop waits stops the loop and is reported
+    fatal: a `fatalSocketError` thrown from `connect`, or a close the session names (`onClose` answers a sentence).
+    Discord: a 401 from `GET /gateway/bot` and close 4004 → "Discord refused the bot token. Save a new one in Settings →
+    Intake."; 4013/4014 → "Discord refused the intents this source needs (message content, reactions). Turn them on for
+    the bot in the Discord developer portal, then switch this source off and on in Settings → Intake."; 4010/4011/4012
+    → "Discord closed the gateway for good (<code>, <what>). Switch this source off and on in Settings → Intake to try
+    again." Slack: `apps.connections.open` answering `invalid_auth`, `not_authed`, `account_inactive`, `token_revoked`
+    or `token_expired` → "Slack refused the app-level token. Save a new one in Settings → Intake."; `missing_scope` →
+    "Slack's app-level token lacks the connections:write scope. …"; `not_allowed_token_type` → "Slack needs the
+    app-level token (xapp-…) to listen, not a bot or user token. …"; a `disconnect` envelope with reason
+    `link_disabled` → "Slack turned Socket Mode off for this app. …". Other `disconnect` reasons (`refresh_requested`,
+    `warning`), other close codes, a missing secret, the network, 429 and 5xx keep the backoff. The sentences name a
+    second step ("then switch this source off and on") where saving a secret would not restart the source.
+  - **The host keeps it stopped.** A fatal report marks the running entry with the source's secret refs then. Each
+    later tick leaves it stopped, without asking the source's lease (so the lease lapses and a teammate's daemon with
+    a working token may take it), while the configuration and the refs are unchanged. A saved secret (every save gets
+    a new ref), a changed configuration, or switching the source off and on (the entry is dropped) starts it afresh,
+    which clears `last_error` until the next report. A daemon restart tries once more.
+  - **Sentry, no releases.** A closure PUT that answers 400 is sent again as `{ status: 'resolved' }` alone: a project
+    with no releases refuses `inNextRelease`, and the same fallback covers an `inCommit` Sentry refuses. Other
+    failures are as Ruling 17.
+  - **Sentry, pages.** `SourceHttp.getPage` answers the body and the `Link` header's next cursor (`rel="next"`, not
+    `results="false"`, a non-empty `cursor`). The issues poll and the organization's repositories (for `inCommit`)
+    follow it, at most 10 pages per list (Sentry pages by 100); the repositories stop at the page that has the match.
+  - **Proof.** intake-runners-check "sentry: a project without releases is resolved plainly", "sentry: issues and
+    repositories are read page by page" (5 issues in pages of 2 all pushed; the repository on page 3 → inCommit; 17
+    pages → 10 asked), "discord and slack: a refused token stops the socket and says why" (no retry for 2.5 s, none
+    on the next tick, a new secret connects and clears), "discord intents (4014) and a Slack scope …" (one try each,
+    still stopped on the same secret, off and on reconnects; close 4004), "slack: a link_disabled disconnect …", "slack:
+    a passing failure keeps the backoff". The fakes gained `failIdentify(code)` (Discord), `failOpen(error)` and
+    `disconnect(reason)` (Slack), and `releases`/`setReleases` and `pageSize`/`setPageSize` with Sentry's `Link`
+    header (Sentry).

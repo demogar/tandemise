@@ -38,8 +38,8 @@ export class SentryRunner implements IntakeRunner {
       poll: async () => {
         const { org, project } = instanceOf(ctx);
         const http = await client(ctx);
-        const issues = await http.getJson(`/api/0/projects/${enc(org)}/${enc(project)}/issues/`, { query: 'is:unresolved', statsPeriod: '24h' });
-        for (const issue of Array.isArray(issues) ? issues : []) {
+        const issues = await allPages(http, `/api/0/projects/${enc(org)}/${enc(project)}/issues/`, { query: 'is:unresolved', statsPeriod: '24h' });
+        for (const issue of issues) {
           if (ctx.signal.aborted) return;
           const signal = issueSignal(ctx.source.instance, issue);
           if (signal !== null) await ctx.push(signal);
@@ -52,7 +52,8 @@ export class SentryRunner implements IntakeRunner {
   /**
    * Spec §8: resolve in the fixing commit when the commit and its repository
    * are known and Sentry lists that repository for the organization, else
-   * resolve in the next release. A won't-do item writes nothing (RULINGS
+   * resolve in the next release; a 400 to either (a project with no
+   * releases) resolves plainly (Ruling 25). A won't-do item writes nothing (RULINGS
    * ruling 17). A regression reopens the issue in Sentry, and the next poll
    * reads it again as the same fingerprint.
    */
@@ -63,12 +64,18 @@ export class SentryRunner implements IntakeRunner {
       const http = await client(ctx);
       let statusDetails: Record<string, unknown> = { inNextRelease: true };
       if (closure.commit !== null) {
-        const repos = await http.getJson(`/api/0/organizations/${enc(org)}/repos/`);
         const wanted = closure.commit.repo.toLowerCase();
-        const linked = (Array.isArray(repos) ? repos : []).some((r) => text(record(r)['name'])?.toLowerCase() === wanted);
+        const linked = await anyPage(http, `/api/0/organizations/${enc(org)}/repos/`, (r) => text(record(r)['name'])?.toLowerCase() === wanted);
         if (linked) statusDetails = { inCommit: { commit: closure.commit.sha, repository: closure.commit.repo } };
       }
-      await http.sendJson('PUT', `/api/0/issues/${enc(closure.signal.key)}/`, { status: 'resolved', statusDetails });
+      const path = `/api/0/issues/${enc(closure.signal.key)}/`;
+      try {
+        await http.sendJson('PUT', path, { status: 'resolved', statusDetails });
+      } catch (e) {
+        // Ruling 25: a project with no releases answers 400 to "in the next release"; resolved plainly is the next best.
+        if (!(e instanceof TandemiseError) || e.details['status'] !== 400) throw e;
+        await http.sendJson('PUT', path, { status: 'resolved' });
+      }
       return { ok: true, externalId: closure.signal.key };
     } catch (e) {
       return closureFailure(e);
@@ -153,6 +160,34 @@ function instanceOf(ctx: RunnerContext): { org: string; project: string } {
     throw new TandemiseError('PRECONDITION_FAILED', `Name this Sentry source's instance as <organization>/<project>, not '${ctx.source.instance}'.`);
   }
   return { org, project };
+}
+
+/** Ruling 25: a list is read at most this many pages deep (Sentry pages by 100), so a vast project never stalls a poll. */
+const MAX_PAGES = 10;
+
+/** Every item of a Sentry list, following its `Link` cursors up to `MAX_PAGES` pages. */
+async function allPages(http: SourceHttp, path: string, query: Readonly<Record<string, string>> = {}): Promise<unknown[]> {
+  const out: unknown[] = [];
+  await eachPage(http, path, query, (items) => { out.push(...items); return false; });
+  return out;
+}
+
+/** Whether any item of a Sentry list matches, reading no further than the page it is on. */
+async function anyPage(http: SourceHttp, path: string, match: (item: unknown) => boolean): Promise<boolean> {
+  let found = false;
+  await eachPage(http, path, {}, (items) => { found = items.some(match); return found; });
+  return found;
+}
+
+/** Hands each page's items to `take` until it answers true, the list ends, or `MAX_PAGES` pages were read. */
+async function eachPage(http: SourceHttp, path: string, query: Readonly<Record<string, string>>, take: (items: readonly unknown[]) => boolean): Promise<void> {
+  let cursor: string | undefined;
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const { body, next } = await http.getPage(path, { ...query, cursor });
+    if (take(Array.isArray(body) ? body : [])) return;
+    if (next === undefined || next === cursor) return;
+    cursor = next;
+  }
 }
 
 async function client(ctx: RunnerContext): Promise<SourceHttp> {

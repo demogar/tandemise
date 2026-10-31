@@ -32,7 +32,9 @@
 //   POST reactions.remove        { channel, timestamp, name }
 //
 // Over the socket it sends `hello`, then one envelope per `emit`, and
-// records every `{ envelope_id }` the runner acks.
+// records every `{ envelope_id }` the runner acks. `failOpen(error)` makes
+// `apps.connections.open` answer `{ ok: false, error }` until `failOpen(null)`,
+// and `disconnect(reason)` sends a `disconnect` envelope (Ruling 25).
 import { createRequire } from 'node:module';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
@@ -64,6 +66,8 @@ export async function startFakeSlack(options = {}) {
   let tsCounter = 1730000000;
   let envelopeCounter = 0;
   let opened = 0;
+  /** Ruling 25: when set, `apps.connections.open` answers `{ ok: false, error: openError }`. */
+  let openError = null;
 
   if (persist && existsSync(persist)) {
     const saved = JSON.parse(readFileSync(persist, 'utf8'));
@@ -136,6 +140,7 @@ export async function startFakeSlack(options = {}) {
 
       switch (method) {
         case 'apps.connections.open': {
+          if (openError !== null) return send(200, { ok: false, error: openError });
           const ticket = ++envelopeCounter;
           save();
           return send(200, { ok: true, url: `ws://127.0.0.1:${server.address().port}/link/?ticket=${ticket}` });
@@ -217,6 +222,10 @@ export async function startFakeSlack(options = {}) {
     socket.send(JSON.stringify(envelope));
     return envelope.envelope_id;
   }
+  /** A `disconnect` envelope to every open socket, as Slack sends before closing it (Ruling 25). */
+  function disconnect(reason) {
+    for (const s of sockets) if (s.readyState === 1) s.send(JSON.stringify({ type: 'disconnect', reason, debug_info: { host: 'fake-slack' } }));
+  }
   /** Slack goes away for a moment: every open socket is closed. */
   function dropSockets() {
     for (const s of sockets) s.close(1001, 'going away');
@@ -238,6 +247,9 @@ export async function startFakeSlack(options = {}) {
     permalink,
     /** Sockets opened so far, and open now. */
     get opened() { return opened; },
+    /** Ruling 25: `apps.connections.open` answers `{ ok: false, error }` until `failOpen(null)`. */
+    failOpen(error) { openError = error; },
+    disconnect,
     get open() { return [...sockets].filter((s) => s.readyState === 1).length; },
     close() {
       for (const s of sockets) s.terminate();

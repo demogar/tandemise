@@ -321,6 +321,16 @@ export interface RunnerContext {
   /** Aborted when the host stops the runner (shutdown, a changed configuration, a lost claim). */
   readonly signal: AbortSignal;
   readonly cursor: { get(): unknown; set(value: unknown): void };
+  /**
+   * A socket runner's own word on its connection (Ruling 25): the host writes
+   * `message` to the source's `last_error`. `fatal` means the vendor will
+   * refuse again (a refused token, intents or scopes): the runner has stopped
+   * for good, and the host does not start it again until the source's
+   * secrets or configuration change or the person switches it off and on.
+   */
+  reportError(message: string, options?: { readonly fatal?: boolean }): void;
+  /** The socket is open again: the host clears an error reported before (Ruling 25). */
+  reportConnected(): void;
 }
 
 /** A started runner. A poll runner answers `poll`; a socket runner listens until `stop`. */

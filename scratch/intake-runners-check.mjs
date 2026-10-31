@@ -430,6 +430,7 @@ try {
   const runnerCtx = (ws, source, secrets) => ({
     workspaceId: ws, source, clock, log, signal: new AbortController().signal,
     push: async () => { throw new Error('unused'); }, secrets: { get: async (name) => secrets[name] }, cursor: { get: () => null, set: () => {} },
+    reportError: () => {}, reportConnected: () => {},
   });
   let d4 = null;
   try {
@@ -1091,6 +1092,163 @@ try {
     await yt4.close();
     await slack4.close();
     await sentry4.close();
+  }
+
+  // ------------------------------------------------------------------ Ruling 25: Sentry's fallbacks and pages
+  // The runner alone, against a fake Sentry that pages its lists and has no releases.
+  {
+    const s7 = await startFakeSentry({ token: 'sntrys_test', org: 'acme', project: 'web', repos: ['acme/web'], releases: false });
+    const S7 = { id: 'sentry-web', kind: 'sentry', instance: 'acme/web', api: s7.url, every: '10m', closeOnDone: true, closeWontDo: false };
+    const ctx7 = (pushed = []) => ({ ...runnerCtx('ws_sentry7', S7, { token: 'sntrys_test' }), push: async (sig) => { pushed.push(sig); return { status: 'accepted' }; } });
+    const closure7 = (id, commit) => ({
+      kind: 'done', signal: { fingerprint: `sentry:acme/web:${id}`, key: id, url: `https://acme.sentry.io/issues/${id}/`, instance: 'acme/web', title: 't', reply: null },
+      item: { key: 'GAR-1', url: 'https://youtrack.example/issue/GAR-1' }, prUrl: null, commit,
+    });
+    const putsOf = (id) => s7.calls.filter((c) => c.method === 'PUT' && c.path === `/api/0/issues/${id}/`).map((c) => c.body);
+    const listAsks = () => s7.calls.filter((c) => c.path === '/api/0/projects/acme/web/issues/');
+    try {
+      section('sentry: a project without releases is resolved plainly (Ruling 25)');
+      const runner7 = R === null ? null : new R.SentryRunner();
+      s7.putIssue({ id: '701', title: 'No releases here', count: '50' });
+      const r1 = await runner7?.close(closure7('701', null), ctx7());
+      check("inNextRelease answered 400 → resolved again with { status: 'resolved' } alone",
+        r1?.ok === true && putsOf('701').length === 2 && eq(putsOf('701')[0], { status: 'resolved', statusDetails: { inNextRelease: true } })
+        && eq(putsOf('701')[1], { status: 'resolved' }) && s7.issues.get('701').status === 'resolved', { r1, puts: putsOf('701') });
+
+      section('sentry: issues and repositories are read page by page (Ruling 25)');
+      s7.setReleases(true);
+      s7.setPageSize(2);
+      for (let i = 0; i < 5; i++) s7.putIssue({ id: String(711 + i), title: `Paged ${i}`, count: '50' });
+      const pushed = [];
+      await runner7?.start(ctx7(pushed)).poll();
+      check('the poll follows the Link header through every page', eq(pushed.map((s) => s.key).sort(), ['711', '712', '713', '714', '715']), pushed.map((s) => s.key));
+      check('…asking with the cursor Sentry named', listAsks().some((c) => c.query.get('cursor') === '0:4:0'), listAsks().map((c) => c.query.toString()));
+      s7.setRepos(['acme/a', 'acme/b', 'acme/c', 'acme/d', 'acme/web']);
+      s7.putIssue({ id: '720', title: 'Repo on page 3', count: '50' });
+      const r2 = await runner7?.close(closure7('720', { sha: 'abc720', repo: 'acme/web' }), ctx7());
+      const put720 = putsOf('720').at(-1);
+      check("a repository on the third page of the organization's repositories → inCommit",
+        r2?.ok === true && put720?.statusDetails?.inCommit?.commit === 'abc720' && put720?.statusDetails?.inCommit?.repository === 'acme/web', { r2, put720 });
+      s7.setPageSize(1);
+      for (let i = 0; i < 12; i++) s7.putIssue({ id: String(731 + i), title: `Many ${i}`, count: '50' });
+      const asked = listAsks().length;
+      await runner7?.start(ctx7()).poll();
+      check('…and a list is read at most 10 pages deep', listAsks().length - asked === 10, listAsks().length - asked);
+    } catch (e) {
+      check('the Sentry fallback sections ran', false, String(e?.stack ?? e));
+    } finally {
+      await s7.close();
+    }
+  }
+
+  // ------------------------------------------------------------------ Ruling 25: fatal socket errors
+  // A refused token, refused intents or scopes, or Socket Mode switched off
+  // will be refused again: the runner stops and says why on the source's
+  // last_error, and the host leaves it stopped until its secret or
+  // configuration changes or the person switches it off and on.
+  {
+    const DISCORD_TOKEN = 'Discord refused the bot token. Save a new one in Settings → Intake.';
+    const DISCORD_INTENTS = 'Discord refused the intents this source needs (message content, reactions). Turn them on for the bot in the Discord developer portal, then switch this source off and on in Settings → Intake.';
+    const SLACK_TOKEN = 'Slack refused the app-level token. Save a new one in Settings → Intake.';
+    const SLACK_SCOPE = "Slack's app-level token lacks the connections:write scope. Add it in the Slack app's settings, then save the new token in Settings → Intake.";
+    const SLACK_LINK = "Slack turned Socket Mode off for this app. Turn it on again in the Slack app's settings, then switch this source off and on in Settings → Intake.";
+    const slack8 = await startFakeSlack({ workspace: 'acme' });
+    const discord8 = await startFakeDiscord({ token: 'bot-test', heartbeatMs: 100 });
+    const SL = { id: 'slack-support', kind: 'slack', instance: 'acme.slack.com#support', api: slack8.url, closeOnDone: true, closeWontDo: false };
+    const DC = { id: 'discord-help', kind: 'discord', instance: `${discord8.guildId}#900000000000000010`, api: discord8.url, closeOnDone: true, closeWontDo: false };
+    const opens = () => slack8.calls.filter((c) => c.path === '/apps.connections.open').length;
+    // Longer than the runner's first wait (1 s, then 2 s): a loop that retries is seen retrying.
+    const quiet = () => new Promise((r) => setTimeout(r, 2_500));
+    let d8 = null;
+    try {
+      section('discord and slack: a refused token stops the socket and says why (Ruling 25)');
+      d8 = await open();
+      const ws = (await d8.services.workspaces.create(d8.caller, { name: 'Sockets' })).workspace.id;
+      d8.config.write(ws, { tracker: ytTracker(fake.url), intake: { sources: [DC, SL], dailyCap: 20, similarity: { link: 0.85, ask: 0.55 } } });
+      const err = (id) => d8.repo.source(ws, id)?.lastError ?? null;
+      const tick = async () => { advance(31_000); d8.host.tick(); await d8.settle(); };
+      const toggle = async (id) => {
+        d8.services.intake.setSourceEnabled(d8.caller, ws, id, false);
+        await tick();
+        d8.services.intake.setSourceEnabled(d8.caller, ws, id, true);
+        await tick();
+      };
+      await d8.services.intake.saveSourceSecret(d8.caller, ws, 'discord-help', { name: 'botToken', value: 'bot-wrong' });
+      await d8.services.intake.saveSourceSecret(d8.caller, ws, 'slack-support', { name: 'appToken', value: 'xapp-wrong' });
+      await d8.services.intake.saveSourceSecret(d8.caller, ws, 'slack-support', { name: 'botToken', value: 'xoxb-test' });
+      await tick();
+      check(`GET /gateway/bot answers 401 → "${DISCORD_TOKEN}"`, await until(() => err('discord-help') === DISCORD_TOKEN), err('discord-help'));
+      check(`apps.connections.open answers invalid_auth → "${SLACK_TOKEN}"`, await until(() => err('slack-support') === SLACK_TOKEN), err('slack-support'));
+      const gatewayAsks = () => discord8.calls.filter((c) => c.path === '/gateway/bot').length;
+      const dOpened = gatewayAsks();
+      const sOpens = opens();
+      await quiet();
+      check('…and neither tries again', gatewayAsks() === dOpened && opens() === sOpens, { discord: [dOpened, gatewayAsks()], slack: [sOpens, opens()] });
+      await tick();
+      await new Promise((r) => setTimeout(r, 300));
+      check('…nor does the host start them again on its next tick, and the errors stay',
+        gatewayAsks() === dOpened && opens() === sOpens && err('discord-help') === DISCORD_TOKEN && err('slack-support') === SLACK_TOKEN,
+        { discord: [dOpened, gatewayAsks()], slack: [sOpens, opens()], errors: [err('discord-help'), err('slack-support')] });
+
+      await d8.services.intake.saveSourceSecret(d8.caller, ws, 'discord-help', { name: 'botToken', value: 'bot-test' });
+      await d8.services.intake.saveSourceSecret(d8.caller, ws, 'slack-support', { name: 'appToken', value: 'xapp-test' });
+      await tick();
+      check('a new Discord token: the gateway is identified again and the error is gone', await until(() => discord8.sessions === 1 && err('discord-help') === null), { sessions: discord8.sessions, error: err('discord-help') });
+      check('a new Slack app-level token: the socket opens and the error is gone', await until(() => slack8.open === 1 && err('slack-support') === null), { open: slack8.open, error: err('slack-support') });
+
+      section('discord intents (4014) and a Slack scope stop the socket until switched off and on (Ruling 25)');
+      discord8.failIdentify(4014);
+      slack8.failOpen('missing_scope');
+      const dBefore = discord8.opened;
+      const sBefore = opens();
+      discord8.dropSockets();
+      slack8.dropSockets();
+      check(`Discord closes with 4014 → "${DISCORD_INTENTS}"`, await until(() => err('discord-help') === DISCORD_INTENTS), err('discord-help'));
+      check(`Slack answers missing_scope → "${SLACK_SCOPE}"`, await until(() => err('slack-support') === SLACK_SCOPE), err('slack-support'));
+      await quiet();
+      check('…each tried once, then stopped', discord8.opened === dBefore + 1 && opens() === sBefore + 1, { discord: discord8.opened - dBefore, slack: opens() - sBefore });
+      discord8.failIdentify(null);
+      slack8.failOpen(null);
+      await tick();
+      await new Promise((r) => setTimeout(r, 300));
+      check('…the same secret and configuration: still stopped', discord8.opened === dBefore + 1 && opens() === sBefore + 1, { discord: discord8.opened - dBefore, slack: opens() - sBefore });
+      await toggle('discord-help');
+      await toggle('slack-support');
+      check('switched off and on: both connect again and the errors are gone',
+        await until(() => discord8.sessions === 1 && slack8.open === 1 && err('discord-help') === null && err('slack-support') === null),
+        { sessions: discord8.sessions, open: slack8.open, errors: [err('discord-help'), err('slack-support')] });
+      discord8.failIdentify(4004);
+      const d4004 = discord8.opened;
+      discord8.dropSockets();
+      check(`Discord closes the gateway with 4004 → "${DISCORD_TOKEN}"`, await until(() => err('discord-help') === DISCORD_TOKEN), err('discord-help'));
+      await quiet();
+      check('…tried once, then stopped', discord8.opened === d4004 + 1, discord8.opened - d4004);
+      discord8.failIdentify(null);
+
+      section('slack: a link_disabled disconnect stops the socket (Ruling 25)');
+      const sLink = opens();
+      slack8.disconnect('link_disabled');
+      check(`→ "${SLACK_LINK}"`, await until(() => err('slack-support') === SLACK_LINK), err('slack-support'));
+      await quiet();
+      check('…and no new connection is asked for', opens() === sLink && slack8.open === 0, { opens: opens() - sLink, open: slack8.open });
+
+      section('slack: a passing failure keeps the backoff (Ruling 25)');
+      await toggle('slack-support');
+      check('switched off and on, it is connected again', await until(() => slack8.open === 1 && err('slack-support') === null), { open: slack8.open, error: err('slack-support') });
+      slack8.failOpen('ratelimited');
+      const sRate = opens();
+      slack8.dropSockets();
+      check('ratelimited: apps.connections.open is asked again, and again', await until(() => opens() >= sRate + 2, 4_500), opens() - sRate);
+      check('…the source says what is happening meanwhile', err('slack-support') === 'Slack answered ratelimited to apps.connections.open.', err('slack-support'));
+      slack8.failOpen(null);
+      check('…then it connects and the error is gone', await until(() => slack8.open === 1 && err('slack-support') === null, 9_000), { open: slack8.open, error: err('slack-support') });
+    } catch (e) {
+      check('the fatal socket sections ran', false, String(e?.stack ?? e));
+    } finally {
+      await d8?.dispose();
+      await slack8.close();
+      await discord8.close();
+    }
   }
 } finally {
   await fake.close();
