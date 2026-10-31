@@ -20,8 +20,8 @@ import type { Migration } from './types.js';
 const OLD_SOURCES = `source IN ('user','spec')`;
 const NEW_SOURCES = `source IN ('user','spec','implicit')`;
 
-export const migration024: Migration = {
-  version: 24,
+export const migration025: Migration = {
+  version: 25,
   name: 'planner_and_merge',
   up: `
 ALTER TABLE missions ADD COLUMN lane_request TEXT CHECK (lane_request IN ('quick','careful'));
@@ -94,7 +94,7 @@ CREATE INDEX idx_outcomes_workspace ON outcomes(workspace_id, at);
       }
       const row = db.prepare<[], { sql: string }>(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'mission_criteria'`).get();
       if (!(row?.sql ?? '').includes(NEW_SOURCES)) {
-        throw new TandemiseError('INTERNAL', 'Migration 024 did not widen the mission_criteria source constraint; implicit criteria would be rejected.', {
+        throw new TandemiseError('INTERNAL', 'Migration 025 did not widen the mission_criteria source constraint; implicit criteria would be rejected.', {
           details: { schema: row?.sql ?? null },
         });
       }
