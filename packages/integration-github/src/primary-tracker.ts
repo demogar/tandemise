@@ -171,6 +171,12 @@ export class GhPrimaryTracker implements PrimaryTracker {
     const add = state !== 'open' && !carried.has(state) ? [state] : [];
     const remove = this.#stateLabels.filter((l) => l !== state && carried.has(l));
     if (add.length === 0 && remove.length === 0) return;
+    // `--add-label` fails on a label the repository doesn't have yet (a project
+    // that just adopted its issues as the board): create it first. `--force`
+    // makes this a no-op when it exists (Ruling 16).
+    for (const label of add) {
+      await gh(this.#ctx, ['label', 'create', label, '--repo', this.#repo, '--force'], this.#opts());
+    }
     // One flag per label: `gh` would split a single comma-joined value.
     await gh(this.#ctx, [
       'issue', 'edit', String(number), '--repo', this.#repo,

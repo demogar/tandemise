@@ -270,6 +270,14 @@ try {
   await gt.transition(made.ref, 'closed');
   await gt.transition(made.ref, 'status: in progress');
   check('a state label on a closed issue reopens it first', (await gt.get(made.ref)).state === 'status: in progress');
+  // Ruling 16: a repository that has never had the state labels (P14 adopted as the board).
+  putLabels(GH, 'acme/web', ['bug']);
+  const fresh = G.githubTrackerFactory(() => exec).create(ghConfig(), undefined);
+  await fresh.transition(made.ref, 'open');
+  await fresh.transition(made.ref, 'status: in review');
+  check('moving to a state label the repository lacks creates the label first', (await fresh.get(made.ref)).state === 'status: in review'
+    && calls(GH).some((c) => c.args[0] === 'label' && c.args[1] === 'create' && c.args[2] === 'status: in review'));
+  putLabels(GH, 'acme/web', ['bug', 'status: in progress', 'status: in review']);
   const unmapped = await refusal(() => gt.transition(made.ref, 'wontfix'));
   check('a state that is not mapped is refused', unmapped?.code === 'VALIDATION', unmapped?.code);
 

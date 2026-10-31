@@ -23,6 +23,7 @@
 //   gh issue reopen N --repo o/r
 //   gh search issues "<text>" --repo o/r [--state open|closed] --limit N --json …
 //   gh label list --repo o/r --limit N --json name
+//   gh label create L --repo o/r [--force]
 //
 // A search query keeps `is:open`, `is:closed`, `label:x` / `label:"x y"` and
 // `in:title` as qualifiers; its other words must all appear (case-insensitive)
@@ -223,6 +224,8 @@ function main(argv) {
     if (verb === 'edit') {
       const remove = new Set(flags(args, '--remove-label'));
       const kept = issue.labels.filter((l) => !remove.has(l.name));
+      // Like gh: a label the repository doesn't have is refused, when the repository's labels are known.
+      for (const name of flags(args, '--add-label')) if (r.labels !== undefined && !r.labels.includes(name)) fail(`could not add label: '${name}' not found`);
       for (const name of flags(args, '--add-label')) if (!kept.some((l) => l.name === name)) kept.push({ name });
       issue.labels = kept;
       const assignees = flags(args, '--add-assignee');
@@ -248,6 +251,16 @@ function main(argv) {
       .slice(0, limit)
       .map((i) => pick({ ...i, state: i.state.toLowerCase() }, flag(args, '--json')));
     out(rows);
+    return;
+  }
+  if (group === 'label' && verb === 'create') {
+    const repo = flag(args, '--repo');
+    if (repo === undefined) fail('fake gh: --repo is required');
+    const r = repoOf(repo);
+    r.labels ??= [...new Set(r.issues.flatMap((i) => i.labels.map((l) => l.name)))];
+    if (!r.labels.includes(args[2])) r.labels.push(args[2]);
+    else if (!args.includes('--force')) fail(`label with name "${args[2]}" already exists; use \`--force\` to update its color and description`);
+    writeState(dir, state);
     return;
   }
   if (group === 'label' && verb === 'list') {

@@ -307,3 +307,11 @@ was ambiguous or wrong, decided against the spec
     card is the legacy path. The mapping is not checked against the repository's labels (`describe()`): the
     `status: in progress` / `status: in review` labels must exist before Start can move an item (left to Task 14's
     Settings or the person).
+- Ruling 16 (GitHub state labels, follow-up to Task 10): `adoptAsTracker` maps states to the labels
+  `status: in progress` and `status: in review`, which a P14 repository usually lacks, and `gh issue edit
+  --add-label` fails on a label that doesn't exist. `GhPrimaryTracker.transition` now runs
+  `gh label create <label> --force` (a no-op when it exists) before adding a state label, so Start works on an
+  adopted repository. `describe()` still lists only the labels the repository really has, so a mapping saved
+  through Settings that names a missing label is refused as spec §6.2 says. The adopted mapping is not
+  validated (Ruling 15), and its labels appear on first use. The fake `gh` gained `label create` and, like
+  gh, refuses `--add-label` for an unknown label once the repository's labels are known.
