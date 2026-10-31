@@ -454,6 +454,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
         unitOfWork: r.resolve(t.UNIT_OF_WORK),
         rounds: () => r.resolve(t.FEEDBACK_ROUNDS),
         outcomes: () => r.tryResolve(t.OUTCOME_RECORDER),
+        holds: r.tryResolve(t.TASK_HOLD_REPOSITORY),
         factory: async (workspaceId) => {
           const config = await r.resolve(t.PLANNER_SERVICE).config(asId(workspaceId));
           const authorized = r.resolve(t.MERGE_POLICY_SERVICE).reconcile(asId(workspaceId), config);

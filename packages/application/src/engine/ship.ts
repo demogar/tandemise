@@ -94,6 +94,8 @@ export interface ShipDecideDeps {
   readonly timeoutMs: number;
   /** No CI right after a push is CI not started yet: waited for this long before it counts as none. */
   readonly ciGraceMs: number;
+  /** Hold records (#50), counted into process.holds; absent, holds are unmeasured. */
+  readonly holds?: Pick<import('@tandemise/domain').TaskHoldRepositoryPort, 'listByMission'>;
 }
 
 export class ShipService {
@@ -252,7 +254,7 @@ export class ShipService {
       mission, repository, pr, baseRef, checks, protection, policy: factory.merge, planner: factory.planner,
       pushedSha: this.#pushedSha(mission, pr), repos: 1,
       stats: foldOutcomes(recent),
-      holds: recent.filter((o) => o.mission === mission.id && o.kind === 'held').length,
+      holds: d.holds === undefined ? null : d.holds.listByMission(mission.id).length,
       now: this.deps.clock.epochMs(),
     });
     } catch (e) {

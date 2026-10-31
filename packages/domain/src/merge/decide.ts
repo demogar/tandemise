@@ -31,7 +31,9 @@ export interface MergeFacts {
   readonly review: { readonly blocking: number | null; readonly major: number | null; readonly independent: boolean | null };
   readonly criteria: { readonly unverified: number; readonly implicit: boolean };
   readonly process: {
-    readonly lane: Lane; readonly lightenedByPerson: boolean; readonly stepsSkipped: number; readonly holds: number;
+    readonly lane: Lane; readonly lightenedByPerson: boolean; readonly stepsSkipped: number;
+    /** Null when nothing records holds here (no hold records to count): never satisfies a rule. */
+    readonly holds: number | null;
     readonly changesRequested: number; readonly escalations: number; readonly gateRetries: number; readonly personCommits: number;
     readonly revertOfAuto: boolean;
   };
@@ -85,7 +87,7 @@ export function mergeFactsToGate(f: MergeFacts): { facts: GateFacts; predicates:
     'process.lane': f.process.lane,
     'process.lightened_by_person': f.process.lightenedByPerson,
     'process.steps_skipped': f.process.stepsSkipped,
-    'process.holds': f.process.holds,
+    'process.holds': undef(f.process.holds),
     'process.changes_requested': f.process.changesRequested,
     'process.escalations': f.process.escalations,
     'process.gate_retries': f.process.gateRetries,

@@ -684,6 +684,30 @@ await attempt('review: off in the brain ends your decision', async () => {
   check('…so turning it back on through the brain needs a fresh decision in the app', d2.verdict === 'ask' && d2.reasons[0] === D.AUTO_MERGE_OFF, d2.reasons);
 });
 
+await attempt('review: holds are measured, or unmeasured', async () => {
+  section('review: holds are measured, or unmeasured');
+  const fake = await import('./fake-gh.mjs');
+  const w = await world();
+  fake.setRepo(w.ghDir, REPO, { defaultChecks: [{ name: 'unit', conclusion: 'success' }] });
+  const m = await w.mission('fix: typo in the settings title');
+  const impl = () => w.h.repo.tasks.listByMission(m.id).find((t) => t.key !== 'ship');
+  await w.h.until(() => impl() !== undefined, 30000);
+  // A hold on this mission's step, as #50 records it; no outcome event needed to count it.
+  const now = new Date().toISOString();
+  w.h.container.resolve(app.TASK_HOLD_REPOSITORY).create({
+    id: 'hld_check_measure', taskId: impl().id, missionId: m.id, heldBy: 'mem_check', fromStatus: 'RUNNING', runtimeProfileId: 'rtp_check',
+    sessionBefore: null, sessionAfter: null, ptyPid: null, startedAt: now, endedAt: now, endedBy: null, ending: 'continued',
+    consumedAt: null, diffStat: null, dir: '/tmp/none',
+  });
+  await w.h.until(() => w.h.repo.mergeDecisions.listByMission(m.id).length > 0, 60000);
+  const facts = w.h.repo.mergeDecisions.listByMission(m.id).at(-1).facts;
+  check('process.holds counts the mission\'s holds from the hold records', facts.process?.holds === 1, facts.process?.holds);
+  // Nothing to count holds from: unmeasured, which a rule on it never passes.
+  const policy = D.parseMergePolicy({ ...app.SHIPPED_MERGE, autoMerge: 'on', never: [{ when: 'process.holds > 0' }] });
+  const d = D.decideMerge({ ...facts, process: { ...facts.process, holds: null } }, policy);
+  check('unmeasured holds (null) make a rule on them ask, never pass', d.verdict === 'ask', d.reasons);
+});
+
 // @sections
 
 clearInterval(keepAlive);
