@@ -131,3 +131,29 @@ export interface RunBrainView {
   /** "Loaded 3 rules files and 5 lessons; read 1 more." */
   readonly summary: string;
 }
+
+export const promoteEntryRequest = z.object({
+  /** `role`: into the role's instructions (factory/roles/<id>.md) instead of its rules file. */
+  target: z.enum(['rules', 'role']).optional(),
+});
+export type PromoteEntryRequest = z.infer<typeof promoteEntryRequest>;
+
+/** A promotion as the Proposals tab shows it. */
+export interface BrainProposalView {
+  readonly id: string;
+  readonly lessons: readonly { readonly id: string; readonly text: string }[];
+  readonly targets: readonly string[];
+  readonly classification: 'small' | 'structural';
+  /** "Small: only adds lines…", "Structural: …". */
+  readonly classificationLine: string;
+  readonly reasons: readonly string[];
+  readonly state: 'evaluating' | 'open' | 'draft' | 'applied' | 'merged' | 'closed' | 'accepted' | 'declined' | 'reverted';
+  readonly stateLabel: string;
+  readonly verdict: 'passed' | 'failed' | 'not_evaluated' | null;
+  readonly verdictLine: string;
+  readonly prUrl: string | null;
+  /** Only a brain on this machine accepts or declines in the app. */
+  readonly canAccept: boolean;
+  readonly canRevert: boolean;
+  readonly updatedAt: string;
+}

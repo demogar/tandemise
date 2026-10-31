@@ -647,9 +647,9 @@ if (H1 !== null) {
 const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
 let scratchN = 0;
 /** A person's own clone of the brain: edit, commit, push. */
-function scratchEdit(edits, message = 'chore: edit by hand') {
+function scratchEdit(edits, message = 'chore: edit by hand', remote = remoteDir) {
   const dir = join(HOME, `scratch-${++scratchN}`);
-  execFileSync('git', ['clone', '-q', remoteDir, dir], { stdio: 'ignore' });
+  execFileSync('git', ['clone', '-q', remote, dir], { stdio: 'ignore' });
   for (const [path, content] of Object.entries(edits)) {
     mkdirSync(dirname(join(dir, path)), { recursive: true });
     writeFileSync(join(dir, path), typeof content === 'function' ? content(existsSync(join(dir, path)) ? readFileSync(join(dir, path), 'utf8') : null) : content);
@@ -659,6 +659,7 @@ function scratchEdit(edits, message = 'chore: edit by hand') {
   git(dir, 'push', '-q', 'origin', 'main');
   return dir;
 }
+const scratchEditOn = (remote, edits) => scratchEdit(edits, 'chore: edit by hand', remote);
 const commitCount = () => Number(git(remoteDir, 'rev-list', '--count', 'main').trim());
 const withModel = (text, model) => {
   const read = app.readRole('roles/development.md', text);
@@ -1142,6 +1143,138 @@ if (H1 !== null && (wants('signals') || wants('promotion') || wants('intake'))) 
   check('every reflector prompt is free of evals/', passes().every((p) => !promptOf(p).includes('SECRET-EVAL-MARKER')));
   check('the reflector spends on the economy model and counts its usage', passes().some((p) => p.usage?.costUsd === 0.01));
   await signals.stop();
+}
+
+// ------------------------------------------------------------------ promotion
+if (H1 !== null && (wants('promotion') || wants('intake'))) {
+  section('promotion: eligibility, the promoter, evals, auto-apply, PRs and their fate');
+  const { services: s1, caller: c1 } = H1;
+  const { FAKE_ADAPTER_ID } = await import('@tandemise/runtime-generic');
+  const now = () => shared.systemClock.now();
+  const promoRemote = join(FAKE.remotes, 'garipass', 'promo.git');
+  const wsP = (await s1.workspaces.create(c1, { name: 'Promo', repositoryPath: H1.repoDir })).workspace.id;
+  await s1.brain.link(c1, wsP, { mode: 'create', owner: 'garipass', name: 'promo' });
+  const promoterProfile = H1.r(app.RUNTIME_PROFILE_REPOSITORY).create({
+    id: shared.ids.runtimeProfile(), workspaceId: null, adapterId: FAKE_ADAPTER_ID, name: 'promoter', executablePath: null, args: [],
+    settings: { script: { steps: [{ kind: 'message', text: 'unset' }, { kind: 'complete' }] } }, capabilities: [], enabled: true, maxConcurrent: 4, createdAt: now(), updatedAt: now(),
+  }).id;
+  s1.workspaces.update(wsP, { routing: { development: [promoterProfile], architecture: [promoterProfile], review: [promoterProfile] } });
+  const promoterSays = (files) => H1.r(app.RUNTIME_PROFILE_REPOSITORY).update(promoterProfile, { settings: { script: { steps: [
+    { kind: 'message', text: `\`\`\`json\n${JSON.stringify({ files })}\n\`\`\`` }, { kind: 'complete' },
+  ] } } });
+  const taskIn = (title) => {
+    const missionId = shared.ids.mission();
+    H1.r(app.MISSION_REPOSITORY).create({ id: missionId, workspaceId: wsP, repositoryId: null, title, goal: 'g', constraints: [], successCriteria: [] });
+    const taskId = shared.ids.task();
+    H1.r(app.TASK_REPOSITORY).add({ id: taskId, missionId, key: 'build', title: 'build', objective: 'o', roleId: 'development', dependsOn: [], requiredCapabilities: [], inputArtifacts: [], expectedOutputs: [], executionPolicy: { isolation: 'none', maxWallTimeMs: 1000, capabilities: [] }, approvalPolicy: { beforeStart: false, onCompletion: false }, retryPolicy: { maxAttempts: 1, backoffMs: 0, onExhausted: 'fail' }, completionGate: null, status: 'SUCCEEDED', statusReason: null, attempts: 1, remediatesTaskId: null, repositoryId: null, executor: 'agent', waitPolicy: null, orderHint: 0, createdAt: now(), updatedAt: now(), startedAt: null, finishedAt: null });
+    return taskId;
+  };
+  const tA = taskIn('Mission A');
+  const tB = taskIn('Mission B');
+  const evalStub = { result: null, calls: [], async run(ws, suites, ref) { this.calls.push({ suites, ref }); return this.result; } };
+  H1.container.rebind(app.BRAIN_PROMOTION_EVALS, () => evalStub, { source: 'check' });
+  const scoreOf = (pass, cost = 1, failed = 0) => ({ gatePassRate: pass, firstAttemptPassRate: pass, criteria: { verified: 1, failed, unverified: 0 }, meanAttempts: 1, overBudget: 0, tokens: { mean: 1, total: 1 }, costUsd: { mean: cost, total: cost }, wallTimeMs: { mean: 1, total: 1 }, trials: { completed: 1, blocked: 0, failed: 0, errored: 0 } });
+  const card = (cand, base = scoreOf(1)) => ({ baseline: base, candidate: cand, difference: {}, perCase: [], fewRepeats: true });
+  const lessonFor = async (text, scope = { role: 'development' }) => {
+    const r = await s1.brain.remember(c1, wsP, { text, scope });
+    await s1.brain.vote(c1, r.entry.id, { vote: 'helpful', taskId: tA });
+    await s1.brain.vote(c1, r.entry.id, { vote: 'helpful', taskId: tB });
+    await s1.brain.vote(c1, r.entry.id, { vote: 'helpful', taskId: tB });
+    return r.entry.id;
+  };
+  const mainOf = () => git(promoRemote, 'rev-parse', 'main').trim();
+
+  // 1. No suite: a PR saying "Not evaluated", even with autoApply: small.
+  scratchEditOn(promoRemote, { 'brain.yaml': (t) => t.replace('autoApply: off', 'autoApply: small') });
+  await s1.brain.sync(wsP, 'person');
+  const l1 = await lessonFor('PROMO-ONE: write the test first.');
+  check('three thumbs-up across two missions make it eligible', s1.brain.eligiblePromotions(wsP).some((b) => b.lessonIds.includes(l1)), s1.brain.eligiblePromotions(wsP));
+  const current1 = '';
+  promoterSays([{ path: 'memory/rules/role-development.md', content: `${current1}# Developer\n\n- Write the test first.\n` }]);
+  const before1 = mainOf();
+  const g1 = ghLog().length;
+  const [p1] = await s1.brain.proposePromotions(wsP);
+  const pr1 = ghLog().slice(g1).find((l) => l.argv[0] === 'pr' && l.argv[1] === 'create');
+  check('with no suite a PR is opened, not applied', p1?.state === 'open' && p1.verdict === 'not_evaluated' && pr1 !== undefined, p1);
+  check('the PR body names the lesson and says Not evaluated', pr1?.stdin.includes('PROMO-ONE: write the test first.') && pr1.stdin.includes('Not evaluated: this project has no promotion evals yet.'), pr1?.stdin);
+  check('the rule does not reach main', (() => { try { git(promoRemote, 'show', 'main:memory/rules/role-development.md'); return false; } catch { return true; } })());
+  check('the lesson shows as promoted', s1.brain.entries(wsP, {}).find((e) => e.id === l1)?.promoted?.pr === p1?.prUrl);
+
+  // 2. Small and passing, with autoApply: small and a suite.
+  scratchEditOn(promoRemote, { 'evals/gates.yaml': 'suites:\n  - name: smoke\n    repeats: 1\n    spendCapUsd: 2\nrule:\n  maxCostFactor: 1.25\n' });
+  await s1.brain.sync(wsP, 'person');
+  const l2 = await lessonFor('PROMO-TWO: keep functions short.', { repo: 'code' });
+  evalStub.result = [{ suite: 'smoke', scorecard: card(scoreOf(1)), problem: null }];
+  promoterSays([{ path: 'memory/rules/repo-code.md', content: '# code\n\n- Keep functions short.\n' }]);
+  const before2 = mainOf();
+  const all2 = await s1.brain.proposePromotions(wsP);
+  const [p2] = all2.filter((p) => p.lessonIds.includes(l2));
+  const msg2 = p2?.appliedSha ? git(promoRemote, 'show', '-s', '--format=%B', p2.appliedSha) : '';
+  const onMain = p2?.appliedSha ? (() => { try { git(promoRemote, 'merge-base', '--is-ancestor', p2.appliedSha, 'main'); return true; } catch { return false; } })() : false;
+  check('a small passing promotion applies on its own', p2?.state === 'applied' && mainOf() !== before2 && onMain && git(promoRemote, 'show', 'main:memory/rules/repo-code.md').includes('Keep functions short.'), p2);
+  check('its commit carries the trailers', msg2.includes(`Tandemise-Promotion: ${p2?.id}`) && msg2.includes('Tandemise-Eval:'), msg2);
+  const promoterPrompts = H1.r(app.BRAIN_RECORD_REPOSITORY).passes(wsP, '2000-01-01T00:00:00.000Z').filter((x) => x.kind === 'promote')
+    .map((x) => { const f = join(H1.paths.workspace(wsP), 'brain-passes', x.id, 'prompt.md'); return existsSync(f) ? readFileSync(f, 'utf8') : null; });
+  check('the promoter ran and never saw evals/', promoterPrompts.length >= 2 && promoterPrompts.every((t) => t !== null && !t.includes('spendCapUsd') && !t.includes('SECRET-EVAL-MARKER')), promoterPrompts.length);
+  const reverted = await s1.brain.revertProposal(c1, p2.id);
+  check('revert adds a revert commit', reverted.state === 'reverted' && git(promoRemote, 'log', '-1', '--format=%s', 'main').startsWith('Revert promotion'), reverted);
+
+  // 3. Structural: a role's model changes. A PR even when passing.
+  const roleNow = git(promoRemote, 'show', 'main:factory/roles/development.md');
+  const l3 = await lessonFor('PROMO-THREE: use the stronger model for builds.', { role: 'development', step: 'build' });
+  promoterSays([{ path: 'memory/rules/project.md', content: `${git(promoRemote, 'show', 'main:memory/rules/project.md')}\n- Use the stronger model.\n` }, { path: 'factory/roles/development.md', content: withModel(roleNow, 'stronger-model') }]);
+  const g3 = ghLog().length;
+  const p3 = (await s1.brain.promoteEntry(c1, l3, { target: 'role' }));
+  const pr3 = ghLog().slice(g3).find((l) => l.argv[0] === 'pr' && l.argv[1] === 'create');
+  check('a structural promotion is a PR even when passing', p3?.state === 'open' && p3.classification === 'structural', p3);
+  check("its Classification names the role's settings", pr3?.stdin.includes('## Classification') && pr3.stdin.includes("Changes development's settings"), pr3?.stdin);
+
+  // 4. Failing evals: a draft.
+  const l4 = await lessonFor('PROMO-FOUR: lint before commit.', { repo: 'other' });
+  evalStub.result = [{ suite: 'smoke', scorecard: card(scoreOf(0.5)), problem: null }];
+  promoterSays([{ path: 'memory/rules/repo-other.md', content: '# other\n\n- Lint before commit.\n' }]);
+  const g4 = ghLog().length;
+  const p4 = (await s1.brain.proposePromotions(wsP)).find((p) => p.lessonIds.includes(l4));
+  const pr4 = ghLog().slice(g4).find((l) => l.argv[0] === 'pr' && l.argv[1] === 'create');
+  check('a failing promotion opens a draft titled Did not pass evals', p4?.state === 'draft' && pr4?.argv.includes('--draft') && pr4.argv[pr4.argv.indexOf('--title') + 1].startsWith('Did not pass evals: '), pr4?.argv);
+
+  // 5. Refused: the promoter touched evals/.
+  const l5 = await lessonFor('PROMO-FIVE: never relax the gate.', { role: 'review' });
+  promoterSays([{ path: 'evals/gates.yaml', content: 'suites: []\n' }]);
+  const g5 = ghLog().length;
+  const p5 = (await s1.brain.proposePromotions(wsP)).find((p) => p.lessonIds.includes(l5));
+  check('a promotion touching evals/ is refused: no branch, no PR', p5 === undefined && ghLog().slice(g5).every((l) => l.argv[1] !== 'create') && !git(promoRemote, 'branch', '--list').includes(`promote/${app.promotionId([l5])}`), p5);
+  check('and a note says why', s1.brain.view(wsP).problems.some((p) => p.includes('The evals folder can only be changed by a person.')), s1.brain.view(wsP).problems);
+
+  // 6. Two daemons, the same lessons: one PR.
+  const wsQ = (await H2.services.workspaces.create(H2.caller, { name: 'Promo too', repositoryPath: H2.repoDir })).workspace.id;
+  const pq = await H2.services.brain.link(H2.caller, wsQ, { mode: 'adopt', remote: 'github.com/garipass/promo' });
+  await H2.services.brain.applyAdopt(H2.caller, wsQ, { hash: pq.hash, choices: {} });
+  await s1.brain.sync(wsP, 'person');
+  await H2.services.brain.sync(wsQ, 'person');
+  const g6 = ghLog().length;
+  const adopted = await H2.services.brain.proposeLessons(wsQ, [l1]);
+  check('the second daemon adopts the open PR (same id and branch)', adopted?.id === p1.id && adopted.branch === p1.branch && adopted.prUrl === p1.prUrl && ghLog().slice(g6).every((l) => l.argv[1] !== 'create'), adopted);
+
+  // 7. Fate: the PR was closed unmerged.
+  writeFileSync(join(FAKE.state, String(Number(/pull\/(\d+)/.exec(p1.prUrl)[1]))), 'CLOSED');
+  await s1.brain.sync(wsP, 'person');
+  check('a closed PR is closed with reject events', s1.brain.proposals(wsP).find((p) => p.id === p1.id)?.state === 'closed' && s1.brain.entries(wsP, {}).find((e) => e.id === l1)?.promoted === null);
+  check('the lesson is not eligible again until +3 net', !s1.brain.eligiblePromotions(wsP).some((b) => b.lessonIds.includes(l1)));
+  await s1.brain.vote(c1, l1, { vote: 'helpful', taskId: tA });
+  check('one more thumbs-up (+3) makes it eligible again', s1.brain.eligiblePromotions(wsP).some((b) => b.lessonIds.includes(l1)));
+
+  // 8. Local-only: accept merges locally.
+  const wsL = (await s1.workspaces.create(c1, { name: 'Local promo', repositoryPath: H1.repoDir })).workspace.id;
+  await s1.brain.link(c1, wsL, { mode: 'local' });
+  s1.workspaces.update(wsL, { routing: { development: [promoterProfile] } });
+  const rl = await s1.brain.remember(c1, wsL, { text: 'PROMO-LOCAL: small commits.', scope: { role: 'development' } });
+  promoterSays([{ path: 'memory/rules/role-development.md', content: '# Developer\n\n- Small commits.\n' }]);
+  const pl = await s1.brain.promoteEntry(c1, rl.entry.id, {});
+  check('a local-only proposal waits as open', pl?.state === 'open' && pl.prUrl === null, pl);
+  const accepted = await s1.brain.acceptProposal(c1, pl.id);
+  const localClone = H1.r(app.WORKSPACE_BRAIN_REPOSITORY).get(wsL).clonePath;
+  check('accept merges it locally', accepted.state === 'accepted' && git(localClone, 'show', 'main:memory/rules/role-development.md').includes('Small commits.'), accepted);
 }
 
 // ------------------------------------------------------------------ end

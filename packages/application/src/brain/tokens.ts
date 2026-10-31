@@ -3,6 +3,7 @@ import type { BrainService } from './brain-service.js';
 import type { BrainSyncLoop } from './sync-loop.js';
 import type { BrainContextSupply } from './context-supply.js';
 import type { BrainSignals, WorktreeDiff } from './signals.js';
+import type { PromotionEvalPort } from './eval-gates.js';
 import type { BrainHostPort, BrainRecordRepositoryPort, BrainRepoPort, WorkspaceBrainRepositoryPort } from '@tandemise/domain';
 
 /**
@@ -28,3 +29,5 @@ export const BRAIN_CONTEXT_SUPPLY = token<BrainContextSupply>('application.Brain
 export const BRAIN_SIGNALS = token<BrainSignals>('application.BrainSignals');
 /** A diff of a task's working directory, for the reflector's evidence; bound by the daemon. */
 export const BRAIN_WORKTREE_DIFF = token<WorktreeDiff>('port.BrainWorktreeDiff');
+/** Runs a promotion's eval suites (P3b) against a brain candidate; rebind it to stub evals. */
+export const BRAIN_PROMOTION_EVALS = token<PromotionEvalPort>('application.BrainPromotionEvals');

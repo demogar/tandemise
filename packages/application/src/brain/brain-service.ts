@@ -6,12 +6,13 @@ import type {
   WorkspaceBrain, WorkspaceBrainRepositoryPort, WriterId,
 } from '@tandemise/domain';
 import { TERMINAL_MISSION_STATUSES, foldLedger, isTrialMission, isValidAt, makeWriterId } from '@tandemise/domain';
-import type { BrainAdoptPreview, BrainEntryView, BrainView, RememberView, RunBrainView, SetupItemView } from '@tandemise/api-contract';
+import type { BrainAdoptPreview, BrainEntryView, BrainProposalView, BrainView, RememberView, RunBrainView, SetupItemView } from '@tandemise/api-contract';
 import type { Clock, Logger, MissionId, TaskId, TandemisePaths, WorkspaceId } from '@tandemise/shared';
 import { TandemiseError, asId, errorMessage, slugify } from '@tandemise/shared';
 import { LedgerReader, type LedgerAt } from './memory.js';
 import { LedgerWriter, type LedgerActor, type LedgerEventInput } from './ledger-writer.js';
 import { historyEntry } from './history.js';
+import { Promotions, type PromotionBundle, type PromotionsDeps } from './promotion.js';
 import type { LoadedWorkflow, SettingsStorePort, SkillFilesPort } from '../ports.js';
 import { BrainFactory } from './factory-cache.js';
 import type { WorkspaceService } from '../services.js';
@@ -54,6 +55,8 @@ export interface BrainServiceDeps {
   readonly runs?: Pick<RunRepositoryPort, 'get' | 'listByMission' | 'update'>;
   readonly runScores?: Pick<RunScoreRepositoryPort, 'list' | 'listByTask'>;
   readonly issues?: Pick<IssueRepositoryPort, 'getLink'>;
+  /** For promotions (Task 14): the promoter's runtime, the project's rows and the eval port. */
+  readonly promotion?: Omit<PromotionsDeps, 'repo' | 'host' | 'records' | 'clock' | 'log' | 'paths'>;
 }
 
 const SOURCE_LABEL: Readonly<Record<string, string>> = {
@@ -93,6 +96,8 @@ export class BrainService {
   readonly #listeners: BrainSyncListener[] = [];
 
   readonly #factory: BrainFactory;
+  readonly #promotions: Promotions | null;
+  readonly #manifests = new Map<string, BrainManifest>();
   readonly #reader: LedgerReader;
   readonly #writer: LedgerWriter;
   /** The ledger at each project's `lastPulledSha`, so listing lessons needs no git call. */
@@ -114,6 +119,10 @@ export class BrainService {
     this.onSync((ws, from, to) => this.#factory.refreshFactory(ws, from, to).then(() => undefined));
     this.resolveConflict = (ws, conflicted) => this.#factory.resolveConflict(ws, conflicted);
     this.beforeAdoptPreview.push(async (_ws, clonePath, head) => { await this.#factory.fillSkills(clonePath, head); });
+    this.#promotions = deps.promotion === undefined ? null : new Promotions(this, {
+      ...deps.promotion, repo: deps.repo, host: deps.host, records: deps.records, clock: deps.clock, log: deps.log, paths: deps.paths,
+    });
+
   }
 
   /** A person's edit in the app on this project (Team → Roles, routines, settings): written through (spec §8). */
@@ -423,6 +432,12 @@ export class BrainService {
     });
     if (head !== from) await this.#notify(workspaceId, from, head);
     await this.#refreshInfo(workspaceId);
+    // Every sync reads the fate of open promotion PRs (spec §8).
+    try {
+      await this.#promotions?.settle(workspaceId);
+    } catch (e) {
+      this.deps.log.warn('brain.settle_failed', { workspaceId, error: errorMessage(e) });
+    }
     this.deps.recorder.invalidate('workspaces');
   }
 
@@ -461,6 +476,7 @@ export class BrainService {
     } catch (e) {
       problems.push(`The brain's factory could not be read: ${errorMessage(e)}`);
     }
+    this.#manifests.set(workspaceId, await this.manifestAt(workspaceId, row.lastPulledSha));
     try {
       const at = await this.#reader.eventsAt(row.clonePath, row.lastPulledSha);
       this.#ledger.set(workspaceId, { sha: row.lastPulledSha, at });
@@ -478,6 +494,122 @@ export class BrainService {
       mcpsNeeded,
       problems: [...problems, ...(this.extraProblems.get(workspaceId) ?? [])],
     });
+  }
+
+  // ------------------------------------------------------------------ promotion
+
+  /** The project's brain.yaml as of its last pull; defaults until read. */
+  cachedManifest(workspaceId: WorkspaceId): BrainManifest {
+    return this.#manifests.get(workspaceId) ?? {
+      version: 1, project: '', repositories: [], promotion: { autoApply: 'off', minHelpful: 3, minMissions: 2 }, humanEdits: 'direct',
+    };
+  }
+
+  /** `evals/` for the promotion gate only: no prompt, tool or person-facing read goes through here (spec §8). */
+  async readEvalsForPromotion(workspaceId: WorkspaceId, sha: string, path: string): Promise<string | null> {
+    if (!isEvalsPath(path)) throw TandemiseError.validation('Only evals/ is read this way.');
+    const row = this.#require(workspaceId);
+    return this.deps.repo.readAt(row.clonePath, sha, path);
+  }
+
+  /** Every file under `evals/` at a ref, for importing the promotion suites. */
+  async evalsFilesForPromotion(workspaceId: WorkspaceId, ref: string): Promise<Record<string, string>> {
+    const row = this.#require(workspaceId);
+    const sha = (await this.deps.repo.head(row.clonePath, ref)) ?? ref;
+    const out: Record<string, string> = {};
+    for (const path of await this.deps.repo.listAt(row.clonePath, sha, BRAIN_EVALS)) {
+      const text = await this.deps.repo.readAt(row.clonePath, sha, path);
+      if (text !== null) out[path] = text;
+    }
+    return out;
+  }
+
+  /** A `brain` eval candidate: `factory/` and `memory/rules` at a branch (spec §8). */
+  async candidateAt(workspaceId: WorkspaceId, ref: string): Promise<{ files: Record<string, string>; rules: { path: string; text: string }[] }> {
+    const row = this.#require(workspaceId);
+    const sha = (await this.deps.repo.head(row.clonePath, `refs/heads/${ref}`)) ?? (await this.deps.repo.head(row.clonePath, ref)) ?? ref;
+    const files = await this.factoryFiles(row.clonePath, sha);
+    const rules: { path: string; text: string }[] = [];
+    for (const path of (await this.deps.repo.listAt(row.clonePath, sha, BRAIN_RULES)).filter((p) => p.endsWith('.md'))) {
+      const text = await this.deps.repo.readAt(row.clonePath, sha, path);
+      if (text !== null) rules.push({ path, text });
+    }
+    return { files, rules };
+  }
+
+  #promotionsOrThrow(): Promotions {
+    if (this.#promotions === null) throw new TandemiseError('PRECONDITION_FAILED', 'Promotions are not available in this build.');
+    return this.#promotions;
+  }
+
+  eligiblePromotions(workspaceId: WorkspaceId): readonly PromotionBundle[] {
+    return this.#promotions?.eligible(workspaceId) ?? [];
+  }
+
+  proposePromotions(workspaceId: WorkspaceId): Promise<readonly import('@tandemise/domain').BrainProposal[]> {
+    return this.#promotionsOrThrow().proposeEligible(workspaceId);
+  }
+
+  proposeLessons(workspaceId: WorkspaceId, lessonIds: readonly string[]): Promise<import('@tandemise/domain').BrainProposal | null> {
+    return this.#promotionsOrThrow().propose(workspaceId, lessonIds, {});
+  }
+
+  /** Eligible lessons become proposals in the background (after a person's vote, after a background sync). */
+  proposeSoon(workspaceId: WorkspaceId): void {
+    this.#promotions?.proposeSoon(workspaceId);
+  }
+
+  /** "Make this a rule" on one lesson; `role` targets the role's instructions. */
+  async promoteEntry(caller: Caller, entryId: string, req: { target?: 'rules' | 'role' | undefined }): Promise<import('@tandemise/domain').BrainProposal | null> {
+    void caller;
+    const found = this.#requireEntry(entryId);
+    return this.#promotionsOrThrow().propose(found.workspaceId, [found.entry.id], req.target === undefined ? {} : { target: req.target });
+  }
+
+  proposals(workspaceId: WorkspaceId): readonly import('@tandemise/domain').BrainProposal[] {
+    return this.deps.records.proposals(workspaceId);
+  }
+
+  /** The Proposals tab, in words. */
+  proposalViews(workspaceId: WorkspaceId): readonly BrainProposalView[] {
+    const memory = this.memory(workspaceId);
+    const local = this.deps.brains.get(workspaceId)?.remote === null;
+    const STATE: Readonly<Record<string, string>> = {
+      evaluating: 'Being evaluated', open: local ? 'Waiting for you' : 'Pull request open', draft: 'Draft: did not pass evals',
+      applied: 'Applied on its own', merged: 'Merged', closed: 'Closed without merging', accepted: 'Accepted', declined: 'Declined', reverted: 'Reverted',
+    };
+    return this.proposals(workspaceId).map((p) => ({
+      id: p.id,
+      lessons: p.lessonIds.map((id) => ({ id, text: memory.entries.find((e) => e.id === (memory.aliases[id] ?? id))?.text ?? id })),
+      targets: p.targets,
+      classification: p.classification,
+      classificationLine: `${p.classification === 'small' ? 'Small' : 'Structural'}: ${p.reasons.join(' ')}`,
+      reasons: p.reasons,
+      state: p.state,
+      stateLabel: STATE[p.state] ?? p.state,
+      verdict: p.verdict,
+      verdictLine: p.verdict === 'passed' ? 'Passed the promotion evals.' : p.verdict === 'failed' ? 'Did not pass the promotion evals.'
+        : p.verdict === 'not_evaluated' ? 'Not evaluated: this project has no promotion evals yet.' : 'Evals not run yet.',
+      prUrl: p.prUrl,
+      canAccept: local && p.state === 'open',
+      canRevert: p.state === 'applied',
+      updatedAt: p.updatedAt,
+    }));
+  }
+
+  acceptProposal(caller: Caller, id: string): Promise<import('@tandemise/domain').BrainProposal> {
+    void caller;
+    return this.#promotionsOrThrow().accept(id);
+  }
+
+  declineProposal(caller: Caller, id: string): Promise<import('@tandemise/domain').BrainProposal> {
+    void caller;
+    return this.#promotionsOrThrow().decline(id);
+  }
+
+  revertProposal(caller: Caller, id: string): Promise<import('@tandemise/domain').BrainProposal> {
+    void caller;
+    return this.#promotionsOrThrow().revert(id);
   }
 
   // ------------------------------------------------------------------ memory

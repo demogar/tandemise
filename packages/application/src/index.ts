@@ -147,3 +147,7 @@ export { BRAIN_PROPOSE_TOOL, BRAIN_READ_TOOL, BRAIN_SEARCH_TOOL, MAX_PROPOSALS_P
 export { BrainSignals } from './brain/signals.js';
 export type { WorktreeDiff } from './brain/signals.js';
 export * from './brain/reflector.js';
+export { NOT_EVALUATED, PROMOTION_REGAIN, Promotions, promotionId } from './brain/promotion.js';
+export type { PromotionBundle } from './brain/promotion.js';
+export * from './brain/eval-gates.js';
+export { buildPromoterPrompt, parsePromoterReply, promote } from './brain/promoter.js';

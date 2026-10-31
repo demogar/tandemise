@@ -1,4 +1,5 @@
-import { mkdir, open, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, open, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, normalize } from 'node:path';
 import { TandemiseError, type Logger } from '@tandemise/shared';
 import type { ExecResult, ProcessSupervisor } from '@tandemise/execution-core';
@@ -73,10 +74,24 @@ export class GitBrainRepo implements BrainRepoPort {
     return { head: await current(), conflicted, offline: null };
   }
 
-  async commit(clone: string, files: readonly BrainWrite[], message: string, author: { name: string; email: string } | null): Promise<string> {
+  async commit(clone: string, files: readonly BrainWrite[], message: string, author: { name: string; email: string } | null, onto?: { branch: string; from: string }): Promise<string> {
     for (const file of files) {
       const path = safePath(file.path);
       if (path.startsWith(LEDGER_DIR) && file.mode !== 'append') throw TandemiseError.validation(LEDGER_APPEND_ONLY, { path });
+    }
+    if (onto !== undefined) {
+      // Another branch: a throwaway worktree, so the checked-out branch and its files never move.
+      const exists = (await this.head(clone, `refs/heads/${onto.branch}`)) !== null;
+      const dir = await mkdtemp(join(tmpdir(), 'tandemise-brain-'));
+      await rm(dir, { recursive: true, force: true });
+      await this.#must(clone, exists ? ['worktree', 'add', '-f', dir, onto.branch] : ['worktree', 'add', '-f', '-b', onto.branch, dir, onto.from]);
+      try {
+        await this.commit(dir, files, message, author);
+        return (await this.head(clone, `refs/heads/${onto.branch}`)) ?? '';
+      } finally {
+        await this.#git(clone, ['worktree', 'remove', '--force', dir]);
+        await rm(dir, { recursive: true, force: true });
+      }
     }
     for (const file of files) {
       const absolute = join(clone, safePath(file.path));

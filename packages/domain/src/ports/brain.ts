@@ -29,7 +29,11 @@ export interface BrainRepoPort {
   head(clone: string, ref?: string): Promise<string | null>;
   /** Never throws for a network failure: `offline` carries git's sentence instead. */
   fetchAndRebase(clone: string, branch: string): Promise<{ head: string; conflicted: readonly string[]; offline: string | null }>;
-  commit(clone: string, files: readonly BrainWrite[], message: string, author: { name: string; email: string } | null): Promise<string>;
+  /**
+   * Commits on the checked-out branch, or with `onto` on another branch
+   * (created from `from` when missing) without touching the checked-out one.
+   */
+  commit(clone: string, files: readonly BrainWrite[], message: string, author: { name: string; email: string } | null, onto?: { branch: string; from: string }): Promise<string>;
   push(clone: string, branch: string, opts?: { force?: false; setUpstream?: boolean }): Promise<BrainPushResult>;
   branch(clone: string, name: string, from: string): Promise<void>;
   /** Moves local commits not on `origin/<base>` to `branch`, resets `base` to origin. Returns the moved shas. */

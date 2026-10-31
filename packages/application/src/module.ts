@@ -936,6 +936,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       roles: r.resolve(t.ROLE_REPOSITORY),
       skills: r.resolve(t.SKILL_SERVICE),
       readSetupFolder: (path) => r.resolve(t.SETUP_SERVICE).readFolder(path),
+      readBrainCandidate: (workspaceId, ref) => r.resolve(BRAIN_SERVICE).candidateAt(workspaceId, ref),
       // Lazily: the runner is composed from the executor, which nothing here needs until a run starts.
       runner: () => r.resolve(t.EVAL_RUNNER),
     }), { source: SOURCE });

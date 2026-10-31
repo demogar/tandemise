@@ -109,6 +109,14 @@ try {
   const refused = await d2.api('POST', `/v1/workspaces/${d2.ws}/brain/entries`, { text: 'see /etc/hosts' });
   check('a machine path is refused in words', refused.status === 400 && refused.body?.error?.message === "A lesson can't name a path on your machine. Name the file inside its repository instead.", refused.body);
 
+  section('daemon: proposals and what a run knew');
+  const props = await d2.api('GET', `/v1/workspaces/${d2.ws}/brain/proposals`);
+  check('GET proposals answers a list', props.status === 200 && Array.isArray(props.body), props);
+  const noRun = await d2.api('GET', '/v1/runs/run_nope/brain');
+  check('GET a missing run brain is 404', noRun.status === 404, noRun.status);
+  const badProposal = await d2.api('POST', '/v1/brain/proposals/nope/revert');
+  check('reverting an unknown proposal is 404', badProposal.status === 404, badProposal.status);
+
   const side = (await d2.api('POST', '/v1/workspaces', { name: 'Side', repositoryPath: d2.repoDir })).body?.workspace?.id;
   const local = await d2.api('POST', `/v1/workspaces/${side}/brain`, { mode: 'local' });
   check('local mode is local_only', local.body?.status === 'local_only', local);

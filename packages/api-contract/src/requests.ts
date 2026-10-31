@@ -599,6 +599,7 @@ export const evalCandidateSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('models'), roles: z.record(z.string(), z.string().min(1)) }),
   z.object({ kind: z.literal('skills'), roles: z.record(z.string(), z.array(skillRef)) }),
   z.object({ kind: z.literal('setup'), folder: z.string().min(1) }),
+  z.object({ kind: z.literal('brain'), ref: z.string().min(1) }),
 ]);
 export type EvalCandidateRequest = z.infer<typeof evalCandidateSchema>;
 

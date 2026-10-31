@@ -8,6 +8,7 @@ import { BrainService } from './brain-service.js';
 import { BrainSyncLoop } from './sync-loop.js';
 import { BrainContextSupply } from './context-supply.js';
 import { BrainSignals } from './signals.js';
+import { ServiceEvalPort } from './eval-gates.js';
 import { RUNTIME_MANAGER } from '@tandemise/runtimes-core';
 import { BUILT_IN_TOOLS } from '@tandemise/integrations-core';
 import { createBrainTools } from '../tools/brain-tools.js';
@@ -59,6 +60,23 @@ export function bindBrain(container: Container): void {
     runs: r.resolve(t.RUN_REPOSITORY),
     runScores: r.resolve(t.RUN_SCORE_REPOSITORY),
     issues: r.resolve(t.ISSUE_REPOSITORY),
+    promotion: {
+      runtimeManager: r.resolve(RUNTIME_MANAGER),
+      runtimeProfiles: r.resolve(t.RUNTIME_PROFILE_REPOSITORY),
+      workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
+      roles: r.resolve(t.ROLE_REPOSITORY),
+      // Resolved per promotion, so a check can stub the evals.
+      evals: () => r.resolve(b.BRAIN_PROMOTION_EVALS),
+    },
+  }), { source: SOURCE });
+
+  container.bind(b.BRAIN_PROMOTION_EVALS, (r) => new ServiceEvalPort({
+    evals: () => r.resolve(t.EVAL_SERVICE),
+    repo: r.resolve(t.EVAL_REPOSITORY),
+    blobs: r.resolve(t.EVAL_BLOBS),
+    readEvals: (workspaceId, ref) => r.resolve(b.BRAIN_SERVICE).evalsFilesForPromotion(workspaceId, ref),
+    caller: () => ({ personId: r.resolve(t.IDENTITY).localPerson().id }),
+    log: log(r).child({ component: 'brain-evals' }),
   }), { source: SOURCE });
 
   container.bind(b.BRAIN_CONTEXT_SUPPLY, (r) => new BrainContextSupply(r.resolve(b.BRAIN_SERVICE), clock(r), log(r).child({ component: 'brain-context' })), { source: SOURCE });
