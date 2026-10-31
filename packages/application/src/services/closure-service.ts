@@ -1,5 +1,5 @@
 import type {
-  ArtifactRepositoryPort, Closure, ClosureKind, ClosureResult, IntakeClosure, IntakeConfigSource, IntakeRepositoryPort, IntakeSignal,
+  ArtifactRepositoryPort, Closure, EventRepositoryPort, ClosureKind, ClosureResult, IntakeClosure, IntakeConfigSource, IntakeRepositoryPort, IntakeSignal,
   MemberRepositoryPort, Mission, MissionRepositoryPort, ProjectionBusPort, RepoRepositoryPort, SignalStatus, TrackedItem,
   TrackerItemRepositoryPort, UnitOfWork, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
@@ -19,6 +19,8 @@ export interface ClosureServiceDeps {
   readonly missions: Pick<MissionRepositoryPort, 'list'>;
   /** The mission's handoffs: its pull request and its newest commit. */
   readonly artifacts: Pick<ArtifactRepositoryPort, 'listByMission'>;
+  /** The mission's events: the pull request its ship step opened (#53), which is no handoff link. */
+  readonly events?: Pick<EventRepositoryPort, 'listByMission'>;
   /** The mission's repository, whose remote names the commit's repository. */
   readonly repositories: Pick<RepoRepositoryPort, 'get'>;
   /**
@@ -205,7 +207,7 @@ export class ClosureService {
       kind: closure.kind,
       signal: { fingerprint: signal.fingerprint, key: signal.key, url: signal.url, instance: signal.instance, title: signal.title, reply: signal.reply },
       item: { key: item.key, url: item.url },
-      prUrl: mission === null ? null : deliveryLinks(this.deps.artifacts, mission.id).find((l) => l.kind === 'pr')?.url ?? null,
+      prUrl: mission === null ? null : deliveryLinks(this.deps.artifacts, mission.id, this.deps.events).find((l) => l.kind === 'pr')?.url ?? null,
       commit: mission === null ? null : this.#commitOf(mission),
     };
   }
@@ -329,7 +331,7 @@ export class ClosureService {
       kind: closure.kind,
       state: closure.state,
       item: { key: item?.key ?? '', url: item?.url ?? '' },
-      prUrl: mission === null ? null : deliveryLinks(this.deps.artifacts, mission.id).find((l) => l.kind === 'pr')?.url ?? null,
+      prUrl: mission === null ? null : deliveryLinks(this.deps.artifacts, mission.id, this.deps.events).find((l) => l.kind === 'pr')?.url ?? null,
       reply: signal.reply === null ? null : { address: signal.reply.address },
       lastError: closure.lastError,
     };

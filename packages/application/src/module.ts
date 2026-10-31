@@ -1222,6 +1222,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       items: r.resolve(it.TRACKER_ITEM_REPOSITORY),
       missions: r.resolve(t.MISSION_REPOSITORY),
       artifacts: r.resolve(t.ARTIFACT_REPOSITORY),
+      events: r.resolve(t.EVENT_REPOSITORY),
       repositories: r.resolve(t.REPO_REPOSITORY),
       closer: r.resolve(it.INTAKE_RUNNER_HOST),
       workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
