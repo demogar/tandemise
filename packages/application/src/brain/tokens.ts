@@ -1,4 +1,6 @@
 import { token } from '@tandemise/kernel';
+import type { BrainService } from './brain-service.js';
+import type { BrainSyncLoop } from './sync-loop.js';
 import type { BrainHostPort, BrainRecordRepositoryPort, BrainRepoPort, WorkspaceBrainRepositoryPort } from '@tandemise/domain';
 
 /**
@@ -14,3 +16,7 @@ export const BRAIN_RECORD_REPOSITORY = token<BrainRecordRepositoryPort>('port.Br
 export const BRAIN_REPO = token<BrainRepoPort>('port.BrainRepo');
 /** The brain's host (`gh`): repository creation and pull requests; the daemon rebinds it. */
 export const BRAIN_HOST = token<BrainHostPort>('port.BrainHost');
+
+export const BRAIN_SERVICE = token<BrainService>('application.BrainService');
+/** Pulls linked brains at start and in the background; the daemon adds it to the lifecycle. */
+export const BRAIN_SYNC_LOOP = token<BrainSyncLoop>('application.BrainSyncLoop');

@@ -22,6 +22,7 @@ import { ContributionError, EvalError } from '@tandemise/application';
 import type { TandemiseServices } from '@tandemise/application';
 import type { AdjustableClock } from '@tandemise/shared';
 import { CONTRIBUTION_BODY, Router, formatZodIssues, type RequestContext } from './http/router.js';
+import { brainRoutes } from './brain-routes.js';
 
 /**
  * The daemon's HTTP surface.
@@ -173,6 +174,7 @@ export function buildRouter(services: TandemiseServices, options: { readonly tes
     services.setup.preview(asId(ctx.params.id!), (await ctx.body(previewSetupRequest)).path));
   r.post('/v1/workspaces/:id/setup/apply', async (ctx) =>
     services.setup.apply(ctx.caller, asId(ctx.params.id!), await ctx.body(applySetupRequest)));
+  brainRoutes(r, services);
 
   // -------------------------------------------------------------- evals (P3b)
   // Suites of frozen cases, saving a finished gated step as one, and trying a

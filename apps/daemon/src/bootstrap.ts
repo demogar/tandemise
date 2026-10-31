@@ -187,6 +187,7 @@ export function bootstrap(config: DaemonConfig, options: { readonly localPersonN
   lifecycle.add(container.resolve(SCHEDULER));
   // Added after the scheduler, so shutdown stops the runner first; its live trial is left for boot recovery (P3b).
   lifecycle.add(container.resolve(EVAL_RUNNER));
+  lifecycle.add(container.resolve(applicationTokens.BRAIN_SYNC_LOOP));
 
   return { container, services, lifecycle, events, projections, log, testClock };
 }

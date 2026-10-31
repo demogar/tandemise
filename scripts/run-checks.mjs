@@ -15,6 +15,7 @@ export const OFFLINE_CHECKS = [
   'artifact-lineage-check',
   'artifact-write-scope-check',
   'brain-check',
+  'brain-daemon-check',
   'concurrency-check',
   'daemon-node-check',
   'env-leak-check',

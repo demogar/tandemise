@@ -128,3 +128,9 @@ export type { OAuthCallback, OAuthCallbackListener, OAuthCallbackPort } from './
 
 export * from './brain/layout.js';
 export * from './brain/tokens.js';
+export { BrainService, EVALS_REFUSAL, hostOf, isEvalsPath } from './brain/brain-service.js';
+export type { BrainServiceDeps, BrainSyncListener, LinkRequest } from './brain/brain-service.js';
+export { BrainSyncLoop } from './brain/sync-loop.js';
+export { decisionFile, decisionFileName, decisionFiles } from './brain/decisions.js';
+export { createBrainLayout, projectRules, scrubDocument, PROJECT_RULES_FILE } from './brain/create-layout.js';
+export * from './brain/constants.js';

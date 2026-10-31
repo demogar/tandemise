@@ -35,6 +35,7 @@ import { RuntimeOverrides } from './support/runtime-overrides.js';
 import { ApprovalWaiter, createApprovalGate, createPolicyEngineToolGate } from './support/tool-policy.js';
 import { createAskHumanTool } from './tools/ask-human.js';
 import { bindBrain } from './brain/module.js';
+import { BRAIN_SERVICE } from './brain/tokens.js';
 import { RunDeadlines } from './engine/run-deadline.js';
 import { ConnectFlow } from './services/connect-flow.js';
 import { IntegrationCredentials } from './support/integration-credentials.js';
@@ -960,6 +961,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       setup: r.resolve(t.SETUP_SERVICE),
       contributions: r.resolve(t.CONTRIBUTION_SERVICE),
       evals: r.resolve(t.EVAL_SERVICE),
+      brain: r.resolve(BRAIN_SERVICE),
     }), { source: SOURCE });
 
     bindBrain(container);

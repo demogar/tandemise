@@ -328,6 +328,177 @@ if (wants('git')) {
   check('the host is available', (await host.available()).ok === true);
 }
 
+// ------------------------------------------------------------------ harness
+// The application composed over a real database, with the daemon's disk
+// adapters and the brain's git and gh adapters, as bootstrap binds them.
+async function brainHarness(name) {
+  const home = join(HOME, name);
+  const { Container, compose } = await import('@tandemise/kernel');
+  const { createLogger, createPaths, systemClock } = shared;
+  const persistenceTokens = await import('@tandemise/persistence');
+  const A = await import('@tandemise/artifacts');
+  const { policyModule } = await import('@tandemise/policy');
+  const { contextModule } = await import('@tandemise/context');
+  const { createEvaluationModule } = await import('@tandemise/evaluation');
+  const { runtimesCoreModule } = await import('@tandemise/runtimes-core');
+  const { genericRuntimeModule } = await import('@tandemise/runtime-generic');
+  const { executionCoreModule, CLOCK: EXEC_CLOCK, LOGGER: EXEC_LOGGER, PATHS: EXEC_PATHS } = await import('@tandemise/execution-core');
+  const { executionLocalModule } = await import('@tandemise/execution-local');
+  const { integrationsCoreModule, CLOCK: INT_CLOCK, LOGGER: INT_LOGGER, COMMAND_EXECUTOR, BACKGROUND_PROCESS_LAUNCHER } = await import('@tandemise/integrations-core');
+  const { FileWorkflowSource } = await import('../apps/daemon/dist/workflow-source.js');
+  const { FileSetupFolder } = await import('../apps/daemon/dist/setup-folder.js');
+  const { DaemonSkillFiles } = await import('../apps/daemon/dist/skill-files.js');
+  const paths = createPaths(home);
+  mkdirSync(paths.root, { recursive: true });
+  const log = createLogger({ level: 'error', base: { component: 'brain-check' } });
+  const clock = systemClock;
+  const container = new Container();
+  compose(
+    container,
+    persistenceTokens.persistenceModule({ path: paths.db, logger: log, clock }),
+    A.createArtifactsModule({ paths }),
+    policyModule, contextModule, createEvaluationModule(), runtimesCoreModule, genericRuntimeModule,
+    executionCoreModule, executionLocalModule, integrationsCoreModule, app.createApplicationModule({ localPersonName: name === 'home2' ? 'Ben Ortiz' : 'Ana Smith' }),
+  );
+  container.bind(EXEC_CLOCK, () => clock, { source: 'check' });
+  container.bind(EXEC_LOGGER, () => log, { source: 'check' });
+  container.bind(EXEC_PATHS, () => paths, { source: 'check' });
+  container.bind(INT_CLOCK, () => clock, { source: 'check' });
+  container.bind(INT_LOGGER, () => log, { source: 'check' });
+  container.bind(COMMAND_EXECUTOR, () => ({ run: async () => ({ exitCode: 0, stdout: '', stderr: '' }) }), { source: 'check' });
+  container.bind(BACKGROUND_PROCESS_LAUNCHER, () => ({ launch: async () => { throw new Error('unused'); } }), { source: 'check' });
+  const isToken = (v) => typeof v === 'object' && v !== null && typeof v.description === 'string';
+  for (const key of Object.keys(app)) {
+    const appToken = app[key]; const provider = persistenceTokens[key];
+    if (!isToken(appToken) || !isToken(provider)) continue;
+    if (!container.has(provider) || container.has(appToken)) continue;
+    container.bind(appToken, (r) => r.resolve(provider), { source: `alias:${key}` });
+  }
+  const published = [];
+  const subscribers = new Set();
+  container.bind(app.ARTIFACT_STORE, (r) => r.resolve(A.ARTIFACT_STORE), { source: 'alias' });
+  container.bind(app.ARTIFACT_TEMPLATES, () => ({ render: A.renderArtifactTemplate }), { source: 'check' });
+  container.bind(app.ARTIFACT_PARSER, () => ({ parse: A.parseArtifact }), { source: 'check' });
+  container.bind(app.ARTIFACT_MEASURE, () => ({ measure: A.measureArtifact, deriveHandoff: A.deriveHandoff, splitAppendix: A.splitAppendix }), { source: 'check' });
+  container.bind(app.EVENT_BUS, () => ({ publish: (e) => { published.push(e); for (const s of subscribers) s(e); }, subscribe: (fn) => { subscribers.add(fn); return () => subscribers.delete(fn); } }), { source: 'check' });
+  container.bind(app.PROJECTION_BUS, () => ({ invalidate: () => {}, subscribe: () => () => {} }), { source: 'check' });
+  container.bind(app.SECRET_STORE, () => ({ backend: 'memory', store: async () => 'x', resolve: async () => undefined, remove: async () => {}, list: async () => [] }), { source: 'check' });
+  container.bind(app.SETTINGS_STORE, () => app.createMemorySettingsStore(), { source: 'check' });
+  container.bind(app.SYSTEM_ENVIRONMENT, () => app.describeEnvironment({ home, schemaVersion: 1 }), { source: 'check' });
+  container.bind(app.PROCESS_LIVENESS, () => app.osProcessLiveness, { source: 'check' });
+  container.rebind(app.WORKFLOW_SOURCE, () => new FileWorkflowSource(quiet), { source: 'check' });
+  container.rebind(app.SETUP_FOLDER, () => new FileSetupFolder(quiet), { source: 'check' });
+  container.rebind(app.SKILL_FILES, () => new DaemonSkillFiles(paths.skills, join(home, 'claude-skills'), quiet), { source: 'check' });
+  const repoPort = await brainRepo();
+  const hostPort = await brainHost();
+  container.rebind(app.BRAIN_REPO, () => repoPort, { source: 'check' });
+  container.rebind(app.BRAIN_HOST, () => hostPort, { source: 'check' });
+  const services = app.createServices(container);
+  const r = (t) => container.resolve(t);
+  const caller = { personId: services.identity.localPerson().id };
+  const repoDir = join(home, 'code');
+  mkdirSync(repoDir, { recursive: true });
+  git(repoDir, 'init', '-q', '-b', 'main');
+  writeFileSync(join(repoDir, 'README.md'), '# garipass\n');
+  git(repoDir, 'add', '-A');
+  git(repoDir, 'commit', '-q', '-m', 'init');
+  const ws = (await services.workspaces.create(caller, { name: 'Garipass', repositoryPath: repoDir })).workspace.id;
+  return { home, paths, container, services, r, caller, ws, repoDir, published, subscribers, brainRepo: repoPort };
+}
+
+// ------------------------------------------------------------------ link
+let H1 = null;
+let H2 = null;
+if (wants('link') || wants('factory') || wants('ledger') || wants('loading') || wants('tools') || wants('signals') || wants('promotion') || wants('intake')) {
+  H1 = await brainHarness('home1');
+  H2 = await brainHarness('home2');
+}
+const remoteDir = join(FAKE.remotes, 'garipass', 'brain.git');
+const tokenText = 'ghp_' + 'z'.repeat(36);
+
+if (H1 !== null) {
+  section('link: create, adopt, keep local, unlink, sync');
+  const { services: s1, r: r1, caller: c1, ws: ws1 } = H1;
+  // Home 1 has a reviewer with a model and a token in its instructions, a GitHub integration, and an accepted decision.
+  const reviewer = s1.roles.list(ws1).find((x) => x.id === 'review');
+  s1.roles.upsert({ ...reviewer, workspaceId: ws1, instructions: `Review carefully. Use ${tokenText} for nothing.`, models: { model: 'strong-model', escalate: [], economyModel: null } });
+  r1(app.INTEGRATION_REPOSITORY).create({ id: shared.ids.integration(), workspaceId: ws1, providerId: 'github', name: 'GitHub', transport: 'cli', config: {}, credentialRef: null, enabledCapabilities: ['github.read'], enabled: true, createdAt: shared.systemClock.now(), updatedAt: shared.systemClock.now() });
+  const decision = (id) => ({ id, workspaceId: ws1, missionId: null, title: 'Use SQLite for state', context: 'One machine.', decision: 'SQLite with WAL.', rationale: 'Simple.', alternatives: [{ title: 'Postgres', summary: 'A server.' }], consequences: ['No server.'], status: 'accepted', owner: 'ana', relatedArtifacts: [], supersedes: null, createdAt: shared.systemClock.now(), decidedAt: shared.systemClock.now() });
+  r1(app.DECISION_REPOSITORY).create(decision(shared.ids.decision()));
+  s1.workspaces.update(ws1, { knowledge: { productVision: 'Calm software.', architecturePrinciples: null, codingStandards: 'Run npm run ci.', designSystem: null, glossary: null } });
+
+  const before = ghLog().length;
+  const view = await s1.brain.link(c1, ws1, { mode: 'create', owner: 'garipass', name: 'brain' });
+  const created = ghLog().slice(before).find((l) => l.argv[0] === 'repo');
+  check('create runs gh repo create --private', created?.argv.join(' ') === 'repo create garipass/brain --private', created);
+  check('the view is linked and up to date', view.linked === true && view.status === 'up_to_date' && view.statusLine.startsWith('Up to date'), view);
+  const tree = git(remoteDir, 'ls-tree', '-r', '--name-only', 'main').split('\n').filter(Boolean);
+  for (const f of ['brain.yaml', 'README.md', '.gitattributes', 'factory/tandemise.yaml', 'factory/roles/development.md', 'memory/rules/project.md']) {
+    check(`the bare repo has ${f}`, tree.includes(f), tree);
+  }
+  check('.gitattributes is the union rule', git(remoteDir, 'show', 'main:.gitattributes') === app.BRAIN_GITATTRIBUTES);
+  const p15 = app.renderSetup(await s1.setup.snapshotFor(ws1, { mcps: false }));
+  const mismatched = p15.files.filter((f) => { try { return git(remoteDir, 'show', `main:factory/${f.path}`) !== f.content; } catch { return true; } }).map((f) => f.path);
+  check('every P15 file is byte-identical under factory/', mismatched.length === 0, mismatched);
+  check('mcps.yaml is in the brain', tree.includes('factory/mcps.yaml'));
+  check('a decision file is in the brain', tree.some((f) => /^memory\/decisions\/use-sqlite-for-state-[0-9a-f]{8}\.md$/.test(f)), tree);
+  const rules = git(remoteDir, 'show', 'main:memory/rules/project.md');
+  check('project.md carries the knowledge fields in order', rules.indexOf('## Product vision') >= 0 && rules.indexOf('## Product vision') < rules.indexOf('## Coding standards') && rules.includes('Run npm run ci.'), rules);
+
+  let second = null;
+  try { await s1.brain.link(c1, ws1, { mode: 'create', owner: 'garipass', name: 'brain' }); } catch (e) { second = e.message; }
+  check('a second brain is refused in words', second === 'This project already has a brain: github.com/garipass/brain.', second);
+
+  const factoryText = tree.filter((f) => f.startsWith('factory/')).map((f) => git(remoteDir, 'show', `main:${f}`)).join('\n');
+  const profileIds = r1(app.RUNTIME_PROFILE_REPOSITORY).list().map((p) => p.id);
+  check('factory/ has no runtime profile id', !profileIds.some((id) => factoryText.includes(id)));
+  check('routines.yaml has no enabled key', !/^\s*enabled:/m.test(tree.includes('factory/routines.yaml') ? git(remoteDir, 'show', 'main:factory/routines.yaml') : ''));
+  check('factory/ has no absolute path', !/(^|[\s'"])\/(home|Users|tmp|private)\//.test(factoryText));
+  const all = git(remoteDir, 'log', '-p', '--all');
+  check('no ghp_ token anywhere in the brain', !all.includes('ghp_'), all.slice(0, 200));
+
+  // Adopt from a second home.
+  const { services: s2, caller: c2, ws: ws2 } = H2;
+  const preview = await s2.brain.link(c2, ws2, { mode: 'adopt', remote: 'github.com/garipass/brain' });
+  check('adopt previews role:development as same', preview.items?.find((i) => i.id === 'role:development')?.action === 'same', preview.items?.map((i) => [i.id, i.action]));
+  check('adopt previews the missing GitHub connection', preview.items?.find((i) => i.id === 'mcps:GitHub')?.detail === 'This project needs GitHub. Connect it.');
+  check('adopt counts the brain', preview.brain?.rules >= 1 && preview.brain.mcpsNeeded.includes('GitHub'), preview.brain);
+  const adopted = await s2.brain.applyAdopt(c2, ws2, { hash: preview.hash, choices: {} });
+  check('after applyAdopt home 2 is linked', adopted.linked === true && adopted.remote === 'github.com/garipass/brain', adopted);
+  const model = (s, w, id) => s.roles.list(w).find((x) => x.id === id)?.models?.model ?? null;
+  check("home 2's Reviewer model equals home 1's", model(s2, ws2, 'review') === 'strong-model' && model(s2, ws2, 'development') === model(s1, ws1, 'development'));
+  check('the two homes have different writer ids', s1.brain.view(ws1).writerId !== s2.brain.view(ws2).writerId, [s1.brain.view(ws1).writerId, s2.brain.view(ws2).writerId]);
+
+  // Decisions are content-named.
+  const d1 = app.decisionFile(decision(shared.ids.decision()));
+  const d2 = app.decisionFile(decision(shared.ids.decision()));
+  check('the same decision on two machines is one file name', d1.path === d2.path, [d1.path, d2.path]);
+
+  // Offline.
+  const pinned = s1.brain.view(ws1).lastPulledSha;
+  renameSync(remoteDir, `${remoteDir}.gone`);
+  const off = await s1.brain.sync(ws1, 'person');
+  check('offline: status and words', off.status === 'offline' && off.statusLine.startsWith('Working from your copy of the brain'), off);
+  check('offline: pin still returns the old head', (await s1.brain.pin(ws1)) === pinned);
+  renameSync(`${remoteDir}.gone`, remoteDir);
+  const back = await s1.brain.sync(ws1, 'person');
+  check('back online: up to date again', back.status === 'up_to_date', back);
+
+  // Local only, then unlink, on a third project.
+  const ws3 = (await s1.workspaces.create(c1, { name: 'Side', repositoryPath: H1.repoDir })).workspace.id;
+  const ghBefore = ghLog().length;
+  const local = await s1.brain.link(c1, ws3, { mode: 'local' });
+  check('local: status local_only with no gh call', local.status === 'local_only' && ghLog().length === ghBefore && local.statusLine === 'This brain is only on this machine. Share it to work with others.', local);
+  const rolesBefore = JSON.stringify(s1.roles.list(ws3).map((x) => [x.id, x.models]));
+  const unlinked = await s1.brain.unlink(c1, ws3);
+  check('unlink: the row is gone', unlinked.linked === false && r1(app.WORKSPACE_BRAIN_REPOSITORY).get(ws3) === undefined);
+  check('unlink: the clone stays', existsSync(join(H1.paths.brain(ws3), 'brain.yaml')));
+  check('unlink: roles unchanged', JSON.stringify(s1.roles.list(ws3).map((x) => [x.id, x.models])) === rolesBefore);
+  let evalsRefused = null;
+  try { await s1.brain.readAt(ws1, pinned, 'evals/gates.yaml'); } catch (e) { evalsRefused = e.message; }
+  check('readAt refuses evals/', evalsRefused === 'The evals folder can only be changed by a person.', evalsRefused);
+}
+
 // ------------------------------------------------------------------ end
 rmSync(HOME, { recursive: true, force: true });
 console.log(`\n${passed} passed, ${failures.length} failed`);

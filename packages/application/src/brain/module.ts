@@ -1,7 +1,11 @@
-import type { Container } from '@tandemise/kernel';
-import { TandemiseError } from '@tandemise/shared';
+import type { Container, Resolver } from '@tandemise/kernel';
+import { CLOCK as EXECUTION_CLOCK, LOGGER as EXECUTION_LOGGER, PATHS as EXECUTION_PATHS } from '@tandemise/execution-core';
+import { TandemiseError, createPaths, nullLogger, systemClock } from '@tandemise/shared';
 import type { BrainHostPort, BrainRepoPort } from '@tandemise/domain';
+import * as t from '../tokens.js';
 import * as b from './tokens.js';
+import { BrainService } from './brain-service.js';
+import { BrainSyncLoop } from './sync-loop.js';
 
 const SOURCE = '@tandemise/application:brain';
 
@@ -28,4 +32,29 @@ export function bindBrain(container: Container): void {
   };
   container.bind(b.BRAIN_REPO, () => repo, { source: SOURCE });
   container.bind(b.BRAIN_HOST, () => host, { source: SOURCE });
+
+  container.bind(b.BRAIN_SERVICE, (r) => new BrainService({
+    brains: r.resolve(b.WORKSPACE_BRAIN_REPOSITORY),
+    records: r.resolve(b.BRAIN_RECORD_REPOSITORY),
+    repo: r.resolve(b.BRAIN_REPO),
+    host: r.resolve(b.BRAIN_HOST),
+    setup: r.resolve(t.SETUP_SERVICE),
+    skills: r.resolve(t.SKILL_SERVICE),
+    decisions: r.resolve(t.DECISION_REPOSITORY),
+    workspaces: r.resolve(t.WORKSPACE_SERVICE),
+    paths: paths(r),
+    settings: r.resolve(t.SETTINGS_STORE),
+    identity: r.resolve(t.IDENTITY),
+    recorder: r.resolve(t.EVENT_RECORDER),
+    clock: clock(r),
+    log: log(r).child({ component: 'brain' }),
+  }), { source: SOURCE });
+
+  container.bind(b.BRAIN_SYNC_LOOP, (r) => new BrainSyncLoop(
+    r.resolve(b.BRAIN_SERVICE), r.resolve(b.WORKSPACE_BRAIN_REPOSITORY), log(r).child({ component: 'brain-sync' }),
+  ), { source: SOURCE });
 }
+
+const log = (r: Resolver) => r.tryResolve(EXECUTION_LOGGER) ?? nullLogger;
+const clock = (r: Resolver) => r.tryResolve(EXECUTION_CLOCK) ?? systemClock;
+const paths = (r: Resolver) => r.tryResolve(EXECUTION_PATHS) ?? createPaths();
