@@ -71,6 +71,21 @@ const MAX_FEEDBACK_PASSES = 5;
 export const CONTINUATION_PROMPT = 'A person held this task and worked with you directly in this session. '
   + 'Their changes are in the worktree. Continue the task from where things stand now and finish it.';
 
+/**
+ * What a person's terminal on a held task works in (spec "Hold, in order",
+ * step 4): the target an attempt would use and the grants it would get.
+ */
+export interface HoldPreparation {
+  readonly target: ExecutionTarget;
+  /** The attempt's grants, minus `human.ask`: the person is already in the session. */
+  readonly grants: readonly CapabilityGrant[];
+  readonly allowedRoots: readonly string[];
+  /** The task's normal prompt, for a session that starts fresh; `tools` are the hold gateway's. */
+  prompt(tools: readonly string[]): Promise<string>;
+  /** Gives the target back the way an attempt does; a worktree stays on disk. */
+  release(): Promise<void>;
+}
+
 export type TaskAttemptOutcome =
   /** Admission failed for a reason that will resolve on its own. Try again shortly. */
   | {
@@ -294,6 +309,64 @@ export class TaskExecutor {
     }
   }
 
+  // -------------------------------------------------------------------- holds
+
+  /**
+   * The profiles a hold on a task with no session yet may open on, in the
+   * order an attempt would try them. A retry's runtime override is read, not
+   * consumed: the attempt after the hold still gets it.
+   */
+  holdProfiles(taskId: TaskId): readonly RuntimeProfile[] {
+    const task = this.#requireTask(taskId);
+    const mission = this.#require(this.deps.missions.get(task.missionId), 'Mission', task.missionId);
+    const workspace = this.#require(this.deps.workspaces.get(mission.workspaceId), 'Workspace', mission.workspaceId);
+    const routing = this.#candidateProfiles(workspace, task, { peek: true });
+    return routing.kind === 'profiles' ? routing.profiles : [];
+  }
+
+  /**
+   * The target and grants a held task's terminal works with, made the way an
+   * attempt makes them, so the person's session sees what a run would: the
+   * same checkout (a worktree converges on the one already there), the same
+   * out folder (kept, as a continuation keeps it) and the same vetted grants.
+   */
+  async prepareHold(taskId: TaskId): Promise<{ ok: true; value: HoldPreparation } | { ok: false; reason: string }> {
+    const task = this.#requireTask(taskId);
+    const mission = this.#require(this.deps.missions.get(task.missionId), 'Mission', task.missionId);
+    const workspace = this.#require(this.deps.workspaces.get(mission.workspaceId), 'Workspace', mission.workspaceId);
+    const role = this.deps.roles.get(task.roleId, workspace.id);
+    if (role === undefined) return { ok: false, reason: `No role template '${task.roleId}' exists in this workspace.` };
+    const repository = this.#repositoryFor(task, mission);
+    const scope: EventScope = { workspaceId: mission.workspaceId, missionId: mission.id, taskId: task.id, roleId: task.roleId };
+    const kind = targetKindFor(task.executionPolicy.isolation);
+    const provisioned = await this.#provisionTarget(
+      kind, task, mission, workspace, repository, scope, this.#upstreamChangeBranch(task, mission),
+    );
+    if (!provisioned.ok) return provisioned;
+    const { target } = provisioned;
+    const release = (): Promise<void> => this.#releaseTarget(target, kind);
+    try {
+      await this.deps.harvester.prepare(target, scope, task, { keepOwn: true });
+      const vetted = this.#vet(this.#requestedGrants(role, task, workspace, repository, target), task, workspace, scope);
+      if (vetted.blockedOn !== null) {
+        await release();
+        return { ok: false, reason: vetted.blockedOn };
+      }
+      const grants = vetted.grants.filter((g) => g.capability !== CORE_CAPABILITIES.humanAsk);
+      const ctx: AttemptContext = { task, mission, workspace, repository, role, trial: null, scope, signal: new AbortController().signal };
+      return {
+        ok: true,
+        value: {
+          target, grants, allowedRoots: allowedRoots(grants, target.workingDirectory), release,
+          prompt: async (tools) => (await this.#compilePrompt({ ...ctx, grants, target, tools, feedback: null, round: null })).prompt,
+        },
+      };
+    } catch (e) {
+      await release();
+      throw e;
+    }
+  }
+
   // --------------------------------------------------------------- the attempt
 
   async #run(ctx: AttemptContext): Promise<TaskAttemptOutcome> {
@@ -444,25 +517,7 @@ export class TaskExecutor {
       if (overtakenProvisioning !== null) return overtakenProvisioning;
 
       // 4. Grants: least privilege, scoped to this target and this mission.
-      const requested = deps.grantBuilder.build({
-        role,
-        task: running,
-        autonomy: workspace.autonomy,
-        workingDirectory: target.workingDirectory,
-        artifactRoot: deps.paths.artifacts(workspace.id),
-        readOnlyPaths: repository === null ? [] : [repository.path],
-        // The repository this task works in, as the code host names it. Without
-        // it every github.* grant carried an empty scope and was denied: a
-        // task that had pushed its branch could not open its pull request.
-        allowedRepositories: [githubSlug(repository?.remoteUrl ?? null)].filter((s): s is string => s !== null),
-        // Wall time plus the longest the run may be parked on a person. This does
-        // not extend what the worker can do: a grant is only exercisable through
-        // the run-scoped tool socket, which is destroyed with the run, and the
-        // run's *active* time is still bounded by its deadline. A TTL of wall
-        // time alone would expire every grant while a question sat unanswered,
-        // and the worker would come back from the answer unable to act on it.
-        ttlMs: task.executionPolicy.maxWallTimeMs + MAX_PARKED_MS,
-      });
+      const requested = this.#requestedGrants(role, running, workspace, repository, target);
       const vetted = this.#vet(requested, running, workspace, scope);
       if (vetted.blockedOn !== null) {
         return this.#block(running, scope, vetted.blockedOn);
@@ -1689,6 +1744,30 @@ export class TaskExecutor {
    * declared as *required* is different: running without it would produce work
    * that silently does not do what the plan said, so the task blocks.
    */
+  #requestedGrants(
+    role: RoleTemplate, task: MissionTask, workspace: Workspace, repository: Repository | null, target: ExecutionTarget,
+  ): readonly CapabilityGrant[] {
+    return this.deps.grantBuilder.build({
+      role,
+      task,
+      autonomy: workspace.autonomy,
+      workingDirectory: target.workingDirectory,
+      artifactRoot: this.deps.paths.artifacts(workspace.id),
+      readOnlyPaths: repository === null ? [] : [repository.path],
+      // The repository this task works in, as the code host names it. Without
+      // it every github.* grant carried an empty scope and was denied: a
+      // task that had pushed its branch could not open its pull request.
+      allowedRepositories: [githubSlug(repository?.remoteUrl ?? null)].filter((s): s is string => s !== null),
+      // Wall time plus the longest the run may be parked on a person. This does
+      // not extend what the worker can do: a grant is only exercisable through
+      // the run-scoped tool socket, which is destroyed with the run, and the
+      // run's *active* time is still bounded by its deadline. A TTL of wall
+      // time alone would expire every grant while a question sat unanswered,
+      // and the worker would come back from the answer unable to act on it.
+      ttlMs: task.executionPolicy.maxWallTimeMs + MAX_PARKED_MS,
+    });
+  }
+
   #vet(
     grants: readonly CapabilityGrant[],
     task: MissionTask,
@@ -2272,7 +2351,7 @@ export class TaskExecutor {
    * instead of running on a runtime nobody chose (F11). A workspace nobody
    * has staffed runs exactly as it always did.
    */
-  #candidateProfiles(workspace: Workspace, task: MissionTask): CandidateRouting {
+  #candidateProfiles(workspace: Workspace, task: MissionTask, options: { readonly peek?: boolean } = {}): CandidateRouting {
     const all = this.deps.runtimeProfiles.list(workspace.id).filter((p) => p.enabled);
     const agents = this.#activeAgentCandidates(workspace, task);
 
@@ -2280,7 +2359,7 @@ export class TaskExecutor {
     // profile still has to pass health and capability selection, so overriding
     // onto a runtime that cannot do the work blocks with a reason rather than
     // failing halfway through the run.
-    const override = this.deps.overrides.take(task.id);
+    const override = options.peek === true ? this.deps.overrides.peek(task.id) : this.deps.overrides.take(task.id);
     if (override !== undefined) {
       const chosen = all.filter((p) => p.id === override);
       if (chosen.length > 0) return { kind: 'profiles', profiles: chosen, agents };

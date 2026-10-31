@@ -74,6 +74,7 @@ export { ApprovalServiceImpl } from './services/approval-service.js';
 export { ArtifactServiceImpl } from './services/artifact-service.js';
 export { IntegrationServiceImpl } from './services/integration-service.js';
 export { MissionServiceImpl, titleFromGoal } from './services/mission-service.js';
+export { HoldServiceImpl, parseShortstat, type HoldDeps } from './services/hold-service.js';
 export { FeedbackServiceImpl } from './services/feedback-service.js';
 export { CriteriaServiceImpl } from './services/criteria-service.js';
 export { ReadinessService, assertReadiness } from './services/readiness.js';

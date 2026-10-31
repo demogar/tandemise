@@ -165,6 +165,7 @@ export const OAUTH_CALLBACK = token<OAuthCallbackPort>('port.OAuthCallback');
 export const SYSTEM_SERVICE = token<SystemService>('application.SystemService');
 export const WORKSPACE_SERVICE = token<WorkspaceService>('application.WorkspaceService');
 export const MISSION_SERVICE = token<MissionService>('application.MissionService');
+export const HOLD_SERVICE = token<import('./services.js').HoldService>('application.HoldService');
 export const PLANNING_SERVICE = token<PlanningService>('application.PlanningService');
 export const APPROVAL_SERVICE = token<ApprovalService>('application.ApprovalService');
 export const ARTIFACT_SERVICE = token<ArtifactService>('application.ArtifactService');

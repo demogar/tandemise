@@ -1,0 +1,522 @@
+import { existsSync, readFileSync } from 'node:fs';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import type {
+  ApprovalRepositoryPort, AssignmentRepositoryPort, HoldDiffStat, HoldEnding, InteractiveSessionsPort, MemberRepositoryPort, Mission,
+  MissionRepositoryPort, MissionTask, RunRepositoryPort, RuntimeProfile, RuntimeProfileRepositoryPort, TaskHold, TaskHoldRepositoryPort,
+  TaskRepositoryPort, UnitOfWork,
+} from '@tandemise/domain';
+import { holdRefusal, isTrialMission } from '@tandemise/domain';
+import type { TaskView } from '@tandemise/api-contract';
+import type { ExecutionTarget } from '@tandemise/execution-core';
+import type { RunRequest, RuntimeManager, SlotReservation } from '@tandemise/runtimes-core';
+import type { Clock, Logger, MemberId, TandemisePaths, TaskHoldId, TaskId } from '@tandemise/shared';
+import { TandemiseError, asId, errorMessage, ids } from '@tandemise/shared';
+import type { HoldService, ProjectionService } from '../services.js';
+import type { SchedulerService } from '../engine/scheduler.js';
+import type { FeedbackRounds } from '../engine/feedback-rounds.js';
+import type { TaskExecutor } from '../engine/task-executor.js';
+import { NO_TOOL_SURFACE, type McpGatewayProvisioner, type RunToolSurface } from '../engine/mcp-gateway.js';
+import type { EventRecorder, EventScope } from '../support/event-recorder.js';
+import { isOutputApproval } from '../support/approval-view.js';
+import { actorFor, type Caller } from '../support/identity.js';
+import { assertMayTake } from '../support/take-rule.js';
+import { TaskHeld } from '../support/held.js';
+import { withdrawApproval } from '../support/withdraw.js';
+
+/** How long a hold waits for the run it stopped to end before giving up on opening the terminal. */
+const STOP_WAIT_MS = 10_000;
+const STOP_POLL_MS = 100;
+const LIVE_RUN = ['STARTING', 'RUNNING'];
+
+export interface HoldDeps {
+  readonly missions: MissionRepositoryPort;
+  readonly tasks: TaskRepositoryPort;
+  readonly runs: RunRepositoryPort;
+  readonly approvals: ApprovalRepositoryPort;
+  readonly members: MemberRepositoryPort;
+  readonly assignments: AssignmentRepositoryPort;
+  readonly holds: TaskHoldRepositoryPort;
+  readonly runtimeProfiles: RuntimeProfileRepositoryPort;
+  readonly runtimeManager: Pick<RuntimeManager, 'capabilities' | 'interactive' | 'occupy'>;
+  /** The attempt's own routing, target and grants, so a held session works where a run would. */
+  readonly executor: Pick<TaskExecutor, 'holdProfiles' | 'prepareHold'>;
+  /** The factory a run's tool surface comes from; a hold gets its own. */
+  readonly mcpGateway: McpGatewayProvisioner;
+  /** Absent when the daemon has no terminal host; every hold is then refused. */
+  readonly sessions?: InteractiveSessionsPort;
+  readonly rounds: FeedbackRounds;
+  readonly scheduler: Pick<SchedulerService, 'cancelTask' | 'activeTaskIds' | 'wake'>;
+  readonly projections: Pick<ProjectionService, 'taskView'>;
+  /** Why work may not start in the mission (P8); a hold on a step that has not started is a start. */
+  readonly limitRefusal?: (missionId: Mission['id']) => string | null;
+  readonly unitOfWork: UnitOfWork;
+  readonly recorder: EventRecorder;
+  readonly paths: TandemisePaths;
+  readonly clock: Clock;
+  readonly log: Logger;
+}
+
+/** What an open terminal holds on to, given back when it ends however it ends. */
+interface LiveHold {
+  readonly target: ExecutionTarget;
+  readonly releaseTarget: () => Promise<void>;
+  readonly gateway: RunToolSurface;
+  readonly slot: SlotReservation;
+  readonly controller: AbortController;
+}
+
+/** Where a hold resumes from: the profile holding the session, and the session (null for a fresh one). */
+interface HoldSource {
+  readonly profile: RuntimeProfile | null;
+  readonly session: string | null;
+  /** The run being stopped, whose session is read again once it has ended. */
+  readonly runId: string | null;
+}
+
+/**
+ * Hold, continue and release (spec "Hold, in order", "Continue").
+ *
+ * A person takes the keyboard on an agent step: its run is stopped into a
+ * resumable state, and the same session opens in a terminal on the runtime
+ * that holds it. As everywhere in the engine, the state transition is written
+ * before the side effect it authorizes - the task is HELD before the run is
+ * stopped, and the hold is ended before the terminal is - so a daemon that
+ * dies at any await leaves a record recovery can read. Anything that fails
+ * after the hold is written leaves the task HELD with the failure as its
+ * status line; the person can open the terminal again or continue.
+ */
+export class HoldServiceImpl implements HoldService {
+  readonly #live = new Map<TaskHoldId, LiveHold>();
+  readonly #unsubscribe: () => void;
+
+  constructor(private readonly deps: HoldDeps) {
+    this.#unsubscribe = deps.sessions?.onExit((holdId) => { void this.#exited(holdId); }) ?? (() => {});
+  }
+
+  async hold(taskId: TaskId, caller: Caller): Promise<TaskView> {
+    const { deps } = this;
+    const task = this.#task(taskId);
+    const mission = this.#mission(task);
+    const { actorId, recordedBy } = actorFor(deps, mission.workspaceId, caller);
+    const source = this.#source(task);
+    const openHold = deps.holds.openFor(task.id) ?? null;
+    const pending = deps.approvals.pendingForTask(task.id);
+    const refusal = holdRefusal({
+      task, mission, trial: isTrialMission(mission),
+      liveRun: deps.runs.listByTask(task.id).some((r) => LIVE_RUN.includes(r.status)),
+      outputUnderReview: task.status === 'AWAITING_APPROVAL' && pending.some((a) => isOutputApproval(a, task, deps.runs)),
+      runtimeHasInteractive: source.profile === null || deps.runtimeManager.capabilities(source.profile).includes('interactive_resume'),
+      openHold, holderName: openHold === null ? null : this.#nameOf(openHold.heldBy),
+    });
+    if (refusal !== null) refuse(refusal, task);
+    if (source.profile === null) refuse(`No runtime is routed to '${task.title}', so there is nothing to hold it in.`, task);
+    if (task.status === 'READY') this.#assertMayStart(task, mission);
+    assertMayTake(deps, task, mission, actorId, 'hold');
+    this.#assertTerminal();
+
+    const profile = source.profile;
+    const name = this.#nameOf(actorId);
+    const reason = `Held by ${name}.`;
+    const holdId = ids.taskHold();
+    const record: TaskHold = {
+      id: holdId, taskId: task.id, missionId: mission.id, heldBy: actorId, fromStatus: task.status,
+      runtimeProfileId: profile.id, sessionBefore: source.session, sessionAfter: null, ptyPid: null,
+      startedAt: deps.clock.now(), endedAt: null, endedBy: null, ending: null, consumedAt: null, diffStat: null,
+      // The hook's session file, the gateway config and the diff baseline live here.
+      dir: join(deps.paths.mission(mission.workspaceId, mission.id), 'holds', holdId),
+    };
+    const scope = this.#scope(task, mission, actorId);
+    const begun = deps.recorder.deferred(() => deps.unitOfWork.transaction(() => {
+      // Read again inside the unit: a run may have started, or someone else held it, since the checks.
+      const current = this.#task(task.id);
+      if (current.status !== task.status || deps.holds.openFor(task.id) !== undefined) {
+        refuse(`'${task.title}' changed while you asked; try holding it again.`, task);
+      }
+      let from: MissionTask = current;
+      let round = null;
+      if (current.status === 'AWAITING_APPROVAL') {
+        // Request changes, interactively: the output is set aside as a request
+        // for changes sets it aside, and the round reopens the task.
+        const card = deps.approvals.pendingForTask(current.id).find((a) => isOutputApproval(a, current, deps.runs));
+        const roundReason = `Held by ${name} to change it directly.`;
+        if (card !== undefined) deps.rounds.decideReviewCard(card, { actorId, recordedBy, note: roundReason });
+        const impact = deps.rounds.impactOf(current);
+        round = deps.rounds.beginRound({
+          task: current, feedbackIds: [], actorId, reason: roundReason,
+          downstream: impact.consumers.length === 0 ? 'none' : impact.defaultChoice,
+          ...(card === undefined ? {} : { keepCardId: card.id }),
+        });
+        from = round.task;
+      } else {
+        // The person answers in the terminal now; a question card nobody waits on is closed.
+        for (const card of deps.approvals.pendingForTask(current.id)) {
+          if (card.kind === 'choice' || isOutputApproval(card, current, deps.runs)) withdrawApproval(deps, card, reason);
+        }
+      }
+      deps.holds.create(record);
+      deps.tasks.update(current.id, { status: 'HELD', statusReason: reason, needsAttention: false });
+      deps.recorder.record(scope, { type: 'task.status', from: from.status, to: 'HELD', reason });
+      deps.recorder.record(scope, {
+        type: 'task.held', holdId: record.id, fromStatus: task.status, heldBy: actorId, sessionBefore: record.sessionBefore,
+      });
+      // The output is the person's until the hold ends, so work about to read it waits.
+      deps.rounds.holdDependents({ ...from, status: 'HELD' }, waitingFor(task));
+      return round;
+    }));
+    if (begun !== null) deps.rounds.stopOvertaken(begun);
+    deps.recorder.invalidate('tasks', mission.id);
+    deps.recorder.invalidate('approvals', mission.id);
+
+    // Only after the commit: the run ends with HELD on its row, so the executor keeps it.
+    deps.scheduler.cancelTask(task.id, new TaskHeld());
+    if (!(await this.#stopped(task.id))) {
+      this.#failed(record, "The agent's run did not stop in time. Open the terminal again in a moment.");
+      return this.#view(task.id);
+    }
+    // The run that was stopped may have learned its session as it ended.
+    const stoppedRun = source.runId === null ? undefined : deps.runs.get(asId<'RunId'>(source.runId));
+    if (stoppedRun?.externalSessionId != null && stoppedRun.externalSessionId !== record.sessionBefore) {
+      deps.holds.update(record.id, { sessionBefore: stoppedRun.externalSessionId });
+    }
+    await this.#openTerminal(record.id, false);
+    return this.#view(task.id);
+  }
+
+  async continue(taskId: TaskId, caller: Caller): Promise<TaskView> {
+    const task = this.#task(taskId);
+    const mission = this.#mission(task);
+    const { actorId } = actorFor(this.deps, mission.workspaceId, caller);
+    const hold = this.#openHold(task);
+    if (hold.heldBy !== actorId) {
+      throw new TandemiseError('CONFLICT', `Only ${this.#nameOf(hold.heldBy)} can continue this hold; you can release it.`, {
+        details: { taskId, holdId: hold.id, heldBy: hold.heldBy },
+      });
+    }
+    return this.#end(task, mission, hold, actorId, 'continued');
+  }
+
+  async release(taskId: TaskId, caller: Caller): Promise<TaskView> {
+    const task = this.#task(taskId);
+    const mission = this.#mission(task);
+    const { actorId } = actorFor(this.deps, mission.workspaceId, caller);
+    const hold = this.#openHold(task);
+    if (hold.heldBy !== actorId) assertMayTake(this.deps, task, mission, actorId, 'release');
+    return this.#end(task, mission, hold, actorId, 'released');
+  }
+
+  async reopen(taskId: TaskId, caller: Caller): Promise<TaskView> {
+    const task = this.#task(taskId);
+    const mission = this.#mission(task);
+    const { actorId } = actorFor(this.deps, mission.workspaceId, caller);
+    const hold = this.#openHold(task);
+    if (hold.heldBy !== actorId) {
+      throw new TandemiseError('CONFLICT', `Only ${this.#nameOf(hold.heldBy)} can open this hold's terminal; you can release it.`, {
+        details: { taskId, holdId: hold.id, heldBy: hold.heldBy },
+      });
+    }
+    this.#assertTerminal();
+    if (this.deps.sessions?.isOpen(hold.id) !== true) {
+      await this.#teardown(hold.id);
+      await this.#openTerminal(hold.id, true);
+    }
+    return this.#view(task.id);
+  }
+
+  terminalFor(taskId: TaskId): TaskHoldId | null {
+    const hold = this.deps.holds.openFor(taskId);
+    return hold !== undefined && this.deps.sessions?.isOpen(hold.id) === true ? hold.id : null;
+  }
+
+  dispose(): void {
+    this.#unsubscribe();
+  }
+
+  // ------------------------------------------------------------------ internals
+
+  /**
+   * Provisions the terminal for an open hold (spec step 4): the target, a
+   * gateway with the run's grants minus `human.ask`, one slot on the pinned
+   * profile, and the runtime's own interactive CLI resumed in the hold's
+   * session. A failure is the task's status line, in the daemon's words; the
+   * task stays HELD.
+   */
+  async #openTerminal(holdId: TaskHoldId, reopening: boolean): Promise<void> {
+    const { deps } = this;
+    const hold = deps.holds.get(holdId)!;
+    const task = this.#task(hold.taskId);
+    const mission = this.#mission(task);
+    const sessions = deps.sessions!;
+    const profile = deps.runtimeProfiles.get(asId<'RuntimeProfileId'>(hold.runtimeProfileId));
+    if (profile === undefined) {
+      this.#failed(hold, "The runtime this hold's session is on no longer exists. Release the hold to hand it back.");
+      return;
+    }
+    const prepared = await deps.executor.prepareHold(task.id).catch((e: unknown) => ({ ok: false as const, reason: errorMessage(e) }));
+    if (!prepared.ok) {
+      this.#failed(hold, prepared.reason);
+      return;
+    }
+    const prep = prepared.value;
+    const controller = new AbortController();
+    let gateway: RunToolSurface = NO_TOOL_SURFACE;
+    let slot: SlotReservation | undefined;
+    try {
+      await mkdir(hold.dir, { recursive: true, mode: 0o700 });
+      // What the hold's diff is measured against: the checkout as the person found it.
+      const headFile = join(hold.dir, 'head.txt');
+      if (!existsSync(headFile)) {
+        const head = await prep.target.exec({ command: 'git', args: ['rev-parse', 'HEAD'] });
+        if (head.exitCode === 0 && head.stdout.trim() !== '') await writeFile(headFile, head.stdout.trim());
+      }
+      const assignment = deps.assignments.create({
+        id: ids.workerAssignment(), workspaceId: mission.workspaceId, missionId: mission.id, taskId: task.id, roleId: task.roleId,
+        runtimeProfileId: profile.id, executionTargetId: prep.target.id, grants: prep.grants,
+        budgets: { maxWallTimeMs: task.executionPolicy.maxWallTimeMs, maxAttempts: task.retryPolicy.maxAttempts },
+        createdAt: deps.clock.now(),
+      });
+      gateway = await deps.mcpGateway.provision({
+        runId: null, owner: { key: hold.id, dir: hold.dir }, workspaceId: mission.workspaceId, missionId: mission.id,
+        assignment, workingDirectory: prep.target.workingDirectory, signal: controller.signal,
+      });
+      const session = this.#sessionOf(hold);
+      // A hold with no session starts the agent's work fresh, with the prompt a run would get.
+      const initialPrompt = session === null ? await prep.prompt(gateway.toolNames) : null;
+      const request: RunRequest = {
+        runId: ids.run(), profile, prompt: initialPrompt ?? '', workingDirectory: prep.target.workingDirectory,
+        grants: prep.grants.map((g) => g.capability), allowedRoots: prep.allowedRoots, mcpConfigPath: gateway.mcpConfigPath,
+        maxWallTimeMs: task.executionPolicy.maxWallTimeMs, signal: controller.signal,
+        log: deps.log.child({ holdId: hold.id, taskId: task.id, missionId: mission.id }),
+      };
+      const invocation = deps.runtimeManager.interactive(profile, session, request, { sessionFile: join(hold.dir, 'session-id'), initialPrompt });
+      slot = deps.runtimeManager.occupy(profile);
+      const { pid } = sessions.open(hold.id, invocation);
+      this.#live.set(hold.id, { target: prep.target, releaseTarget: prep.release, gateway, slot, controller });
+      deps.holds.update(hold.id, { ptyPid: pid });
+      // A failure an earlier try left on the status line is over.
+      const reason = `Held by ${this.#nameOf(hold.heldBy)}.`;
+      if (this.#task(task.id).statusReason !== reason) deps.tasks.update(task.id, { statusReason: reason });
+      deps.recorder.invalidate('tasks', mission.id);
+      if (reopening) deps.log.info('hold.reopened', { holdId: hold.id, taskId: task.id });
+    } catch (e) {
+      slot?.release();
+      controller.abort();
+      await gateway.dispose().catch(() => undefined);
+      await prep.release().catch(() => undefined);
+      this.#failed(hold, errorMessage(e));
+    }
+  }
+
+  /** Continue and Release: the hold ends before its terminal does, then the work goes back to the queue. */
+  async #end(task: MissionTask, mission: Mission, hold: TaskHold, actorId: MemberId, ending: HoldEnding): Promise<TaskView> {
+    const { deps } = this;
+    const sessionAfter = this.#sessionOf(hold);
+    const diffStat = await this.#diffStat(hold);
+    const endedAt = deps.clock.now();
+    const scope = this.#scope(task, mission, actorId);
+    const reason = ending === 'continued' ? `Continued by ${this.#nameOf(actorId)}.` : `Released by ${this.#nameOf(actorId)}.`;
+    deps.recorder.deferred(() => deps.unitOfWork.transaction(() => {
+      if (deps.holds.openFor(task.id)?.id !== hold.id) refuse(`'${task.title}' is no longer held.`, task);
+      const current = this.#task(task.id);
+      deps.holds.update(hold.id, { endedAt, endedBy: actorId, ending, sessionAfter, diffStat });
+      deps.tasks.update(task.id, { status: 'READY', statusReason: null, needsAttention: false, finishedAt: null });
+      deps.recorder.record(scope, { type: 'task.status', from: current.status, to: 'READY', reason });
+      deps.recorder.record(scope, {
+        type: 'task.hold_ended', holdId: hold.id, ending, endedBy: actorId, sessionAfter,
+        durationMs: Math.max(0, Date.parse(endedAt) - Date.parse(hold.startedAt)), diffStat,
+      });
+      deps.rounds.releaseHeld(current, waitingFor(task));
+    }));
+    deps.recorder.invalidate('tasks', mission.id);
+    // Only after the commit: the terminal closing reads as an exit of a hold that has already ended.
+    if (deps.sessions?.isOpen(hold.id) === true) {
+      await deps.sessions.end(hold.id).catch((e: unknown) => deps.log.warn('hold.end_failed', { holdId: hold.id, error: errorMessage(e) }));
+    }
+    await this.#teardown(hold.id);
+    deps.scheduler.wake();
+    return this.#view(task.id);
+  }
+
+  /** The terminal went away on its own (`/exit`, a crash): the task stays HELD and can be reopened or continued. */
+  async #exited(holdId: TaskHoldId): Promise<void> {
+    const { deps } = this;
+    try {
+      const hold = deps.holds.get(holdId);
+      if (hold !== undefined && hold.endedAt === null) {
+        deps.holds.update(holdId, { ptyPid: null, sessionAfter: this.#sessionOf(hold) });
+        deps.recorder.invalidate('tasks', hold.missionId);
+      }
+      await this.#teardown(holdId);
+    } catch (e) {
+      deps.log.warn('hold.exit_failed', { holdId, error: errorMessage(e) });
+    }
+  }
+
+  /** Gives back what an open terminal held: its gateway, its slot and its target. Idempotent. */
+  async #teardown(holdId: TaskHoldId): Promise<void> {
+    const live = this.#live.get(holdId);
+    if (live === undefined) return;
+    this.#live.delete(holdId);
+    live.slot.release();
+    live.controller.abort();
+    await live.gateway.dispose().catch(() => undefined);
+    await live.releaseTarget().catch(() => undefined);
+  }
+
+  /**
+   * The session the terminal ended on: what its hook last wrote, else what
+   * the hold already knew. A failed hook leaves no file, and the session the
+   * hold started from is then the best there is.
+   */
+  #sessionOf(hold: TaskHold): string | null {
+    try {
+      const written = readFileSync(join(hold.dir, 'session-id'), 'utf8').trim();
+      if (written !== '') return written;
+    } catch { /* no file: the hook did not run */ }
+    return hold.sessionAfter ?? hold.sessionBefore;
+  }
+
+  /**
+   * Files and lines changed since the hold began, untracked files included:
+   * they are staged into a throwaway index, never the checkout's own. Null
+   * when it cannot be measured; a hold ends either way.
+   */
+  async #diffStat(hold: TaskHold): Promise<HoldDiffStat | null> {
+    const { deps } = this;
+    let head: string;
+    try { head = readFileSync(join(hold.dir, 'head.txt'), 'utf8').trim(); } catch { return null; }
+    let target = this.#live.get(hold.id)?.target;
+    let release: (() => Promise<void>) | null = null;
+    if (target === undefined) {
+      const prepared = await deps.executor.prepareHold(hold.taskId).catch(() => null);
+      if (prepared === null || !prepared.ok) return null;
+      target = prepared.value.target;
+      release = prepared.value.release;
+    }
+    const index = join(hold.dir, 'diff.index');
+    const env = { GIT_INDEX_FILE: index };
+    try {
+      await rm(index, { force: true });
+      // The hold's own folder may sit inside the checkout (a mission with no repository); it is not the person's work.
+      const added = await target.exec({ command: 'git', args: ['add', '-A', '--', '.', ':(exclude)holds'], env });
+      if (added.exitCode !== 0) return null;
+      const diff = await target.exec({ command: 'git', args: ['diff', '--cached', '--shortstat', head], env });
+      return diff.exitCode === 0 ? parseShortstat(diff.stdout) : null;
+    } catch (e) {
+      deps.log.warn('hold.diffstat_failed', { holdId: hold.id, error: errorMessage(e) });
+      return null;
+    } finally {
+      await rm(index, { force: true }).catch(() => undefined);
+      await release?.().catch(() => undefined);
+    }
+  }
+
+  /** Waits for the stopped run to end; false when it did not in time. */
+  async #stopped(taskId: TaskId): Promise<boolean> {
+    const end = Date.now() + STOP_WAIT_MS;
+    const live = (): boolean => this.deps.scheduler.activeTaskIds().includes(taskId)
+      || this.deps.runs.listByTask(taskId).some((r) => LIVE_RUN.includes(r.status));
+    while (live()) {
+      if (Date.now() >= end) return false;
+      await new Promise((r) => setTimeout(r, STOP_POLL_MS));
+    }
+    return true;
+  }
+
+  /**
+   * The profile and session a hold opens on. A session the agent has not yet
+   * continued from (an earlier hold, a restart's handle) comes first; a step
+   * that has run resumes its latest session where it ran; a step that has not
+   * gets the runtime an attempt would get, and starts fresh.
+   */
+  #source(task: MissionTask): HoldSource {
+    const { deps } = this;
+    const profile = (id: string): RuntimeProfile | null => deps.runtimeProfiles.get(asId<'RuntimeProfileId'>(id)) ?? null;
+    const unread = deps.holds.listByMission(task.missionId)
+      .filter((h) => h.taskId === task.id && h.endedAt !== null && h.consumedAt === null)
+      .sort((a, b) => (b.endedAt ?? '').localeCompare(a.endedAt ?? ''))[0];
+    if (unread !== undefined) return { profile: profile(unread.runtimeProfileId), session: unread.sessionAfter ?? unread.sessionBefore, runId: null };
+    const runs = [...deps.runs.listByTask(task.id)].sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+    if (task.status === 'READY') {
+      const resumable = runs.find((r) => r.status === 'RESUMABLE' && r.externalSessionId !== null);
+      if (resumable !== undefined) return { profile: profile(resumable.runtimeProfileId), session: resumable.externalSessionId, runId: null };
+      const routed = deps.executor.holdProfiles(task.id);
+      const chosen = routed.find((p) => deps.runtimeManager.capabilities(p).includes('interactive_resume')) ?? routed[0] ?? null;
+      return { profile: chosen, session: null, runId: null };
+    }
+    const run = runs.find((r) => LIVE_RUN.includes(r.status)) ?? runs.find((r) => r.externalSessionId !== null) ?? runs[0];
+    if (run === undefined) return { profile: null, session: null, runId: null };
+    return { profile: profile(run.runtimeProfileId), session: run.externalSessionId, runId: run.id };
+  }
+
+  /** A hold on a step that has not started is its start, so the start's own checks apply (spec "Where a hold can start"). */
+  #assertMayStart(task: MissionTask, mission: Mission): void {
+    const { deps } = this;
+    if (task.approvalPolicy.beforeStart) {
+      const approved = deps.approvals.list({ missionId: mission.id, statuses: ['APPROVED'] })
+        .some((a) => a.taskId === task.id && a.kind === 'action');
+      if (!approved) refuse('Approve the start first, then you can hold it.', task);
+    }
+    const limit = deps.limitRefusal?.(mission.id) ?? null;
+    if (limit !== null) refuse(limit, task);
+  }
+
+  #assertTerminal(): void {
+    const sessions = this.deps.sessions;
+    if (sessions === undefined) throw new TandemiseError('CONFLICT', 'This daemon has no terminal to hold a step in.');
+    const available = sessions.available();
+    if (!available.ok) throw new TandemiseError('CONFLICT', available.reason);
+  }
+
+  /** After the hold is written, a failure is the task's status line; the task stays HELD. */
+  #failed(hold: TaskHold, reason: string): void {
+    this.deps.log.warn('hold.open_failed', { holdId: hold.id, taskId: hold.taskId, reason });
+    this.deps.tasks.update(hold.taskId, { statusReason: reason });
+    this.deps.recorder.invalidate('tasks', hold.missionId);
+  }
+
+  #openHold(task: MissionTask): TaskHold {
+    const hold = this.deps.holds.openFor(task.id);
+    if (hold === undefined) refuse(`'${task.title}' is not held.`, task);
+    return hold;
+  }
+
+  #scope(task: MissionTask, mission: Mission, actorId: MemberId): EventScope {
+    return { workspaceId: mission.workspaceId, missionId: mission.id, taskId: task.id, roleId: task.roleId, actorId };
+  }
+
+  #nameOf(memberId: string): string {
+    return this.deps.members.get(asId<'MemberId'>(memberId))?.name ?? 'someone';
+  }
+
+  #view(taskId: TaskId): TaskView {
+    return this.deps.projections.taskView(taskId);
+  }
+
+  #task(id: TaskId): MissionTask {
+    const task = this.deps.tasks.get(id);
+    if (task === undefined) throw TandemiseError.notFound('Task', id);
+    return task;
+  }
+
+  #mission(task: MissionTask): Mission {
+    const mission = this.deps.missions.get(task.missionId);
+    if (mission === undefined) throw TandemiseError.notFound('Mission', task.missionId);
+    return mission;
+  }
+}
+
+function refuse(reason: string, task: MissionTask): never {
+  throw new TandemiseError('CONFLICT', reason, { details: { taskId: task.id, status: task.status } });
+}
+
+/** What the work downstream of a held step waits on; the same words hold it and let it go. */
+function waitingFor(task: MissionTask): string {
+  return `Waiting for '${task.key}' while it is held.`;
+}
+
+/** ` 2 files changed, 5 insertions(+), 1 deletion(-)`; empty output is no change. */
+export function parseShortstat(text: string): HoldDiffStat {
+  const n = (re: RegExp): number => Number(re.exec(text)?.[1] ?? 0);
+  return { files: n(/(\d+) files? changed/), insertions: n(/(\d+) insertions?\(\+\)/), deletions: n(/(\d+) deletions?\(-\)/) };
+}

@@ -44,6 +44,7 @@ import { WorkflowServiceImpl } from './services/workflow-service.js';
 import { Waiter } from './engine/waiter.js';
 import { IntegrationServiceImpl } from './services/integration-service.js';
 import { MissionServiceImpl } from './services/mission-service.js';
+import { HoldServiceImpl } from './services/hold-service.js';
 import { FeedbackServiceImpl } from './services/feedback-service.js';
 import { CriteriaServiceImpl } from './services/criteria-service.js';
 import { ReadinessService } from './services/readiness.js';
@@ -261,13 +262,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       grantBuilder: r.resolve(GRANT_BUILDER),
       policy: r.resolve(POLICY_ENGINE),
       approvalFactory: r.resolve(APPROVAL_FACTORY),
-      mcpGateway: new McpGatewayProvisioner({
-        broker: r.tryResolve(TOOL_BROKER) ?? null,
-        exec: () => r.resolve(INTEGRATION_COMMAND_EXECUTOR),
-        paths: paths(r),
-        clock: clock(r),
-        log: log(r).child({ component: 'mcp-gateway' }),
-      }),
+      mcpGateway: mcpGateway(r),
       toolBroker: r.tryResolve(TOOL_BROKER) ?? null,
       overrides: r.resolve(t.RUNTIME_OVERRIDES),
       templates: r.resolve(t.ARTIFACT_TEMPLATES),
@@ -695,6 +690,31 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       targets: r.resolve(t.EXECUTION_TARGET_REPOSITORY),
     }), { source: SOURCE });
 
+    bind(t.HOLD_SERVICE, (r) => new HoldServiceImpl({
+      missions: r.resolve(t.MISSION_REPOSITORY),
+      tasks: r.resolve(t.TASK_REPOSITORY),
+      runs: r.resolve(t.RUN_REPOSITORY),
+      approvals: r.resolve(t.APPROVAL_REPOSITORY),
+      members: r.resolve(t.MEMBER_REPOSITORY),
+      assignments: r.resolve(t.ASSIGNMENT_REPOSITORY),
+      holds: r.resolve(t.TASK_HOLD_REPOSITORY),
+      runtimeProfiles: r.resolve(t.RUNTIME_PROFILE_REPOSITORY),
+      runtimeManager: r.resolve(RUNTIME_MANAGER),
+      executor: r.resolve(t.TASK_EXECUTOR),
+      mcpGateway: mcpGateway(r),
+      // Bound by the daemon when its terminal host loads; without it every hold is refused.
+      ...(r.tryResolve(t.INTERACTIVE_SESSIONS) === undefined ? {} : { sessions: r.resolve(t.INTERACTIVE_SESSIONS) }),
+      rounds: r.resolve(t.FEEDBACK_ROUNDS),
+      scheduler: r.resolve(t.SCHEDULER),
+      projections: r.resolve(t.PROJECTION_SERVICE),
+      limitRefusal: (missionId) => r.resolve(t.LIMIT_SERVICE).refusal(missionId),
+      unitOfWork: r.resolve(t.UNIT_OF_WORK),
+      recorder: r.resolve(t.EVENT_RECORDER),
+      paths: paths(r),
+      clock: clock(r),
+      log: log(r).child({ component: 'holds' }),
+    }), { source: SOURCE, dispose: (service) => { if (service instanceof HoldServiceImpl) service.dispose(); } });
+
     bind(t.REFINEMENT_SERVICE, (r) => new RefinementServiceImpl({
       workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
       repositories: r.resolve(t.REPO_REPOSITORY),
@@ -960,6 +980,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       setup: r.resolve(t.SETUP_SERVICE),
       contributions: r.resolve(t.CONTRIBUTION_SERVICE),
       evals: r.resolve(t.EVAL_SERVICE),
+      holds: r.resolve(t.HOLD_SERVICE),
     }), { source: SOURCE });
   });
 }
@@ -977,6 +998,15 @@ export const applicationModule: TandemiseModule = createApplicationModule();
 export function createServices(container: Container): TandemiseServices {
   return container.resolve(t.TANDEMISE_SERVICES);
 }
+
+/** The factory a run's tool surface comes from; a held task's terminal gets its surface from the same one. */
+const mcpGateway = (r: Resolver): McpGatewayProvisioner => new McpGatewayProvisioner({
+  broker: r.tryResolve(TOOL_BROKER) ?? null,
+  exec: () => r.resolve(INTEGRATION_COMMAND_EXECUTOR),
+  paths: paths(r),
+  clock: clock(r),
+  log: log(r).child({ component: 'mcp-gateway' }),
+});
 
 const log = (r: Resolver): Logger => r.tryResolve(EXECUTION_LOGGER) ?? nullLogger;
 const clock = (r: Resolver): Clock => r.tryResolve(EXECUTION_CLOCK) ?? systemClock;

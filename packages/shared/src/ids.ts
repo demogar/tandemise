@@ -137,6 +137,7 @@ export const ids = {
   evalCase: () => newId<'EvalCaseId'>('eca'),
   evalRun: () => newId<'EvalRunId'>('ern'),
   evalTrial: () => newId<'EvalTrialId'>('etr'),
+  taskHold: () => newId<'TaskHoldId'>('hld'),
 } as const;
 
 /** Cast a persisted string back to its branded type at a trust boundary. */

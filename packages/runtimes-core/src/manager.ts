@@ -262,23 +262,34 @@ export class RuntimeManager {
   }
 
   /**
+   * A slot held by a process that is not a run: a person's terminal on a held
+   * task, which is a live runtime process from the moment it spawns. Taken even
+   * when the profile is full, because the process exists either way, and kept
+   * with no expiry until it is released, because a hold lasts as long as the
+   * person works.
+   */
+  occupy(profile: RuntimeProfile): SlotReservation {
+    return this.#reserve(profile.id, false, null);
+  }
+
+  /**
    * Holds a slot from selection until a run takes it over or it is released.
    * The TTL is a backstop so a caller that never releases cannot saturate a
    * profile forever.
    */
-  #reserve(profileId: RuntimeProfileId, retained = false): SlotReservation {
+  #reserve(profileId: RuntimeProfileId, retained = false, ttlMs: number | null = retained ? RETAINED_SLOT_TTL_MS : RESERVATION_TTL_MS): SlotReservation {
     // A retained slot is already counted in flight: the run that held it
     // passes it on without ever giving it back.
     if (!retained) this.#claim(profileId);
     let held = true;
-    const timer = setTimeout(() => {
+    const timer = ttlMs === null ? undefined : setTimeout(() => {
       this.#reservations.delete(reservation);
       if (!held) return;
       held = false;
       this.#log.warn('runtime reservation expired unstarted', { profileId });
       this.#release(profileId);
-    }, retained ? RETAINED_SLOT_TTL_MS : RESERVATION_TTL_MS);
-    timer.unref?.();
+    }, ttlMs);
+    timer?.unref?.();
     const reservation: ReservationHandle = {
       release: () => {
         this.#reservations.delete(reservation);

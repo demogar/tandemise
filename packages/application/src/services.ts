@@ -70,6 +70,8 @@ export interface TandemiseServices {
   readonly contributions: ContributionService;
   /** Eval suites, saving a finished step as a case, and the run-score summary (P3b). */
   readonly evals: import('./services/eval-service.js').EvalService;
+  /** A person taking the keyboard on an agent step, and handing it back. */
+  readonly holds: HoldService;
 }
 
 /** One contribution pinned as Evidence, with what a caller needs to type it next. */
@@ -202,6 +204,23 @@ export interface MissionService {
    * written, unless the step is parked and its mission still open.
    */
   handBack(taskId: TaskId, caller: Caller, request: HandBackRequest): Promise<{ task: TaskView; artifacts: ArtifactManifest[] }>;
+}
+
+/**
+ * Hold and interact: a person opens an agent step's own session in a
+ * terminal, then hands it back. Refusals are CONFLICT, in the daemon's words.
+ */
+export interface HoldService {
+  /** Stops the step's run into a resumable state and opens its session in a terminal. */
+  hold(taskId: TaskId, caller: Caller): Promise<TaskView>;
+  /** The holder hands the work back: the agent continues from the session the person ended on. */
+  continue(taskId: TaskId, caller: Caller): Promise<TaskView>;
+  /** Ends the hold without the continuation prompt; anyone who may take the step may release it. */
+  release(taskId: TaskId, caller: Caller): Promise<TaskView>;
+  /** Opens the terminal again for an open hold whose terminal has exited. */
+  reopen(taskId: TaskId, caller: Caller): Promise<TaskView>;
+  /** The open hold whose terminal is running, for the terminal socket; null when there is none. */
+  terminalFor(taskId: TaskId): import('@tandemise/shared').TaskHoldId | null;
 }
 
 export interface PlanningService {
