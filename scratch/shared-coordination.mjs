@@ -54,7 +54,11 @@ export function sharedTeam(clock) {
           holder: { memberId: me.memberId, memberName: displayName, deviceId: me.deviceId, deviceLabel },
         })),
       }),
-      mailbox: { pull: async () => [], ack: async () => ({ acked: [], ignored: [] }) },
+      // The relay's mailbox, leased to this device (Ruling 24).
+      mailbox: {
+        pull: async (projectKey, max, leaseSeconds = 60) => store.pull(projectKey, me.deviceId, max, leaseSeconds),
+        ack: async (ids) => store.ack(ids, me.deviceId),
+      },
     };
   };
   return { store, leases, join: join_, close: () => db.close() };

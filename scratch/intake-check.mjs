@@ -465,7 +465,7 @@ section('store: migration and repositories');
     check("removing the tracker item clears the mission's pointer", items.get(tracked.id) === undefined && missions.get(mission.id)?.trackerItemId === null, missions.get(mission.id)?.trackerItemId);
 
     // 7. The webhook mailbox: claim, release, ack.
-    const id = mailbox.put({ sourceId: 'github', headers: { 'x-github-event': 'issues' }, body: new TextEncoder().encode('{"a":1}') });
+    const id = mailbox.put({ workspaceId: ws, sourceId: 'github', headers: { 'x-github-event': 'issues' }, body: new TextEncoder().encode('{"a":1}') });
     const first = mailbox.pull(10);
     check('put then pull(10) returns the message', first.length === 1 && first[0].id === id && new TextDecoder().decode(first[0].body) === '{"a":1}' && first[0].headers['x-github-event'] === 'issues', first);
     check('a second pull returns nothing (claimed)', mailbox.pull(10).length === 0);

@@ -468,6 +468,7 @@ export interface IntakeTokenRow {
 /** One webhook delivery, as the opt-in listener received it. */
 export interface WebhookMessage {
   readonly id: WebhookMessageId;
+  readonly workspaceId: WorkspaceId;
   readonly sourceId: string;
   readonly receivedAt: Timestamp;
   readonly headers: Readonly<Record<string, string>>;

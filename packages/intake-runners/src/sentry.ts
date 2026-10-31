@@ -13,6 +13,10 @@ const LABEL = 'Sentry';
 const DEFAULT_API = 'https://sentry.io';
 /** Plan Task 11: what a webhook whose signature is not the client secret's throws. */
 export const SENTRY_SIGNATURE_MISMATCH = "The Sentry signature doesn't match.";
+/** Ruling 24: a delivery whose `Sentry-Hook-Timestamp` is outside the replay window. */
+export const SENTRY_DELIVERY_STALE = "This Sentry delivery's timestamp is more than 5 minutes from this computer's clock, so it was not read.";
+/** Ruling 24: how far `Sentry-Hook-Timestamp` may be from when the delivery was received. */
+const REPLAY_WINDOW_MS = 5 * 60_000;
 
 /**
  * Sentry as an intake runner (spec §2, §8; plan Task 11). The source's
@@ -76,6 +80,13 @@ export class SentryRunner implements IntakeRunner {
    * `Sentry-Hook-Signature` header is the HMAC-SHA256 (hex) of the body's
    * exact bytes with the integration's client secret. Only issue payloads
    * carry a signal; any other resource answers none.
+   *
+   * `Sentry-Hook-Timestamp` (Unix seconds) more than 5 minutes from when the
+   * delivery was received (`req.receivedAt`, else the runner's clock) is
+   * refused, so an old delivery replayed later is not read (Ruling 24). The
+   * signature does not cover the timestamp, so this only narrows a replay;
+   * dedupe by fingerprint is what makes one harmless. A delivery without the
+   * header (Sentry always sends it) is not refused for that.
    */
   async fromWebhook(req: RunnerWebhookRequest, ctx: RunnerContext): Promise<readonly RunnerSignal[]> {
     const secret = await ctx.secrets.get('clientSecret');
@@ -83,6 +94,14 @@ export class SentryRunner implements IntakeRunner {
     const given = header(req.headers, 'sentry-hook-signature') ?? '';
     const expected = createHmac('sha256', secret).update(req.body).digest('hex');
     if (!sameText(given, expected)) throw new TandemiseError('PERMISSION_DENIED', SENTRY_SIGNATURE_MISMATCH);
+    const stamp = header(req.headers, 'sentry-hook-timestamp');
+    if (stamp !== undefined) {
+      const sentAtMs = Number(stamp) * 1000;
+      const receivedAtMs = req.receivedAt === undefined ? ctx.clock.epochMs() : Date.parse(req.receivedAt);
+      if (!Number.isFinite(sentAtMs) || !Number.isFinite(receivedAtMs) || Math.abs(receivedAtMs - sentAtMs) > REPLAY_WINDOW_MS) {
+        throw new TandemiseError('PERMISSION_DENIED', SENTRY_DELIVERY_STALE);
+      }
+    }
     const issue = record(record(parseBody(req.body, LABEL))['data'])['issue'];
     if (issue === undefined) return [];
     const signal = issueSignal(ctx.source.instance, issue);

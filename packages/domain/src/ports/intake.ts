@@ -145,7 +145,8 @@ export interface TrackerItemRepositoryPort {
  * the relay (#54) can supply its own later.
  */
 export interface WebhookMailboxPort {
-  put(msg: { readonly sourceId: string; readonly headers: Readonly<Record<string, string>>; readonly body: Uint8Array }): WebhookMessageId;
+  /** The project is in the listener's path (`/hooks/:workspaceId/:sourceId`, Ruling 24). */
+  put(msg: { readonly workspaceId: WorkspaceId; readonly sourceId: string; readonly headers: Readonly<Record<string, string>>; readonly body: Uint8Array }): WebhookMessageId;
   /** Claims up to `max` unclaimed messages, oldest first. */
   pull(max: number): readonly WebhookMessage[];
   /** Done: never pulled again. */
@@ -158,6 +159,16 @@ export interface WebhookMailboxPort {
    * Returns how many. Plan Task 11, RULINGS ruling 17.
    */
   releaseStale(claimedBefore: string): number;
+  /** Deletes done messages acked before `doneBefore`; returns how many (Ruling 24). */
+  prune(doneBefore: string): number;
+  /**
+   * Whether a delivery another mailbox handed this daemon (the relay's,
+   * keyed `relay:<project key>:<message id>`) was already read here, so a
+   * redelivery after a lost ack is a no-op (relay spec, "Ack"; Ruling 24).
+   */
+  handled(key: string): boolean;
+  /** Records such a delivery as read, as a done row with no body; pruned like the others. */
+  recordHandled(entry: { readonly key: string; readonly workspaceId: WorkspaceId; readonly sourceId: string }): void;
 }
 
 /**
@@ -344,6 +355,12 @@ export type ClosureResult =
 export interface RunnerWebhookRequest {
   readonly headers: Readonly<Record<string, string>>;
   readonly body: Uint8Array;
+  /**
+   * When the mailbox received it, local or the relay's. A replay window is
+   * measured from here, not from when it is read, so a delivery that waited
+   * in a mailbox is still read (Ruling 24). Absent: the runner's clock.
+   */
+  readonly receivedAt?: string;
 }
 
 /**

@@ -248,8 +248,10 @@ section('daemon: secrets over the API and the opt-in webhook listener (plan Task
       && fake.issues.get('GAR-1')?.summary === 'TypeError: basket is null', { status: checked.status, board: checked.body, issue: fake.issues.get('GAR-1')?.summary });
 
     const hookUrl = `http://127.0.0.1:${hookPort}`;
-    const delivered = await fetch(`${hookUrl}/hooks/sentry-web`, { method: 'POST', body: '{"data":{}}' });
-    check('with intakeWebhookPort set, the listener answers POST /hooks/sentry-web with 202', delivered.status === 202, delivered.status);
+    const delivered = await fetch(`${hookUrl}/hooks/${ws}/sentry-web`, { method: 'POST', body: '{"data":{}}' });
+    check('with intakeWebhookPort set, the listener answers POST /hooks/<workspace>/sentry-web with 202', delivered.status === 202, delivered.status);
+    const unconfigured = await Promise.all([`${hookUrl}/hooks/sentry-web`, `${hookUrl}/hooks/${ws}/nope`].map((u) => fetch(u, { method: 'POST', body: '{}' }).then((r) => r.status)));
+    check('…and 404 for the old path and for a source the project does not configure (Ruling 24)', unconfigured.every((s) => s === 404), unconfigured);
     const apiOnHook = await fetch(`${hookUrl}/v1/health`);
     check('…and serves nothing of the API (GET /v1/health is 404)', apiOnHook.status === 404, apiOnHook.status);
     check('…on its own port, not the API\'s', new URL(daemon.url).port !== String(hookPort));

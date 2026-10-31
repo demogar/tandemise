@@ -527,3 +527,46 @@ was ambiguous or wrong, decided against the spec
     YouTracks: nothing carrying the token reaches B, the sentence, confirm, then B; and the first-use adoption);
     intake-runners-check "a moved api address gets no token until confirmed" (two fake Sentries); intake-daemon-check
     (both addresses moved over the API, the board's problem, both confirm routes).
+- Ruling 24 (one mailbox path for the relay and the listener, review fix on PR #73): decided from spec §2 ("Webhook-only
+  sources"), §3, the relay spec ("The webhook mailbox") and Rulings 17 and 22:
+  - **The relay's mailbox is drained.** `IntakeRunnerHost` drains the local mailbox, then the team's
+    (`CoordinationService.pull`/`ack`, `RelayMailbox` in the host's deps): per project key of each project with a
+    tracker and sources, up to 20 messages leased for 60 s. Solo this is the local coordination mailbox, same path.
+  - **Endpoint ↔ source.** The relay names no source on an endpoint beyond its free-text kind, so the mapping is the
+    endpoint's **name == the intake source id** (`sentry-web`), within the project key. A non-admin device lists no
+    endpoints, so `MailboxMessage` gains an optional `endpointName` (the relay's pull joins `coord_endpoints.name`);
+    an older relay leaves it out and its messages read as unconfigured.
+  - **Same path, under the lease.** A mapped delivery goes through the runner's `fromWebhook` → the pipeline → ack, as
+    a local one does, only on the daemon holding the source's lease (Ruling 22, asked once per drain per source). A
+    source off on this machine or leased to another daemon is left unacked; its lease lapses in 60 s and the holder
+    takes it. A delivery the runner refuses is acked with the runner's words on `last_error`, like a local one. A
+    configured source no shipped runner reads webhooks for is acked with "No runner for this source.".
+  - **Unconfigured endpoint: the relay's semantics.** Not acked and not read; logged
+    (`intake.relay_webhook_unknown_endpoint`). The relay leases it again and parks it after ten leases, which is how
+    the relay records "couldn't be processed" for Settings → Team relay → Webhooks (retry or drop there). Acking it
+    would drop a teammate's delivery for good. Known cost: a daemon that does not run a source still leases its
+    deliveries for 60 s and spends one of the ten attempts each time.
+  - **At least once, read once.** The relay spec asks intake to keep the ids it processed: a relay delivery read here
+    records a done row `relay:<project key>:<message id>` (no body) in `intake_webhook_inbox`, and a redelivery after
+    a lost ack is acked without being read again. `WebhookMailboxPort` gains `handled(key)`/`recordHandled(...)`.
+  - **The listener.** `POST /hooks/:workspaceId/:sourceId` only (`/hooks/:sourceId` is gone: two projects may share a
+    source id). `startWebhookListener` takes `accepts(workspaceId, sourceId)`, wired in bootstrap to "the workspace
+    exists and its intake configuration names the source"; anything else is a 404 before the body is read or stored.
+    Each `workspace/source` takes 60 deliveries a minute (`SlidingWindowLimit`, the push limit's class, on the daemon's
+    clock); past it `429` with `retry-after: 60`, nothing stored. `put` and `WebhookMessage` carry the workspace id,
+    a new `workspace_id` column of `intake_webhook_inbox` in the unreleased migration 024 (no new migration).
+  - **Pruning.** Each drain deletes done rows whose `done_at` is over 24 hours old (`WebhookMailboxPort.prune`), the
+    relay's own retention for acked rows.
+  - **Sentry's replay window.** `fromWebhook` refuses, after the signature check, a `Sentry-Hook-Timestamp` (Unix
+    seconds) more than 5 minutes either side of when the delivery was **received**: "This Sentry delivery's timestamp
+    is more than 5 minutes from this computer's clock, so it was not read." `RunnerWebhookRequest` gains an optional
+    `receivedAt`, which the host passes from either mailbox; absent, it is `ctx.clock`. Measured from receipt, not
+    from reading, because the relay keeps deliveries up to 14 days and a team asleep overnight must not lose them.
+    The signature does not cover the header, so the window narrows a replay rather than authenticating; dedupe by
+    fingerprint and the handled ids make a replay harmless. A delivery without the header is not refused for that.
+  - **Proof.** intake-runners-check "relay mailbox" (a shared team store: a signed delivery to the endpoint named
+    `sentry-web` becomes one signal and is acked; one to `not-a-source` stays pending, then is parked after ten
+    leases; Bruno, refused the lease, leaves a delivery that Ana then reads — it fails with the lease check removed),
+    "sentry: webhook" (4 minutes read; 6 minutes old or ahead refused; an hour-old timestamp received an hour ago
+    read), "webhook listener" (the workspace path, 404s with nothing stored, 60 then 429 per source, pruning after
+    24 h); intake-daemon-check (the daemon's listener on the new path, 404 for the old one and an unconfigured source).

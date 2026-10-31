@@ -1014,6 +1014,13 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       board: r.resolve(it.TRACKER_SERVICE),
       claims: r.resolve(it.INTAKE_CLAIMS),
       mailbox: r.resolve(it.WEBHOOK_MAILBOX),
+      // The team's mailbox (Ruling 24), resolved per call like INTAKE_CLAIMS.
+      relayMailbox: {
+        available: () => r.resolve(t.COORDINATION_SERVICE).available,
+        projectKey: (workspaceId) => r.resolve(t.COORDINATION_SERVICE).projectKey(workspaceId),
+        pull: (projectKey, max, leaseSeconds) => r.resolve(t.COORDINATION_SERVICE).pull(projectKey, max, leaseSeconds),
+        ack: (ids) => r.resolve(t.COORDINATION_SERVICE).ack(ids),
+      },
       secrets: r.resolve(t.SECRET_STORE),
       workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
       members: r.resolve(t.MEMBER_REPOSITORY),

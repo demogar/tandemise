@@ -1,13 +1,27 @@
 import type {
   Closure, ClosureResult, IntakeClaimsPort, IntakeConfigSource, IntakeRepositoryPort, IntakeRunner, IntakeSourceConfig, IntakeSourcePatch, MemberRepositoryPort,
-  RunnerContext, RunnerHandle, SecretStorePort, WebhookMailboxPort, WebhookMessage, WorkspaceRepositoryPort,
+  RunnerContext, RunnerHandle, RunnerWebhookRequest, SecretStorePort, WebhookMailboxPort, WebhookMessage, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
 import type { BoardView, IngestResultView } from '@tandemise/api-contract';
+import type { MailboxMessage } from '@tandemise/api-contract/relay';
 import type { Clock, Logger, WorkspaceId } from '@tandemise/shared';
 import { TandemiseError, errorMessage } from '@tandemise/shared';
 import { requireSeat, type Caller } from '../support/identity.js';
 import type { IntakeScope } from '../services/intake-service.js';
 import { assertOrigin, sourceCredential, sourceMovedSentence, sourceOrigin } from './credential-origin.js';
+
+/**
+ * The team's webhook mailbox (relay spec, "The webhook mailbox"; Ruling 24),
+ * through the coordination service: leased per project key, acked by id.
+ * Solo it is the local coordination mailbox, with the same pull and ack.
+ */
+export interface RelayMailbox {
+  /** False when this build binds no coordination: nothing to pull. */
+  available(): boolean;
+  projectKey(workspaceId: WorkspaceId): string;
+  pull(projectKey: string, max: number, leaseSeconds: number): Promise<readonly MailboxMessage[]>;
+  ack(ids: readonly string[]): Promise<unknown>;
+}
 
 export interface IntakeRunnerHostDeps {
   /** The shipped runners (`INTAKE_RUNNERS`), read per pass so the application names none. */
@@ -25,6 +39,8 @@ export interface IntakeRunnerHostDeps {
   /** May this daemon run a source now (spec §3)? Always yes without the relay. */
   readonly claims: Pick<IntakeClaimsPort, 'source'>;
   readonly mailbox: WebhookMailboxPort;
+  /** The relay's mailbox (Ruling 24). Optional: without it only the local one is drained. */
+  readonly relayMailbox?: RelayMailbox | null;
   readonly secrets: Pick<SecretStorePort, 'resolve'>;
   readonly workspaces: Pick<WorkspaceRepositoryPort, 'get' | 'list'>;
   readonly members: MemberRepositoryPort;
@@ -43,6 +59,14 @@ const CLAIM_RETRY_MS = 30_000;
  * ruling 17): its consumer died between pull and ack, or its ack failed.
  */
 const STALE_CLAIM_MS = 10 * 60_000;
+/** Ruling 24: a done delivery stays a day (a relay redelivery is recognised meanwhile), then is pruned. */
+const PRUNE_DONE_MS = 24 * 3_600_000;
+/**
+ * Ruling 24: how long a relay pull leases what it took. A delivery for a
+ * source this daemon does not run is not acked and is free again for the
+ * daemon that runs it after this.
+ */
+const RELAY_LEASE_SECONDS = 60;
 /** What a webhook delivery for a source no runner reads says on that source (plan Task 10). */
 export const NO_RUNNER_FOR_SOURCE = 'No runner for this source.';
 /** Why a closure fails at once when its project no longer configures the source (plan Task 13). */
@@ -89,6 +113,13 @@ export function sourceOnByDefault(config: Pick<IntakeConfigSource, 'origin' | 'o
  * `fromWebhook`, then into the pipeline, then are acked. One the runner
  * throws on is acked too, with the runner's words on the source's
  * `last_error`, so a bad delivery is never read again.
+ *
+ * The relay's mailbox is drained the same way (Ruling 24): per project key,
+ * a delivery to the endpoint named after a configured source id goes to that
+ * source, only on the daemon holding the source's lease (Ruling 22). One for
+ * an endpoint no source is named after, or for a source another daemon runs,
+ * is left unacked: the relay leases it again, and parks it after ten leases
+ * as "couldn't be processed" for Settings.
  */
 export class IntakeRunnerHost {
   readonly name = 'intake-runners';
@@ -383,11 +414,19 @@ export class IntakeRunnerHost {
   async #drain(): Promise<void> {
     try {
       this.#releaseStale();
+      this.#prune();
       const messages = this.deps.mailbox.pull(MAILBOX_BATCH);
       for (const message of messages) await this.#deliver(message);
     } catch (e) {
       this.deps.log.warn('intake.mailbox_drain_failed', { error: errorMessage(e) });
     }
+    await this.#drainRelay();
+  }
+
+  /** Done deliveries older than a day go (Ruling 24): the table keeps only what is waiting and what was just read. */
+  #prune(): void {
+    const pruned = this.deps.mailbox.prune(new Date(this.deps.clock.epochMs() - PRUNE_DONE_MS).toISOString());
+    if (pruned > 0) this.deps.log.info('intake.webhooks_pruned', { count: pruned });
   }
 
   /**
@@ -406,13 +445,13 @@ export class IntakeRunnerHost {
   }
 
   async #deliver(message: WebhookMessage): Promise<void> {
-    const target = this.#sourceFor(message.sourceId);
-    if (target === null) {
+    const { workspaceId } = message;
+    const source = this.#sourceIn(workspaceId, message.sourceId);
+    if (source === null) {
       this.deps.mailbox.ack(message.id);
-      this.deps.log.warn('intake.webhook_unknown_source', { sourceId: message.sourceId });
+      this.deps.log.warn('intake.webhook_unknown_source', { workspaceId, sourceId: message.sourceId });
       return;
     }
-    const { workspaceId, source } = target;
     const runner = this.deps.runners().find((r) => r.kind === source.kind);
     if (runner?.fromWebhook === undefined) {
       this.deps.mailbox.ack(message.id);
@@ -424,32 +463,114 @@ export class IntakeRunnerHost {
       this.deps.log.info('intake.webhook_source_off', { workspaceId, sourceId: source.id });
       return;
     }
+    await this.#read(workspaceId, source, runner, { headers: message.headers, body: message.body, receivedAt: message.receivedAt });
+    this.deps.mailbox.ack(message.id);
+  }
+
+  /**
+   * One delivery through its source's runner and into the pipeline. Never
+   * throws: a delivery the runner refuses would be refused again, so it is
+   * done all the same, with the runner's words on the source's `last_error`.
+   */
+  async #read(workspaceId: WorkspaceId, source: IntakeSourceConfig, runner: IntakeRunner, req: RunnerWebhookRequest): Promise<void> {
+    if (runner.fromWebhook === undefined) return;
     try {
       const ctx = this.#context(workspaceId, source, new AbortController().signal);
-      const signals = await runner.fromWebhook({ headers: message.headers, body: message.body }, ctx);
+      const signals = await runner.fromWebhook(req, ctx);
       for (const signal of signals) await ctx.push(signal);
-      this.deps.mailbox.ack(message.id);
     } catch (e) {
-      // Acked all the same: a delivery the runner refuses would be refused again.
-      this.deps.mailbox.ack(message.id);
       this.#save(workspaceId, source, { lastError: errorMessage(e) });
       this.deps.log.warn('intake.webhook_failed', { workspaceId, sourceId: source.id, error: errorMessage(e) });
     }
   }
 
   /**
-   * The project and source a delivery is for. The local listener's path names
-   * only the source (`/hooks/:sourceId`), so the first project, in the
-   * repository's order, configuring that id with a tracker takes it.
+   * The source a delivery is for: the listener's path names the project and
+   * the source (`/hooks/:workspaceId/:sourceId`, Ruling 24). Null when that
+   * project has no tracker, no longer exists, or configures no such source.
    */
-  #sourceFor(sourceId: string): { workspaceId: WorkspaceId; source: IntakeSourceConfig } | null {
-    for (const workspace of this.deps.workspaces.list()) {
-      const config = this.deps.config.read(workspace.id);
-      if (config.tracker === null) continue;
-      const source = config.sources.find((s) => s.id === sourceId);
-      if (source !== undefined) return { workspaceId: workspace.id, source };
+  #sourceIn(workspaceId: WorkspaceId, sourceId: string): IntakeSourceConfig | null {
+    if (this.deps.workspaces.get(workspaceId) === undefined) return null;
+    const config = this.deps.config.read(workspaceId);
+    if (config.tracker === null) return null;
+    return config.sources.find((s) => s.id === sourceId) ?? null;
+  }
+
+  // ------------------------------------------------------------------ the relay's mailbox
+
+  /**
+   * Drains the team's mailbox (Ruling 24) for each project key this daemon
+   * has a project with a tracker and sources in. Each pull leases up to a
+   * batch; what is done here is acked in one call at the end.
+   */
+  async #drainRelay(): Promise<void> {
+    const relay = this.deps.relayMailbox;
+    if (relay === undefined || relay === null) return;
+    try {
+      if (!relay.available()) return;
+      const projects = new Map<string, WorkspaceId[]>();
+      for (const workspace of this.deps.workspaces.list()) {
+        const config = this.deps.config.read(workspace.id);
+        if (config.tracker === null || config.sources.length === 0) continue;
+        const key = relay.projectKey(workspace.id);
+        projects.set(key, [...(projects.get(key) ?? []), workspace.id]);
+      }
+      for (const [projectKey, workspaceIds] of projects) {
+        const messages = await relay.pull(projectKey, MAILBOX_BATCH, RELAY_LEASE_SECONDS);
+        if (messages.length === 0) continue;
+        const leases = new Map<string, Promise<boolean>>();
+        const done: string[] = [];
+        for (const message of messages) {
+          if (await this.#deliverRelayed(projectKey, workspaceIds, message, leases)) done.push(message.id);
+        }
+        if (done.length > 0) await relay.ack(done);
+      }
+    } catch (e) {
+      // The relay unreachable, or an ack lost: what was leased comes back, and what was read is recognised (`handled`).
+      this.deps.log.warn('intake.relay_mailbox_drain_failed', { error: errorMessage(e) });
     }
-    return null;
+  }
+
+  /**
+   * One relay delivery. The endpoint named after a source id is that
+   * source's (Ruling 24). True when it is done here and may be acked.
+   */
+  async #deliverRelayed(projectKey: string, workspaceIds: readonly WorkspaceId[], message: MailboxMessage, leases: Map<string, Promise<boolean>>): Promise<boolean> {
+    const key = `relay:${projectKey}:${message.id}`;
+    const name = message.endpointName;
+    let target: { workspaceId: WorkspaceId; source: IntakeSourceConfig } | null = null;
+    for (const workspaceId of workspaceIds) {
+      const source = name === undefined ? null : this.#sourceIn(workspaceId, name);
+      if (source !== null) { target = { workspaceId, source }; break; }
+    }
+    if (target === null) {
+      // Left for the relay: leased again later, parked after ten leases, shown in Settings as "couldn't be processed".
+      this.deps.log.warn('intake.relay_webhook_unknown_endpoint', {
+        projectKey, endpointId: message.endpointId, endpointName: name ?? null, messageId: message.id, attempts: message.attempts,
+      });
+      return false;
+    }
+    const { workspaceId, source } = target;
+    // Read here before and its ack lost: done, not read twice (relay spec, "Ack").
+    if (this.deps.mailbox.handled(key)) return true;
+    const runner = this.deps.runners().find((r) => r.kind === source.kind);
+    if (runner?.fromWebhook === undefined) {
+      this.#save(workspaceId, source, { lastError: NO_RUNNER_FOR_SOURCE });
+      this.deps.mailbox.recordHandled({ key, workspaceId, sourceId: source.id });
+      return true;
+    }
+    // Off on this machine, or another daemon holds the source's lease: a teammate's daemon reads it.
+    if (!this.#on(workspaceId, source.id)) return false;
+    const leaseKey = keyOf(workspaceId, source.id);
+    let lease = leases.get(leaseKey);
+    if (lease === undefined) {
+      lease = this.#claimed(workspaceId, source.id);
+      leases.set(leaseKey, lease);
+    }
+    if (!(await lease)) return false;
+    await this.#read(workspaceId, source, runner, { headers: message.headers, body: Buffer.from(message.bodyBase64, 'base64'), receivedAt: message.receivedAt });
+    this.deps.mailbox.recordHandled({ key, workspaceId, sourceId: source.id });
+    return true;
   }
 
   // ------------------------------------------------------------------ support

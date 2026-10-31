@@ -243,6 +243,10 @@ export function bootstrap(config: DaemonConfig, options: { readonly localPersonN
           port: webhookPort,
           mailbox: container.resolve(applicationTokens.WEBHOOK_MAILBOX),
           log: log.child({ component: 'webhook-listener' }),
+          // Ruling 24: only a project on this computer that configures the source; anything else is a 404, stored nowhere.
+          accepts: (workspaceId, sourceId) => container.resolve(applicationTokens.WORKSPACE_REPOSITORY).get(workspaceId) !== undefined
+            && container.resolve(applicationTokens.INTAKE_CONFIG_SOURCE).read(workspaceId).sources.some((s) => s.id === sourceId),
+          clock,
         });
       },
       stop: async () => { await listener?.close(); },

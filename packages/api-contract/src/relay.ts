@@ -116,6 +116,13 @@ export interface EndpointView {
 export interface MailboxMessage {
   readonly id: string;
   readonly endpointId: string;
+  /**
+   * The endpoint's name, so a device that is not an admin (and so lists no
+   * endpoints) knows what a message is for: intake reads the endpoint named
+   * after a source id as that source's (Ruling 24 of intake). Optional: an
+   * older relay leaves it out.
+   */
+  readonly endpointName?: string;
   readonly projectKey: string;
   readonly receivedAt: string;
   readonly method: string;

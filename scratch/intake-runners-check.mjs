@@ -16,6 +16,7 @@
 // Task 13: "closure", the loop closing at every source once a person sets the
 // tracker item done in the fake YouTrack (ClosureService over the runners).
 import { execFile } from 'node:child_process';
+import Database from 'better-sqlite3';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -34,6 +35,7 @@ const check = (label, cond, detail) => {
 };
 const section = (t) => console.log(`\n== ${t}`);
 const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const SENTRY_STALE = "This Sentry delivery's timestamp is more than 5 minutes from this computer's clock, so it was not read.";
 const refusal = async (fn) => { try { await fn(); return null; } catch (e) { return e; } };
 
 const D = await import('@tandemise/domain');
@@ -233,8 +235,8 @@ try {
     check('not_planned without closeWontDo writes nothing', notPlanned.ok && notPlanned.externalId === null && commentsOf(GH, 'acme/web', 2).length === 1, notPlanned);
 
     // 5. The mailbox: a delivery for a source no runner reads is acked, with the error on the source.
-    d1.mailbox.put({ sourceId: 'whatsapp-sales', headers: { 'content-type': 'application/json' }, body: new TextEncoder().encode('{"hello":1}') });
-    d1.mailbox.put({ sourceId: 'nobody-knows', headers: {}, body: new TextEncoder().encode('{}') });
+    d1.mailbox.put({ workspaceId: ws, sourceId: 'whatsapp-sales', headers: { 'content-type': 'application/json' }, body: new TextEncoder().encode('{"hello":1}') });
+    d1.mailbox.put({ workspaceId: ws, sourceId: 'nobody-knows', headers: {}, body: new TextEncoder().encode('{}') });
     d1.host.tick();
     await d1.settle();
     check('5. a webhook for a source with no runner is acked', d1.mailbox.pull(10).length === 0);
@@ -543,6 +545,16 @@ try {
     check('a valid signature maps to one signal', good?.length === 1 && good[0].key === '201' && good[0].url === 'https://acme.sentry.io/issues/201/' && good[0].impact?.events === 40 && good[0].source.kind === 'sentry', good);
     const bad = await refusal(() => sentryRunner.fromWebhook({ headers: { 'sentry-hook-signature': sentrySignature(hookBody, 'not-the-secret') }, body: hookBody }, runnerCtx(ws, SENTRY_SOURCE, secrets)));
     check("a bad one throws \"The Sentry signature doesn't match.\"", bad?.message === "The Sentry signature doesn't match.", bad?.message);
+    // Ruling 24: a Sentry-Hook-Timestamp more than 5 minutes from the clock is refused (a replay window).
+    const signedAt = (ms) => ({ 'sentry-hook-signature': sentrySignature(hookBody, 'whsec_sentry'), 'sentry-hook-timestamp': String(Math.floor(ms / 1000)) });
+    const fresh = await refusal(() => sentryRunner.fromWebhook({ headers: signedAt(t - 4 * 60_000), body: hookBody }, runnerCtx(ws, SENTRY_SOURCE, secrets)));
+    check('a delivery signed 4 minutes ago is read', fresh === null, fresh?.message);
+    const stale = await refusal(() => sentryRunner.fromWebhook({ headers: signedAt(t - 6 * 60_000), body: hookBody }, runnerCtx(ws, SENTRY_SOURCE, secrets)));
+    check('one 6 minutes old is refused in plain words', stale?.message === SENTRY_STALE, stale?.message);
+    const ahead = await refusal(() => sentryRunner.fromWebhook({ headers: signedAt(t + 6 * 60_000), body: hookBody }, runnerCtx(ws, SENTRY_SOURCE, secrets)));
+    check('…and so is one 6 minutes ahead', ahead?.message === SENTRY_STALE, ahead?.message);
+    const queued = await refusal(() => sentryRunner.fromWebhook({ headers: signedAt(t - 60 * 60_000), body: hookBody, receivedAt: new Date(t - 59 * 60_000).toISOString() }, runnerCtx(ws, SENTRY_SOURCE, secrets)));
+    check('…measured from when the delivery was received, so one queued an hour in a mailbox is still read', queued === null, queued?.message);
 
     section('posthog');
     await d4.services.intake.saveSourceSecret(d4.caller, ws, 'posthog-app', { name: 'apiKey', value: 'phx_test' });
@@ -577,24 +589,31 @@ try {
     const L = await import('../apps/daemon/dist/http/webhook-listener.js').catch(() => null);
     check('the daemon has startWebhookListener', typeof L?.startWebhookListener === 'function');
     await d4.services.intake.saveSourceSecret(d4.caller, ws, 'sentry-web', { name: 'clientSecret', value: 'whsec_sentry' });
-    const listener = await L.startWebhookListener({ port: 0, mailbox: d4.mailbox, log });
+    const accepts = (w, s) => d4.config.read(w).sources.some((x) => x.id === s);
+    const listener = await L.startWebhookListener({ port: 0, mailbox: d4.mailbox, log, clock, accepts });
     try {
       const base = `http://127.0.0.1:${listener.port}`;
       const delivered = { action: 'created', data: { issue: { id: '301', title: 'Webhook-borne error', culprit: 'hook.ts', level: 'error', count: '64', userCount: 12, firstSeen: hoursAgo(3), lastSeen: hoursAgo(1), web_url: 'https://acme.sentry.io/issues/301/' } } };
       const bytes = new TextEncoder().encode(JSON.stringify(delivered));
-      const posted = await fetch(`${base}/hooks/sentry-web`, { method: 'POST', headers: { 'content-type': 'application/json', 'sentry-hook-signature': sentrySignature(bytes, 'whsec_sentry') }, body: bytes });
-      check('POST /hooks/sentry-web → 202 {}', posted.status === 202 && (await posted.text()) === '{}', posted.status);
+      const posted = await fetch(`${base}/hooks/${ws}/sentry-web`, { method: 'POST', headers: { 'content-type': 'application/json', 'sentry-hook-signature': sentrySignature(bytes, 'whsec_sentry') }, body: bytes });
+      check('POST /hooks/<workspace>/sentry-web → 202 {}', posted.status === 202 && (await posted.text()) === '{}', posted.status);
       const pulled = d4.mailbox.pull(10);
       check('…the mailbox holds 1 message, its body bytes intact',
-        pulled.length === 1 && pulled[0].sourceId === 'sentry-web' && Buffer.from(pulled[0].body).equals(Buffer.from(bytes)) && pulled[0].headers['sentry-hook-signature'] === sentrySignature(bytes, 'whsec_sentry'),
+        pulled.length === 1 && pulled[0].workspaceId === ws && pulled[0].sourceId === 'sentry-web' && Buffer.from(pulled[0].body).equals(Buffer.from(bytes)) && pulled[0].headers['sentry-hook-signature'] === sentrySignature(bytes, 'whsec_sentry'),
         pulled.map((m) => ({ s: m.sourceId, n: m.body.length })));
       const health = await fetch(`${base}/v1/health`);
       check('GET /v1/health on the listener → 404 with no body', health.status === 404 && (await health.text()) === '', health.status);
-      const getHook = await fetch(`${base}/hooks/sentry-web`);
-      check('GET /hooks/sentry-web → 404', getHook.status === 404, getHook.status);
-      const big = await fetch(`${base}/hooks/x`, { method: 'POST', body: new Uint8Array(2 * 1024 * 1024) }).catch((e) => ({ status: `error ${e?.cause?.code ?? e}` }));
-      check('POST /hooks/x with 2 MiB → 413', big.status === 413, big.status);
+      const getHook = await fetch(`${base}/hooks/${ws}/sentry-web`);
+      check('GET /hooks/<workspace>/sentry-web → 404', getHook.status === 404, getHook.status);
+      const big = await fetch(`${base}/hooks/${ws}/sentry-web`, { method: 'POST', body: new Uint8Array(2 * 1024 * 1024) }).catch((e) => ({ status: `error ${e?.cause?.code ?? e}` }));
+      check('POST /hooks/<workspace>/sentry-web with 2 MiB → 413', big.status === 413, big.status);
       check('…and nothing was put for it', d4.mailbox.pull(10).length === 0);
+      // Ruling 24: the old path without the project is gone, and a pair no project configures stores nothing.
+      const oldPath = await fetch(`${base}/hooks/sentry-web`, { method: 'POST', body: bytes });
+      check('POST /hooks/sentry-web (no workspace) → 404', oldPath.status === 404, oldPath.status);
+      const strangers = await Promise.all([`${base}/hooks/${ws}/nobody-here`, `${base}/hooks/ws_unknown/sentry-web`].map((u) => fetch(u, { method: 'POST', body: bytes }).then((r) => r.status)));
+      check('POST for a source the project lacks, or a project this computer lacks → 404', eq(strangers, [404, 404]), strangers);
+      check('…and nothing was put for either', d4.mailbox.pull(10).length === 0);
 
       // The message pulled above is still claimed, as if the daemon died holding it (Ruling 17).
       advance(1_000);
@@ -604,13 +623,91 @@ try {
       check('IntakeRunnerHost.tick() releases the crashed claim and drains the message into a signal', s301 !== undefined && s301.impact?.events === 64, s301);
       check('…and acks it', d4.mailbox.pull(10).length === 0);
       const forged = new TextEncoder().encode(JSON.stringify({ data: { issue: { ...delivered.data.issue, id: '302' } } }));
-      await fetch(`${base}/hooks/sentry-web`, { method: 'POST', headers: { 'sentry-hook-signature': 'deadbeef' }, body: forged });
+      await fetch(`${base}/hooks/${ws}/sentry-web`, { method: 'POST', headers: { 'sentry-hook-signature': 'deadbeef' }, body: forged });
       d4.host.tick();
       await d4.settle();
       check("a forged delivery files nothing, and the source says \"The Sentry signature doesn't match.\"",
         d4.repo.findSignal(ws, 'sentry:acme/web:302') === undefined && d4.repo.source(ws, 'sentry-web')?.lastError === "The Sentry signature doesn't match.", d4.repo.source(ws, 'sentry-web'));
+
+      // Ruling 24: at most 60 deliveries a minute per source; past it 429 and nothing stored.
+      const burst = [];
+      for (let i = 0; i < 61; i++) burst.push((await fetch(`${base}/hooks/${ws}/posthog-app`, { method: 'POST', body: '{}' })).status);
+      check('60 deliveries a minute to one source are taken; the 61st is 429', burst.slice(0, 60).every((s) => s === 202) && burst[60] === 429, burst.slice(55));
+      const other = await fetch(`${base}/hooks/${ws}/sentry-web`, { method: 'POST', body: forged });
+      check('…per source: another source still takes one', other.status === 202, other.status);
+      const inboxRows = (where = '1') => { const db = new Database(createPaths(d4.home).db, { readonly: true }); try { return db.prepare(`SELECT COUNT(*) AS n FROM intake_webhook_inbox WHERE ${where}`).get().n; } finally { db.close(); } };
+      check('…so the mailbox holds the 61 taken and the 2 before', inboxRows() === 63, inboxRows());
+      // The host reads 20 a drain.
+      for (let i = 0; i < 4; i++) { d4.host.tick(); await d4.settle(); }
+      check('the host reads them all; done rows stay a while', inboxRows('done_at IS NULL') === 0 && inboxRows() === 63, { open: inboxRows('done_at IS NULL'), all: inboxRows() });
+      advance(25 * 3_600_000);
+      d4.host.tick();
+      await d4.settle();
+      check('a drain prunes done rows older than 24 hours', inboxRows() === 0, inboxRows());
     } finally {
       await listener.close();
+    }
+
+    // Ruling 24: with the relay, webhooks reach the team through its mailbox.
+    // The endpoint named after a source is that source's; only the daemon
+    // holding the source's lease reads it, with the same verify, ingest, ack.
+    section('relay mailbox: an endpoint named after a source feeds it, under its lease (Ruling 24)');
+    let relayTeam = null;
+    const relayPair = [];
+    try {
+      const { sharedTeam } = await import('./shared-coordination.mjs');
+      relayTeam = sharedTeam(clock);
+      const PK = 'github.com/acme/hooks';
+      const host = async (name) => {
+        const port = relayTeam.join(name, `${name}'s laptop`);
+        const d = await open({ bindings: (c) => c.bind(app.COORDINATION, () => port, { source: 'check' }) });
+        relayPair.push(d);
+        const w = (await d.services.workspaces.create(d.caller, { name: `${name}'s hooks` })).workspace.id;
+        d.config.write(w, { tracker: ytTracker(yt2.url), intake: { sources: [SENTRY_SOURCE], dailyCap: 20, similarity: { link: 0.85, ask: 0.55 } } });
+        await d.resolver.saveCredential(w, 'perm:test');
+        await d.services.intake.saveSourceSecret(d.caller, w, 'sentry-web', { name: 'clientSecret', value: 'whsec_sentry' });
+        d.container.resolve(app.SETTINGS_STORE).write({ coordination: { projectKeys: { [w]: PK } } });
+        return { d, ws: w };
+      };
+      const ana = await host('Ana');
+      const bruno = await host('Bruno');
+      const store = relayTeam.store;
+      const endpoint = (name) => store.createEndpoint({ projectKey: PK, name, source: 'sentry', handshake: 'none', createdBy: null });
+      const epSentry = endpoint('sentry-web');
+      const epStray = endpoint('not-a-source');
+      const relayed = (id) => {
+        const body = Buffer.from(JSON.stringify({ action: 'created', data: { issue: { id, title: `Relayed error ${id}`, culprit: 'relay.ts', level: 'error', count: '64', userCount: 2, web_url: `https://acme.sentry.io/issues/${id}/` } } }));
+        return { method: 'POST', query: '', contentType: 'application/json', body,
+          headers: { 'content-type': 'application/json', 'sentry-hook-signature': sentrySignature(body, 'whsec_sentry'), 'sentry-hook-timestamp': String(Math.floor(t / 1000)) } };
+      };
+      const relayState = () => Object.fromEntries(store.endpoints([PK]).map((e) => [e.name, `${e.pending} pending, ${e.parked} parked`]));
+      store.storeRequest(epSentry.id, relayed('401'));
+      store.storeRequest(epStray.id, relayed('402'));
+      ana.d.host.tick();
+      await ana.d.settle();
+      const s401 = ana.d.repo.findSignal(ana.ws, 'sentry:acme/web:401');
+      check("a relayed delivery to the endpoint named 'sentry-web', validly signed, becomes one signal", s401 !== undefined && s401.impact?.events === 64 && s401.status === 'created', s401 && { status: s401.status, reason: s401.reason });
+      check('…and is acked at the relay', relayState()['sentry-web'] === '0 pending, 0 parked', relayState());
+      check('the delivery to an endpoint no source is named after is not read, and not acked: the relay keeps it', relayState()['not-a-source'] === '1 pending, 0 parked' && ana.d.repo.findSignal(ana.ws, 'sentry:acme/web:402') === undefined, relayState());
+
+      store.storeRequest(epSentry.id, relayed('403'));
+      advance(61_000);
+      bruno.d.host.tick();
+      await bruno.d.settle();
+      check("Bruno's daemon, refused the source's lease while Ana holds it, leaves the delivery for her", bruno.d.repo.findSignal(bruno.ws, 'sentry:acme/web:403') === undefined && relayState()['sentry-web'] === '1 pending, 0 parked', relayState());
+      advance(61_000);
+      ana.d.host.tick();
+      await ana.d.settle();
+      check('…and Ana reads it once his lease on it runs out', ana.d.repo.findSignal(ana.ws, 'sentry:acme/web:403') !== undefined && relayState()['sentry-web'] === '0 pending, 0 parked', relayState());
+
+      // The relay's own semantics for what nobody reads: leased ten times without an ack, it is parked ("couldn't be processed").
+      for (let i = 0; i < 8; i++) { advance(61_000); ana.d.host.tick(); await ana.d.settle(); }
+      check('the unconfigured endpoint\'s delivery is parked by the relay after ten leases, recorded for Settings', relayState()['not-a-source'] === '0 pending, 1 parked', relayState());
+    } catch (e) {
+      check('the relay mailbox section ran', false, String(e?.stack ?? e));
+    } finally {
+      for (const d of relayPair) await d.dispose();
+      relayTeam?.close();
     }
   } catch (e) {
     check('the sentry/posthog/listener sections ran', false, String(e?.stack ?? e));

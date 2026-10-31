@@ -25,7 +25,9 @@ import type { Migration } from './types.js';
  *  - `tracker_comments` is the one comment per `(item, marker)`, as P14's
  *    `issue_comments`.
  *  - `intake_webhook_inbox` is what the opt-in listener received, claimed by
- *    the runners that read it.
+ *    the runners that read it, for the project named in its path, plus a
+ *    done row per relay delivery read here (Ruling 24). Done rows are pruned
+ *    after a day, by `done_at`.
  *
  * `missions.tracker_item_id` is an ALTER ADD COLUMN, never a rebuild: a
  * rebuild cascade-deletes under foreign keys. Forgetting a cached item leaves
@@ -158,13 +160,14 @@ CREATE TABLE tracker_comments (
   PRIMARY KEY (workspace_id, item_ref, marker)
 );
 CREATE TABLE intake_webhook_inbox (
-  id          TEXT PRIMARY KEY,
-  source_id   TEXT NOT NULL,
-  received_at TEXT NOT NULL,
-  headers     TEXT NOT NULL DEFAULT '{}',
-  body        BLOB NOT NULL,
-  claimed_at  TEXT,
-  done_at     TEXT
+  id           TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  source_id    TEXT NOT NULL,
+  received_at  TEXT NOT NULL,
+  headers      TEXT NOT NULL DEFAULT '{}',
+  body         BLOB NOT NULL,
+  claimed_at   TEXT,
+  done_at      TEXT
 );
 CREATE INDEX ix_intake_webhook_inbox_open ON intake_webhook_inbox(done_at, claimed_at, received_at);
 ALTER TABLE missions ADD COLUMN tracker_item_id TEXT REFERENCES tracker_items(id) ON DELETE SET NULL;

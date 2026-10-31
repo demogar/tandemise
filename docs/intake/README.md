@@ -123,6 +123,27 @@ that has a reason.
 Every refusal is `{ "error": { "code", "message" } }`, and `message` is a
 sentence meant for a person: print it as it is.
 
+### Webhooks for the shipped runners
+
+Sentry and PostHog can also push to Tandemise. The runner verifies each
+delivery with the source's secret on your computer; nothing in between reads
+the body.
+
+- **With a team relay:** in Settings → Team relay → Webhooks, add a webhook
+  address for the project and **name it exactly after the source id**
+  (`sentry-web`). Paste its URL into Sentry. Only the computer that runs the
+  source at the moment reads its deliveries. A delivery to an address named
+  after no source is left on the relay and, after ten tries, shows there as
+  "couldn't be processed".
+- **Without one:** set `intakeWebhookPort` in the local settings and point
+  your own tunnel (cloudflared, ngrok) at
+  `http://127.0.0.1:<port>/hooks/<workspace id>/<source id>`. It is the only
+  path served. A project or source this computer doesn't configure is `404`
+  and nothing is stored; each source takes at most 60 deliveries a minute
+  (`429` beyond).
+- Sentry deliveries whose `Sentry-Hook-Timestamp` is more than 5 minutes from
+  when they were received are refused.
+
 ## 5. Closing the loop: the closures feed
 
 When the tracker item reaches a mapped **done** state (whoever moved it there),
