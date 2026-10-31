@@ -35,7 +35,7 @@ import { RuntimeOverrides } from './support/runtime-overrides.js';
 import { ApprovalWaiter, createApprovalGate, createPolicyEngineToolGate } from './support/tool-policy.js';
 import { createAskHumanTool } from './tools/ask-human.js';
 import { bindBrain, brainEdits, brainWorkflows } from './brain/module.js';
-import { BRAIN_SERVICE } from './brain/tokens.js';
+import { BRAIN_CONTEXT_SUPPLY, BRAIN_SERVICE } from './brain/tokens.js';
 import { RunDeadlines } from './engine/run-deadline.js';
 import { ConnectFlow } from './services/connect-flow.js';
 import { IntegrationCredentials } from './support/integration-credentials.js';
@@ -290,6 +290,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       runScores: r.resolve(t.RUN_SCORE_REPOSITORY),
       // Resolved per call: the eval runner is composed from this executor.
       trialContext: (mission) => r.resolve(t.EVAL_RUNNER).contextFor(mission),
+      brain: r.resolve(BRAIN_CONTEXT_SUPPLY),
       paths: paths(r),
       clock: clock(r),
       log: log(r).child({ component: 'executor' }),

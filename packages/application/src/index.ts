@@ -141,3 +141,5 @@ export { LedgerWriter } from './brain/ledger-writer.js';
 export type { LedgerActor, LedgerEventInput } from './brain/ledger-writer.js';
 export { LedgerReader } from './brain/memory.js';
 export { historyEntry } from './brain/history.js';
+export { BrainContextSupply } from './brain/context-supply.js';
+export type { BrainAttemptInput } from './brain/context-supply.js';

@@ -89,6 +89,9 @@ function buildSections(request: ContextRequest): Section[] {
     sections.push({ id, priority: 'background', content: trusted(label, text) });
   }
 
+  // 2b. The brain (#51): rules always, lessons and the index when there is room.
+  for (const section of brainSections(request)) sections.push(section);
+
   // 3. Mission - the goal this task serves.
   sections.push(required('mission', 'Mission', [
     `Title: ${mission.title}`,
@@ -157,7 +160,41 @@ function buildSections(request: ContextRequest): Section[] {
   return sections;
 }
 
+function brainSections(request: ContextRequest): Section[] {
+  const brain = request.brain;
+  if (brain === undefined) return [];
+  const out: Section[] = [];
+  const rules = brain.rules.filter((r) => r.text.trim() !== '');
+  if (rules.length > 0) {
+    out.push({
+      id: 'brain.rules',
+      priority: 'required',
+      content: trusted('Project rules', rules.map((r) => `## ${r.path}\n\n${r.text.trim()}`).join('\n\n')),
+    });
+  }
+  if (brain.lessons.length > 0) {
+    out.push({
+      id: 'brain.lessons',
+      priority: 'background',
+      age: 1,
+      content: trusted('Lessons from earlier work', brain.lessons.map((l) => `- [${l.id}] ${l.text}`).join('\n')),
+      summary: brain.lessons.map((l) => `- [${l.id}] ${l.text.slice(0, 80)}`).join('\n'),
+    });
+  }
+  if (brain.index.length > 0) {
+    out.push({
+      id: 'brain.index',
+      priority: 'background',
+      age: 0,
+      content: trusted('More lessons you can read with brain.read', brain.index.map((l) => `- [${l.id}] ${l.title}`).join('\n')),
+    });
+  }
+  return out;
+}
+
 function knowledgeEntries(request: ContextRequest): ReadonlyArray<readonly [string, string, string]> {
+  // A linked brain's rules replace the five fields (#51 spec §10.1).
+  if (request.brain !== undefined) return [];
   const k = request.knowledge;
   return [
     ['knowledge.vision', `Workspace: ${request.workspaceName} — product vision`, k.productVision ?? ''],

@@ -396,6 +396,37 @@ if (wants('fold')) {
   check('the good entry is intact', folded?.entries.length === 1 && folded.entries[0].text === 'Good line.');
 }
 
+// ------------------------------------------------------------------ select
+if (wants('select')) {
+  section('select: scope ranking, the lesson budget, the index');
+  const now = '2026-10-30T00:00:00.000Z';
+  let n = 0;
+  const entry = (text, scope, extra = {}) => ({
+    id: `w-a1b2c3:${String(++n).padStart(26, '0')}`, kind: 'lesson', text, scope, source: { signal: 'person', mission: 'M' }, state: 'active',
+    helpful: 0, harmful: 0, net: 0, addedAt: now, lastConfirmedAt: now, missions: ['M'], confirmedElsewhere: false,
+    invalidAt: null, supersededBy: null, retired: null, promoted: null, netSinceRejected: null, flags: { harmful: false, stale: false }, ...extra,
+  });
+  const task = { repos: ['garipass'], role: 'development', step: 'build', files: ['garipass:src/app/page.tsx'] };
+  const mem = (entries) => ({ entries, aliases: {}, problems: [] });
+  const step0 = entry('Step lesson.', { step: 'build' });
+  const proj9 = entry('Project lesson.', {}, { net: 9, helpful: 9 });
+  const picked = D.selectBrain?.(mem([proj9, step0]), task, now);
+  check('a step lesson with net 0 ranks above a project one with net 9', picked?.lessons[0]?.id === step0.id && picked.lessons[1]?.id === proj9.id, picked?.lessons);
+  const thirty = Array.from({ length: 30 }, (_, i) => entry(`${String(i).padStart(2, '0')}${'x'.repeat(198)}`, {}));
+  const budget = D.selectBrain?.(mem(thirty), task, now);
+  check('30 lessons of 200 chars: 20 loaded, 10 indexed', budget?.lessons.length === 20 && budget.index.length === 10, [budget?.lessons.length, budget?.index.length]);
+  check('an index line is the first 80 characters', budget?.index[0]?.title.length === 80);
+  const hundred = Array.from({ length: 100 }, (_, i) => entry(`${String(i).padStart(3, '0')}${'y'.repeat(197)}`, {}));
+  check('the index is capped at 40', D.selectBrain?.(mem(hundred), task, now).index.length === 40);
+  check('a paths glob matches a repo-relative file', D.matchScope?.({ paths: ['src/**/*.tsx'] }, { ...task, files: ['garipass:src/app/page.tsx'] }) === 'paths');
+  check('and not a .ts file', D.matchScope?.({ paths: ['src/**/*.tsx'] }, { ...task, files: ['garipass:src/app/page.ts'] }) === null);
+  check('a lesson for another role does not match', D.matchScope?.({ role: 'review' }, task) === null);
+  const harmful = entry('Harmful.', {}, { flags: { harmful: true, stale: false }, harmful: 3, net: -3 });
+  const superseded = entry('Superseded.', {}, { invalidAt: '2026-01-01T00:00:00.000Z', supersededBy: 'x' });
+  const sel = D.selectBrain?.(mem([harmful, superseded]), task, now);
+  check('harmful and superseded entries are never selected', sel?.lessons.length === 0 && sel.index.length === 0, sel);
+}
+
 // ------------------------------------------------------------------ harness
 // The application composed over a real database, with the daemon's disk
 // adapters and the brain's git and gh adapters, as bootstrap binds them.
@@ -461,6 +492,10 @@ async function brainHarness(name) {
   const hostPort = await brainHost();
   container.rebind(app.BRAIN_REPO, () => repoPort, { source: 'check' });
   container.rebind(app.BRAIN_HOST, () => hostPort, { source: 'check' });
+  const ctx = await import('@tandemise/context');
+  const prompts = [];
+  const realCompiler = ctx.createContextCompiler();
+  container.rebind(ctx.CONTEXT_COMPILER, () => ({ compile: (req) => { const c = realCompiler.compile(req); prompts.push({ taskId: req.task.id, prompt: c.prompt, truncated: c.truncated }); return c; } }), { source: 'check' });
   const services = app.createServices(container);
   const r = (t) => container.resolve(t);
   const caller = { personId: services.identity.localPerson().id };
@@ -471,7 +506,7 @@ async function brainHarness(name) {
   git(repoDir, 'add', '-A');
   git(repoDir, 'commit', '-q', '-m', 'init');
   const ws = (await services.workspaces.create(caller, { name: 'Garipass', repositoryPath: repoDir })).workspace.id;
-  return { home, paths, container, services, r, caller, ws, repoDir, published, subscribers, brainRepo: repoPort };
+  return { home, paths, container, services, r, caller, ws, repoDir, published, subscribers, brainRepo: repoPort, prompts };
 }
 
 // ------------------------------------------------------------------ link
@@ -747,7 +782,7 @@ if (H1 !== null && (wants('ledger') || wants('loading') || wants('tools') || wan
   const listed = s1.brain.entries(ws1, {});
   check('remembered lessons are listed, active', listed.some((e) => e.id === r1.entry.id && e.state === 'active' && e.sourceLabel === 'you' && e.scopeLabel === 'Developer'), listed.map((e) => [e.text, e.state, e.sourceLabel, e.scopeLabel]));
   check('a person vote counts three', listed.find((e) => e.id === r1.entry.id)?.net === 3);
-  check('accept and reject are recorded', listed.find((e) => e.id === cand[0].id)?.state === 'accepted' && listed.find((e) => e.id === cand2[0].id)?.state === 'rejected');
+  check('accept and reject are recorded', listed.find((e) => e.id === cand[0].id)?.state === 'accepted' && listed.find((e) => e.id === cand2[0].id)?.state === 'rejected', [cand.length, cand2.length, listed.find((e) => e.id === cand[0]?.id)?.state, listed.find((e) => e.id === cand2[0]?.id)?.state]);
   check('a retired lesson is history, not listed', !listed.some((e) => e.id === r2.entry.id));
   const withHistory = s1.brain.entries(ws1, { includeHistory: true });
   check('the retired lesson shows under history', withHistory.some((e) => e.id === r2.entry.id && e.retired !== null));
@@ -811,6 +846,94 @@ if (H1 !== null && (wants('ledger') || wants('loading') || wants('tools') || wan
   check('the lessons are on tandemise/ledger/<writer>', git(guarded, 'log', '--format=%s', `tandemise/ledger/${writer}`).includes(`chore: lessons from ${writer}`));
   const pv = s1.brain.view(wsP);
   check('the Brain section says lessons go to a pull request', pv.status === 'protected' && pv.statusLine.startsWith('Your default branch is protected, so lessons go to a pull request: https://'), pv);
+}
+
+// ------------------------------------------------------------------ loading
+const runTaskIn = async (h, { key = 'build', role = 'development', steps = [{ kind: 'complete', summary: 'done' }], title = 'Load the brain' } = {}) => {
+  const { FAKE_ADAPTER_ID } = await import('@tandemise/runtime-generic');
+  const now = () => shared.systemClock.now();
+  const profileId = h.r(app.RUNTIME_PROFILE_REPOSITORY).create({
+    id: shared.ids.runtimeProfile(), workspaceId: null, adapterId: FAKE_ADAPTER_ID, name: `fake-${Math.random().toString(16).slice(2, 8)}`, executablePath: null,
+    args: [], settings: { script: { steps } }, capabilities: [], enabled: true, maxConcurrent: 4, createdAt: now(), updatedAt: now(),
+  }).id;
+  const owner = h.services.team.me(h.caller).memberships.find((m) => m.workspaceId === h.ws).memberId;
+  const agent = h.services.team.addMember(h.caller, h.ws, { kind: 'agent', name: `Agent ${profileId.slice(-4)}`, reportsTo: owner, roleIds: [role], runtimeProfileIds: [profileId] }).id;
+  const mission = await h.services.missions.create(h.caller, { workspaceId: h.ws, goal: 'Prove the brain loads', title });
+  const taskId = shared.ids.task();
+  h.r(app.TASK_REPOSITORY).add({
+    id: taskId, missionId: mission.id, key, title: key, objective: `Do ${key}`, roleId: role, dependsOn: [], requiredCapabilities: [], inputArtifacts: [], expectedOutputs: [],
+    executionPolicy: { isolation: 'none', maxWallTimeMs: 60000, capabilities: [] }, approvalPolicy: { beforeStart: false, onCompletion: false },
+    retryPolicy: { maxAttempts: 1, backoffMs: 0, onExhausted: 'fail' }, completionGate: null, status: 'READY', statusReason: null,
+    attempts: 0, remediatesTaskId: null, repositoryId: null, executor: 'agent', waitPolicy: null, orderHint: 0, staffingOverride: { assignees: [agent] },
+    createdAt: now(), updatedAt: now(), startedAt: null, finishedAt: null,
+  });
+  h.r(app.MISSION_REPOSITORY).update(mission.id, { status: 'EXECUTING' });
+  const scheduler = h.r(app.SCHEDULER);
+  for (let i = 0; i < 300; i++) {
+    await scheduler.tick();
+    const t = h.r(app.TASK_REPOSITORY).get(taskId);
+    if (['SUCCEEDED', 'FAILED', 'BLOCKED'].includes(t.status)) break;
+    await sleep(40);
+  }
+  const task = h.r(app.TASK_REPOSITORY).get(taskId);
+  const run = h.r(app.RUN_REPOSITORY).listByTask(taskId).at(-1);
+  return { mission, task, run, prompt: h.prompts.find((p) => p.taskId === taskId)?.prompt ?? '' };
+};
+
+if (H1 !== null && (wants('loading') || wants('tools') || wants('signals') || wants('promotion') || wants('intake'))) {
+  section('loading: rules and lessons in the prompt, runs.brain, one commit per attempt');
+  const { services: s1, caller: c1, ws: ws1 } = H1;
+  // Home 1's mission repo for a local target needs git in the Tandemise home.
+  if (!existsSync(join(H1.paths.root, '.git'))) {
+    execFileSync('git', ['init', '-q', '-b', 'main', H1.paths.root]);
+    execFileSync('git', ['-C', H1.paths.root, '-c', 'user.name=check', '-c', 'user.email=check@example.com', 'commit', '-q', '--allow-empty', '-m', 'init']);
+  }
+  s1.workspaces.update(ws1, { knowledge: { productVision: null, architecturePrinciples: null, codingStandards: 'OLD-CODING-STANDARDS-FIELD', designSystem: null, glossary: null } });
+  scratchEdit({ 'memory/rules/project.md': '# Project rules\n\nAlways run npm run ci.\n' });
+  await s1.brain.sync(ws1, 'person');
+  const lesson = await s1.brain.remember(c1, ws1, { text: 'DEV-LESSON: keep components small.', scope: { role: 'development' } });
+  await s1.brain.sync(ws1, 'person');
+  const view = s1.brain.view(ws1);
+  const first = await runTaskIn(H1);
+  check('the task ran', first.task.status === 'SUCCEEDED', [first.task.status, first.task.statusReason]);
+  check('the prompt has the project rules', first.prompt.includes('Project rules') && first.prompt.includes('Always run npm run ci.'), first.prompt.slice(0, 400));
+  check('the prompt has the role lesson', first.prompt.includes('DEV-LESSON: keep components small.'));
+  check("the workspace's knowledge field is replaced by the rules", !first.prompt.includes('OLD-CODING-STANDARDS-FIELD'));
+  check('runs.brain records the sha the run read', first.run?.brain?.sha === view.lastPulledSha, [first.run?.brain, view.lastPulledSha]);
+  check('runs.brain lists the rules file', JSON.stringify(first.run?.brain?.rules) === JSON.stringify(['memory/rules/project.md']), first.run?.brain?.rules);
+  check('runs.brain lists the lesson it loaded', first.run?.brain?.loaded.some((l) => l.id === lesson.entry.id));
+
+  // One commit per attempt: a retry in the same round reuses the sha, a new round gets the new one.
+  const supply = H1.r(app.BRAIN_CONTEXT_SUPPLY);
+  const t = H1.r(app.TASK_REPOSITORY).get(first.task.id);
+  const mission = H1.r(app.MISSION_REPOSITORY).get(first.mission.id);
+  const role = s1.roles.list(ws1).find((r) => r.id === 'development');
+  const repos = H1.r(app.REPO_REPOSITORY).listByWorkspace(ws1);
+  scratchEdit({ 'memory/rules/project.md': '# Project rules\n\nAlways run npm run ci.\n\nNEW-RULE-AFTER-RUN.\n' });
+  await s1.brain.sync(ws1, 'person');
+  const retry = await supply.forAttempt({ task: t, mission, role, repositories: repos, round: t.round ?? 1, previousRuns: [first.run], trial: null });
+  check('a retry in the same round reads the same commit', retry?.record.sha === first.run.brain.sha && !retry.request.rules.some((r) => r.text.includes('NEW-RULE-AFTER-RUN')), retry?.record.sha);
+  const next = await supply.forAttempt({ task: { ...t, round: 2 }, mission, role, repositories: repos, round: 2, previousRuns: [first.run], trial: null });
+  check('a new round reads the new commit', next?.record.sha === s1.brain.view(ws1).lastPulledSha && next.request.rules.some((r) => r.text.includes('NEW-RULE-AFTER-RUN')), next?.record.sha);
+
+  // Under budget pressure the lessons go before the rules.
+  const { createContextCompiler } = await import('@tandemise/context');
+  const compiler = createContextCompiler();
+  const many = Array.from({ length: 30 }, (_, i) => ({ id: `w:${i}`, text: `Lesson ${i}: ${'z'.repeat(180)}`, net: 0 }));
+  const baseReq = {
+    role, workspaceName: 'Garipass', knowledge: { productVision: null, architecturePrinciples: null, codingStandards: null, designSystem: null, glossary: null },
+    mission, task: t, dependencyArtifacts: [], decisions: [], evidence: [], grants: [], outputContract: { artifacts: [], workingDirectory: '/w', completionGate: null, notes: [] },
+  };
+  const tight = compiler.compile({ ...baseReq, maxChars: 6000, brain: { sha: 'abc', rules: [{ path: 'memory/rules/project.md', text: 'Always run npm run ci.' }], lessons: many, index: [] } });
+  check('under pressure the lessons are summarized or dropped', tight.truncated.some((x) => x.section === 'Lessons from earlier work'), tight.truncated);
+  check('and the rules stay', tight.prompt.includes('Project rules') && tight.prompt.includes('Always run npm run ci.'));
+  check('with no brain the prompt is byte-identical', compiler.compile(baseReq).prompt === compiler.compile({ ...baseReq, brain: undefined }).prompt);
+
+  // Trials read their frozen knowledge, or only a candidate's rules.
+  const trialOff = await supply.forAttempt({ task: t, mission, role, repositories: repos, round: 1, previousRuns: [], trial: { role, knowledge: baseReq.knowledge, decisions: [], answers: [] } });
+  check('a trial without brain rules gets no brain', trialOff === undefined);
+  const trialOn = await supply.forAttempt({ task: t, mission, role, repositories: repos, round: 1, previousRuns: [], trial: { role, knowledge: baseReq.knowledge, decisions: [], answers: [], brainRules: [{ path: 'memory/rules/project.md', text: 'CANDIDATE RULE' }] } });
+  check('a trial with brain rules gets rules only', trialOn?.request.rules[0]?.text === 'CANDIDATE RULE' && trialOn.request.lessons.length === 0 && trialOn.request.index.length === 0, trialOn?.request);
 }
 
 // ------------------------------------------------------------------ end

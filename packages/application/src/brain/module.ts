@@ -6,6 +6,7 @@ import * as t from '../tokens.js';
 import * as b from './tokens.js';
 import { BrainService } from './brain-service.js';
 import { BrainSyncLoop } from './sync-loop.js';
+import { BrainContextSupply } from './context-supply.js';
 
 const SOURCE = '@tandemise/application:brain';
 
@@ -55,6 +56,8 @@ export function bindBrain(container: Container): void {
     runScores: r.resolve(t.RUN_SCORE_REPOSITORY),
     issues: r.resolve(t.ISSUE_REPOSITORY),
   }), { source: SOURCE });
+
+  container.bind(b.BRAIN_CONTEXT_SUPPLY, (r) => new BrainContextSupply(r.resolve(b.BRAIN_SERVICE), clock(r), log(r).child({ component: 'brain-context' })), { source: SOURCE });
 
   container.bind(b.BRAIN_SYNC_LOOP, (r) => new BrainSyncLoop(
     r.resolve(b.BRAIN_SERVICE), r.resolve(b.WORKSPACE_BRAIN_REPOSITORY), log(r).child({ component: 'brain-sync' }),

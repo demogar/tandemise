@@ -206,8 +206,11 @@ interface Mutable {
 
 const cmp = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
+// Within one millisecond an entry's `add` comes before anything about it.
+const opRank = (e: LedgerEvent): number => (e.op === 'add' ? 0 : 1);
+
 function orderOf(a: LedgerEvent, b: LedgerEvent): number {
-  return cmp(a.at, b.at) || cmp(a.by, b.by) || cmp(a.id, b.id) || cmp(a.op, b.op) || cmp(JSON.stringify(a), JSON.stringify(b));
+  return cmp(a.at, b.at) || opRank(a) - opRank(b) || cmp(a.by, b.by) || cmp(a.id, b.id) || cmp(a.op, b.op) || cmp(JSON.stringify(a), JSON.stringify(b));
 }
 
 /**
