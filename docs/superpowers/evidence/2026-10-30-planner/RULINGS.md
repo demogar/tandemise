@@ -100,3 +100,10 @@ spec (`docs/superpowers/specs/2026-10-30-planner-and-merge-design.md`).
   `holdApproval.minTasks: 3`. The fold counts each task once in `steppedIn`, however
   many rounds it had. Task 11 was committed after Task 12 because it was
   delegated and Task 12 is independent of it.
+- Ruling (Task 11): "Write the defaults" writes only the files the project lacks,
+  never over a project file, into the default repository. Routing lists only
+  classes with a ladder, plus any other model measured ("role model"); the
+  starting rung shown is computed at medium risk so it never shows a probe.
+  Rule problems show the daemon's message, not the YAML path. The fold counts a
+  task once (its first result) in both `steppedIn` and the routing buckets, so a
+  round's rerun is not another task.

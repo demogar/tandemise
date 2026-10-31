@@ -99,8 +99,11 @@ export function foldOutcomes(events: readonly OutcomeEvent[]): OutcomeStats {
   const latest = sorted.at(-1)?.at ?? null;
   const steps = sorted.filter((o) => o.kind === 'step_result' && o.step !== undefined);
   const raw = new Map<string, Map<string, { n: number; firstPass: number; success: number; holds: number; changesRequested: number; reverts: number; costs: number[]; walls: number[] }>>();
+  // One entry per task, at its first result: a round's rerun is the same task, measured once.
+  const seen = new Set<string>();
   for (const s of steps) {
-    // One result per task: a later attempt's result replaces the first only for cost; success reads attempt 1.
+    if (seen.has(taskId(s))) continue;
+    seen.add(taskId(s));
     const bucket = bucketOf(s);
     const model = s.step!.model ?? '';
     const byModel = raw.get(bucket) ?? new Map();
