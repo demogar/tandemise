@@ -1,0 +1,12 @@
+<!--
+  The Tandemise mark, following the viewer's light or dark scheme.
+  Generated from packages/design/src/tokens.ts by `npm run -w @tandemise/design emit`. Do not edit.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 176 176" width="176" height="176">
+  <style>.lead{stroke:#201e50}.trail{stroke:#525b76}.axle{stroke:#869d96}@media (prefers-color-scheme: dark){.lead{stroke:#c4f1be}.trail{stroke:#a2c3a4}.axle{stroke:#869d96}}</style>
+  <g transform="rotate(-10 88 88)" fill="none" stroke-linecap="round">
+    <line class="axle" x1="72" y1="88" x2="97" y2="88" stroke="#869d96" stroke-width="15"/>
+    <circle class="trail" cx="42" cy="88" r="25" stroke="#525b76" stroke-width="17"/>
+    <circle class="lead" cx="134" cy="88" r="32" stroke="#201e50" stroke-width="17"/>
+  </g>
+</svg>

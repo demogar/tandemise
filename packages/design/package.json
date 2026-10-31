@@ -1,0 +1,76 @@
+{
+  "name": "@tandemise/design",
+  "version": "0.1.0",
+  "description": "The Tandemise design system: brand palette, light/dark semantic roles, type, spacing, radius and motion tokens as CSS, TypeScript and a Tailwind theme, plus the logo and icon set.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tandemise/tandemise.git",
+    "directory": "packages/design"
+  },
+  "homepage": "https://github.com/tandemise/tandemise/tree/main/packages/design#readme",
+  "keywords": [
+    "tandemise",
+    "design-system",
+    "design-tokens",
+    "css-variables",
+    "tailwindcss",
+    "light-dark"
+  ],
+  "type": "module",
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "files": [
+    "dist",
+    "css",
+    "assets",
+    "README.md",
+    "LICENSE"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./tokens": {
+      "types": "./dist/tokens.d.ts",
+      "default": "./dist/tokens.js"
+    },
+    "./icons": {
+      "types": "./dist/icons.d.ts",
+      "default": "./dist/icons.js"
+    },
+    "./logo": {
+      "types": "./dist/logo.d.ts",
+      "default": "./dist/logo.js"
+    },
+    "./resolve": {
+      "types": "./dist/resolve.d.ts",
+      "default": "./dist/resolve.js"
+    },
+    "./tailwind": {
+      "types": "./dist/tailwind.d.ts",
+      "default": "./dist/tailwind.js"
+    },
+    "./tokens.css": "./css/tokens.css",
+    "./base.css": "./css/base.css",
+    "./tailwind.css": "./css/tailwind.css",
+    "./assets/*": "./assets/*",
+    "./package.json": "./package.json"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "emit": "node scripts/emit.mjs",
+    "emit:check": "node scripts/emit.mjs --check"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
