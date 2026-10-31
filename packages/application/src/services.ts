@@ -3,7 +3,7 @@ import type {
   TaskId, WorkspaceId,
 } from '@tandemise/shared';
 import type {
-  Approval, ArtifactManifest, ExecutionTargetRecord, FeedbackAttachment, Mission, OutsideContribution, PullRequestSnapshot, RoleStaffing, RoleTemplate,
+  Approval, ArtifactManifest, ExecutionTargetRecord, FeedbackAttachment, Mission, MissionTask, OutsideContribution, PullRequestSnapshot, RoleStaffing, RoleTemplate,
   RunEventRecord, RuntimeProfile, StaffingPatch,
 } from '@tandemise/domain';
 import type {
@@ -221,7 +221,12 @@ export interface HoldService {
   reopen(taskId: TaskId, caller: Caller): Promise<TaskView>;
   /** The open hold whose terminal is running, for the terminal socket; null when there is none. */
   terminalFor(taskId: TaskId): import('@tandemise/shared').TaskHoldId | null;
+  /** The step's open hold and whether Hold is offered, for its task view. */
+  standing(task: MissionTask, mission: Mission): HoldStanding;
 }
+
+/** What a task view says about holding the step. */
+export type HoldStanding = Pick<TaskView, 'hold' | 'holdable'>;
 
 export interface PlanningService {
   /** Runs the planner role, validates the result, and stores the plan. */

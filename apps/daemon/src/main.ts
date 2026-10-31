@@ -1,18 +1,20 @@
 import { mkdirSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { errorMessage } from '@tandemise/shared';
-import { API_VERSION } from '@tandemise/api-contract';
+import { API_VERSION, STREAM_PATH } from '@tandemise/api-contract';
 import { loadConfig } from './config.js';
 import { bootstrap } from './bootstrap.js';
 import { buildRouter } from './routes.js';
 import { HttpServer } from './http/server.js';
 import { StreamServer } from './http/stream.js';
+import { TerminalSocketServer } from './http/terminal-socket.js';
 import {
   InstanceLock, loadOrCreateToken, removeConnectionFile, writeConnectionFile,
 } from './http/identity.js';
 import { installShutdownHandlers } from './lifecycle.js';
 import { adoptGitName, gitUserName } from './local-person.js';
 import { EVAL_RUNNER, RECOVERY_SERVICE } from '@tandemise/application';
+import { TERMINAL_HOST } from '@tandemise/terminal';
 import type { Container } from '@tandemise/kernel';
 
 /**
@@ -78,6 +80,7 @@ export async function startDaemon(overrides: Parameters<typeof loadConfig>[0] = 
   const router = buildRouter(services, { testClock });
 
   let stream: StreamServer | undefined;
+  const terminal = new TerminalSocketServer({ holds: services.holds, host: container.resolve(TERMINAL_HOST), log });
   const http = new HttpServer({
     token,
     router,
@@ -85,7 +88,10 @@ export async function startDaemon(overrides: Parameters<typeof loadConfig>[0] = 
     // P0 has one token and one person: every request acts as the local person.
     identityResolver: () => ({ personId: services.identity.localPerson().id }),
     port: config.port,
-    onUpgrade: (req, socket, head) => stream?.handleUpgrade(req, socket, head),
+    onUpgrade: (req, socket, head, path) => {
+      if (path === STREAM_PATH) stream?.handleUpgrade(req, socket, head);
+      else terminal.handleUpgrade(req, socket, head, path);
+    },
   });
 
   const url = await http.listen();
@@ -112,6 +118,7 @@ export async function startDaemon(overrides: Parameters<typeof loadConfig>[0] = 
     if (stopped) return;
     stopped = true;
     stream?.close();
+    terminal.close();
     await http.close();
     await lifecycle.stop();
     await container.dispose();

@@ -124,6 +124,8 @@ export interface EventRepositoryPort {
   }): RunEventRecord;
   listByMission(missionId: MissionId, opts?: { afterSequence?: number; limit?: number; semanticOnly?: boolean }): readonly RunEventRecord[];
   listByRun(runId: RunId, opts?: { afterSequence?: number; limit?: number }): readonly RunEventRecord[];
+  /** The run's newest event of one of these types; what a live step's "Now" line is read from. */
+  latestByRun(runId: RunId, types: readonly string[]): RunEventRecord | undefined;
   latestSequence(missionId: MissionId): number;
 }
 

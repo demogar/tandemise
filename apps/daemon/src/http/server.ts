@@ -8,14 +8,17 @@ import { HANDLED, Router, makeContext, sendError, sendJson } from './router.js';
 import { verifyBearer } from './identity.js';
 import { applyCors } from './cors.js';
 
+/** A held task's terminal (hold-and-interact spec); the only upgrade path besides the stream. */
+const TERMINAL_PATH = /^\/v1\/tasks\/[^/]+\/terminal$/;
+
 export interface HttpServerOptions {
   readonly token: string;
   readonly router: Router;
   readonly log: Logger;
   /** Maps a verified bearer token to the person the request acts as. */
   readonly identityResolver: (token: string) => Caller;
-  /** Invoked for an authenticated upgrade request on the stream path. */
-  readonly onUpgrade: (req: IncomingMessage, socket: Duplex, head: Buffer) => void;
+  /** Invoked for an authenticated upgrade request on the stream or a terminal path, with that path. */
+  readonly onUpgrade: (req: IncomingMessage, socket: Duplex, head: Buffer, path: string) => void;
   /** 0 lets the OS pick, which is what MVP.md §7.2 asks for. */
   readonly port?: number;
 }
@@ -185,7 +188,8 @@ export class HttpServer {
     const authorized =
       verifyBearer(headerToken, this.#opts.token) || verifyBearer(queryToken, this.#opts.token);
 
-    if (url.pathname !== STREAM_PATH || !authorized) {
+    const known = url.pathname === STREAM_PATH || TERMINAL_PATH.test(url.pathname);
+    if (!known || !authorized) {
       this.#opts.log.warn('daemon.rejected_upgrade', { path: url.pathname, authorized });
       socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
       socket.destroy();
@@ -193,7 +197,7 @@ export class HttpServer {
     }
     this.#upgraded.add(socket);
     socket.once('close', () => this.#upgraded.delete(socket));
-    this.#opts.onUpgrade(req, socket, head);
+    this.#opts.onUpgrade(req, socket, head, url.pathname);
   }
 }
 

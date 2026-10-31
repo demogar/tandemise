@@ -557,6 +557,8 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
         metrics: (workspaceId) => r.resolve(t.DESK_SERVICE).metrics(workspaceId),
         banners: (workspaceId, metrics) => r.resolve(t.DESK_SERVICE).banners(workspaceId, metrics),
       },
+      // Resolved per call for the same reason: a hold answers with a task view.
+      holds: { standing: (task, mission) => r.resolve(t.HOLD_SERVICE).standing(task, mission) },
     }), { source: SOURCE });
 
     // Default: this installation has no workflow files. A composition root that

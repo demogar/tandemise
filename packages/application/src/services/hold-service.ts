@@ -12,7 +12,7 @@ import type { ExecutionTarget } from '@tandemise/execution-core';
 import type { RunRequest, RuntimeManager, SlotReservation } from '@tandemise/runtimes-core';
 import type { Clock, Logger, MemberId, TandemisePaths, TaskHoldId, TaskId } from '@tandemise/shared';
 import { TandemiseError, asId, errorMessage, ids } from '@tandemise/shared';
-import type { HoldService, ProjectionService } from '../services.js';
+import type { HoldService, HoldStanding, ProjectionService } from '../services.js';
 import type { SchedulerService } from '../engine/scheduler.js';
 import type { FeedbackRounds, RoundBegun } from '../engine/feedback-rounds.js';
 import { HOLD_LEASE_RENEW_MS, type HoldLeases, type TaskExecutor } from '../engine/task-executor.js';
@@ -110,15 +110,7 @@ export class HoldServiceImpl implements HoldService {
     const mission = this.#mission(task);
     const { actorId, recordedBy } = actorFor(deps, mission.workspaceId, caller);
     const source = this.#source(task);
-    const openHold = deps.holds.openFor(task.id) ?? null;
-    const pending = deps.approvals.pendingForTask(task.id);
-    const refusal = holdRefusal({
-      task, mission, trial: isTrialMission(mission),
-      liveRun: deps.runs.listByTask(task.id).some((r) => LIVE_RUN.includes(r.status)),
-      outputUnderReview: task.status === 'AWAITING_APPROVAL' && pending.some((a) => isOutputApproval(a, task, deps.runs)),
-      runtimeHasInteractive: source.profile === null || deps.runtimeManager.capabilities(source.profile).includes('interactive_resume'),
-      openHold, holderName: openHold === null ? null : this.#nameOf(openHold.heldBy),
-    });
+    const refusal = this.#refusal(task, mission, source);
     if (refusal !== null) refuse(refusal, task);
     if (source.profile === null) refuse(`No runtime is routed to '${task.title}', so there is nothing to hold it in.`, task);
     if (task.status === 'READY') await this.#assertMayStart(task, mission);
@@ -238,6 +230,26 @@ export class HoldServiceImpl implements HoldService {
       await this.#openTerminal(hold.id, true, null);
     }
     return this.#view(task.id);
+  }
+
+  standing(task: MissionTask, mission: Mission): HoldStanding {
+    const { deps } = this;
+    const open = deps.holds.openFor(task.id);
+    const hold = open === undefined ? null : {
+      holdId: open.id, heldBy: open.heldBy, heldByName: this.#nameOf(open.heldBy), startedAt: open.startedAt,
+      terminalOpen: deps.sessions?.isOpen(open.id) === true,
+    };
+    // A done, a person's or a trial step, and one already held, are refused
+    // before the runtime is asked about, so their runtime is never looked up.
+    if (open !== undefined || task.status === 'SUCCEEDED' || task.executor !== 'agent' || isTrialMission(mission)) {
+      const reason = this.#refusal(task, mission, { profile: null, session: null, runId: null });
+      return { hold, holdable: reason === null ? { ok: true } : { ok: false, reason } };
+    }
+    const source = this.#source(task);
+    const reason = this.#refusal(task, mission, source)
+      ?? (source.profile === null ? `No runtime is routed to '${task.title}', so there is nothing to hold it in.` : null)
+      ?? this.#terminalRefusal();
+    return { hold, holdable: reason === null ? { ok: true } : { ok: false, reason } };
   }
 
   terminalFor(taskId: TaskId): TaskHoldId | null {
@@ -553,10 +565,30 @@ export class HoldServiceImpl implements HoldService {
   }
 
   #assertTerminal(): void {
+    const reason = this.#terminalRefusal();
+    if (reason !== null) throw new TandemiseError('CONFLICT', reason);
+  }
+
+  /** Why no terminal can open on this daemon; null when one can. */
+  #terminalRefusal(): string | null {
     const sessions = this.deps.sessions;
-    if (sessions === undefined) throw new TandemiseError('CONFLICT', 'This daemon has no terminal to hold a step in.');
+    if (sessions === undefined) return 'This daemon has no terminal to hold a step in.';
     const available = sessions.available();
-    if (!available.ok) throw new TandemiseError('CONFLICT', available.reason);
+    return available.ok ? null : available.reason;
+  }
+
+  /** The domain's refusal, given the facts it asks about this task. */
+  #refusal(task: MissionTask, mission: Mission, source: HoldSource): string | null {
+    const { deps } = this;
+    const openHold = deps.holds.openFor(task.id) ?? null;
+    return holdRefusal({
+      task, mission, trial: isTrialMission(mission),
+      liveRun: deps.runs.listByTask(task.id).some((r) => LIVE_RUN.includes(r.status)),
+      outputUnderReview: task.status === 'AWAITING_APPROVAL'
+        && deps.approvals.pendingForTask(task.id).some((a) => isOutputApproval(a, task, deps.runs)),
+      runtimeHasInteractive: source.profile === null || deps.runtimeManager.capabilities(source.profile).includes('interactive_resume'),
+      openHold, holderName: openHold === null ? null : this.#nameOf(openHold.heldBy),
+    });
   }
 
   /** After the hold is written, a failure is the task's status line; the task stays HELD. */
