@@ -50,6 +50,8 @@ Conventional Commits, same as PR titles. Write a `## What and why` and
 
 ## Repo shape (one line each)
 
+- `apps/relay` is the optional team relay; it imports only
+  `@tandemise/api-contract/relay` and `@tandemise/coordination`.
 - `apps/desktop` (Electron + React) is a control surface only; the daemon
   `apps/daemon` owns state. Boundary rule enforced by `npm run check:boundaries`.
 - Design specs live in `docs/superpowers/specs/`, implementation plans in

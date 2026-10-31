@@ -1,4 +1,6 @@
+import type { CoordDeviceView, CoordMemberView, EndpointView, ImportReport } from '@tandemise/api-contract/relay';
 import type {
+  CoordinationClaimRowView, CoordinationStatusView,
   IssuesOverview, RepositoryIssuesView, UpdateIssueSettingsRequest,
   ApiErrorBody,
   NotificationPreferencesView,
@@ -367,6 +369,89 @@ export class DaemonClient {
 
   missionAction(id: string, action: 'plan' | 'replan' | 'start' | 'pause' | 'resume' | 'cancel', body?: unknown): Promise<MissionDetail> {
     return this.#request('POST', `/missions/${id}/${action}`, body ?? {});
+  }
+
+  // ---- coordination (who works on what with the team; relay spec)
+
+  coordinationStatus(): Promise<CoordinationStatusView> {
+    return this.#get('/coordination/status');
+  }
+
+  coordinationClaims(workspaceId: string): Promise<readonly CoordinationClaimRowView[]> {
+    return this.#get('/coordination/claims', { workspaceId });
+  }
+
+  /** "Take over", for the mission on this machine that should hold it. */
+  takeOverClaim(claimId: string, missionId: string | null): Promise<unknown> {
+    return this.#request('POST', `/coordination/claims/${claimId}/take-over`, { missionId });
+  }
+
+  takeBackClaim(missionId: string): Promise<unknown> {
+    return this.#request('POST', `/missions/${missionId}/claim/take-back`, {});
+  }
+
+  keepGoingWithoutClaim(missionId: string): Promise<void> {
+    return this.#request('POST', `/missions/${missionId}/claim/keep-going`, {});
+  }
+
+  stopWorking(missionId: string): Promise<void> {
+    return this.#request('POST', `/missions/${missionId}/claim/stop`, {});
+  }
+
+  connectRelay(body: { url: string; code: string; displayName: string; deviceLabel: string; allowInsecure: boolean }): Promise<CoordinationStatusView> {
+    return this.#request('POST', '/coordination/connect', body);
+  }
+
+  importToRelay(): Promise<ImportReport> {
+    return this.#request('POST', '/coordination/import', {});
+  }
+
+  disconnectRelay(): Promise<CoordinationStatusView> {
+    return this.#request('POST', '/coordination/disconnect', {});
+  }
+
+  relayMembers(): Promise<{ members: readonly CoordMemberView[]; devices: readonly CoordDeviceView[] }> {
+    return this.#get('/coordination/members');
+  }
+
+  relayFailures(): Promise<readonly { id: string; op: string; lastError: string }[]> {
+    return this.#get('/coordination/failures');
+  }
+
+  createRelayInvite(body: { role: 'admin' | 'member'; displayName: string; expiresInDays?: number }): Promise<{ code: string; expiresAt: string }> {
+    return this.#request('POST', '/coordination/invites', body);
+  }
+
+  revokeDevice(id: string): Promise<void> {
+    return this.#request('DELETE', `/coordination/devices/${id}`);
+  }
+
+  removeRelayMember(id: string): Promise<void> {
+    return this.#request('DELETE', `/coordination/members/${id}`);
+  }
+
+  endpoints(): Promise<readonly EndpointView[]> {
+    return this.#get('/coordination/endpoints');
+  }
+
+  createEndpoint(body: { workspaceId: string; name: string; source: string; handshake: 'none' | 'meta_hub' | 'echo_challenge'; handshakeSecret?: string }): Promise<EndpointView> {
+    return this.#request('POST', '/coordination/endpoints', body);
+  }
+
+  disableEndpoint(id: string): Promise<void> {
+    return this.#request('POST', `/coordination/endpoints/${id}/disable`, {});
+  }
+
+  parkedMessages(): Promise<readonly { id: string; endpointId: string; receivedAt: string; lastDeviceId: string | null }[]> {
+    return this.#get('/coordination/messages/parked');
+  }
+
+  retryMessage(id: string): Promise<void> {
+    return this.#request('POST', `/coordination/messages/${id}/retry`, {});
+  }
+
+  dropMessage(id: string): Promise<void> {
+    return this.#request('POST', `/coordination/messages/${id}/drop`, {});
   }
 
   deleteMission(id: string): Promise<void> {

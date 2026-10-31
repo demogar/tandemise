@@ -38,6 +38,9 @@
       "path": "./packages/evaluation"
     },
     {
+      "path": "./packages/coordination"
+    },
+    {
       "path": "./packages/runtime-claude"
     },
     {
@@ -62,10 +65,16 @@
       "path": "./packages/desktop-control"
     },
     {
+      "path": "./packages/coordination-relay"
+    },
+    {
       "path": "./packages/application"
     },
     {
       "path": "./apps/daemon"
+    },
+    {
+      "path": "./apps/relay"
     }
   ]
 }

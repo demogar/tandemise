@@ -6,6 +6,7 @@ import type { Logger } from '@tandemise/shared';
 import type { EventBusPort, ProjectionBusPort, RunEventRecord } from '@tandemise/domain';
 import type { ClientMessage, ServerMessage } from '@tandemise/api-contract';
 import { API_VERSION } from '@tandemise/api-contract';
+import { PRESENCE_AWAY_MS } from '../coordination.js';
 
 /**
  * The live update socket (MVP.md §7.2).
@@ -29,6 +30,8 @@ export class StreamServer {
   readonly #subscriptions = new Map<WebSocket, { all: boolean; missions: Set<string> }>();
   readonly #log: Logger;
   #unsubscribe: Array<() => void> = [];
+  /** The last pointer or key in any desktop window: presence's "away" (relay spec). */
+  #lastActivityAt = Date.now();
 
   constructor(opts: {
     server: Server;
@@ -44,6 +47,7 @@ export class StreamServer {
       // A client that has not subscribed to anything specific sees everything;
       // that is what the Home screen needs. It narrows by subscribing.
       this.#subscriptions.set(socket, { all: true, missions: new Set() });
+      this.#lastActivityAt = Date.now();
       this.#send(socket, {
         type: 'hello',
         apiVersion: API_VERSION,
@@ -75,6 +79,12 @@ export class StreamServer {
 
   get clientCount(): number {
     return this.#subscriptions.size;
+  }
+
+  /** Online while a desktop window is open and was used in the last ten minutes; null with no window. */
+  desktopPresence(): 'online' | 'away' | null {
+    if (this.#subscriptions.size === 0) return null;
+    return Date.now() - this.#lastActivityAt > PRESENCE_AWAY_MS ? 'away' : 'online';
   }
 
   close(): void {
@@ -112,6 +122,9 @@ export class StreamServer {
         break;
       case 'ping':
         this.#send(socket, { type: 'pong', t: msg.t });
+        break;
+      case 'activity':
+        this.#lastActivityAt = Date.now();
         break;
     }
   }

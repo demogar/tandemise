@@ -86,6 +86,8 @@ const TOPIC_KEYS: Readonly<Record<ProjectionTopic, readonly (readonly string[])[
   // A refinement decision changes the mission's readiness and the inbox row that asks for it.
   // The backlog shows each draft's readiness too.
   refinement: [['mission'], ['inbox'], ['home'], ['missions']],
+  // Claims with the team: Home's "Who's working on what", a mission's claim banner and its Inbox row.
+  coordination: [['coordination'], ['mission'], ['inbox'], ['team']],
 };
 
 export function invalidateTopic(
@@ -220,6 +222,29 @@ export function useRoutines() {
     queryFn: () => daemon.routines(workspaceId ?? ''),
     enabled: Boolean(workspaceId),
     refetchInterval: 5_000,
+    placeholderData: (previous) => previous,
+  });
+}
+
+/** Where coordination stands: local only, or with a team relay. Polled: "Offline since" is the daemon's word. */
+export function useCoordinationStatus() {
+  const daemon = useDaemon();
+  return useQuery({
+    queryKey: ['coordination', 'status'] as const,
+    queryFn: () => daemon.coordinationStatus(),
+    refetchInterval: 5_000,
+    placeholderData: (previous) => previous,
+  });
+}
+
+/** "Who's working on what" in this project. */
+export function useCoordinationClaims() {
+  const daemon = useDaemon();
+  const workspaceId = useWorkspaceId();
+  return useQuery({
+    queryKey: ['coordination', 'claims', workspaceId ?? ''] as const,
+    queryFn: () => daemon.coordinationClaims(workspaceId ?? ''),
+    enabled: Boolean(workspaceId),
     placeholderData: (previous) => previous,
   });
 }

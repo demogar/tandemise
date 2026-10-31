@@ -19,6 +19,8 @@ export type ServerMessage =
 export type ClientMessage =
   | { readonly type: 'subscribe'; readonly missionId?: string }
   | { readonly type: 'unsubscribe'; readonly missionId?: string }
-  | { readonly type: 'ping'; readonly t: number };
+  | { readonly type: 'ping'; readonly t: number }
+  /** The person touched the app: feeds presence ("away" after ten idle minutes, relay spec). */
+  | { readonly type: 'activity'; readonly t: number };
 
 export const STREAM_PATH = '/v1/stream';

@@ -90,6 +90,8 @@ export type { NotificationDeps } from './services/notification-service.js';
 export { RoutineService } from './services/routine-service.js';
 export { SkillService } from './services/skill-service.js';
 export { IssueService } from './services/issue-service.js';
+export { CoordinationService, STOPPED_FOR_CLAIM, PENDING_SENTENCE } from './services/coordination-service.js';
+export type { CoordinationDeps, TrackerItem } from './services/coordination-service.js';
 export { ContributionError, ContributionServiceImpl, pickGitCredentialEnv } from './services/contribution-service.js';
 export type { ContributionDeps, ContributionErrorCode } from './services/contribution-service.js';
 export { EvalError, EvalService } from './services/eval-service.js';
