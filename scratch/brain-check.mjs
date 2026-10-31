@@ -427,6 +427,46 @@ if (wants('select')) {
   check('harmful and superseded entries are never selected', sel?.lessons.length === 0 && sel.index.length === 0, sel);
 }
 
+// ------------------------------------------------------------------ classify
+if (wants('classify')) {
+  section('classify: small, structural or refused, decided by code from the diff');
+  const c = (diff) => D.classifyBrainChange?.(diff) ?? { class: null, reasons: [] };
+  const role = (front, body) => `---\n${front}---\n\n${body}\n`;
+  const devFront = 'id: development\nname: Developer\nmodel: strong-model\n';
+  const wf = 'name: Build\nsteps:\n  - key: plan\n    role: architecture\n    approvals: [plan]\n  - key: build\n    role: development\n    completionGate: checks.tests == PASS\n';
+  const rows = [
+    ['lines added at the end of project.md', [{ path: 'memory/rules/project.md', before: '# Rules\n\nA.\n', after: '# Rules\n\nA.\nB.\n' }], 'small'],
+    ['lines added in the middle', [{ path: 'memory/rules/project.md', before: 'A.\nC.\n', after: 'A.\nB.\nC.\n' }], 'small'],
+    ['a new rules file', [{ path: 'memory/rules/role-development.md', before: null, after: '# Developer\n\nB.\n' }], 'small'],
+    ['a role body line added, front matter unchanged', [{ path: 'factory/roles/development.md', before: role(devFront, 'Do it.'), after: role(devFront, 'Do it.\nTest first.') }], 'small'],
+    ['CRLF before, LF after, same lines plus one', [{ path: 'memory/rules/project.md', before: 'A.\r\nB.\r\n', after: 'A.\nB.\nC.\n' }], 'small'],
+    ['one line reworded', [{ path: 'memory/rules/project.md', before: 'A.\nB.\n', after: 'A.\nB!\n' }], 'structural', 'Removes or rewords a line in memory/rules/project.md.'],
+    ['a line removed from role instructions', [{ path: 'factory/roles/development.md', before: role(devFront, 'Do it.\nTest.'), after: role(devFront, 'Do it.') }], 'structural', 'Removes or rewords a line in factory/roles/development.md.'],
+    ['a role model change', [{ path: 'factory/roles/development.md', before: role(devFront, 'Do it.'), after: role(devFront.replace('strong-model', 'other-model'), 'Do it.') }], 'structural', "Changes development's settings (model, skills, capabilities or isolation)."],
+    ['a workflow step removed', [{ path: 'factory/workflows/build.yaml', before: wf, after: wf.split('  - key: build')[0] }], 'structural', 'Changes the workflow build.'],
+    ['approvals removed', [{ path: 'factory/workflows/build.yaml', before: wf, after: wf.replace('    approvals: [plan]\n', '') }], 'structural', 'Removes or relaxes an approval or a gate.'],
+    ['a gate changed', [{ path: 'factory/workflows/build.yaml', before: wf, after: wf.replace('checks.tests == PASS', 'true') }], 'structural', 'Removes or relaxes an approval or a gate.'],
+    ['project settings', [{ path: 'factory/tandemise.yaml', before: 'version: 1\n', after: 'version: 1\nwipLimit: 3\n' }], 'structural', 'Changes project settings.'],
+    ['autonomy relaxed', [{ path: 'factory/tandemise.yaml', before: 'project:\n  autonomy:\n    planApproval: ask\n', after: 'project:\n  autonomy:\n    planApproval: auto\n' }], 'structural', 'Removes or relaxes an approval or a gate.'],
+    ['tracker', [{ path: 'factory/tracker.yaml', before: null, after: 'tracker: {}\n' }], 'structural', 'Changes the tracker mapping.'],
+    ['intake', [{ path: 'factory/intake.yaml', before: null, after: 'sources: []\n' }], 'structural', 'Changes the tracker mapping.'],
+    ['mcps', [{ path: 'factory/mcps.yaml', before: 'mcps: []\n', after: 'mcps:\n  - name: X\n' }], 'structural', 'Changes the MCPs the project needs.'],
+    ['an mcp added is a new integration', [{ path: 'factory/mcps.yaml', before: 'mcps: []\n', after: 'mcps:\n  - name: X\n' }], 'structural', 'Adds a capability or an integration.'],
+    ['routines', [{ path: 'factory/routines.yaml', before: 'routines: []\n', after: 'routines:\n  - name: N\n' }], 'structural', 'Changes routines.'],
+    ['issues', [{ path: 'factory/issues.yaml', before: null, after: 'repositories: []\n' }], 'structural', 'Changes issue settings.'],
+    ['skills.lock', [{ path: 'factory/skills.lock', before: 'version: 1\n', after: 'version: 1\nskills: []\n' }], 'structural', 'Changes pinned skills.'],
+    ['vendored skills', [{ path: 'skills/tdd/abc/SKILL.md', before: null, after: 'x\n' }], 'structural', 'Changes pinned skills.'],
+    ['brain.yaml', [{ path: 'brain.yaml', before: 'version: 1\n', after: 'version: 1\nhumanEdits: pr\n' }], 'structural', 'Changes brain.yaml.'],
+    ['a capability added to a role', [{ path: 'factory/roles/development.md', before: role(devFront, 'Do it.'), after: role(`${devFront}capabilities:\n  - github.write\n`, 'Do it.') }], 'structural', 'Adds a capability or an integration.'],
+    ['rules added plus skills.lock', [{ path: 'memory/rules/project.md', before: 'A.\n', after: 'A.\nB.\n' }, { path: 'factory/skills.lock', before: 'version: 1\n', after: 'version: 1\nx: 1\n' }], 'structural', 'Changes pinned skills.'],
+    ['anything under evals/', [{ path: 'evals/gates.yaml', before: null, after: 'suites: []\n' }], 'refused', 'The evals folder can only be changed by a person.'],
+  ];
+  for (const [label, diff, cls, reason] of rows) {
+    const got = c(diff);
+    check(`${label} → ${cls}`, got.class === cls && (reason === undefined || got.reasons.includes(reason)), got);
+  }
+}
+
 // ------------------------------------------------------------------ harness
 // The application composed over a real database, with the daemon's disk
 // adapters and the brain's git and gh adapters, as bootstrap binds them.

@@ -51,3 +51,4 @@ export * from './brain/scrub.js';
 export * from './ports/brain.js';
 export * from './brain/ledger.js';
 export * from './brain/select.js';
+export * from './brain/classify.js';
