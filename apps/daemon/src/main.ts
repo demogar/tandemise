@@ -1,6 +1,6 @@
 import { mkdirSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { TandemiseError, asId, errorMessage } from '@tandemise/shared';
+import { TandemiseError, asId, errorMessage, forgetElectronRunAsNode } from '@tandemise/shared';
 import { API_VERSION, STREAM_PATH } from '@tandemise/api-contract';
 import { loadConfig } from './config.js';
 import { COORDINATION_SWITCH, bootstrap } from './bootstrap.js';
@@ -175,6 +175,9 @@ function isEntryPoint(): boolean {
 // Tests and the desktop's spawner import `startDaemon` directly; only a direct
 // `node main.js` should start a daemon, or they would race a second instance.
 if (isEntryPoint()) {
+  // A packaged app runs this file on Electron's binary in Node mode; nothing
+  // the daemon starts should inherit that mode (see ownNodeEnv).
+  forgetElectronRunAsNode();
   startDaemon().catch((e) => {
     process.stderr.write(`tandemd failed to start: ${errorMessage(e)}\n`);
     process.exit(1);
