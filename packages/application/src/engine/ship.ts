@@ -304,6 +304,7 @@ export class ShipService {
   #void(mission: Mission, task: MissionTask, decision: MergeDecisionRecord): void {
     const d = this.deps.decide!;
     d.mergeDecisions.update(decision.id, { voidedAt: this.deps.clock.now() as Timestamp });
+    void this.cancelQueued(decision);
     for (const card of d.approvals.list({ missionId: mission.id, statuses: ['PENDING'] }).filter((a) => a.evidence.some((e) => e.label === DECISION_LABEL && e.value === decision.id))) {
       d.approvals.update(card.id, { status: 'CANCELLED', decidedAt: this.deps.clock.now() });
     }
@@ -311,11 +312,28 @@ export class ShipService {
     this.deps.recorder.invalidate('approvals', mission.id);
   }
 
+  /** A merge queued on GitHub (`--auto`) for a decision that no longer stands is cancelled there too. */
+  async cancelQueued(decision: MergeDecisionRecord): Promise<void> {
+    if (decision.mergedBy !== 'tandemise' || decision.mergedAt !== null) return;
+    const mission = this.deps.decide?.missions.get(decision.missionId);
+    const repository = mission?.repositoryId == null ? undefined : this.deps.repositories.get(mission.repositoryId);
+    if (repository === undefined) return;
+    try {
+      await this.deps.pullRequests.disableAutoMerge(repository.path, decision.repo, decision.prNumber);
+      this.deps.decide?.mergeDecisions.update(decision.id, { mergedBy: null });
+    } catch (e) {
+      this.deps.log.warn('ship.disable_auto_failed', { decisionId: decision.id, error: errorMessage(e) });
+    }
+  }
+
   #closedOrMerged(mission: Mission, task: MissionTask, pr: PullRequestRef, decision: MergeDecisionRecord | null): ShipOutcome {
     const d = this.deps.decide!;
     if (pr.state === 'MERGED') {
       // A merge Tandemise queued (`--auto`) that GitHub has now done.
-      if (decision !== null && decision.mergedAt === null && decision.mergedBy === 'tandemise') return this.#recordMerged(mission, task, decision, pr.mergeSha, 'tandemise');
+      // Only when GitHub merged the head that was decided; anything else is a person's merge.
+      if (decision !== null && decision.mergedAt === null && decision.mergedBy === 'tandemise' && pr.headSha === decision.headSha) {
+        return this.#recordMerged(mission, task, decision, pr.mergeSha, 'tandemise');
+      }
       if (decision !== null && decision.mergedAt === null) {
         d.mergeDecisions.update(decision.id, { mergedAt: this.deps.clock.now() as Timestamp, mergedBy: pr.mergedBy ?? 'a person', mergeSha: pr.mergeSha });
         this.deps.recorder.record({ workspaceId: mission.workspaceId, missionId: mission.id, taskId: task.id }, { type: 'merge.merged', decisionId: decision.id, mergeSha: pr.mergeSha ?? '', by: pr.mergedBy ?? 'a person' });
@@ -409,8 +427,10 @@ export class ShipService {
     }
     const settings = await this.deps.pullRequests.repoSettings(repository.path, pr.repo);
     const method = 'error' in factory.merge ? 'squash' : factory.merge.method;
+    // GitHub's auto-merge waits only for required checks; with none it would merge at once, so it isn't used.
+    const auto = settings.allowAutoMerge && protection.requiredChecks === true;
     const result = await this.deps.pullRequests.merge(repository.path, pr.repo, pr.number, {
-      method, matchHeadCommit: decision.headSha, auto: settings.allowAutoMerge,
+      method, matchHeadCommit: decision.headSha, auto,
       subject: `${pr.title} (#${pr.number})`,
       body: squashTrailers(decision, { policyRef: decision.policyRef, mission: mission.issueLinkId ?? mission.id, by }),
     });

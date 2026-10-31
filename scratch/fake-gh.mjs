@@ -300,13 +300,22 @@ function prCommand(dir, state, args, out) {
     save();
     return;
   }
+  if (verb === 'merge' && args.includes('--disable-auto')) {
+    delete pr.autoMerge;
+    save();
+    return;
+  }
   if (verb === 'merge') {
     // A push that lands between a decision and its merge (`moveHeadOnMerge`), once.
     if (r.moveHeadOnMerge) { pr.headRefOid = r.moveHeadOnMerge; delete r.moveHeadOnMerge; save(); }
     const match = flag(args, '--match-head-commit');
     if (match !== pr.headRefOid) fail(`GraphQL: Head branch was modified. Review and try the merge again. (mergePullRequest)`);
     if (pr.state !== 'OPEN') fail(`GraphQL: Pull request is not open (mergePullRequest)`);
-    if (args.includes('--auto')) { pr.autoMerge = { method: ['--squash', '--merge', '--rebase'].find((m) => args.includes(m)) }; }
+    if (args.includes('--auto')) {
+      pr.autoMerge = { method: ['--squash', '--merge', '--rebase'].find((m) => args.includes(m)) };
+      // A repository with `autoMergeQueues` holds the merge until its checks pass, as GitHub does.
+      if (r.autoMergeQueues) { save(); return; }
+    }
     pr.state = 'MERGED';
     pr.mergedBy = { login: state.login };
     // A real squash commit on the base when the remote is a local repository, so a revert has something to undo.

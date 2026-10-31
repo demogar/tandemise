@@ -31,6 +31,8 @@ export interface MergePolicyServiceDeps {
   readonly wake: () => void;
   /** Whether the project has a brain: auto-merge is only ever turned on for one (#53 §8.4). */
   readonly brainLinked?: (workspaceId: WorkspaceId) => boolean;
+  /** Cancels a merge Tandemise queued on GitHub for a decision that is being voided. */
+  readonly cancelQueued?: (decision: import('@tandemise/domain').MergeDecisionRecord) => Promise<void>;
 }
 
 /** The title of the Decision that records a person turning auto-merge on. */
@@ -124,6 +126,7 @@ export class MergePolicyService {
       if (latest === undefined || latest.workspaceId !== workspaceId || latest.voidedAt !== null || latest.mergedAt !== null) continue;
       // Voided, the ship step decides again on its next look, under the policy now on disk.
       this.deps.mergeDecisions.update(latest.id, { voidedAt: this.deps.clock.now() });
+      void this.deps.cancelQueued?.(latest);
     }
     this.deps.wake();
   }

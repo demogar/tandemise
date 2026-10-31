@@ -158,6 +158,10 @@ export class GhPullRequestFlow implements PullRequestPort {
     return { merged: !opts.auto, queued: opts.auto, refused: null };
   }
 
+  async disableAutoMerge(cwd: string, repo: string, number: number): Promise<void> {
+    await gh(this.#ctx(cwd), ['pr', 'merge', String(number), '--repo', repo, '--disable-auto']);
+  }
+
   async updateBranch(cwd: string, repo: string, number: number): Promise<void> {
     await gh(this.#ctx(cwd), ['pr', 'update-branch', String(number), '--repo', repo]);
   }

@@ -73,6 +73,8 @@ export interface PullRequestPort {
     readonly method: 'squash' | 'merge' | 'rebase'; readonly matchHeadCommit: string; readonly auto: boolean; readonly subject: string; readonly body: string;
   }): Promise<{ readonly merged: boolean; readonly queued: boolean; readonly refused: string | null }>;
   updateBranch(cwd: string, repo: string, number: number): Promise<void>;
+  /** Cancels a merge queued with `--auto`, so a decision voided or a kill switch takes effect on GitHub too. */
+  disableAutoMerge(cwd: string, repo: string, number: number): Promise<void>;
   repoSettings(cwd: string, repo: string): Promise<{ readonly allowAutoMerge: boolean }>;
   /** Commit subjects on a branch since a time, newest first: how a revert by someone else is seen. */
   commits(cwd: string, repo: string, branch: string, sinceIso: string): Promise<readonly { readonly sha: string; readonly subject: string }[]>;

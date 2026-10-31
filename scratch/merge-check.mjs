@@ -286,7 +286,7 @@ await attempt('reviewed commit', async () => {
   const m2calls = merges().slice(1);
   check('only the refused merge call was made, on the decided sha', m2calls.length === 1 && m2calls[0].args[m2calls[0].args.indexOf('--match-head-commit') + 1] === rows[0].headSha, m2calls.map((c) => c.args.join(' ')));
 
-  fake.setRepo(w.ghDir, REPO, { autoMergeAllowed: true });
+  fake.setRepo(w.ghDir, REPO, { autoMergeAllowed: true, protection: { required_status_checks: { strict: false, contexts: ['unit'] } } });
   const m3 = await w.mission('fix: typo in the header');
   await w.h.until(() => w.h.repo.missions.get(m3.id).status === 'COMPLETE', 60000);
   check('with auto-merge allowed on the repository, the merge is queued with --auto', merges().at(-1).args.includes('--auto'), merges().at(-1).args);
@@ -442,6 +442,33 @@ await attempt('review: auto-merge needs the brain and your decision', async () =
   const w3 = await world();
   try { await w3.h.services.mergePolicy.update(w3.ws, on, w3.caller); } catch (e) { refused = e.message; }
   check('turning auto-merge on without a brain is refused', typeof refused === 'string' && refused.includes('brain'), refused);
+});
+
+await attempt('review: queued auto-merge is cancelled', async () => {
+  section('review: queued auto-merge is cancelled');
+  const fake = await import('./fake-gh.mjs');
+  const w = await world({ factory: { merge: { ...app.SHIPPED_MERGE, autoMerge: 'on' } }, brain: true });
+  await w.authorize();
+  fake.setRepo(w.ghDir, REPO, { defaultChecks: [{ name: 'unit', conclusion: 'success' }], autoMergeAllowed: true, autoMergeQueues: true, protection: { required_status_checks: { strict: false, contexts: ['unit'] } } });
+  const m = await w.mission('fix: typo in the settings title');
+  const pr = () => fake.pullRequests(w.ghDir, REPO).at(-1);
+  await w.h.until(() => pr()?.autoMerge != null, 60000);
+  const merges = () => fake.calls(w.ghDir).filter((c) => c.args[0] === 'pr' && c.args[1] === 'merge');
+  check('with required checks, the merge is queued with --auto', merges().at(-1)?.args.includes('--auto') && pr().state === 'OPEN', merges().map((c) => c.args.join(' ')));
+  await w.h.services.mergePolicy.stop(w.ws, w.caller);
+  await w.h.until(() => merges().some((c) => c.args.includes('--disable-auto')), 30000);
+  check('stopping auto-merge cancels the queued merge on GitHub', merges().some((c) => c.args.includes('--disable-auto')) && pr().autoMerge == null && pr().state === 'OPEN', merges().map((c) => c.args.join(' ')));
+  await w.h.until(() => w.h.repo.mergeDecisions.listByMission(m.id).some((d) => d.voidedAt === null && d.verdict === 'ask'), 30000);
+  check('…and the pull request is decided again, as ask', w.h.repo.mergeDecisions.listByMission(m.id).at(-1).verdict === 'ask');
+  check('no gh call ever passes --admin', !fake.calls(w.ghDir).some((c) => c.args.includes('--admin')));
+  // No required checks: GitHub's auto-merge would not wait for CI, so it is never used.
+  const w2 = await world({ factory: { merge: { ...app.SHIPPED_MERGE, autoMerge: 'on' } }, brain: true });
+  await w2.authorize();
+  fake.setRepo(w2.ghDir, REPO, { defaultChecks: [{ name: 'unit', conclusion: 'success' }], autoMergeAllowed: true });
+  const m2 = await w2.mission('fix: typo in the header');
+  await w2.h.until(() => w2.h.repo.missions.get(m2.id).status === 'COMPLETE', 60000);
+  const call = fake.calls(w2.ghDir).filter((c) => c.args[1] === 'merge').at(-1)?.args ?? [];
+  check('without required checks, it merges directly (no --auto)', call.length > 0 && !call.includes('--auto'), call);
 });
 
 // @sections

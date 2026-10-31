@@ -1144,6 +1144,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       clock: clock(r),
       wake: () => r.resolve(t.SCHEDULER).wake(),
       brainLinked: (workspaceId) => r.tryResolve(BRAIN_SERVICE)?.linkOf(workspaceId) !== undefined,
+      cancelQueued: (decision) => r.resolve(t.SHIP_SERVICE).cancelQueued(decision),
     }), { source: SOURCE });
 
     bind(t.TANDEMISE_SERVICES, (r): TandemiseServices => ({
