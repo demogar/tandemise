@@ -8,6 +8,8 @@ import {
   PROCESS_SUPERVISOR,
 } from '@tandemise/execution-core';
 import { GitService } from './git/git-service.js';
+import { GitBrainRepo } from './git/brain-repo.js';
+import type { BrainRepoPort } from '@tandemise/domain';
 import { NodeProcessSupervisor } from './process/node-process-supervisor.js';
 import { LocalTargetFactory } from './targets/local-factory.js';
 import { WorktreeTargetFactory } from './targets/worktree-factory.js';
@@ -15,6 +17,8 @@ import { WorkspaceProvisioner } from './workspace-provisioner.js';
 
 export const GIT_SERVICE = token<GitService>('execution-local/git');
 export const WORKSPACE_PROVISIONER = token<WorkspaceProvisioner>('execution-local/workspace-provisioner');
+/** Git for a project's brain clone (#51). The daemon injects the credential environment. */
+export const BRAIN_REPO = token<BrainRepoPort>('execution-local/brain-repo');
 
 /**
  * The provider half of execution: process spawning, git, and the `local` and
@@ -32,6 +36,10 @@ export const executionLocalModule = defineModule(
     });
 
     c.bind(GIT_SERVICE, (r) => new GitService(r.resolve(PROCESS_SUPERVISOR), log(r).child({ component: 'git' })), {
+      source: 'execution-local',
+    });
+
+    c.bind(BRAIN_REPO, (r) => new GitBrainRepo(r.resolve(PROCESS_SUPERVISOR), log(r).child({ component: 'brain-git' })), {
       source: 'execution-local',
     });
 

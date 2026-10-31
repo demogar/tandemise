@@ -34,6 +34,7 @@ import { RepositoryProber } from './support/repository-prober.js';
 import { RuntimeOverrides } from './support/runtime-overrides.js';
 import { ApprovalWaiter, createApprovalGate, createPolicyEngineToolGate } from './support/tool-policy.js';
 import { createAskHumanTool } from './tools/ask-human.js';
+import { bindBrain } from './brain/module.js';
 import { RunDeadlines } from './engine/run-deadline.js';
 import { ConnectFlow } from './services/connect-flow.js';
 import { IntegrationCredentials } from './support/integration-credentials.js';
@@ -960,6 +961,8 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       contributions: r.resolve(t.CONTRIBUTION_SERVICE),
       evals: r.resolve(t.EVAL_SERVICE),
     }), { source: SOURCE });
+
+    bindBrain(container);
   });
 }
 

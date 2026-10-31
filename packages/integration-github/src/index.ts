@@ -8,3 +8,4 @@ export { githubIntegrationModule } from './module.js';
 export { GhIssueTracker } from './issues.js';
 export { GhPullRequestSnapshots } from './pull-requests.js';
 export type { GhContext } from './gh.js';
+export { GhBrainHost } from './brain-host.js';

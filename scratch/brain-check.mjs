@@ -144,6 +144,48 @@ if (wants('persistence')) {
   await container.dispose();
 }
 
+// ------------------------------------------------------------------ fake gh + git config
+// `gh` is a script first on PATH; its state lives under HOME. A git config
+// (passed as GIT_CONFIG_GLOBAL) turns https://github.com/ into the local
+// bare repositories the fake gh creates, so nothing touches the network.
+const quiet = { info() {}, warn() {}, error() {}, debug() {}, child() { return quiet; } };
+const FAKE = {
+  bin: join(HOME, 'bin'), log: join(HOME, 'gh-log.jsonl'), state: join(HOME, 'gh-state'),
+  remotes: join(HOME, 'remotes'), gitconfig: join(HOME, 'gitconfig'),
+};
+mkdirSync(FAKE.bin, { recursive: true });
+mkdirSync(FAKE.remotes, { recursive: true });
+writeFileSync(join(FAKE.bin, 'gh'), `#!/bin/sh\nFAKE_GH_LOG='${FAKE.log}' FAKE_GH_STATE='${FAKE.state}' FAKE_GH_REMOTES='${FAKE.remotes}' exec '${process.execPath}' '${join(here, 'brain-fixtures', 'fake-gh.mjs')}' "$@"\n`);
+chmodSync(join(FAKE.bin, 'gh'), 0o755);
+writeFileSync(FAKE.gitconfig, `[url "file://${FAKE.remotes}/"]\n\tinsteadOf = https://github.com/\n[user]\n\tname = Check\n\temail = check@localhost\n[init]\n\tdefaultBranch = main\n`);
+process.env.PATH = `${FAKE.bin}:${process.env.PATH}`;
+process.env.GIT_CONFIG_GLOBAL = FAKE.gitconfig;
+const ghLog = () => (existsSync(FAKE.log) ? readFileSync(FAKE.log, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []);
+const bare = (name) => {
+  const dir = join(HOME, 'bare', `${name}.git`);
+  mkdirSync(dir, { recursive: true });
+  git(dir, 'init', '--bare', '-q', '-b', 'main');
+  return dir;
+};
+let supervisor = null;
+async function brainRepo() {
+  const EL = await import('@tandemise/execution-local');
+  supervisor ??= new EL.NodeProcessSupervisor(quiet);
+  return new EL.GitBrainRepo(supervisor, quiet, () => ({ GIT_CONFIG_GLOBAL: FAKE.gitconfig }));
+}
+async function brainHost() {
+  const { GhBrainHost } = await import('@tandemise/integration-github');
+  const EL = await import('@tandemise/execution-local');
+  supervisor ??= new EL.NodeProcessSupervisor(quiet);
+  const exec = {
+    async run(req) {
+      const r = await supervisor.run({ command: req.command, args: req.args ?? [], cwd: req.cwd ?? HOME, env: req.env ?? {}, stdin: req.stdin, timeoutMs: req.timeoutMs });
+      return { command: req.command, exitCode: r.exitCode, stdout: r.stdout, stderr: r.stderr, durationMs: 0, timedOut: r.timedOut };
+    },
+  };
+  return new GhBrainHost(exec);
+}
+
 // ------------------------------------------------------------------ codec
 // A P15 snapshot fixture, used by the codec section and later ones.
 const roleFixture = (id, name, model, extra = {}) => ({
@@ -204,6 +246,86 @@ if (wants('codec')) {
   const folder = await new FileSetupFolder(quiet).read(dir, { root: 'factory' });
   check('FileSetupFolder reads a brain root', folder?.files['tracker.yaml'] === tracker && folder.files['mcps.yaml'] === mcpsText, folder);
   check('and lists other files as ignored', folder?.ignored.includes('notes.txt'), folder?.ignored);
+}
+
+// ------------------------------------------------------------------ git
+if (wants('git')) {
+  section('git: the brain repository adapter and the gh host');
+  const repo = await brainRepo();
+  const remote = bare('git1');
+  const a = join(HOME, 'git1-a');
+  await repo.init(a, 'main');
+  const manifest = 'version: 1\nproject: Garipass\n';
+  await repo.commit(a, [{ path: 'brain.yaml', mode: 'write', content: manifest }], 'chore: create', null);
+  await repo.setRemote(a, remote);
+  check('init + commit + push is pushed', (await repo.push(a, 'main', { setUpstream: true })) === 'pushed');
+  check('the bare repo has one commit', git(remote, 'log', '--oneline', 'main').trim().split('\n').length === 1);
+
+  const b = join(HOME, 'git1-b');
+  await repo.clone(remote, b);
+  const head = await repo.head(b);
+  check('a clone reads brain.yaml at head', (await repo.readAt(b, head, 'brain.yaml')) === manifest);
+  check('listAt of a missing dir is empty', (await repo.listAt(b, head, 'memory')).length === 0);
+  check('readAt of a missing file is null', (await repo.readAt(b, head, 'nope.md')) === null);
+
+  const ledger = 'memory/ledger/2026/10/w.jsonl';
+  await repo.commit(a, [{ path: ledger, mode: 'append', content: 'a\n' }], 'chore: one', null);
+  await repo.commit(a, [{ path: ledger, mode: 'append', content: 'a\n' }], 'chore: two', null);
+  check('two appends give a\\na\\n', readFileSync(join(a, ledger), 'utf8') === 'a\na\n');
+  let refused = null;
+  try { await repo.commit(a, [{ path: ledger, mode: 'write', content: 'x' }], 'chore: bad', null); } catch (e) { refused = e.message; }
+  check('a write to a ledger file is refused', refused === 'Ledger files are append-only.', refused);
+  check('the file is untouched by the refused write', readFileSync(join(a, ledger), 'utf8') === 'a\na\n');
+  await repo.push(a, 'main');
+
+  // Concurrent writers: own ledger files never conflict.
+  await repo.commit(a, [{ path: 'memory/ledger/2026/10/a.jsonl', mode: 'append', content: '{"a":1}\n' }], 'chore: a', null);
+  await repo.commit(b, [{ path: 'memory/ledger/2026/10/b.jsonl', mode: 'append', content: '{"b":1}\n' }], 'chore: b', null);
+  check('the first push wins', (await repo.push(a, 'main')) === 'pushed');
+  check('the second is rejected', (await repo.push(b, 'main')) === 'rejected');
+  const rebased = await repo.fetchAndRebase(b, 'main');
+  check('fetchAndRebase reports no conflict on ledger files', rebased.conflicted.length === 0 && rebased.offline === null, rebased);
+  check('then the push goes through', (await repo.push(b, 'main')) === 'pushed');
+
+  // A real conflict on a rules file.
+  await repo.fetchAndRebase(a, 'main');
+  await repo.commit(a, [{ path: 'memory/rules/project.md', mode: 'write', content: 'from a\n' }], 'chore: rules a', null);
+  await repo.push(a, 'main');
+  await repo.commit(b, [{ path: 'memory/rules/project.md', mode: 'write', content: 'from b\n' }], 'chore: rules b', null);
+  const conflict = await repo.fetchAndRebase(b, 'main');
+  check('a rules conflict is reported', JSON.stringify(conflict.conflicted) === JSON.stringify(['memory/rules/project.md']), conflict);
+  check('no rebase is left in progress', !existsSync(join(b, '.git', 'rebase-merge')) && !existsSync(join(b, '.git', 'rebase-apply')));
+  const moved = await repo.moveUnpushedTo(b, 'tandemise/local/b/x', 'main');
+  check('moveUnpushedTo moves one commit', moved.length === 1, moved);
+  check('main equals origin/main afterwards', (await repo.head(b, 'main')) === (await repo.head(b, 'refs/remotes/origin/main')));
+
+  // Protected branch.
+  const prot = bare('protected');
+  writeFileSync(join(prot, 'hooks', 'pre-receive'), '#!/bin/sh\necho "GH006: Protected branch update failed for refs/heads/main." >&2\nexit 1\n');
+  chmodSync(join(prot, 'hooks', 'pre-receive'), 0o755);
+  const c = join(HOME, 'git1-c');
+  await repo.init(c, 'main');
+  await repo.commit(c, [{ path: 'brain.yaml', mode: 'write', content: manifest }], 'chore: create', null);
+  await repo.setRemote(c, prot);
+  check('a protected branch push is protected', (await repo.push(c, 'main')) === 'protected');
+
+  // Offline.
+  renameSync(remote, `${remote}.gone`);
+  let threw = false;
+  let off;
+  try { off = await repo.fetchAndRebase(a, 'main'); } catch { threw = true; }
+  check('offline fetch never throws and says why', !threw && typeof off?.offline === 'string' && off.offline.length > 0, off);
+  renameSync(`${remote}.gone`, remote);
+
+  // Fake gh.
+  const host = await brainHost();
+  const pr = await host.openPr({ clone: a, head: 'tandemise/x', base: 'main', title: 'T', body: 'B', draft: true });
+  check('openPr returns the fake URL', pr.url.endsWith('/pull/1'), pr);
+  const line = ghLog().find((l) => l.argv[0] === 'pr' && l.argv[1] === 'create');
+  check('the gh log has --draft and the body on stdin', line?.argv.includes('--draft') && line.stdin === 'B', line);
+  check('findPr finds it by head', (await host.findPr(a, 'tandemise/x'))?.url === pr.url);
+  check('prState reads open', (await host.prState(a, pr.url)) === 'open');
+  check('the host is available', (await host.available()).ok === true);
 }
 
 // ------------------------------------------------------------------ end
