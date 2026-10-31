@@ -29,19 +29,19 @@ const envFor = (settings, source) => {
 };
 
 console.log('── configDir resolution');
-ok('~ is expanded', resolveConfigDir({ configDir: '~/.claude-home' }) === `${homedir()}/.claude-home`,
-  resolveConfigDir({ configDir: '~/.claude-home' }));
+ok('~ is expanded', resolveConfigDir({ configDir: '~/.claude' }) === `${homedir()}/.claude`,
+  resolveConfigDir({ configDir: '~/.claude' }));
 ok('absolute is kept', resolveConfigDir({ configDir: '/opt/claude' }) === '/opt/claude');
 ok('absent means inherit', resolveConfigDir({}) === null);
 ok('a relative path is refused', (() => {
-  try { resolveConfigDir({ configDir: 'claude-home' }); return false; } catch { return true; }
+  try { resolveConfigDir({ configDir: '.claude' }); return false; } catch { return true; }
 })());
 
 console.log('\n── two profiles, two identities');
 const source = { PATH: process.env.PATH, HOME: homedir(), CLAUDE_CONFIG_DIR: '/inherited/from/daemon' };
-const a = envFor({ configDir: '~/.claude-home' }, source);
+const a = envFor({ configDir: '/opt/claude-team' }, source);
 const b = envFor({ configDir: '~/.claude' }, source);
-ok('profile A gets its own config dir', a.CLAUDE_CONFIG_DIR === `${homedir()}/.claude-home`, a.CLAUDE_CONFIG_DIR);
+ok('profile A gets its own config dir', a.CLAUDE_CONFIG_DIR === '/opt/claude-team', a.CLAUDE_CONFIG_DIR);
 ok('profile B gets its own config dir', b.CLAUDE_CONFIG_DIR === `${homedir()}/.claude`, b.CLAUDE_CONFIG_DIR);
 ok('a profile overrides what the daemon inherited', a.CLAUDE_CONFIG_DIR !== source.CLAUDE_CONFIG_DIR);
 ok('an unset profile still inherits', envFor({}, source).CLAUDE_CONFIG_DIR === '/inherited/from/daemon');
@@ -61,8 +61,8 @@ ok('real user config still passes', child.CLAUDE_CODE_MAX_OUTPUT_TOKENS === '819
 ok('vendor config still passes', child.ANTHROPIC_BASE_URL === 'https://example.invalid');
 
 console.log('\n── the real binary honours it');
-const bin = '/Users/you/.local/bin/claude';
-for (const dir of ['~/.claude-home', '~/.claude']) {
+const bin = `${homedir()}/.local/bin/claude`;
+for (const dir of ['~/.claude']) {
   const env = envFor({ configDir: dir }, { PATH: process.env.PATH, HOME: homedir() });
   const res = spawnSync(bin, ['--version'], { env, encoding: 'utf8', timeout: 30_000 });
   ok(`runs under ${dir}`, res.status === 0, (res.stdout || res.stderr || '').trim().split('\n')[0]);
