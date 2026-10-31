@@ -68,5 +68,12 @@ jobs:
     uses: ./.github/workflows/desktop-packages.yml
     with:
       tag: ${{ needs.release-please.outputs.tag_name }}
-    # The signing secrets (all optional) reach the build only through this.
-    secrets: inherit
+    # Only the (optional) signing secrets, by name; nothing else is passed down.
+    secrets:
+      MAC_CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+      MAC_CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+      WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
