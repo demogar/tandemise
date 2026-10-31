@@ -58,3 +58,15 @@ jobs:
           docker build -f apps/relay/Dockerfile -t "ghcr.io/tandemise/relay:${version}" -t ghcr.io/tandemise/relay:latest .
           docker push "ghcr.io/tandemise/relay:${version}"
           docker push ghcr.io/tandemise/relay:latest
+
+  desktop-packages:
+    name: Desktop installers
+    needs: release-please
+    if: needs.release-please.outputs.release_created
+    permissions:
+      contents: write
+    uses: ./.github/workflows/desktop-packages.yml
+    with:
+      tag: ${{ needs.release-please.outputs.tag_name }}
+    # The signing secrets (all optional) reach the build only through this.
+    secrets: inherit
