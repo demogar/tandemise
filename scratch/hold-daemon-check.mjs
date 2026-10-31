@@ -113,7 +113,7 @@ try {
     'flows:', '  - onboarding', '---', '', '# Onboarding', '', 'Onboarding designed.', '',
   ].join('\n');
   // A long first pass, so there is time to hold it; the continuation finishes at once.
-  const runtime = await api('POST', '/v1/runtimes', {
+  const fakeProfile = {
     adapterId: 'fake', name: 'Fake agent', workspaceId: null, maxConcurrent: 4, enabled: true,
     settings: {
       script: {
@@ -128,7 +128,8 @@ try {
         ],
       },
     },
-  });
+  };
+  const runtime = await api('POST', '/v1/runtimes', fakeProfile);
   check('a fake runtime profile', runtime.status === 200, runtime.body);
 
   const created = await api('POST', '/v1/missions', {
@@ -200,6 +201,12 @@ try {
   check('the token may also come as a header', headerToken === true);
   const otherPath = await openTerminal(`${taskId}/extra`);
   check('only the terminal path pattern is added', otherPath.status === 401, otherPath.status);
+  // A task id is never percent-encoded; a malformed escape must not reach a decoder that throws.
+  const malformed = await openTerminal('%E0%A4%A');
+  await poll(() => malformed.closed, 5_000);
+  const health = await fetch(`${url}/v1/health`).then((r) => r.status).catch(() => null);
+  check('a malformed terminal path does not take the daemon down', health === 200 && daemon.exitCode === null, { health, exit: daemon.exitCode, control: malformed.control });
+  check('it is told there is no terminal there', malformed.status === null && malformed.control.some((m) => m.type === 'error'), malformed);
 
   section('continue');
   const continued = await api('POST', `/v1/tasks/${taskId}/continue`);
@@ -221,6 +228,59 @@ try {
   check('releasing with no hold is a conflict', refused.status === 409, refused.body);
   const reopen = await api('POST', `/v1/tasks/${taskId}/terminal/reopen`);
   check('reopening with no hold is a conflict', reopen.status === 409, reopen.body);
+
+  section('a daemon whose terminal component does not load');
+  {
+    // node-pty is made to fail its load in the daemon process itself, the way a
+    // missing native build would; nothing in the daemon is told about it.
+    const preload = join(scratchDir, 'no-pty.cjs');
+    writeFileSync(preload, [
+      "const Module = require('module');",
+      'const load = Module._load;',
+      "Module._load = function (request, ...rest) { if (request === 'node-pty') throw new Error('no native build'); return load.call(this, request, ...rest); };",
+    ].join('\n'));
+    const home2 = join(scratchDir, 'home-no-pty');
+    const second = spawn(process.execPath, ['--require', preload, join(root, 'apps/daemon/dist/main.js')], {
+      cwd: root, detached: true, stdio: 'ignore',
+      env: { ...process.env, TANDEMISE_HOME: home2, TANDEMISE_OFFLINE: '1', TANDEMISE_LOG_LEVEL: 'error', TANDEMISE_TICK_MS: '200', GIT_CONFIG_GLOBAL: gitConfig },
+    });
+    try {
+      const file2 = join(home2, 'daemon.json');
+      await poll(() => existsSync(file2), 30_000);
+      check('the daemon still starts', existsSync(file2));
+      const c2 = JSON.parse(readFileSync(file2, 'utf8'));
+      const api2 = async (method, path, body) => {
+        const res = await fetch(`${c2.url}${path}`, {
+          method,
+          headers: { authorization: `Bearer ${c2.token}`, 'x-tandemise-api-version': 'v1', ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
+          ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        });
+        const text = await res.text();
+        return { status: res.status, body: text ? JSON.parse(text) : undefined };
+      };
+      const ws2 = (await api2('POST', '/v1/workspaces', { name: 'No terminal', repositoryPath: repo })).body.workspace;
+      await api2('PATCH', `/v1/workspaces/${ws2.id}`, { autonomy: { ...ws2.autonomy, planApproval: 'auto' } });
+      await api2('POST', '/v1/runtimes', fakeProfile);
+      const m2 = (await api2('POST', '/v1/missions', {
+        workspaceId: ws2.id, goal: 'Design onboarding', workflowPreset: 'hold-daemon', successCriteria: ['The design is written'], planNow: true,
+      })).body?.mission?.id;
+      await poll(async () => (await api2('GET', `/v1/missions/${m2}`)).body?.mission?.status !== 'PLANNING', 30_000);
+      await api2('POST', `/v1/missions/${m2}/start`);
+      const step = await poll(async () => {
+        const t = (await api2('GET', `/v1/missions/${m2}`)).body?.tasks?.[0];
+        return t?.status === 'RUNNING' && t.latestRun?.status === 'RUNNING' && t;
+      }, 60_000);
+      const reason = step?.holdable?.reason ?? '';
+      check('Hold is offered as unavailable, with the reason',
+        step?.holdable?.ok === false && reason.startsWith("The terminal component didn't load on this machine"), step?.holdable);
+      const refusedHold = await api2('POST', `/v1/tasks/${step?.id}/hold`);
+      check('holding is refused in the same words, and the step keeps running',
+        refusedHold.status === 409 && refusedHold.body?.error?.message === reason
+          && (await api2('GET', `/v1/missions/${m2}`)).body?.tasks?.[0]?.status === 'RUNNING', refusedHold.body);
+    } finally {
+      try { process.kill(-second.pid, 'SIGTERM'); } catch {}
+    }
+  }
 } catch (e) {
   failures.push(`threw: ${e?.stack ?? e}`);
   console.error(e);

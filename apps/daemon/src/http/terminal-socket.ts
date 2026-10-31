@@ -39,7 +39,9 @@ export class TerminalSocketServer {
 
   /** `path` is the authenticated `/v1/tasks/:id/terminal`. */
   handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer, path: string): void {
-    const taskId = asId<'TaskId'>(decodeURIComponent(path.split('/')[3] ?? ''));
+    // Taken as written: task ids carry no escapes, and decoding a malformed one
+    // would throw inside the server's upgrade listener and take the daemon down.
+    const taskId = asId<'TaskId'>(path.split('/')[3] ?? '');
     this.#wss.handleUpgrade(req, socket, head, (ws) => this.#connected(ws, taskId));
   }
 
