@@ -59,7 +59,7 @@
 
 .btn--danger {
   color: var(--status-failed);
-  border-color: color-mix(in srgb, var(--status-failed) 40%, transparent);
+  border-color: var(--status-failed-line);
   background: var(--status-failed-soft);
 }
 
@@ -288,7 +288,7 @@
 }
 
 .badge--release {
-  background: color-mix(in srgb, var(--risk-release) 14%, transparent);
+  background: var(--risk-release-soft);
   color: var(--risk-release);
 }
 
@@ -337,7 +337,7 @@
 
 /* A gentle pulse marks *live* work; it must never be the only signal. */
 .dot--pulse {
-  animation: pulse 1.9s var(--ease) infinite;
+  animation: pulse var(--duration-pulse) var(--ease) infinite;
 }
 
 @keyframes pulse {

@@ -86,10 +86,13 @@ Each colour role is written once as `light-dark(<light>, <dark>)`.
 |---|---|---|---|
 | Surfaces | `--canvas` `--surface` `--surface-raised` `--surface-sunken` `--surface-hover` `--surface-active` | paper | ink |
 | Borders | `--border` `--border-strong` `--border-focus` | paper 150/300, indigo-500 focus | ink 800/700, mint focus |
+| Focus | `--focus-ring` (alias of `--border-focus`) | indigo-500 | mint |
+| Scrims | `--scrim` (modal, 72%) `--scrim-light` (drawer, 40%) | washes of `--surface-sunken` | |
 | Text | `--text` `--text-secondary` `--text-tertiary` `--text-inverse` | indigo / slate / lichen-750 | mint-50 / lichen-300 / lichen |
 | Accent | `--accent` `--accent-hover` `--accent-text` `--accent-soft` `--accent-line` | **indigo** fill, mint text | **mint** fill, indigo text |
-| Status | `--status-{running,blocked,failed,succeeded,pending}` and `-soft` | signal deep | signal bright |
-| Risk | `--risk-{read,write,external,destructive,release}` | aliases of status, plus violet for release | |
+| Status | `--status-{running,blocked,failed,succeeded,pending}`, `-soft` (fill, 12–13%) and `-line` (edge, 40%) | signal deep | signal bright |
+| Risk | `--risk-{read,write,external,destructive,release}`, `--risk-release-soft` | aliases of status, plus violet for release | |
+| Tooltip | `--tooltip-background` `--tooltip-text` | indigo / white | mint-50 / ink-950 |
 | Brand | `--logo-lead` `--logo-trail` `--logo-axle` | indigo / slate / lichen | mint / sage / lichen |
 | Identity | `--tint-1` … `--tint-5` | shades of the anchors | the anchors |
 | Elevation | `--shadow-sm` `--shadow-md` `--shadow-lg` | indigo at 8–18% | ink-1000 at 45–62% |
@@ -98,7 +101,9 @@ Each colour role is written once as `light-dark(<light>, <dark>)`.
 least 4.5:1 on every surface it sits on, from `--canvas` to `--surface-hover`
 (6.6:1 or better in dark, 4.8:1 or better in light). Every `--status-*` colour
 is at least 4.5:1 on `--surface`, so it can be used as text as well as a dot.
-`--accent-text` on `--accent` is 12:1.
+`--accent-text` on `--accent` is 12:1. `--tooltip-text` on
+`--tooltip-background` is at least 10:1, and `--focus-ring` is at least 3:1 on
+every surface (WCAG 1.4.11).
 
 **Status versus accent.** In dark mode the accent (mint) and success (green)
 are both green. Green is the brand. They stay apart because success is more
@@ -112,7 +117,10 @@ with the accent colour, and never style a primary action in the success colour.
 | Spacing (4pt) | `--s1` 4 · `--s2` 8 · `--s3` 12 · `--s4` 16 · `--s5` 20 · `--s6` 24 · `--s7` 28 · `--s8` 32 · `--s10` 40 · `--s12` 48 · `--s16` 64 |
 | Radius | `--radius-xs` 4 · `--radius-sm` 6 · `--radius-md` 9 · `--radius-lg` 13 · `--radius-full` |
 | Type | `--font-sans` (system UI) · `--font-mono` · `--fs-micro` 10.5 · `--fs-xs` 11.5 · `--fs-sm` 12.5 · `--fs-base` 13.5 · `--fs-md` 15 · `--fs-lg` 18 · `--fs-xl` 23 · `--fs-2xl` 30 · `--lh-base` 1.5 |
-| Motion | `--duration-fast` 120ms · `--duration` 160ms · `--ease`. `prefers-reduced-motion` turns all motion off. |
+| Motion | `--duration-fast` 120ms · `--duration` 160ms · `--duration-slow` 240ms · `--duration-shimmer` 1.3s · `--duration-pulse` 1.9s · `--ease` (standard) · `--ease-out` (enter) · `--ease-in` (exit). `prefers-reduced-motion` turns all motion off. |
+| Focus | `--focus-ring-width` 2 · `--focus-ring-offset` 2, drawn in `--focus-ring` |
+| Stacking | `--z-raised` 2 · `--z-dropdown` 40 · `--z-overlay` 50 · `--z-overlay-raised` 55 · `--z-toast` 60 · `--z-tooltip` 70. No literal z-index outside this scale. |
+| Density | `--control-h-xs` 20 · `--control-h-sm` 26 · `--control-h` 30 · `--control-h-lg` 36; under `[data-density='compact']` 18 · 22 · 26 · 32 |
 | Layout | `--sidebar-width` 232 (desktop-only, in the desktop's `styles/base.css`, not the package) |
 
 ## Theming

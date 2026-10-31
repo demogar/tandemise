@@ -84,6 +84,9 @@
   --border: light-dark(var(--paper-150), var(--ink-800));
   --border-strong: light-dark(var(--paper-300), var(--ink-700));
   --border-focus: light-dark(var(--indigo-500), var(--brand-mint));
+  --focus-ring: var(--border-focus);
+  --scrim: color-mix(in srgb, var(--surface-sunken) 72%, transparent);
+  --scrim-light: color-mix(in srgb, var(--surface-sunken) 40%, transparent);
   --text: light-dark(var(--brand-indigo), var(--mint-50));
   --text-secondary: light-dark(var(--brand-slate), var(--lichen-300));
   --text-tertiary: light-dark(var(--lichen-750), var(--brand-lichen));
@@ -103,6 +106,11 @@
   --status-failed-soft: color-mix(in srgb, var(--status-failed) 12%, transparent);
   --status-succeeded-soft: color-mix(in srgb, var(--status-succeeded) 13%, transparent);
   --status-pending-soft: color-mix(in srgb, var(--status-pending) 13%, transparent);
+  --status-running-line: color-mix(in srgb, var(--status-running) 40%, transparent);
+  --status-blocked-line: color-mix(in srgb, var(--status-blocked) 40%, transparent);
+  --status-failed-line: color-mix(in srgb, var(--status-failed) 40%, transparent);
+  --status-succeeded-line: color-mix(in srgb, var(--status-succeeded) 40%, transparent);
+  --status-pending-line: color-mix(in srgb, var(--status-pending) 40%, transparent);
   --presence-online: var(--status-succeeded);
   --presence-away: var(--status-blocked);
   --presence-offline: var(--status-pending);
@@ -111,6 +119,9 @@
   --risk-external: var(--status-blocked);
   --risk-destructive: var(--status-failed);
   --risk-release: light-dark(var(--signal-violet-deep), var(--signal-violet-bright));
+  --risk-release-soft: color-mix(in srgb, var(--risk-release) 14%, transparent);
+  --tooltip-background: light-dark(var(--brand-indigo), var(--mint-50));
+  --tooltip-text: light-dark(var(--paper-0), var(--ink-950));
   --terminal-background: light-dark(var(--paper-0), var(--ink-1000));
   --terminal-foreground: light-dark(var(--brand-indigo), var(--mint-50));
   --terminal-cursor: light-dark(var(--indigo-500), var(--brand-mint));
@@ -128,7 +139,7 @@
   --shadow-lg: 0 18px 48px light-dark(color-mix(in srgb, var(--brand-indigo) 18%, transparent), color-mix(in srgb, var(--ink-1000) 62%, transparent));
 }
 
-/* Scales: radius, the 4pt spacing scale, type, motion. */
+/* Scales: radius, the 4pt spacing scale, type, motion, focus, stacking, control heights. */
 :root {
   --radius-xs: 4px;
   --radius-sm: 6px;
@@ -159,5 +170,30 @@
   --lh-base: 1.5;
   --duration-fast: 120ms;
   --duration: 160ms;
+  --duration-slow: 240ms;
+  --duration-shimmer: 1300ms;
+  --duration-pulse: 1900ms;
   --ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
+  --z-raised: 2;
+  --z-dropdown: 40;
+  --z-overlay: 50;
+  --z-overlay-raised: 55;
+  --z-toast: 60;
+  --z-tooltip: 70;
+  --control-h-xs: 20px;
+  --control-h-sm: 26px;
+  --control-h: 30px;
+  --control-h-lg: 36px;
+}
+
+/* Density: control heights for a dense table or toolbar, on any subtree. */
+[data-density='compact'] {
+  --control-h-xs: 18px;
+  --control-h-sm: 22px;
+  --control-h: 26px;
+  --control-h-lg: 32px;
 }

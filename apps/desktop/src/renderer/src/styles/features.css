@@ -31,7 +31,7 @@
   top: 0;
   bottom: 0;
   width: 64px;
-  z-index: 2;
+  z-index: var(--z-raised);
   pointer-events: none;
   opacity: 0;
   transition: opacity var(--duration) var(--ease);
@@ -1675,7 +1675,7 @@
   position: fixed;
   left: 50%;
   bottom: var(--s6);
-  z-index: 60;
+  z-index: var(--z-toast);
   transform: translateX(-50%);
   padding: var(--s2) var(--s4);
   border: 1px solid var(--border-strong);

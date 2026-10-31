@@ -35,6 +35,9 @@ export const CONTRAST_PAIRS: readonly (readonly [ColorRoleName, ColorRoleName, n
   ),
   ['accent', 'surface', 4.5],
   ['accent-text', 'accent', 12],
+  ['tooltip-text', 'tooltip-background', 10],
+  // WCAG 1.4.11: the focus outline is a UI boundary, 3:1 against what it sits on.
+  ...SURFACES.map((bg) => ['focus-ring', bg, 3] as const),
   ['terminal-foreground', 'terminal-background', 10],
   ['terminal-foreground', 'terminal-selection', 4.5],
 ];

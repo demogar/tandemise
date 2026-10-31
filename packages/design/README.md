@@ -23,7 +23,7 @@ npm install @tandemise/design
 
 | Import | What |
 |---|---|
-| `@tandemise/design/tokens.css` | Every token as a CSS custom property: palette, roles (both themes), shadows, radius, spacing, type, motion. |
+| `@tandemise/design/tokens.css` | Every token as a CSS custom property: palette, roles (both themes), shadows, radius, spacing, type, motion, the focus ring, the z-index scale and control heights (with a `[data-density='compact']` set). |
 | `@tandemise/design/base.css` | A small reset and type defaults built on the roles (body colours and font, focus ring, selection, scrollbars, reduced motion). Import after tokens.css. |
 | `@tandemise/design/tailwind.css` | A Tailwind v4 theme (`@theme`) with the palette as utilities and the roles bridged to tokens.css. |
 | `@tandemise/design` | The tokens as typed data (`palette`, `colorRoles`, `radius`, `space`, `fontSize`, ...), `resolveTheme()`, `contrast()`, the Tailwind v3 `tailwindPreset`, `LOGO` and `ICON_PATHS`. |
@@ -56,8 +56,9 @@ your CSS / components
    theme, mix inside each branch (`--shadow-*` shows how).
 5. **Contrast is measured, not remembered.** `CONTRAST_PAIRS` lists what the
    system promises (body text >= 10:1 on every surface, secondary and tertiary
-   text and every status colour >= 4.5:1, accent text on accent >= 12:1), and
-   the check measures each pairing in both themes.
+   text and every status colour >= 4.5:1, accent text on accent >= 12:1, tooltip
+   text >= 10:1, the focus ring >= 3:1 on every surface), and the check
+   measures each pairing in both themes.
 
 ### Brand anchors
 

@@ -259,7 +259,7 @@
     var(--surface-hover) 100%
   );
   background-size: 200% 100%;
-  animation: shimmer 1.3s linear infinite;
+  animation: shimmer var(--duration-shimmer) linear infinite;
   border-radius: var(--radius-sm);
 }
 
@@ -274,10 +274,10 @@
 .overlay {
   position: fixed;
   inset: 0;
-  z-index: 50;
+  z-index: var(--z-overlay);
   display: flex;
   justify-content: center;
-  background: color-mix(in srgb, var(--surface-sunken) 72%, transparent);
+  background: var(--scrim);
   backdrop-filter: blur(3px);
   animation: fade var(--duration) var(--ease);
 }
@@ -295,7 +295,7 @@
 .overlay--side {
   justify-content: flex-end;
   backdrop-filter: none;
-  background: color-mix(in srgb, var(--surface-sunken) 40%, transparent);
+  background: var(--scrim-light);
 }
 
 .drawer {

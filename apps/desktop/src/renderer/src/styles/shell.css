@@ -465,7 +465,7 @@
 
 .wsswitch__menu {
   position: absolute;
-  z-index: 40;
+  z-index: var(--z-dropdown);
   left: var(--s3);
   right: var(--s3);
   top: calc(100% - var(--s1));

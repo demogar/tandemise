@@ -8,7 +8,7 @@
  * read (`--s4`, `--fs-base`, `--radius-md`, `--duration`, `--ease`).
  */
 import {
-  colorRoles, duration, easing, fontFamily, fontSize, lineHeight, palette, radius, shadows, space,
+  colorRoles, controlHeight, duration, easing, focusRing, fontFamily, fontSize, lineHeight, palette, radius, shadows, space, zIndex,
   type ColorRole, type Paint, type Wash,
 } from './tokens.js';
 
@@ -27,7 +27,12 @@ export function roleCss(role: ColorRole): string {
 const px = (n: number): string => `${n}px`;
 
 /** Every custom property the stylesheet declares, by block, in order. */
-export function cssVariables(): { palette: [string, string][]; roles: [string, string][]; scales: [string, string][] } {
+export function cssVariables(): {
+  palette: [string, string][];
+  roles: [string, string][];
+  scales: [string, string][];
+  compact: [string, string][];
+} {
   return {
     palette: Object.entries(palette).map(([name, hex]) => [`--${name}`, hex]),
     roles: [
@@ -47,9 +52,23 @@ export function cssVariables(): { palette: [string, string][]; roles: [string, s
       ['--lh-base', String(lineHeight.base)],
       ['--duration-fast', `${duration.fast}ms`],
       ['--duration', `${duration.base}ms`],
+      ['--duration-slow', `${duration.slow}ms`],
+      ['--duration-shimmer', `${duration.shimmer}ms`],
+      ['--duration-pulse', `${duration.pulse}ms`],
       ['--ease', easing.standard],
+      ['--ease-out', easing.enter],
+      ['--ease-in', easing.exit],
+      ['--focus-ring-width', px(focusRing.width)],
+      ['--focus-ring-offset', px(focusRing.offset)],
+      ...Object.entries(zIndex).map(([name, n]): [string, string] => [`--z-${name}`, String(n)]),
+      ...controlHeights('comfortable'),
     ],
+    compact: controlHeights('compact'),
   };
+}
+
+function controlHeights(density: keyof typeof controlHeight): [string, string][] {
+  return Object.entries(controlHeight[density]).map(([size, n]): [string, string] => [size === 'md' ? '--control-h' : `--control-h-${size}`, px(n)]);
 }
 
 const block = (selector: string, decls: [string, string][]): string =>
@@ -85,7 +104,9 @@ export function tokensCss(): string {
     block(':root', vars.palette),
     '/* Roles: what a colour is for, in both themes. */',
     block(':root,\n[data-theme]', vars.roles),
-    '/* Scales: radius, the 4pt spacing scale, type, motion. */',
+    '/* Scales: radius, the 4pt spacing scale, type, motion, focus, stacking, control heights. */',
     block(':root', vars.scales),
+    "/* Density: control heights for a dense table or toolbar, on any subtree. */",
+    block("[data-density='compact']", vars.compact),
   ].join('\n');
 }
