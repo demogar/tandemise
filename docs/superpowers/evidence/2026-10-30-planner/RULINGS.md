@@ -206,6 +206,15 @@ spec (`docs/superpowers/specs/2026-10-30-planner-and-merge-design.md`).
   in the built GitHub integration and the restart test waits on a condition.
 - Real runtime: `run-all.mjs --real-claude` adds PM1R, the quick-lane fix done by Claude
   Code end to end to a pull request (local bare origin, fake gh).
-- Migration: renumbered to 025 for the merge order #72 -> #73 (intake, 024) -> #71.
-  `assertOrdered` refuses a gap, so this branch's checks run only once 024 is on main;
-  the review round was verified at 024 before the renumber.
+- Migration: 025, contiguous after intake's 024 now that #72 and #73 are on main
+  (merged in 3a23dcc). intake-check asserts that 024 is intake, not that it is last.
+- Intake: a mission Start made from a tracker item (`trackerItemId`) is profiled with
+  that item's `type` through planner.yaml's `trackerTypes` (spec §5, "Tracker type Bug ->
+  fix"). Intake's tracker items carry no labels, so `item.labels` stays empty for now.
+- Holds: `OutcomeRecorder` subscribes to `task.hold_ended` by event type; merge-check
+  proves it with the daemon's own InMemoryEventBus and EventRecorder (the engine harness
+  stubs the bus).
+- After the merge, a transient GitHub error while a pull request waits (re-adoption by
+  the scheduler) left the step and mission BLOCKED even after the retry merged it. While
+  the step is AWAITING_EXTERNAL or AWAITING_APPROVAL, such an error is now logged and
+  retried on the next look.
