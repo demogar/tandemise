@@ -21,9 +21,14 @@ const ALLOWED = new Set([
   'WTFPL',
 ]);
 
-/** Data-only packages allowed under a license that would not fit code. */
+/** Packages allowed under a license that would not fit shipped code: data, or a dev-only tool. */
 const EXCEPTIONS = new Map([
   ['caniuse-lite', 'CC-BY-4.0'], // browser support data used by build tooling
+  // The accessibility engine behind @storybook/addon-a11y and the design
+  // package's storybook:a11y check: a dev-only test tool, used unmodified and
+  // never shipped. MPL-2.0 is file-level copyleft, which an unmodified dev
+  // dependency does not trigger.
+  ['axe-core', 'MPL-2.0'],
 ]);
 
 function allowed(expr) {

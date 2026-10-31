@@ -1,0 +1,241 @@
+/*
+ * Storybook-only layout: the rows, stacks and panels the stories and the
+ * foundations pages arrange components in. Roles and scales only, like
+ * everything else in the package (`npm run check:design` reads this file too).
+ * Nothing here ships: components.css is the package's stylesheet.
+ */
+
+/* base.css gives <body> the canvas; Storybook's docs wrapper takes it too. */
+.sbdocs.sbdocs-wrapper {
+  background: var(--canvas);
+}
+
+.sb-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.sb-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+.sb-narrow {
+  max-width: 380px;
+}
+
+.sb-wide {
+  max-width: 720px;
+}
+
+/* A Dialog story draws its overlay inside this frame instead of over the docs page. */
+.sb-dialog-frame {
+  position: relative;
+  min-height: max(320px, 100vh);
+  padding: var(--s4);
+  transform: translateZ(0); /* contains the overlay's position: fixed */
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+/* ---------------------------------------------------------- foundations */
+
+.fd-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--s3);
+  margin: var(--s3) 0 var(--s6);
+}
+
+.fd-themes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--s3);
+  margin: var(--s3) 0 var(--s6);
+}
+
+.fd-panel {
+  position: relative;
+  background: var(--canvas);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--s8) var(--s4) var(--s4);
+  min-width: 0;
+}
+
+.fd-panel__label {
+  position: absolute;
+  top: var(--s2);
+  left: var(--s3);
+  font-size: var(--fs-micro);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+}
+
+.fd-swatch {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  font-size: var(--fs-xs);
+  min-width: 0;
+}
+
+.fd-swatch__chip {
+  height: 40px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
+.fd-swatch__name {
+  color: var(--text);
+  word-break: break-all;
+}
+
+.fd-swatch__value {
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+}
+
+.fd-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+  margin: var(--s3) 0 var(--s6);
+}
+
+.fd-table th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding: var(--s1) var(--s4) var(--s1) 0;
+  border-bottom: 1px solid var(--border-strong);
+}
+
+.fd-table td {
+  padding: var(--s2) var(--s4) var(--s2) 0;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+  color: var(--text);
+}
+
+.fd-pair {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 88px;
+  padding: var(--s1) var(--s3);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  font-weight: 600;
+}
+
+.fd-ok {
+  color: var(--status-succeeded);
+}
+
+.fd-bad {
+  color: var(--status-failed);
+}
+
+.fd-bar {
+  display: inline-block;
+  height: 10px;
+  background: var(--accent);
+  border-radius: var(--radius-xs);
+}
+
+.fd-box {
+  display: inline-block;
+  width: 64px;
+  height: 44px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+}
+
+.fd-box--focus {
+  outline: var(--focus-ring-width) solid var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+  border-radius: var(--radius-xs);
+}
+
+.fd-stack-demo {
+  position: relative;
+  height: 220px;
+}
+
+.fd-stack-demo__layer {
+  position: absolute;
+  width: 220px;
+  padding: var(--s2) var(--s3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-md);
+  font-size: var(--fs-sm);
+}
+
+.fd-motion {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+}
+
+.fd-motion-track {
+  display: block;
+  width: 260px;
+  padding: var(--s1);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+}
+
+.fd-motion-track:hover .fd-motion,
+.fd-motion-track:focus-visible .fd-motion {
+  transform: translateX(224px);
+}
+
+.fd-icons-search {
+  margin: var(--s3) 0;
+  max-width: 320px;
+}
+
+.fd-icons {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  gap: var(--s2);
+}
+
+.fd-icon {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s3) var(--s2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--fs-xs);
+}
+
+.fd-icon code {
+  color: var(--text-secondary);
+}
+
+.fd-logo-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+  padding: var(--s4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  font-size: var(--fs-xs);
+  color: var(--text-secondary);
+}
