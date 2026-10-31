@@ -351,3 +351,32 @@ was ambiguous or wrong, decided against the spec
     enabled when it has none, as the host would. Task 10 left `TrackerResolver.saveCredential` without a
     route, so `PUT /v1/workspaces/:id/intake/tracker/secret` `{ value }` (`saveTrackerSecret`) saves it for
     Settings → Intake (Task 14). Both answer 204 and need a seat in the project.
+- Ruling 18 (Slack and Discord, Task 12): decided from spec §1, §2, §3 and §8:
+  - **The reply address.** The contract's `reply` is the strict `{ address }`, so the plan's
+    `{ channel, thread_ts }` and `{ channelId, messageId }` are written as `address: '<channel>:<thread_ts>'`
+    and `'<channelId>:<messageId>'`, the same shape as the key. `close` reads the address, else the key.
+  - **Only the source's channel.** An event files something only in the instance's channel (Slack names it by
+    id or by name, looked up once through `conversations.info`; Discord by guild and channel id). A reaction on
+    a Slack reply files the whole thread, keyed by its root. The title is the root's first line, mentions taken
+    out (and Slack's `&amp;`/`&lt;`/`&gt;` undone); the reporter is the person who reacted or mentioned. The
+    description's `**<user>:**` is Slack's user id (no `users.info` call per message).
+  - **Acknowledgement and swap.** No configuration field switches them, so both are always on (the spec's
+    "on by default"). Slack puts `:eyes:` on the thread's root and swaps it for `:white_check_mark:` on `done`;
+    Discord puts 👀 on the message and only replies on close (spec §8 names no swap there). A reaction that
+    fails is logged and never fails the filing or the closure; "already there" and "not there" are fine.
+  - **What closes.** `closeOnDone` is GitHub's guard (spec §8), so a chat source always replies on `done`.
+    `not_planned` writes nothing unless `closeWontDo`, then "Not planned: <title> · <key>", found again the
+    same way. The own-reply check (Review Focus 5): Slack reads the whole thread (up to ten pages of 200) for a
+    message by `auth.test`'s `user_id` or `bot_id` starting with the reply's prefix; Discord reads the messages
+    after the original (up to ten pages of 50) for one by `/users/@me` referencing it. The Discord reply sends
+    `allowed_mentions: { parse: [] }`, so a title can never ping anyone (text is data).
+  - **Sockets.** One `SocketLoop` for both: backoff 1 s doubling to 30 s on real timers, back to 1 s after a
+    socket that delivered anything. Slack acks every envelope before any work and reconnects on `disconnect`.
+    Discord beats at the asked interval, opens a new socket when a beat goes unacknowledged or on op 7/9, and
+    identifies afresh each time (no resume: an event in the gap is missed, and the person reacts again). Events
+    are filed one at a time per source. `SourceHttp` gained the `Bot` scheme (Discord) and a body-less send.
+  - **Open point.** A missing secret or a refused token at connect is logged and retried with the backoff, but
+    is not on the source's `last_error`: the host records only what `start` throws, and secrets are read
+    asynchronously. Surfacing it needs a way for a socket runner to report (Task 14's Settings → Intake).
+  - **The fakes** take the same `/_fake/…` doors as `fake-sentry.mjs` (`messages`, `emit`, `drop`, `state`)
+    and a script mode (`--port 0 --state <dir>`, `<dir>/url`, `state.json`) for the acceptance run.

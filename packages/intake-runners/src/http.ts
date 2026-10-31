@@ -19,8 +19,10 @@ export interface SourceHttpOptions {
   readonly label: string;
   /** The API's base URL: the source's `api` override, or the vendor's own. */
   readonly base: string;
-  /** Sent as a bearer on every request. */
+  /** Sent on every request, as a bearer unless `scheme` says otherwise. */
   readonly token: string;
+  /** The `Authorization` scheme: `Bearer` (default), or `Bot` for Discord (plan Task 12). */
+  readonly scheme?: 'Bearer' | 'Bot';
   /** The runner's stop signal: a stopped runner abandons its requests. */
   readonly signal?: AbortSignal;
   /** Per request; 30 s unless set. */
@@ -52,15 +54,16 @@ export class SourceHttp {
     return this.#request('GET', path, query, undefined);
   }
 
+  /** An undefined body sends none (Discord's reaction PUT). */
   sendJson(method: 'POST' | 'PUT' | 'PATCH', path: string, body: unknown): Promise<unknown> {
-    return this.#request(method, path, {}, JSON.stringify(body));
+    return this.#request(method, path, {}, body === undefined ? undefined : JSON.stringify(body));
   }
 
   async #request(method: string, path: string, query: Query, body: string | undefined): Promise<unknown> {
     const { label } = this.#options;
     const url = new URL(`${this.base}${path}`);
     for (const [k, v] of Object.entries(query)) if (v !== undefined) url.searchParams.set(k, v);
-    const headers: Record<string, string> = { Authorization: `Bearer ${this.#options.token}`, Accept: 'application/json' };
+    const headers: Record<string, string> = { Authorization: `${this.#options.scheme ?? 'Bearer'} ${this.#options.token}`, Accept: 'application/json' };
     if (body !== undefined) headers['Content-Type'] = 'application/json';
     const timeoutMs = this.#options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     const timeout = AbortSignal.timeout(timeoutMs);

@@ -10,6 +10,9 @@
 // onto GitHub Issues as the tracker and the webhook mailbox's unknown source.
 // Task 11: "sentry", "posthog" and "webhook listener", over
 // scratch/fake-sentry.mjs and scratch/fake-posthog.mjs (never a real service).
+// Task 12: "slack" and "discord", over scratch/fake-slack.mjs (Web API plus
+// Socket Mode) and scratch/fake-discord.mjs (REST plus the gateway), both on
+// `ws`; the runners themselves use Node 22's built-in WebSocket.
 import { execFile } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -18,6 +21,8 @@ import { calls, commentsOf, installFakeGh, putIssue, readState } from './fake-gh
 import { startFakeYouTrack } from './fake-youtrack.mjs';
 import { sentrySignature, startFakeSentry } from './fake-sentry.mjs';
 import { startFakePostHog } from './fake-posthog.mjs';
+import { startFakeSlack } from './fake-slack.mjs';
+import { startFakeDiscord } from './fake-discord.mjs';
 
 let passed = 0;
 const failures = [];
@@ -336,11 +341,11 @@ try {
   });
   let d4 = null;
   try {
-    section('intake-runners: the package contributes the sentry and posthog runners');
+    section('intake-runners: the package contributes its runners');
     check('@tandemise/intake-runners exports intakeRunnersModule', R?.intakeRunnersModule !== undefined);
     const probe = R === null ? null : compose(new Container(), R.intakeRunnersModule);
     const kinds = probe === null ? [] : probe.resolveAll(I.INTAKE_RUNNERS).map((r) => `${r.kind}:${r.mode}`).sort();
-    check('…sentry and posthog, both polling', eq(kinds, ['posthog:poll', 'sentry:poll']), kinds);
+    check('…sentry and posthog polling, slack and discord on a socket (Task 12)', eq(kinds, ['discord:socket', 'posthog:poll', 'sentry:poll', 'slack:socket']), kinds);
 
     d4 = await open();
     const ws = (await d4.services.workspaces.create(d4.caller, { name: 'Errors' })).workspace.id;
@@ -492,6 +497,187 @@ try {
     await yt2.close();
     await sentry.close();
     await posthog.close();
+  }
+
+  // ------------------------------------------------------------------ Task 12: Slack and Discord
+  // A fresh fake YouTrack again, so these sections file GAR-1 and on. The
+  // sockets run on real timers (the runner's backoff is wall-clock); the
+  // daemon's clock stays the check's.
+  const until = async (cond, ms = 3_000) => {
+    const end = Date.now() + ms;
+    while (Date.now() < end) {
+      if (await cond()) return true;
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    return Boolean(await cond());
+  };
+  const yt3 = await startFakeYouTrack({ project: 'GAR', token: 'perm:test', login: 'tandemise-bot' });
+  const slack = await startFakeSlack({ workspace: 'acme' });
+  const discord = await startFakeDiscord({ token: 'bot-test', heartbeatMs: 100 });
+  const sentry3 = await startFakeSentry({ token: 'sntrys_test', org: 'acme', project: 'web' });
+  const yt3Creates = () => yt3.calls.filter((c) => c.method === 'POST' && c.path === '/api/issues').length;
+  const DISCORD_CHANNEL = '900000000000000010';
+  const SLACK_SOURCE = { id: 'slack-support', kind: 'slack', instance: 'acme.slack.com#support', api: slack.url, closeOnDone: true, closeWontDo: false };
+  const SENTRY3_SOURCE = { id: 'sentry-web', kind: 'sentry', instance: 'acme/web', api: sentry3.url, every: '10m', closeOnDone: true, closeWontDo: false };
+  const DISCORD_SOURCE = { id: 'discord-help', kind: 'discord', instance: `${discord.guildId}#${DISCORD_CHANNEL}`, api: discord.url, closeOnDone: true, closeWontDo: false };
+  const chatSecrets = { appToken: 'xapp-test', botToken: 'xoxb-test' };
+  const slackFp = (ts) => `slack:acme.slack.com#support:C0SUPPORT:${ts}`;
+  const discordFp = (id) => `discord:${DISCORD_SOURCE.instance}:${DISCORD_CHANNEL}:${id}`;
+  const slackCalls = (method) => slack.calls.filter((c) => c.path === `/${method}`);
+  let d5 = null;
+  try {
+    section('slack: a reaction files the thread');
+    d5 = await open();
+    const ws = (await d5.services.workspaces.create(d5.caller, { name: 'Chat' })).workspace.id;
+    d5.config.write(ws, { tracker: ytTracker(yt3.url), intake: { sources: [SLACK_SOURCE, SENTRY3_SOURCE, DISCORD_SOURCE], dailyCap: 20, similarity: { link: 0.85, ask: 0.55 } } });
+    await d5.resolver.saveCredential(ws, 'perm:test');
+    for (const [name, value] of Object.entries(chatSecrets)) await d5.services.intake.saveSourceSecret(d5.caller, ws, 'slack-support', { name, value });
+    await d5.services.intake.saveSourceSecret(d5.caller, ws, 'discord-help', { name: 'botToken', value: 'bot-test' });
+    await d5.services.intake.saveSourceSecret(d5.caller, ws, 'sentry-web', { name: 'token', value: 'sntrys_test' });
+    d5.host.tick();
+    await d5.settle();
+    check('the tick starts the slack runner: apps.connections.open with the app token, then one socket',
+      await until(() => slack.open === 1) && slackCalls('apps.connections.open')[0]?.authorization === 'Bearer xapp-test', { open: slack.open, calls: slackCalls('apps.connections.open').length });
+
+    const root = slack.postMessage({ channel: 'C0SUPPORT', user: 'U0SAM', text: 'Checkout button does nothing on Safari\nTried twice; the spinner never stops.' });
+    const reply = slack.postMessage({ channel: 'C0SUPPORT', user: 'U0KIM', text: 'Same here on an iPad.', thread_ts: root.ts });
+    // The reaction lands on a reply: the runner still files the whole thread, keyed by its root.
+    const env1 = slack.emit({ type: 'reaction_added', user: 'U0KIM', reaction: 'tandemise', item_user: 'U0KIM', item: { type: 'message', channel: 'C0SUPPORT', ts: reply.ts }, event_ts: reply.ts });
+    await until(() => d5.repo.findSignal(ws, slackFp(root.ts))?.status === 'created');
+    await d5.settle();
+    const s1 = d5.repo.findSignal(ws, slackFp(root.ts));
+    check('reaction_added :tandemise: → GAR-1 created', yt3Creates() === 1 && s1?.status === 'created' && d5.repo.linkFor(s1.id)?.itemRef === 'youtrack:GAR-1',
+      { creates: yt3Creates(), status: s1?.status, reason: s1?.reason });
+    check('…the envelope was acked', slack.acks.includes(env1), { env1, acks: slack.acks });
+    const eyes = slackCalls('reactions.add').find((c) => c.body?.name === 'eyes');
+    check('…and the fake recorded reactions.add eyes on the thread, with the bot token',
+      eyes?.body?.channel === 'C0SUPPORT' && eyes?.body?.timestamp === root.ts && eyes?.authorization === 'Bearer xoxb-test', eyes);
+    check('…the signal: key <channel>:<thread_ts>, the permalink, the first line as title, the thread as description, the thread as reply address',
+      s1?.key === `C0SUPPORT:${root.ts}` && s1?.url === slack.permalink('C0SUPPORT', root.ts) && s1?.title === 'Checkout button does nothing on Safari'
+      && s1?.description === `**U0SAM:** Checkout button does nothing on Safari\nTried twice; the spinner never stops.\n**U0KIM:** Same here on an iPad.`
+      && s1?.reply?.address === `C0SUPPORT:${root.ts}`, s1);
+    check('…read through conversations.replies of the thread root', slackCalls('conversations.replies').some((c) => c.query.get('ts') === root.ts && c.query.get('channel') === 'C0SUPPORT'));
+
+    section('slack: everything else is ignored');
+    const signalsBefore = d5.repo.listSignals(ws).length;
+    const chatter = slack.postMessage({ channel: 'C0SUPPORT', user: 'U0SAM', text: 'Lunch anyone?' });
+    const ignored = [
+      slack.emit({ type: 'message', channel: 'C0SUPPORT', user: 'U0SAM', text: chatter.text, ts: chatter.ts }),
+      slack.emit({ type: 'reaction_added', user: 'U0SAM', reaction: 'thumbsup', item: { type: 'message', channel: 'C0SUPPORT', ts: chatter.ts } }),
+    ];
+    const elsewhere = slack.postMessage({ channel: 'C0RANDOM', user: 'U0SAM', text: 'Printer is jammed' });
+    ignored.push(slack.emit({ type: 'reaction_added', user: 'U0SAM', reaction: 'tandemise', item: { type: 'message', channel: 'C0RANDOM', ts: elsewhere.ts } }));
+    await until(() => ignored.every((e) => slack.acks.includes(e)));
+    await new Promise((r) => setTimeout(r, 150));
+    await d5.settle();
+    check('an ordinary message, another emoji, and a reaction in another channel create nothing (each still acked)',
+      yt3Creates() === 1 && d5.repo.listSignals(ws).length === signalsBefore && ignored.every((e) => slack.acks.includes(e)), { creates: yt3Creates(), signals: d5.repo.listSignals(ws).length });
+
+    section('slack: the same title as an existing Sentry item is linked (I3, the engine half)');
+    sentry3.putIssue({ id: '501', title: 'Login page spins forever', culprit: 'login.ts', level: 'error', count: '80', userCount: 12, firstSeen: hoursAgo(5), lastSeen: hoursAgo(1) });
+    await d5.host.checkNow(d5.caller, ws);
+    await d5.settle();
+    check('the Sentry issue is GAR-2', yt3Creates() === 2 && d5.repo.linkFor(d5.repo.findSignal(ws, 'sentry:acme/web:501')?.id)?.itemRef === 'youtrack:GAR-2', yt3Creates());
+    // Through a mention this time: the app is named in the thread's root.
+    const root2 = slack.postMessage({ channel: 'C0SUPPORT', user: 'U0SAM', text: '<@U0BOT> Login page spins forever' });
+    slack.emit({ type: 'app_mention', user: 'U0SAM', text: root2.text, ts: root2.ts, channel: 'C0SUPPORT', event_ts: root2.ts });
+    await until(() => d5.repo.findSignal(ws, slackFp(root2.ts))?.status === 'linked');
+    await d5.settle();
+    const s2 = d5.repo.findSignal(ws, slackFp(root2.ts));
+    const l2 = s2 && d5.repo.linkFor(s2.id);
+    check('app_mention → linked to GAR-2 with similarity 1, no new item',
+      s2?.status === 'linked' && l2?.itemRef === 'youtrack:GAR-2' && l2?.score === 1 && yt3Creates() === 2 && s2?.title === 'Login page spins forever', { status: s2?.status, reason: s2?.reason, link: l2, creates: yt3Creates() });
+    const sources2 = (yt3.comments.get('GAR-2') ?? []).find((c) => c.text.startsWith('<!-- tandemise:sources -->'));
+    check("…and GAR-2's sources comment lists the Slack permalink", sources2?.text.includes(slack.permalink('C0SUPPORT', root2.ts)), yt3.comments.get('GAR-2'));
+
+    section('slack: closing twice, across a restart, replies once (Review Focus 5)');
+    const slackRunner = d5.container.resolveAll(I.INTAKE_RUNNERS).find((r) => r.kind === 'slack');
+    const slackClosure = (s, key, prUrl) => ({
+      kind: 'done', signal: { fingerprint: s.fingerprint, key: s.key, url: s.url, instance: s.instance, title: s.title, reply: s.reply },
+      item: { key, url: `${yt3.url}/issue/${key}` }, prUrl, commit: null,
+    });
+    const c1 = await slackRunner?.close(slackClosure(s1, 'GAR-1', 'https://github.com/acme/web/pull/7'), runnerCtx(ws, SLACK_SOURCE, chatSecrets));
+    // A restart: a new runner instance, nothing in memory, the same Slack.
+    const c2 = await new R.SlackRunner().close(slackClosure(s1, 'GAR-1', 'https://github.com/acme/web/pull/7'), runnerCtx(ws, SLACK_SOURCE, chatSecrets));
+    const posts = slackCalls('chat.postMessage');
+    check("exactly one chat.postMessage: 'Done: Checkout button does nothing on Safari · GAR-1 · https://github.com/acme/web/pull/7'",
+      posts.length === 1 && posts[0].body?.text === 'Done: Checkout button does nothing on Safari · GAR-1 · https://github.com/acme/web/pull/7'
+      && posts[0].body?.thread_ts === root.ts && posts[0].body?.channel === 'C0SUPPORT', posts.map((p) => p.body));
+    check('…both closes succeed and name the same reply', c1?.ok === true && c2?.ok === true && c1.externalId !== null && c1.externalId === c2.externalId, { c1, c2 });
+    check('…the bot user came from auth.test', slackCalls('auth.test').length >= 1);
+    check('…and the reaction is swapped: eyes off, white_check_mark on',
+      eq([...(slack.reactions.get(`C0SUPPORT:${root.ts}`) ?? [])], ['white_check_mark']), [...(slack.reactions.get(`C0SUPPORT:${root.ts}`) ?? [])]);
+    const c3 = await slackRunner?.close(slackClosure(s2, 'GAR-2', null), runnerCtx(ws, SLACK_SOURCE, chatSecrets));
+    check("without a pull request: 'Done: Login page spins forever · GAR-2'", c3?.ok === true && slackCalls('chat.postMessage').at(-1)?.body?.text === 'Done: Login page spins forever · GAR-2', slackCalls('chat.postMessage').at(-1)?.body);
+    const wontDo = await slackRunner?.close({ ...slackClosure(s2, 'GAR-2', null), kind: 'not_planned' }, runnerCtx(ws, SLACK_SOURCE, chatSecrets));
+    check('not_planned without closeWontDo writes nothing', wontDo?.ok === true && wontDo.externalId === null && slackCalls('chat.postMessage').length === 2, wontDo);
+    const badToken = await slackRunner?.close(slackClosure(s1, 'GAR-1', null), runnerCtx(ws, SLACK_SOURCE, { botToken: 'xoxb-wrong' }));
+    check('a refused bot token fails in the plan\'s words, without retry',
+      badToken?.ok === false && badToken.retryable === false && badToken.error === 'Slack refused the token. Save a new one in Settings → Intake.', badToken);
+
+    section('slack: the socket drops and comes back');
+    const openedBefore = slack.opened;
+    const dropAt = Date.now();
+    slack.dropSockets();
+    const back = await until(() => slack.opened > openedBefore && slack.open === 1, 2_500);
+    const tookMs = Date.now() - dropAt;
+    check('the runner reconnects within 2 s', back && tookMs < 2_000, { back, tookMs });
+    const root3 = slack.postMessage({ channel: 'C0SUPPORT', user: 'U0SAM', text: 'Search ignores quoted phrases' });
+    slack.emit({ type: 'reaction_added', user: 'U0SAM', reaction: 'tandemise', item: { type: 'message', channel: 'C0SUPPORT', ts: root3.ts } });
+    await until(() => d5.repo.findSignal(ws, slackFp(root3.ts))?.status === 'created');
+    await d5.settle();
+    check('…and a later reaction still arrives', d5.repo.findSignal(ws, slackFp(root3.ts))?.status === 'created' && yt3Creates() === 3, { status: d5.repo.findSignal(ws, slackFp(root3.ts))?.status, creates: yt3Creates() });
+
+    section('discord');
+    await until(() => discord.sessions === 1);
+    const identify = discord.frames.find((f) => f.op === 2);
+    check('GET /gateway/bot with the bot token, then the gateway with v=10&encoding=json',
+      discord.calls.some((c) => c.path === '/gateway/bot' && c.authorization === 'Bot bot-test') && identify?.query === 'v=10&encoding=json', { identify, calls: discord.calls.map((c) => c.path) });
+    check('Identify carries intents 34304 and the token', identify?.d?.intents === 34304 && identify?.d?.token === 'bot-test', identify?.d && { intents: identify.d.intents });
+    check('the heartbeat is sent', await until(() => discord.frames.some((f) => f.op === 1), 1_500));
+    const dmsg = discord.postMessage({ channel_id: DISCORD_CHANNEL, content: 'Uploads over 10 MB fail\nThe bar stops at 99%.', author: { id: '900000000000000042', username: 'sam' } });
+    discord.emit('MESSAGE_REACTION_ADD', { user_id: '900000000000000043', channel_id: DISCORD_CHANNEL, message_id: dmsg.id, guild_id: discord.guildId, emoji: { id: null, name: 'thumbsup' } });
+    discord.emit('MESSAGE_REACTION_ADD', { user_id: '900000000000000043', channel_id: DISCORD_CHANNEL, message_id: dmsg.id, guild_id: discord.guildId, emoji: { id: '1', name: 'tandemise' } });
+    await until(() => d5.repo.findSignal(ws, discordFp(dmsg.id))?.status === 'created');
+    await d5.settle();
+    const sd = d5.repo.findSignal(ws, discordFp(dmsg.id));
+    const dItem = sd && d5.repo.linkFor(sd.id)?.itemRef;
+    check('the :tandemise: reaction creates an item (another emoji does not)', sd?.status === 'created' && dItem === 'youtrack:GAR-4' && yt3Creates() === 4, { status: sd?.status, reason: sd?.reason, dItem, creates: yt3Creates() });
+    check('…the signal: key <channel>:<message>, the message link, the first line as title, the message as reply address',
+      sd?.key === `${DISCORD_CHANNEL}:${dmsg.id}` && sd?.url === `https://discord.com/channels/${discord.guildId}/${DISCORD_CHANNEL}/${dmsg.id}`
+      && sd?.title === 'Uploads over 10 MB fail' && sd?.description?.includes('**sam:** Uploads over 10 MB fail') && sd?.reply?.address === `${DISCORD_CHANNEL}:${dmsg.id}`, sd);
+    check('…and is acknowledged with 👀', discord.reactions.get(`${DISCORD_CHANNEL}:${dmsg.id}`)?.has('👀') === true);
+    const plain = discord.postMessage({ channel_id: DISCORD_CHANNEL, content: 'Anyone around?' });
+    discord.emit('MESSAGE_CREATE', { ...plain });
+    const mention = discord.postMessage({ channel_id: DISCORD_CHANNEL, content: `<@${discord.bot.id}> Dark mode resets on reload`, mentions: [discord.bot] });
+    discord.emit('MESSAGE_CREATE', { ...mention });
+    await until(() => d5.repo.findSignal(ws, discordFp(mention.id))?.status === 'created');
+    await d5.settle();
+    check('a message mentioning the bot creates an item; one that does not, nothing',
+      d5.repo.findSignal(ws, discordFp(mention.id))?.status === 'created' && d5.repo.findSignal(ws, discordFp(mention.id))?.title === 'Dark mode resets on reload'
+      && d5.repo.findSignal(ws, discordFp(plain.id)) === undefined && yt3Creates() === 5, { creates: yt3Creates() });
+
+    const discordRunner = d5.container.resolveAll(I.INTAKE_RUNNERS).find((r) => r.kind === 'discord');
+    const discordClosure = { kind: 'done', signal: { fingerprint: sd.fingerprint, key: sd.key, url: sd.url, instance: sd.instance, title: sd.title, reply: sd.reply }, item: { key: 'GAR-4', url: `${yt3.url}/issue/GAR-4` }, prUrl: 'https://github.com/acme/web/pull/8', commit: null };
+    const dc1 = await discordRunner?.close(discordClosure, runnerCtx(ws, DISCORD_SOURCE, { botToken: 'bot-test' }));
+    const dc2 = await new R.DiscordRunner().close(discordClosure, runnerCtx(ws, DISCORD_SOURCE, { botToken: 'bot-test' }));
+    const dposts = discord.calls.filter((c) => c.method === 'POST' && c.path === `/channels/${DISCORD_CHANNEL}/messages`);
+    check('closing twice (a new runner the second time) yields one reply, with message_reference.message_id set',
+      dposts.length === 1 && dposts[0].body?.message_reference?.message_id === dmsg.id
+      && dposts[0].body?.content === 'Done: Uploads over 10 MB fail · GAR-4 · https://github.com/acme/web/pull/8', dposts.map((p) => p.body));
+    check('…both closes succeed and name the same reply', dc1?.ok === true && dc2?.ok === true && dc1.externalId !== null && dc1.externalId === dc2.externalId, { dc1, dc2 });
+
+    section('slack and discord: stopping closes the sockets');
+    await d5.host.stopAll();
+    check('stopAll closes both sockets', await until(() => slack.open === 0 && discord.sessions === 0), { slack: slack.open, discord: discord.sessions });
+  } catch (e) {
+    check('the slack/discord sections ran', false, String(e?.stack ?? e));
+  } finally {
+    await d5?.dispose();
+    await yt3.close();
+    await slack.close();
+    await discord.close();
+    await sentry3.close();
   }
 } finally {
   await fake.close();
