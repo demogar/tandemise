@@ -209,3 +209,16 @@ export interface PrimaryTrackerFactory {
   readonly kind: string;
   create(config: TrackerConfig, credential: string | undefined): PrimaryTracker;
 }
+
+/**
+ * Ranks a tracker search's candidates against a signal (spec §5 step 4), from
+ * 0 to 1, compared with the project's `similarity.link` and `similarity.ask`.
+ * The default is `lexicalSimilarity` (plan Task 6, bound in Task 7); a later
+ * model-backed judge can replace it without changing the pipeline.
+ */
+export interface IntakeSimilarity {
+  score(
+    signal: { readonly title: string; readonly description: string; readonly url: string },
+    candidate: TrackerItem,
+  ): number;
+}

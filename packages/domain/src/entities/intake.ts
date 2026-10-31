@@ -191,6 +191,86 @@ export function emptyIntakeConfig(): IntakeConfig {
   return { tracker: null, sources: [], dailyCap: DEFAULT_INTAKE_DAILY_CAP, similarity: { ...DEFAULT_INTAKE_SIMILARITY } };
 }
 
+// ------------------------------------------------------------------ the noise filter (plan Task 6)
+
+export type NoiseVerdict = { readonly verdict: 'pass' } | { readonly verdict: 'held_back'; readonly reason: string };
+
+const WINDOW_MS: Readonly<Record<IntakeFilterWindow, number>> = { '1h': 3_600_000, '24h': 86_400_000, '7d': 604_800_000 };
+const WINDOW_WORDS: Readonly<Record<IntakeFilterWindow, string>> = { '1h': '1 h', '24h': '24 h', '7d': '7 days' };
+
+/**
+ * Spec §4.1: a pure function of the aggregated signal and the source's rules.
+ * The rules are checked in the plan's order (ignoreTitles, minLevel, window,
+ * minEvents, minUsers) and the first one the signal is under gives the reason,
+ * in plain words. No rules pass everything (a custom runner may already filter).
+ *
+ * A rule the signal carries no data for (no level, no user count, no last
+ * sighting) does not hold it back: the filter holds back only what it can show
+ * is under the bar (Ruling 11). Events fall back to the occurrences Tandemise
+ * counted itself, so `minEvents` always applies. A repeat re-evaluates, so an
+ * error that grows from 3 to 300 events passes on its own.
+ */
+export function evaluateNoise(
+  signal: { readonly title: string; readonly occurrences: number; readonly impact: Impact | null },
+  rules: NoiseRules | undefined,
+  nowIso: string,
+): NoiseVerdict {
+  if (rules === undefined) return { verdict: 'pass' };
+  const held = (reason: string): NoiseVerdict => ({ verdict: 'held_back', reason });
+  const impact = signal.impact ?? {};
+
+  for (const rule of rules.ignoreTitles ?? []) {
+    if (titleMatches(signal.title, rule)) return held(`Ignored by this source's rule '${rule}'`);
+  }
+  if (rules.minLevel !== undefined && impact.level !== undefined
+    && IMPACT_LEVELS.indexOf(impact.level) < IMPACT_LEVELS.indexOf(rules.minLevel)) {
+    return held(`Level ${impact.level}; this source takes ${rules.minLevel} and above`);
+  }
+  if (rules.window !== undefined && impact.lastSeen !== undefined) {
+    const age = Date.parse(nowIso) - Date.parse(impact.lastSeen);
+    if (age > WINDOW_MS[rules.window]) {
+      return held(`Last seen ${ageWords(age)} ago; this source looks at the last ${WINDOW_WORDS[rules.window]}`);
+    }
+  }
+  const events = impact.events ?? signal.occurrences;
+  if (rules.minEvents !== undefined && events < rules.minEvents) {
+    const span = rules.window === undefined ? '' : ` in ${WINDOW_WORDS[rules.window]}`;
+    return held(`${events} ${events === 1 ? 'event' : 'events'}${span}; this source needs ${rules.minEvents}`);
+  }
+  if (rules.minUsers !== undefined && impact.users !== undefined && impact.users < rules.minUsers) {
+    return held(`${impact.users} ${impact.users === 1 ? 'person' : 'people'} affected; this source needs ${rules.minUsers}`);
+  }
+  return { verdict: 'pass' };
+}
+
+/**
+ * A plain substring (case ignored), or `/re/flags` for a regular expression.
+ * A rule that does not compile matches nothing rather than failing the
+ * pipeline. Rules come from the team's configuration, never from a signal.
+ */
+function titleMatches(title: string, rule: string): boolean {
+  const re = /^\/(.+)\/([a-z]*)$/s.exec(rule);
+  if (re === null) return title.toLowerCase().includes(rule.toLowerCase());
+  try {
+    return new RegExp(re[1]!, re[2]).test(title);
+  } catch {
+    return false;
+  }
+}
+
+/** Whole days past a day, whole hours past an hour, otherwise whole minutes. */
+function ageWords(ms: number): string {
+  const unit = (n: number, one: string): string => `${n} ${one}${n === 1 ? '' : 's'}`;
+  if (ms >= 86_400_000) return unit(Math.floor(ms / 86_400_000), 'day');
+  if (ms >= 3_600_000) return unit(Math.floor(ms / 3_600_000), 'hour');
+  return unit(Math.floor(ms / 60_000), 'minute');
+}
+
+/** Spec §4.1 "the daily cap": why a signal past it waits as `needs_decision`. */
+export function dailyCapReason(cap: number): string {
+  return `This source already filed ${cap} tasks today; decide on this one.`;
+}
+
 // ------------------------------------------------------------------ stored records (plan Task 2)
 
 /**

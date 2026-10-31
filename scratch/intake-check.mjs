@@ -219,6 +219,70 @@ section('contract: the JSON Schema for runner authors');
   }
 }
 
+// ------------------------------------------------------------------ noise
+// Task 6: the noise filter is a pure function of the aggregated signal and the
+// source's rules (spec §4.1). Each row of the plan's table is pinned exactly.
+section('noise: evaluateNoise and the daily cap');
+{
+  const now = '2026-10-30T12:00:00.000Z';
+  const rules = { minLevel: 'error', minEvents: 20, minUsers: 3, window: '24h' };
+  const sig = (impact, extra = {}) => ({ title: 'TypeError: x', occurrences: 1, impact: { level: 'error', events: 3, users: 2, lastSeen: now, ...impact }, ...extra });
+  const held = (reason) => ({ verdict: 'held_back', reason });
+  const pass = { verdict: 'pass' };
+  const row = (label, got, want) => check(label, eq(got, want), got);
+  row('3 events in a 24 h window under minEvents 20 is held back',
+    D.evaluateNoise(sig({}), rules, now), held('3 events in 24 h; this source needs 20'));
+  row('132 events and 41 people pass', D.evaluateNoise(sig({ events: 132, users: 41 }), rules, now), pass);
+  row('132 events but 2 people is held back on users',
+    D.evaluateNoise(sig({ events: 132, users: 2 }), rules, now), held('2 people affected; this source needs 3'));
+  row('a warning under minLevel error is held back on the level first',
+    D.evaluateNoise(sig({ level: 'warning' }), rules, now), held('Level warning; this source takes error and above'));
+  row('last seen 3 days ago is outside a 24 h window',
+    D.evaluateNoise(sig({ events: 132, users: 41, lastSeen: '2026-10-27T12:00:00.000Z' }), rules, now),
+    held('Last seen 3 days ago; this source looks at the last 24 h'));
+  row('an ignoreTitles substring holds back first',
+    D.evaluateNoise(sig({ events: 132, users: 41 }, { title: 'ResizeObserver loop limit exceeded' }), { ...rules, ignoreTitles: ['ResizeObserver loop'] }, now),
+    held("Ignored by this source's rule 'ResizeObserver loop'"));
+  check('an ignoreTitles /regex/ holds back',
+    D.evaluateNoise(sig({ events: 132, users: 41 }, { title: 'Network Error' }), { ignoreTitles: ['/^Network ?Error/'] }, now).verdict === 'held_back');
+  row('no rules pass everything', D.evaluateNoise(sig({ events: 0, users: 0, level: 'info' }), undefined, now), pass);
+  row('dailyCapReason(20)', D.dailyCapReason(20), 'This source already filed 20 tasks today; decide on this one.');
+  // Beyond the table (Ruling 11): events fall back to occurrences; a rule the
+  // signal has no data for does not hold it back.
+  row('with no impact, minEvents counts occurrences',
+    D.evaluateNoise({ title: 't', occurrences: 4, impact: null }, { minEvents: 5 }, now), held('4 events; this source needs 5'));
+  row('…and passes once the occurrences reach it', D.evaluateNoise({ title: 't', occurrences: 5, impact: null }, { minEvents: 5 }, now), pass);
+  row('a level, user count or last sighting the signal lacks does not hold it back',
+    D.evaluateNoise({ title: 't', occurrences: 1, impact: null }, { minLevel: 'error', minUsers: 3, window: '1h' }, now), pass);
+  row('a broken /regex/ rule matches nothing instead of throwing',
+    D.evaluateNoise({ title: 'x(', occurrences: 1, impact: null }, { ignoreTitles: ['/x(/'] }, now), pass);
+  row('a substring rule ignores case',
+    D.evaluateNoise({ title: 'resizeobserver LOOP', occurrences: 1, impact: null }, { ignoreTitles: ['ResizeObserver loop'] }, now).verdict, 'held_back');
+  row('one person reads in the singular',
+    D.evaluateNoise({ title: 't', occurrences: 1, impact: { users: 1 } }, { minUsers: 3 }, now), held('1 person affected; this source needs 3'));
+  row('an age under a day reads in hours',
+    D.evaluateNoise({ title: 't', occurrences: 1, impact: { lastSeen: '2026-10-30T07:00:00.000Z' } }, { window: '1h' }, now), held('Last seen 5 hours ago; this source looks at the last 1 h'));
+}
+
+// ------------------------------------------------------------------ similarity
+// Task 6: the default IntakeSimilarity is lexical (spec §5 step 4).
+section('similarity: titleTokens and lexicalSimilarity');
+{
+  const title = "TypeError: cannot read 'id' of undefined";
+  check('titleTokens drops stopwords, one-letter words and repeats', eq(D.titleTokens(title), ['typeerror', 'read', 'id', 'undefined']), D.titleTokens(title));
+  const item = (t, description = '') => ({ ref: 'youtrack:GAR-1', key: 'GAR-1', url: 'https://yt.test/issue/GAR-1', title: t, description, state: 'Open', assignee: null, updatedAt: '2026-10-30T00:00:00Z', createdAt: '2026-10-30T00:00:00Z' });
+  const sig = (t, url = 'https://acme.sentry.io/issues/1/') => ({ title: t, description: '', url });
+  const s = D.lexicalSimilarity(sig(title), item(`${title} in checkout`));
+  check('the same error plus " in checkout" scores 0.84, between ask and link', s === 0.84 && s >= D.DEFAULT_INTAKE_SIMILARITY.ask && s < D.DEFAULT_INTAKE_SIMILARITY.link, s);
+  check('a title with itself scores 1', D.lexicalSimilarity(sig('Checkout button does nothing on Safari'), item('Checkout button does nothing on Safari')) === 1);
+  check('unrelated titles score 0', D.lexicalSimilarity(sig('Export to CSV is slow'), item('Checkout button does nothing on Safari')) === 0);
+  check("a candidate whose description holds the signal's URL scores 1",
+    D.lexicalSimilarity(sig('Export to CSV is slow'), item('Something else', '## Sources\n- x · https://acme.sentry.io/issues/1/')) === 1);
+  const diff = D.lexicalSimilarity(sig('TypeError: read id'), item('RangeError: read id'));
+  check('different error types keep only the title words (0.8 × Jaccard)', diff === 0.4, diff);
+  check('two titles with no words score 0, not NaN', D.lexicalSimilarity(sig('!!', ''), item('a')) === 0);
+}
+
 // ------------------------------------------------------------------ store
 // Task 2: migration 022 (Ruling 1) and the intake repositories, on a fresh
 // database with a clock the check moves by hand.

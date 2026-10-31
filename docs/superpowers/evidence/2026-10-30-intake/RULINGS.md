@@ -143,3 +143,23 @@ was ambiguous or wrong, decided against the spec
     saved unchecked and the reason is logged (`intake.tracker_unchecked`): the credential is saved
     on its own, so a person must be able to set the tracker first. `validate(ws)` checks the saved
     config and throws what the tracker throws.
+- Ruling 11 (the noise filter's edges and the scorer, Task 6): the plan's table is pinned row by
+  row; where it is silent, decided from spec §4.1 ("a source with no `filter` passes everything",
+  reasons "in plain words"):
+  - A rule the signal carries no data for (no `impact.level`, `impact.users` or `impact.lastSeen`,
+    or a `lastSeen` that does not parse) does not hold it back: the filter holds back only what it
+    can show is under the bar. `minEvents` always applies, since events fall back to the
+    occurrences Tandemise counted.
+  - An `ignoreTitles` substring ignores case. `/re/flags` is a regular expression; one that does
+    not compile matches nothing instead of failing the pipeline (the rules are the team's
+    configuration, never a signal's text).
+  - Reasons: `N events; this source needs M` when the source sets no window (`in 24 h` only with
+    one); `1 event` and `1 person affected` in the singular; the window reads `1 h`, `24 h`,
+    `7 days`; an age reads in whole days past a day, whole hours past an hour, else minutes.
+  - The table's `0.84` is consistent with the formula (tokens `typeerror read id undefined` vs the
+    same plus `checkout`: Jaccard 4/5 = 0.8, same error type: 0.8 × 0.8 + 0.2 = 0.84), so neither
+    changed. Two titles with no tokens score 0, and an empty signal URL never matches a
+    description. `titleTokens` from Task 4 already matched the plan and is unchanged.
+  - `IntakeSimilarity.score` takes the signal's `title`, `description` and `url`, and the
+    candidate `TrackerItem`; `lexicalSimilarity` reads only the candidate's title and description,
+    so it also scores the board cache's `TrackedItem`.
