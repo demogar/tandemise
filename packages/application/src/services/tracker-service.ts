@@ -1,15 +1,18 @@
 import type {
-  IntakeClaimsPort, IntakeConfigSource, IntakeRepositoryPort, IntakeSignal, MemberRepositoryPort, Mission, MissionRepositoryPort, PersonRepositoryPort,
+  ActivityCommentInput, ApprovalRepositoryPort, ArtifactRepositoryPort, CriteriaTrace, IntakeClaimsPort, IntakeConfigSource, IntakeRepositoryPort,
+  IntakeSignal, MemberRepositoryPort, Mission, MissionRepositoryPort, PersonRepositoryPort,
   PrimaryTracker, ProjectionBusPort, SourceEntry, TrackedItem, TrackerConfig, TrackerItem, TrackerItemRepositoryPort, TrackerRef, UnitOfWork,
-  WorkspaceRepositoryPort,
+  TaskRepositoryPort, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
 import {
-  escapeForComment, isTerminalMissionStatus, parseCriteria, parseSourcesSection, sourceLabel, trackerGoal, trackerLabel, trackerRef,
+  activityCommentBody, activityMilestone, activityMilestoneOf, activityStepState, decideTrackerWriteBack, isTerminalMissionStatus, parseCriteria,
+  parseSourcesSection, sourceLabel, trackerGoal, trackerLabel, trackerRef,
 } from '@tandemise/domain';
 import type { BoardItemView, BoardView, CreateMissionRequest } from '@tandemise/api-contract';
-import type { Clock, Logger, TrackerItemId, WorkspaceId } from '@tandemise/shared';
+import type { Clock, Logger, MissionId, TrackerItemId, WorkspaceId } from '@tandemise/shared';
 import { TandemiseError, asId, errorMessage } from '@tandemise/shared';
 import type { SettingsStorePort } from '../ports.js';
+import { deliveryLinks, type DeliveryLink } from '../support/delivery-links.js';
 import type { EventRecorder } from '../support/event-recorder.js';
 import { requireSeat, type Caller } from '../support/identity.js';
 import type { TrackerResolver } from '../intake/tracker-resolver.js';
@@ -34,6 +37,14 @@ export interface TrackerServiceDeps {
   readonly people: Pick<PersonRepositoryPort, 'get'>;
   readonly workspaces: Pick<WorkspaceRepositoryPort, 'get' | 'list'>;
   readonly recorder: Pick<EventRecorder, 'note' | 'invalidate'>;
+  /** The plan's steps, for the activity comment's checklist (plan Task 9). */
+  readonly tasks: Pick<TaskRepositoryPort, 'listByMission'>;
+  /** A PENDING approval: the mission waits on a person. */
+  readonly approvals: Pick<ApprovalRepositoryPort, 'list'>;
+  /** The mission's handoffs, for its pull request. */
+  readonly artifacts: Pick<ArtifactRepositoryPort, 'listByMission'>;
+  /** The P5 trace, for the completed criteria table, as P14's completion comment. */
+  readonly trace: (missionId: MissionId) => CriteriaTrace;
   /** Tells open windows the board changed; optional for harnesses. */
   readonly projections?: Pick<ProjectionBusPort, 'invalidate'>;
   readonly unitOfWork: UnitOfWork;
@@ -45,6 +56,12 @@ export interface TrackerServiceDeps {
 export const BOARD_REFRESH_EVERY_MS = 120_000;
 /** A Start whose tracker writes failed is tried again no more than once a minute. */
 const START_RETRY_EVERY_MS = 60_000;
+/** Plan Task 9: the write-back pass runs every 5 s, like P14's. */
+const WRITE_BACK_EVERY_MS = 5_000;
+/** Spec §7: the activity comment is edited at most once a minute. */
+const ACTIVITY_EDIT_EVERY_MS = 60_000;
+/** An item whose write-back failed is tried again no sooner than this. */
+const WRITE_BACK_RETRY_MS = 60_000;
 /** Plan Task 8: the board query's first 200 items. */
 const BOARD_LIMIT = 200;
 /** How many exact-URL hits are worth reading when a merged item's links move. */
@@ -79,6 +96,11 @@ export class TrackerService {
   readonly #refreshes = new Map<WorkspaceId, { at: string | null; problem: string | null }>();
   readonly #lastRefreshMs = new Map<WorkspaceId, number>();
   readonly #lastStartRetryMs = new Map<WorkspaceId, number>();
+  readonly #lastWriteBackMs = new Map<WorkspaceId, number>();
+  /** Per item: no write-back before this, after a failure. */
+  readonly #writeBackRetryAfter = new Map<TrackerItemId, number>();
+  /** Finished missions whose last state has landed: no pass reads them again until a restart. */
+  readonly #settled = new Set<MissionId>();
 
   constructor(private readonly deps: TrackerServiceDeps) {}
 
@@ -126,8 +148,10 @@ export class TrackerService {
 
   /**
    * Scheduler hook: each configured project's board every 2 minutes, and the
-   * tracker writes a Start could not make, once a minute. Returns at once; the
-   * work runs in the background (`settle()` waits for it).
+   * tracker writes a Start could not make, once a minute, and the write-back
+   * of every started item's state and activity comment, every 5 s (plan Task
+   * 9). Returns at once; the work runs in the background (`settle()` waits
+   * for it).
    */
   tick(): void {
     try {
@@ -144,6 +168,11 @@ export class TrackerService {
         if (retried === undefined || nowMs - retried >= START_RETRY_EVERY_MS) {
           this.#lastStartRetryMs.set(workspace.id, nowMs);
           this.#background(workspace.id, () => this.#retryStartWrites(workspace.id));
+        }
+        const wrote = this.#lastWriteBackMs.get(workspace.id);
+        if (wrote === undefined || nowMs - wrote >= WRITE_BACK_EVERY_MS) {
+          this.#lastWriteBackMs.set(workspace.id, nowMs);
+          this.#background(workspace.id, () => this.#writeBack(workspace.id));
         }
       }
     } catch (e) {
@@ -380,7 +409,14 @@ export class TrackerService {
       throw e;
     }
     this.deps.log.info('tracker.started', { workspaceId, ref: item.ref, missionId: mission.id, criteria: criteria.length });
-    await this.#writeStart(workspaceId, tracker, config, item, mission, starter, true);
+    await this.#writeStart(workspaceId, tracker, config, item, mission);
+    // The activity comment at once, derived like every later pass (plan Task 9).
+    const started = this.deps.missions.get(mission.id) ?? mission;
+    try {
+      await this.#syncActivity(workspaceId, tracker, config, this.deps.items.get(item.id) ?? item, started);
+    } catch (e) {
+      this.deps.recorder.note({ workspaceId, missionId: mission.id }, `Couldn't comment on ${fresh.key} in ${label}: ${sentence(e)}.`, 'warn');
+    }
     this.deps.recorder.note({ workspaceId, missionId: mission.id }, `Started from ${label} ${fresh.key}.`);
     this.deps.recorder.invalidate('missions', mission.id);
     this.#invalidate();
@@ -394,26 +430,22 @@ export class TrackerService {
 
   /**
    * After the mission is committed (spec §7 step 4): the item moves to in
-   * progress, is assigned to the starter when they set their tracker login,
-   * and gets the activity comment. A failure here never undoes the mission:
-   * it is noted on it, and the next tick tries again.
+   * progress and is assigned to the starter when they set their tracker login.
+   * The activity comment follows (`#syncActivity`). A failure here never undoes
+   * the mission: it is noted on it, and the next tick tries again.
    */
-  async #writeStart(
-    workspaceId: WorkspaceId, tracker: PrimaryTracker, config: TrackerConfig, item: TrackedItem, mission: Mission, starter: string, move: boolean,
-  ): Promise<void> {
+  async #writeStart(workspaceId: WorkspaceId, tracker: PrimaryTracker, config: TrackerConfig, item: TrackedItem, mission: Mission): Promise<void> {
     const scope = { workspaceId, missionId: mission.id };
     const label = trackerLabel(config.kind);
     const target = config.states.in_progress;
-    if (move) {
-      try {
-        await tracker.transition(item.ref, target);
-        this.deps.unitOfWork.transaction(() => {
-          this.deps.items.upsert(workspaceId, { ...item, state: target });
-          this.deps.items.setWrittenState(item.id, target);
-        });
-      } catch (e) {
-        this.deps.recorder.note(scope, `Couldn't move ${item.key} to ${target} in ${label}: ${sentence(e)}.`, 'warn');
-      }
+    try {
+      await tracker.transition(item.ref, target);
+      this.deps.unitOfWork.transaction(() => {
+        this.deps.items.upsert(workspaceId, { ...item, state: target });
+        this.deps.items.setWrittenState(item.id, target);
+      });
+    } catch (e) {
+      this.deps.recorder.note(scope, `Couldn't move ${item.key} to ${target} in ${label}: ${sentence(e)}.`, 'warn');
     }
     const login = this.#trackerLogin(workspaceId);
     if (login !== null && tracker.assign !== undefined) {
@@ -423,22 +455,13 @@ export class TrackerService {
         this.deps.recorder.note(scope, `Couldn't assign ${item.key} to ${login} in ${label}: ${sentence(e)}.`, 'warn');
       }
     }
-    if (this.deps.items.comment(workspaceId, item.ref, 'tandemise:activity') === undefined) {
-      try {
-        // Task 9 grows this comment at each milestone; Start writes its first line.
-        const body = `Started in Tandemise by ${escapeForComment(starter)}: ${escapeForComment(mission.title)}.`;
-        const { commentId } = await tracker.comment(item.ref, { marker: 'tandemise:activity', body });
-        this.deps.items.saveComment(workspaceId, item.ref, 'tandemise:activity', commentId, body);
-      } catch (e) {
-        this.deps.recorder.note(scope, `Couldn't comment on ${item.key} in ${label}: ${sentence(e)}.`, 'warn');
-      }
-    }
   }
 
   /**
    * The tracker writes of a Start that failed (the item never reached in
    * progress): tried again while the mission is open and the item is still
-   * where Tandemise found it, so a person's own move always wins.
+   * where Tandemise found it, so a person's own move always wins. A missing
+   * activity comment is the write-back pass's to post.
    */
   async #retryStartWrites(workspaceId: WorkspaceId): Promise<void> {
     const config = this.deps.config.read(workspaceId).tracker;
@@ -447,9 +470,7 @@ export class TrackerService {
       const mission = missions.find((m) => !isTerminalMissionStatus(m.status));
       const item = this.deps.items.get(itemId);
       if (mission === undefined || item === undefined) return [];
-      const unmoved = item.writtenState === null && config.states.ready.includes(item.state);
-      const uncommented = this.deps.items.comment(workspaceId, item.ref, 'tandemise:activity') === undefined;
-      return unmoved || uncommented ? [{ item, mission, unmoved }] : [];
+      return item.writtenState === null && config.states.ready.includes(item.state) ? [{ item, mission }] : [];
     });
     if (waiting.length === 0) return;
     let ctx: { tracker: PrimaryTracker; config: TrackerConfig };
@@ -459,13 +480,136 @@ export class TrackerService {
       this.deps.log.warn('tracker.start_retry_failed', { workspaceId, error: errorMessage(e) });
       return;
     }
-    for (const { item, mission, unmoved } of waiting) {
-      const createdBy = mission.createdBy ?? null;
-      const member = createdBy === null ? undefined : this.deps.members.get(asId<'MemberId'>(createdBy));
-      const person = member?.personId === null || member?.personId === undefined ? undefined : this.deps.people.get(member.personId);
-      const starter = person?.displayName ?? member?.name ?? 'someone';
-      await this.#writeStart(workspaceId, ctx.tracker, ctx.config, item, mission, starter, unmoved);
+    for (const { item, mission } of waiting) await this.#writeStart(workspaceId, ctx.tracker, ctx.config, item, mission);
+  }
+
+  // ------------------------------------------------------------------ write-back (plan Task 9)
+
+  /**
+   * The tracker follows each started item's mission (spec §7 "How the tracker
+   * shows progress", "State write-back"): its mapped state and its activity
+   * comment are derived from the mission's state on every pass and compared
+   * with what was last written, so the latest state always lands and a
+   * restart writes nothing twice. An item's latest mission speaks for it: the
+   * open one, else the newest.
+   */
+  async #writeBack(workspaceId: WorkspaceId): Promise<void> {
+    const config = this.deps.config.read(workspaceId).tracker;
+    if (config === null) return;
+    const nowMs = this.deps.clock.epochMs();
+    // Resolved only when something is to be written.
+    let ctx: Promise<{ tracker: PrimaryTracker; config: TrackerConfig }> | null = null;
+    const tracker = async (): Promise<PrimaryTracker> => (await (ctx ??= this.deps.trackers.for(workspaceId))).tracker;
+    for (const [itemId, missions] of this.#missionsByItem(workspaceId)) {
+      const mission = missions.find((m) => !isTerminalMissionStatus(m.status)) ?? missions[0];
+      if (mission === undefined || this.#settled.has(mission.id)) continue;
+      if ((this.#writeBackRetryAfter.get(itemId) ?? 0) > nowMs) continue;
+      const item = this.deps.items.get(itemId);
+      if (item === undefined) continue;
+      try {
+        const settled = await this.#bringUpToDate(workspaceId, config, tracker, item, mission);
+        this.#writeBackRetryAfter.delete(itemId);
+        if (settled && isTerminalMissionStatus(mission.status)) this.#settled.add(mission.id);
+      } catch (e) {
+        this.#writeBackRetryAfter.set(itemId, nowMs + WRITE_BACK_RETRY_MS);
+        this.deps.log.warn('tracker.write_back_failed', { workspaceId, ref: item.ref, missionId: mission.id, error: errorMessage(e) });
+      }
     }
+  }
+
+  /**
+   * One item: the state first (Review Focus 3: only from the state Tandemise
+   * last wrote, read fresh, and never backwards except on cancel), then the
+   * activity comment, which can then say where a cancel moved it. True when
+   * nothing is left to write.
+   */
+  async #bringUpToDate(
+    workspaceId: WorkspaceId, config: TrackerConfig, tracker: () => Promise<PrimaryTracker>, item: TrackedItem, mission: Mission,
+  ): Promise<boolean> {
+    const links = deliveryLinks(this.deps.artifacts, mission.id);
+    const facts = {
+      mapping: { ...config.states, onComplete: config.onComplete },
+      mission: { status: mission.status },
+      prOpen: links.some((l) => l.kind === 'pr'),
+      pendingApproval: this.deps.approvals.list({ missionId: mission.id, statuses: ['PENDING'] }).length > 0,
+      writtenState: item.writtenState,
+    };
+    let current = item;
+    // The cache says whether a move is due; the tracker, read fresh, says whether it is still allowed.
+    if (decideTrackerWriteBack({ ...facts, upstreamState: item.state }).transition !== null) {
+      const t = await tracker();
+      current = this.deps.items.upsert(workspaceId, await t.get(item.ref));
+      const target = decideTrackerWriteBack({ ...facts, upstreamState: current.state }).transition;
+      if (target !== null) {
+        await t.transition(item.ref, target);
+        const moved = current;
+        current = this.deps.unitOfWork.transaction(() => {
+          const saved = this.deps.items.upsert(workspaceId, { ...moved, state: target });
+          this.deps.items.setWrittenState(item.id, target);
+          return { ...saved, writtenState: target };
+        });
+        this.deps.log.info('tracker.state_written', { workspaceId, ref: item.ref, missionId: mission.id, state: target });
+        this.#invalidate();
+      }
+    }
+    return this.#syncActivity(workspaceId, tracker, config, current, mission, links);
+  }
+
+  /**
+   * Writes the activity comment when it differs from what was last written:
+   * edited in place at most once a minute (the last state lands on a later
+   * pass), or, on a tracker that cannot edit comments, posted anew only when
+   * the started, pull-request or completed milestone changes (spec §7). True
+   * when the comment is as current as it can be.
+   */
+  async #syncActivity(
+    workspaceId: WorkspaceId, tracker: PrimaryTracker | (() => Promise<PrimaryTracker>), config: TrackerConfig, item: TrackedItem, mission: Mission,
+    links: readonly DeliveryLink[] = deliveryLinks(this.deps.artifacts, mission.id),
+  ): Promise<boolean> {
+    const input = this.#activityInput(config, item, mission, links);
+    const body = activityCommentBody(input);
+    const stored = this.deps.items.comment(workspaceId, item.ref, 'tandemise:activity');
+    if (stored?.body === body) return true;
+    const t = typeof tracker === 'function' ? await tracker() : tracker;
+    if (!t.capabilities.editComments) {
+      if (stored !== undefined && activityMilestoneOf(stored.body) === activityMilestone(input)) return true;
+      const { commentId } = await t.comment(item.ref, { marker: 'tandemise:activity', body });
+      this.deps.items.saveComment(workspaceId, item.ref, 'tandemise:activity', commentId, body);
+      return true;
+    }
+    if (stored !== undefined && this.deps.clock.epochMs() - Date.parse(stored.updatedAt) < ACTIVITY_EDIT_EVERY_MS) return false;
+    const { commentId } = await t.comment(item.ref, {
+      marker: 'tandemise:activity', body, ...(stored === undefined ? {} : { knownId: stored.commentId }),
+    });
+    this.deps.items.saveComment(workspaceId, item.ref, 'tandemise:activity', commentId, body);
+    return true;
+  }
+
+  /** What the activity comment says now, from the mission's state alone. */
+  #activityInput(config: TrackerConfig, item: TrackedItem, mission: Mission, links: readonly DeliveryLink[]): ActivityCommentInput {
+    // The steps once a plan is approved: before that they are only a proposal.
+    const planned = !['DRAFT', 'PLANNING', 'AWAITING_PLAN_APPROVAL'].includes(mission.status);
+    const tasks = planned ? this.deps.tasks.listByMission(mission.id) : [];
+    const readyState = config.states.ready[0];
+    return {
+      starter: this.#starterOf(mission),
+      missionTitle: mission.title,
+      steps: tasks.length === 0 ? null : tasks.map((t) => ({ title: t.title, state: activityStepState(t.status) })),
+      prUrl: links.find((l) => l.kind === 'pr')?.url ?? null,
+      completed: mission.status === 'COMPLETE'
+        ? { rows: this.deps.trace(mission.id).rows.map((r) => ({ key: r.criterion.key, statement: r.criterion.statement, result: r.result })) }
+        : null,
+      // Said once the item is back where the cancel put it: when a person moved it first, the comment claims no move.
+      cancelled: mission.status === 'CANCELLED' && readyState !== undefined && item.writtenState === readyState ? { readyState } : null,
+    };
+  }
+
+  /** Who started the mission: their person's name, else their seat's. */
+  #starterOf(mission: Mission): string {
+    const createdBy = mission.createdBy ?? null;
+    const member = createdBy === null ? undefined : this.deps.members.get(asId<'MemberId'>(createdBy));
+    const person = member?.personId === null || member?.personId === undefined ? undefined : this.deps.people.get(member.personId);
+    return person?.displayName ?? member?.name ?? 'someone';
   }
 
   // ------------------------------------------------------------------ helpers

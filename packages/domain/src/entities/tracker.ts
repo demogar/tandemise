@@ -1,6 +1,8 @@
 import type { Brand, Timestamp, TrackerItemId, WorkspaceId } from '@tandemise/shared';
 import type { TrackerConfig } from './intake.js';
-import { escapeForComment } from './issue.js';
+import { criteriaResultTable, escapeForComment, type CompletedCriterion } from './issue.js';
+import type { MissionStatus } from './mission.js';
+import type { TaskStatus } from './task.js';
 
 /**
  * The project's primary tracker, as Tandemise sees it (spec §6).
@@ -252,4 +254,150 @@ export function trackerGoal(input: {
 
 function oneLine(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
+}
+
+// ------------------------------------------------------------------ write-back (spec §7, plan Task 9)
+
+/** One plan step as the activity comment lists it. */
+export type ActivityStepState = 'todo' | 'running' | 'held' | 'waiting' | 'done';
+
+export interface ActivityStep {
+  readonly title: string;
+  readonly state: ActivityStepState;
+}
+
+/**
+ * A plan step's line state from its task status (RULINGS ruling 14): finished
+ * or skipped is done; a person to answer, act or approve is waiting; blocked or
+ * failed is held; running, or polling something outside, is running; anything
+ * not started yet (or cancelled with the plan) is still to do.
+ */
+export function activityStepState(status: TaskStatus): ActivityStepState {
+  switch (status) {
+    case 'SUCCEEDED': case 'SKIPPED': return 'done';
+    case 'AWAITING_INPUT': case 'AWAITING_HUMAN': case 'AWAITING_APPROVAL': return 'waiting';
+    case 'BLOCKED': case 'FAILED': return 'held';
+    case 'RUNNING': case 'AWAITING_EXTERNAL': return 'running';
+    default: return 'todo';
+  }
+}
+
+export interface ActivityCommentInput {
+  readonly starter: string;
+  readonly missionTitle: string;
+  /** The approved plan's steps, in order; null before a plan is approved. */
+  readonly steps: readonly ActivityStep[] | null;
+  readonly prUrl: string | null;
+  readonly completed: { readonly rows: readonly CompletedCriterion[] } | null;
+  readonly cancelled: { readonly readyState: string } | null;
+}
+
+/**
+ * The `tandemise:activity` comment, derived from the mission's state alone
+ * (spec §7 "How the tracker shows progress"), so the latest state always lands
+ * on a later pass and a restart writes nothing new. It has no marker line: the
+ * adapter's `comment()` puts it first (RULINGS ruling 14).
+ *
+ *     Started in Tandemise by Ana: Checkout fails on Safari.
+ *
+ *     Plan:
+ *     - [x] Reproduce
+ *     - [ ] Fix — running
+ *
+ *     Pull request: https://github.com/acme/web/pull/7
+ *
+ *     Done in Tandemise — 1 of 1 criteria verified.
+ *
+ *     | Key | Criterion | Result |
+ *     ...
+ */
+export function activityCommentBody(input: ActivityCommentInput): string {
+  const lines = [`Started in Tandemise by ${escapeForComment(oneLine(input.starter))}: ${escapeForComment(oneLine(input.missionTitle))}.`];
+  if (input.steps !== null && input.steps.length > 0) {
+    lines.push('', 'Plan:', ...input.steps.map(stepLine));
+  }
+  if (input.prUrl !== null) lines.push('', `Pull request: ${input.prUrl}`);
+  if (input.completed !== null) {
+    const rows = input.completed.rows;
+    const verified = rows.filter((r) => r.result === 'PASS').length;
+    lines.push('', `Done in Tandemise — ${verified} of ${rows.length} criteria verified.`);
+    if (rows.length > 0) lines.push('', ...criteriaResultTable(rows));
+  }
+  if (input.cancelled !== null) lines.push('', `Stopped in Tandemise; moved back to ${escapeForComment(input.cancelled.readyState)}.`);
+  return lines.join('\n');
+}
+
+function stepLine(step: ActivityStep): string {
+  const title = escapeForComment(oneLine(step.title));
+  switch (step.state) {
+    case 'done': return `- [x] ${title}`;
+    case 'running': return `- [ ] ${title} — running`;
+    case 'held': return `- [ ] ${title} — held`;
+    case 'waiting': return `- [ ] ${title} — waiting for a person`;
+    default: return `- [ ] ${title}`;
+  }
+}
+
+/**
+ * The milestones a tracker that cannot edit comments gets a new comment at
+ * (spec §7): started, pull request opened, completed.
+ */
+export type ActivityMilestone = 'started' | 'pr' | 'completed';
+
+export function activityMilestone(input: Pick<ActivityCommentInput, 'prUrl' | 'completed'>): ActivityMilestone {
+  return input.completed !== null ? 'completed' : input.prUrl !== null ? 'pr' : 'started';
+}
+
+/**
+ * The milestone an activity body was written at, read back from its own
+ * lines: only Tandemise starts a line with these words (copied text sits after
+ * `Started in Tandemise by …:` or a step's `- [ ] `).
+ */
+export function activityMilestoneOf(body: string): ActivityMilestone {
+  const lines = body.split('\n');
+  if (lines.some((l) => l.startsWith('Done in Tandemise — '))) return 'completed';
+  if (lines.some((l) => l.startsWith('Pull request: '))) return 'pr';
+  return 'started';
+}
+
+export interface TrackerWriteBackInput {
+  readonly mapping: TrackerConfig['states'] & { readonly onComplete: TrackerConfig['onComplete'] };
+  readonly mission: { readonly status: MissionStatus };
+  /** A pull request is among the mission's delivery links. */
+  readonly prOpen: boolean;
+  /** The mission waits on a person's decision (any PENDING approval). */
+  readonly pendingApproval: boolean;
+  /** The item's state in the tracker, read fresh. */
+  readonly upstreamState: string;
+  /** The state Tandemise last wrote; null if it never wrote one. */
+  readonly writtenState: string | null;
+}
+
+/**
+ * The state a started item should move to now, or null (spec §7 "State
+ * write-back"). A person's change always wins: Tandemise moves the item only
+ * while it is still in the state Tandemise last wrote. And it never moves an
+ * item backwards (ready < in progress < in review < done) except on cancel,
+ * which puts it back in the first ready state (plan Review Focus 3).
+ */
+export function decideTrackerWriteBack(input: TrackerWriteBackInput): { readonly transition: string | null } {
+  const m = input.mapping;
+  const status = input.mission.status;
+  const target = status === 'COMPLETE' ? (m.onComplete === 'done' ? m.done[0] : (m.in_review ?? m.done[0]))
+    : status === 'CANCELLED' ? m.ready[0]
+      : (status === 'READY_TO_SHIP' || (input.prOpen && input.pendingApproval)) && m.in_review !== undefined ? m.in_review
+        : m.in_progress;
+  if (target === undefined || input.writtenState === null) return { transition: null };
+  if (input.upstreamState !== input.writtenState || target === input.upstreamState) return { transition: null };
+  if (status !== 'CANCELLED' && stateRank(m, target) < stateRank(m, input.writtenState)) return { transition: null };
+  return { transition: target };
+}
+
+/** ready 0, in progress 1, in review 2, done or won't do 3; a state the mapping does not name -1. */
+function stateRank(m: TrackerConfig['states'], state: string): number {
+  if (m.ready.includes(state)) return 0;
+  if (state === m.in_progress) return 1;
+  if (state === m.in_review) return 2;
+  if (m.done.includes(state) || m.wont_do.includes(state)) return 3;
+  return -1;
 }

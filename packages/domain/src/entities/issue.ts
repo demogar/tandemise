@@ -347,6 +347,19 @@ export interface CompletedCriterion extends CommentCriterion {
   readonly result: TracedResult;
 }
 
+/**
+ * The P5 trace as a comment table, one row per criterion with its result in
+ * words. P14's completion comment and the tracker's activity comment (intake
+ * plan Task 9) both end with it.
+ */
+export function criteriaResultTable(rows: readonly CompletedCriterion[]): string[] {
+  return [
+    '| Key | Criterion | Result |',
+    '|---|---|---|',
+    ...rows.map((r) => `| ${r.key} | ${escapeForComment(r.statement)} | ${resultWord(r.result)} |`),
+  ];
+}
+
 export type CloseIntent = 'closing' | 'left_open' | 'off';
 
 export function completedCommentBody(input: {
@@ -360,9 +373,7 @@ export function completedCommentBody(input: {
     issueMarker('completed'),
     `Done in Tandemise — ${verified} of ${plural(input.rows.length, 'criterion', 'criteria')} verified.`,
     '',
-    '| Key | Criterion | Result |',
-    '|---|---|---|',
-    ...input.rows.map((r) => `| ${r.key} | ${escapeForComment(r.statement)} | ${resultWord(r.result)} |`),
+    ...criteriaResultTable(input.rows),
     ...(input.links.length > 0 ? ['', ...input.links.map((l) => `- ${escapeForComment(l.label)}: ${l.url}`)] : []),
     ...(input.close === 'closing' ? ['', 'Closing this issue: every criterion was verified.'] : []),
     ...(input.close === 'left_open' ? ['', `Left open: ${plural(notVerified, 'criterion was', 'criteria were')} not verified.`] : []),

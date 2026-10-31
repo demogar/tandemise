@@ -14,6 +14,7 @@ import type {
 import type { Clock, IssueLinkId, Logger, MemberId, MissionId, RepositoryId, WorkspaceId } from '@tandemise/shared';
 import { TandemiseError, asId, errorMessage } from '@tandemise/shared';
 import type { EventRecorder } from '../support/event-recorder.js';
+import { deliveryLinks } from '../support/delivery-links.js';
 import { requireSeat, type Caller } from '../support/identity.js';
 import { IMPORTED_ISSUES_NOTE } from '../setup/codec.js';
 
@@ -399,7 +400,7 @@ export class IssueService {
       mission: { status: mission.status, queued: mission.queuedAt !== null },
       criteria: this.deps.criteria.listActive(mission.id).filter((c) => c.source === 'user').map((c) => ({ key: c.key, statement: c.statement })),
       trace: complete ? this.deps.trace(mission.id).rows.map((r) => ({ key: r.criterion.key, statement: r.criterion.statement, result: r.result })) : [],
-      links: complete ? this.#deliveryLinks(mission.id) : [],
+      links: complete ? deliveryLinks(this.deps.artifacts, mission.id) : [],
       stalled: live ? this.deps.stalled(mission.id) : null,
       posted: Object.fromEntries(this.deps.issues.comments(link.id).map((c) => [c.kind, c.body])),
     });
@@ -450,27 +451,6 @@ export class IssueService {
     const login = await this.deps.tracker.viewer({ repo, cwd });
     this.#viewers.set(host, login);
     return login;
-  }
-
-  /** Pull request and branch links from the mission's handoffs, first mention wins. */
-  #deliveryLinks(missionId: MissionId): { label: string; url: string }[] {
-    const out: { label: string; url: string }[] = [];
-    for (const manifest of this.deps.artifacts.listByMission(missionId)) {
-      for (const link of manifest.handoff?.links ?? []) {
-        // A workspace link may carry only a path (spec A5), which is never a delivery link to post.
-        if (link.url === undefined) continue;
-        const branch = /\/tree\//.test(link.url);
-        if ((link.kind === 'pr' || branch) && /^https?:\/\//.test(link.url) && !out.some((l) => l.url === link.url)) {
-          out.push({ label: link.kind === 'pr' ? `Pull request (${link.label})` : `Branch (${link.label})`, url: link.url });
-        }
-      }
-      for (const ref of manifest.sourceRefs) {
-        if (ref.kind === 'github.pr' && /^https?:\/\//.test(ref.value) && !out.some((l) => l.url === ref.value)) {
-          out.push({ label: `Pull request${ref.label === undefined ? '' : ` (${ref.label})`}`, url: ref.value });
-        }
-      }
-    }
-    return out;
   }
 
   // ------------------------------------------------------------------ helpers

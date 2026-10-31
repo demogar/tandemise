@@ -283,6 +283,57 @@ section('similarity: titleTokens and lexicalSimilarity');
   check('two titles with no words score 0, not NaN', D.lexicalSimilarity(sig('!!', ''), item('a')) === 0);
 }
 
+section('write-back: decideTrackerWriteBack and activityCommentBody (Task 9)');
+{
+  const mapping = { ready: ['Open'], in_progress: 'In Progress', in_review: 'In Review', done: ['Fixed', 'Done'], wont_do: ["Won't fix", 'Duplicate'], onComplete: 'in_review' };
+  const decide = (status, over = {}) => D.decideTrackerWriteBack({ mapping, mission: { status }, prOpen: false, pendingApproval: false, upstreamState: 'In Progress', writtenState: 'In Progress', ...over }).transition;
+  check("COMPLETE with onComplete 'in_review' → 'In Review'", decide('COMPLETE') === 'In Review', decide('COMPLETE'));
+  check("COMPLETE with onComplete 'done' → the first done state", D.decideTrackerWriteBack({ mapping: { ...mapping, onComplete: 'done' }, mission: { status: 'COMPLETE' }, prOpen: false, pendingApproval: false, upstreamState: 'In Progress', writtenState: 'In Progress' }).transition === 'Fixed');
+  check("a person's 'Fixed' against the written 'In Progress' → no transition (Review Focus 3)", decide('COMPLETE', { upstreamState: 'Fixed' }) === null);
+  check("CANCELLED → 'Open'", decide('CANCELLED') === 'Open', decide('CANCELLED'));
+  check("CANCELLED after 'In Review' was written → back to 'Open' (the one way backwards)", decide('CANCELLED', { upstreamState: 'In Review', writtenState: 'In Review' }) === 'Open');
+  check("EXECUTING after 'In Review' was written → no transition (never backwards)", decide('EXECUTING', { upstreamState: 'In Review', writtenState: 'In Review' }) === null);
+  check("a pull request waiting on a person → 'In Review'", decide('EXECUTING', { prOpen: true, pendingApproval: true }) === 'In Review');
+  check('a pull request alone keeps it in progress', decide('EXECUTING', { prOpen: true }) === null);
+  check("READY_TO_SHIP → 'In Review'", decide('READY_TO_SHIP') === 'In Review');
+  check('nothing written yet → no transition', decide('COMPLETE', { writtenState: null }) === null);
+
+  const steps = [{ title: 'Reproduce on Safari', state: 'done' }, { title: 'Fix the Pay button', state: 'running' }];
+  const body = D.activityCommentBody({ starter: 'Ana', missionTitle: 'Checkout fails on Safari', steps, prUrl: null, completed: null, cancelled: null });
+  check('activityCommentBody: a two-step plan, one done and one running, line by line', eq(body.split('\n'), [
+    'Started in Tandemise by Ana: Checkout fails on Safari.',
+    '',
+    'Plan:',
+    '- [x] Reproduce on Safari',
+    '- [ ] Fix the Pay button — running',
+  ]), body.split('\n'));
+  const full = D.activityCommentBody({
+    starter: '@ana', missionTitle: 'Fix | it', steps: [{ title: 'Wait', state: 'waiting' }, { title: 'Hold', state: 'held' }, { title: 'Later', state: 'todo' }],
+    prUrl: 'https://github.com/acme/web/pull/7', completed: { rows: [{ key: 'U1', statement: 'Checkout works on Safari', result: 'PASS' }] }, cancelled: null,
+  });
+  check('…waiting, held and to-do steps, the PR, then the criteria table', eq(full.split('\n'), [
+    'Started in Tandemise by @​ana: Fix \\| it.',
+    '',
+    'Plan:',
+    '- [ ] Wait — waiting for a person',
+    '- [ ] Hold — held',
+    '- [ ] Later',
+    '',
+    'Pull request: https://github.com/acme/web/pull/7',
+    '',
+    'Done in Tandemise — 1 of 1 criteria verified.',
+    '',
+    '| Key | Criterion | Result |',
+    '|---|---|---|',
+    '| U1 | Checkout works on Safari | Verified |',
+  ]), full.split('\n'));
+  const stopped = D.activityCommentBody({ starter: 'Ana', missionTitle: 'X', steps: null, prUrl: null, completed: null, cancelled: { readyState: 'Open' } });
+  check('…and a cancelled mission says it moved back', stopped.endsWith('\n\nStopped in Tandemise; moved back to Open.'), stopped);
+  check('the milestone read back from a body', D.activityMilestoneOf(body) === 'started' && D.activityMilestoneOf(full) === 'completed'
+    && D.activityMilestoneOf(D.activityCommentBody({ starter: 'A', missionTitle: 'Pull request: x', steps: null, prUrl: 'https://x.test/pull/1', completed: null, cancelled: null })) === 'pr'
+    && D.activityMilestoneOf(D.activityCommentBody({ starter: 'A', missionTitle: 'X', steps: [{ title: 'Done in Tandemise — 1 of 1 criteria verified.', state: 'todo' }], prUrl: null, completed: null, cancelled: null })) === 'started');
+}
+
 // ------------------------------------------------------------------ store
 // Task 2: migration 022 (Ruling 1) and the intake repositories, on a fresh
 // database with a clock the check moves by hand.
@@ -1142,6 +1193,221 @@ try {
   await fakeB.close();
   await fakeR.close();
   for (const h of boardHomes) rmSync(h, { recursive: true, force: true });
+}
+
+// ------------------------------------------------------------------ write-back (Task 9)
+// The tracker follows a started mission: one activity comment, edited at most
+// once a minute and always ending on the latest state, and the mapped state
+// moves only while the item is where Tandemise left it (Review Focus 3). The
+// mission's state is driven through the repositories, as replan-check does.
+section('write-back: the activity comment and the state follow the mission (Task 9)');
+const wbHomes = [];
+const wbHome = () => { const h = pipeline.mkdtempSync(join(pipeline.tmpdir(), 'tdi-wb-')); wbHomes.push(h); return h; };
+const fakeW = await pipeline.startFakeYouTrack({ project: 'GAR', token: 'perm:test', login: 'tandemise-bot' });
+const fakeN = await pipeline.startFakeYouTrack({ project: 'GAR', token: 'perm:test', login: 'tandemise-bot' });
+const ACTIVITY = '<!-- tandemise:activity -->';
+/** The daemon's handles for driving a started mission by hand. */
+const driver = (d, ws) => {
+  const r = (token) => d.container.resolve(token);
+  const repo = {
+    missions: r(pipeline.app.MISSION_REPOSITORY), tasks: r(pipeline.app.TASK_REPOSITORY), approvals: r(pipeline.app.APPROVAL_REPOSITORY),
+    artifacts: r(pipeline.app.ARTIFACT_REPOSITORY), evaluations: r(pipeline.app.EVALUATION_REPOSITORY), criteria: r(pipeline.app.MISSION_CRITERIA_REPOSITORY),
+  };
+  let n = 0;
+  return {
+    repo,
+    /** One write-back pass: the scheduler's tracker tick, waited for. */
+    pass: async () => { d.services.tracker.tick(); await d.services.tracker.settle(); },
+    /** Approves the plan card, which writes the steps and starts EXECUTING. */
+    approvePlan: async (missionId) => {
+      const card = repo.approvals.list({ missionId, statuses: ['PENDING'] }).find((a) => a.kind === 'plan');
+      if (card === undefined) throw new Error(`no plan card on ${missionId}`);
+      await d.services.approvals.decide(d.caller, card.id, { optionId: 'approve' });
+      return repo.tasks.listByMission(missionId);
+    },
+    step: (taskId, status) => repo.tasks.update(taskId, { status }),
+    /** A handoff that opened a pull request. */
+    pullRequest: (missionId, url) => repo.artifacts.create({
+      id: `art_wb_${++n}`, workspaceId: ws, missionId, taskId: null, createdByRunId: null, type: 'ChangeSet', title: 'The fix',
+      contentRef: `artifacts/wb-${n}.md`, mediaType: 'text/markdown', sha256: 'c'.repeat(64), byteSize: 1, schemaVersion: 1,
+      sourceRefs: [{ kind: 'github.pr', value: url }], supersedes: null, summary: 'The fix', createdAt: pipeline.clock.now(),
+    }),
+    /** A person's decision the mission waits on. */
+    pendingCard: (missionId) => {
+      const decided = repo.approvals.list({ missionId }).find((a) => a.kind === 'plan');
+      return repo.approvals.create({ ...decided, id: `apr_wb_${++n}`, status: 'PENDING', selectedOptionId: null, decidedBy: null, decisionNote: null, decidedAt: null, title: 'Merge the pull request' });
+    },
+    /** QA verified every active criterion, then the mission completes. */
+    complete: (missionId, taskId) => {
+      const keys = repo.criteria.listActive(missionId).map((c) => c.key);
+      repo.evaluations.createEvaluation({
+        id: `evl_wb_${++n}`, missionId, taskId, runId: null, evaluatorRoleId: 'qa', verdict: 'pass', summary: 's', findings: [],
+        criteriaCoverage: keys.map((key) => ({ criterionId: key, criterion: key, outcome: 'PASS', evidence: 'scripted' })),
+        createdAt: pipeline.clock.now(),
+      });
+      repo.missions.update(missionId, { status: 'COMPLETE' });
+    },
+  };
+};
+let WD = null;
+try {
+  fakeW.putIssue({ summary: SAFARI, description: DONE_WHEN, state: 'Open' });
+  fakeW.putIssue({ summary: 'Refunds are sent twice', description: 'One click, two refunds.\n\n## Done when\n- [ ] One refund per click', state: 'Open' });
+  fakeW.putIssue({ summary: 'Coupon field rejects valid codes', description: 'SAVE10 is refused.\n\n## Done when\n- [ ] SAVE10 is accepted', state: 'Open' });
+  WD = await pipeline.open({ home: wbHome(), settings: pipeline.app.createMemorySettingsStore(), secrets: pipeline.memorySecrets(), providers: [pipeline.Y.youtrackIntegrationModule] });
+  const ws = await pipeline.configureYouTrack(WD, fakeW.url);
+  WD.container.resolve(pipeline.app.PERSON_REPOSITORY).update(WD.caller.personId, { displayName: 'Demo' });
+  const tracker = WD.services.tracker;
+  const w = driver(WD, ws);
+  const activity = (key) => (fakeW.comments.get(key) ?? []).filter((c) => c.text.startsWith(ACTIVITY));
+  const edits = () => fakeW.calls.filter((c) => c.method === 'POST' && /^\/api\/issues\/GAR-1\/comments\/[^/]+$/.test(c.path)).length;
+  await tracker.refreshBoard(ws);
+
+  const mission = await tracker.start(WD.caller, ws, 'GAR-1');
+  await tracker.settle();
+  check('Start posts the activity comment derived from the mission: its first line only', activity('GAR-1').length === 1 && activity('GAR-1')[0].text === `${ACTIVITY}\n\nStarted in Tandemise by Demo: ${SAFARI}.`, activity('GAR-1'));
+
+  // 1. The plan is approved and its steps written; one done, the next running.
+  const steps = await w.approvePlan(mission.id);
+  check('the plan card was approved and wrote at least two steps', steps.length >= 2 && w.repo.missions.get(mission.id)?.status === 'EXECUTING', { steps: steps.map((s) => s.title), status: w.repo.missions.get(mission.id)?.status });
+  w.step(steps[0].id, 'SUCCEEDED');
+  w.step(steps[1].id, 'RUNNING');
+  await w.pass();
+  check('within a minute of the last write the comment is not edited yet', edits() === 0 && !activity('GAR-1')[0].text.includes('Plan:'), activity('GAR-1')[0].text);
+  pipeline.advance(61_000);
+  await w.pass();
+  const one = activity('GAR-1');
+  check(`61 s later one edit lands: "- [ ] ${steps[1].title} — running"`, edits() === 1 && one[0].text.includes(`- [x] ${steps[0].title}`) && one[0].text.includes(`- [ ] ${steps[1].title} — running`), { edits: edits(), text: one[0]?.text });
+  check('…and GAR-1 still has one comment', (fakeW.comments.get('GAR-1') ?? []).length === 1, fakeW.comments.get('GAR-1'));
+
+  // 2. Two changes within 10 s: neither lands before the minute is up; then the latest does.
+  pipeline.advance(5_000);
+  w.step(steps[1].id, 'AWAITING_HUMAN');
+  await w.pass();
+  pipeline.advance(5_000);
+  w.step(steps[1].id, 'BLOCKED');
+  await w.pass();
+  check('two changes within 10 s of an edit: nothing is edited before 60 s', edits() === 1 && !activity('GAR-1')[0].text.includes('— held'), { edits: edits() });
+  pipeline.advance(50_000);
+  await w.pass();
+  const latest = activity('GAR-1')[0].text;
+  check('at 60 s the latest state lands, once', edits() === 2 && latest.includes(`- [ ] ${steps[1].title} — held`) && !latest.includes('waiting for a person'), { edits: edits(), latest });
+  pipeline.advance(61_000);
+  await w.pass();
+  check('a pass with nothing new edits nothing', edits() === 2, edits());
+
+  // 3. A pull request waiting on a person → In Review.
+  w.step(steps[1].id, 'SUCCEEDED');
+  w.pullRequest(mission.id, 'https://github.com/acme/web/pull/7');
+  const card = w.pendingCard(mission.id);
+  pipeline.advance(61_000);
+  await w.pass();
+  check("a pull request plus a pending approval moves GAR-1 to 'In Review'", fakeW.issues.get('GAR-1')?.state === 'In Review' && WD.items.byKey(ws, 'GAR-1')?.writtenState === 'In Review', { state: fakeW.issues.get('GAR-1')?.state, written: WD.items.byKey(ws, 'GAR-1')?.writtenState });
+  check('…and the comment links it', activity('GAR-1')[0].text.includes('\n\nPull request: https://github.com/acme/web/pull/7'), activity('GAR-1')[0].text);
+
+  // 4. COMPLETE → onComplete (In Review), with the criteria table.
+  w.repo.approvals.update(card.id, { status: 'APPROVED', selectedOptionId: card.options[0]?.id ?? null, decidedAt: pipeline.clock.now() });
+  w.complete(mission.id, steps[1].id);
+  pipeline.advance(61_000);
+  await w.pass();
+  const done = activity('GAR-1')[0].text;
+  check("COMPLETE leaves GAR-1 in 'In Review' (onComplete) and never moves it back", fakeW.issues.get('GAR-1')?.state === 'In Review', fakeW.issues.get('GAR-1')?.state);
+  check("…the comment says 'Done in Tandemise — 1 of 1 criteria verified.' with the table", done.includes('\n\nDone in Tandemise — 1 of 1 criteria verified.\n\n| Key | Criterion | Result |') && /\| \S+ \| Checkout works on Safari \| Verified \|/.test(done), done);
+  check('…and it is still one comment', (fakeW.comments.get('GAR-1') ?? []).length === 1);
+
+  // 5. A person resolves GAR-3 before its mission completes: their change wins.
+  const coupon = await tracker.start(WD.caller, ws, 'GAR-3');
+  await tracker.settle();
+  fakeW.setState('GAR-3', 'Fixed');
+  const commandsBefore = fakeW.commands.length;
+  w.complete(coupon.id, (await w.approvePlan(coupon.id))[0].id);
+  pipeline.advance(61_000);
+  await w.pass();
+  pipeline.advance(61_000);
+  await w.pass();
+  const gar3Moves = fakeW.commands.slice(commandsBefore).filter((c) => c.issues.some((i) => i.idReadable === 'GAR-3'));
+  check("a person's 'Fixed' before COMPLETE: Tandemise writes no transition", fakeW.issues.get('GAR-3')?.state === 'Fixed' && gar3Moves.length === 0, { state: fakeW.issues.get('GAR-3')?.state, gar3Moves });
+  check('…but the comment still follows the mission', activity('GAR-3')[0]?.text.includes('Done in Tandemise — ') === true, activity('GAR-3'));
+
+  // 6. CANCELLED → back to the first ready state, said in the comment.
+  const refunds = await tracker.start(WD.caller, ws, 'GAR-2');
+  await tracker.settle();
+  w.repo.missions.update(refunds.id, { status: 'CANCELLED' });
+  pipeline.advance(61_000);
+  await w.pass();
+  check("a CANCELLED mission moves GAR-2 back to 'Open'", fakeW.issues.get('GAR-2')?.state === 'Open' && WD.items.byKey(ws, 'GAR-2')?.writtenState === 'Open', fakeW.issues.get('GAR-2')?.state);
+  check("…with 'Stopped in Tandemise; moved back to Open.'", activity('GAR-2')[0]?.text.endsWith('\n\nStopped in Tandemise; moved back to Open.') === true, activity('GAR-2')[0]?.text);
+  const settledCalls = fakeW.calls.length;
+  pipeline.advance(61_000);
+  await w.pass();
+  const writes = fakeW.calls.slice(settledCalls).filter((c) => c.method === 'POST');
+  check('once everything landed a pass writes nothing', writes.length === 0, writes.map((c) => c.path));
+} catch (e) {
+  check('the write-back section ran', false, String(e?.stack ?? e));
+} finally {
+  await WD?.intake?.settle?.();
+  await WD?.services?.tracker?.settle?.();
+  await WD?.container.dispose();
+}
+
+// 7. A tracker that cannot edit comments gets exactly three: started, pull request, completed.
+try {
+  const noEdits = pipeline.defineModule('youtrack-no-edits', (container) => {
+    container.contribute(pipeline.I.PRIMARY_TRACKER_FACTORIES, () => ({
+      kind: 'youtrack',
+      create(config, credential) {
+        const real = pipeline.Y.youtrackTrackerFactory.create(config, credential);
+        return new Proxy(real, {
+          get(target, prop) {
+            if (prop === 'capabilities') return { ...target.capabilities, editComments: false };
+            // Every comment is a new one: this tracker has no edit.
+            if (prop === 'comment') return async (ref, c) => ({ commentId: fakeN.putComment(ref.replace(/^youtrack:/, ''), { text: `${ACTIVITY}\n\n${c.body}` }).id });
+            const v = Reflect.get(target, prop, target);
+            return typeof v === 'function' ? v.bind(target) : v;
+          },
+        });
+      },
+    }), { source: 'check' });
+  });
+  fakeN.putIssue({ summary: SAFARI, description: DONE_WHEN, state: 'Open' });
+  const ND = await pipeline.open({ home: wbHome(), settings: pipeline.app.createMemorySettingsStore(), secrets: pipeline.memorySecrets(), providers: [noEdits] });
+  try {
+    const ws = await pipeline.configureYouTrack(ND, fakeN.url);
+    const tracker = ND.services.tracker;
+    const w = driver(ND, ws);
+    const activity = () => (fakeN.comments.get('GAR-1') ?? []).filter((c) => c.text.startsWith(ACTIVITY));
+    const mission = await tracker.start(ND.caller, ws, 'GAR-1');
+    await tracker.settle();
+    const steps = await w.approvePlan(mission.id);
+    for (const [i, status] of [[0, 'RUNNING'], [0, 'SUCCEEDED'], [1, 'RUNNING']]) {
+      w.step(steps[i].id, status);
+      pipeline.advance(61_000);
+      await w.pass();
+    }
+    check('without editable comments, step changes post nothing new', activity().length === 1, activity().map((c) => c.text));
+    w.pullRequest(mission.id, 'https://github.com/acme/web/pull/9');
+    pipeline.advance(61_000);
+    await w.pass();
+    w.step(steps[1].id, 'SUCCEEDED');
+    pipeline.advance(61_000);
+    await w.pass();
+    w.complete(mission.id, steps[1].id);
+    pipeline.advance(61_000);
+    await w.pass();
+    pipeline.advance(61_000);
+    await w.pass();
+    const texts = activity().map((c) => c.text);
+    check('exactly 3 comments: started, pull request, completed', texts.length === 3 && !texts[0].includes('Pull request:') && texts[1].includes('Pull request: https://github.com/acme/web/pull/9') && !texts[1].includes('Done in Tandemise') && texts[2].includes('Done in Tandemise — 1 of 1 criteria verified.'), texts);
+  } finally {
+    await ND.services.tracker.settle();
+    await ND.container.dispose();
+  }
+} catch (e) {
+  check('the no-edit tracker section ran', false, String(e?.stack ?? e));
+} finally {
+  await fakeW.close();
+  await fakeN.close();
+  for (const h of wbHomes) rmSync(h, { recursive: true, force: true });
 }
 
 console.log(`\n${passed} passed, ${failures.length} failed`);

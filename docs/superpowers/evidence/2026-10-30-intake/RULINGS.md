@@ -242,3 +242,28 @@ was ambiguous or wrong, decided against the spec
   - **PLANNING.** In the in-process check no planner runtime is composed, so the preset plans the mission inside
     `create` and Start answers `AWAITING_PLAN_APPROVAL` rather than `PLANNING`. The check asserts it left DRAFT
     through planning and was never queued.
+- Ruling 14 (write-back and the activity comment, Task 9): decided from spec §7 and Review Focus 3:
+  - `activityCommentBody` returns the body **without** the `<!-- tandemise:activity -->` line the plan lists first:
+    the adapters' `comment()` already puts the marker line first (as for the sources comment), and a second one
+    would be written. Every other line is the plan's, in its order. "Done in Tandemise — <n> of <m> criteria
+    verified." always says "criteria" (the plan's sentence, `1 of 1 criteria`); the table is P14's, now shared as
+    `criteriaResultTable` in `entities/issue.ts`, which `completedCommentBody` also uses.
+  - Step lines from task status (`activityStepState`): SUCCEEDED or SKIPPED is done; AWAITING_INPUT, AWAITING_HUMAN or
+    AWAITING_APPROVAL is "waiting for a person"; BLOCKED or FAILED is "held" (the closest to #50's hold until it
+    lands); RUNNING or AWAITING_EXTERNAL is running; PENDING, READY and CANCELLED are still to do. Steps are listed
+    once the plan is approved (the mission is past DRAFT, PLANNING and AWAITING_PLAN_APPROVAL), in the tasks' order.
+  - Start no longer writes its own first line: it calls the same derivation as the pass, so the body is derived from
+    state everywhere. `#retryStartWrites` retries only the move and the assignment; a missing comment is the
+    write-back pass's (every 5 s; a failed item waits 60 s).
+  - An item's latest mission speaks for it (the open one, else the newest). The pass moves the state first, then
+    writes the comment. A due move (from the cache) is re-checked against a fresh `get` before transitioning, so a
+    person's change made since the last board refresh still wins. The cancelled line ("Stopped in Tandemise; moved
+    back to <ready>.") is written only when the item is in the ready state Tandemise wrote: when a person moved it
+    first, the comment claims no move. A finished mission whose last state has landed is not read again until a
+    restart.
+  - Throttle: an edit waits until 60 s after the stored comment's `updated_at`; a missing comment is posted at once.
+    Without `editComments`, a new comment (no `knownId`) is posted only when the milestone (started, pull request,
+    completed) differs from the one the stored body was written at (`activityMilestoneOf`, which reads only lines
+    Tandemise starts), with no edits in between; a cancel posts nothing there (the spec names three milestones).
+  - `deliveryLinks(artifacts, missionId)` (`support/delivery-links.ts`) takes the artifact repository and tags each
+    link `pr` or `branch`; P14 reads only `label` and `url`, so its comments are unchanged.
