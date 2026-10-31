@@ -67,6 +67,36 @@ The guides in [`docs/guides/`](guides/) each answer one "how do I…":
 copy, when something goes wrong). [WORKFLOWS.md](WORKFLOWS.md) covers workflow
 files and every gate fact.
 
+## Intake: work from your tracker
+
+Give the project a primary tracker in **Settings → Intake**: YouTrack (its
+address, project and a permanent token, kept only in this computer's secret
+store) or a repository's GitHub Issues, the board query, and which of its
+states mean ready, in progress, in review, done and won't do. Add sources
+there too (Sentry, PostHog, Slack, Discord, GitHub issues), each with its
+secrets and noise filter. Then open **Board** in the sidebar:
+
+- **Check sources now** reads every source; what passes the filter is filed in
+  the tracker once, or linked to the item that already tracks it.
+- **Start** on a ready item opens a mission with the item's "Done when"; the
+  tracker moves it to in progress and keeps one activity comment up to date.
+- The **Intake** tab lists every signal and what happened to it, in words.
+  An unsure match waits in the Inbox as "Is this the same as GAR-7?".
+
+A runner of your own pushes with a token from **Custom sources → Make a
+token**, through the `tandemise` CLI (`npx tandemise` from a checkout):
+
+```bash
+TANDEMISE_URL=http://127.0.0.1:<port> TANDEMISE_INTAKE_TOKEN=tdi_… \
+  npx tandemise intake push --source web-form --title "Export drops accents" \
+  --url https://forms.example.com/replies/18 --key form-18
+npx tandemise intake closures --source web-form   # what to close at your source
+npx tandemise start GAR-12                        # Start from a shell (daemon token)
+```
+
+[Writing an intake runner](intake/README.md) has the contract, auth, the
+closures feed and the JSON Schema.
+
 ## Working as a team (optional relay)
 
 Nothing here needs a server. When a team wants to see who is working on
