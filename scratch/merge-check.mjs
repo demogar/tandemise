@@ -205,6 +205,57 @@ await attempt('ship decides, audit, person merge, closed, crash', async () => {
   check('the ship step is still waiting for a review', again.repo.tasks.listByMission(m4.id).find((t) => t.key === 'ship').status === 'AWAITING_APPROVAL');
 });
 
+await attempt('backtest and switch', async () => {
+  section('backtest');
+  const policy = D.parseMergePolicy(app.SHIPPED_MERGE);
+  const facts = (lines) => ({
+    changedPaths: ['src/a.ts'], deletedPaths: [], files: 1, linesAdded: lines, linesRemoved: 0, binaryFiles: 0, repos: 1, areas: [], testsTouched: 1,
+    dependenciesChanged: false, lockfileOnly: false, coverageChangedLines: null, ci: { state: 'PASS', requiredPresent: true }, reviewRequired: false,
+    checksTests: 'PASS', review: { blocking: 0, major: 0, independent: true }, criteria: { unverified: 0, implicit: false },
+    process: { lane: 'quick', lightenedByPerson: false, stepsSkipped: 0, holds: 0, changesRequested: 0, escalations: 0, gateRetries: 0, personCommits: 0, revertOfAuto: false },
+    history: { areaReverts90d: 0, areaRecentRevert: false },
+  });
+  // Scores 0, 1, 2 (merge under the current policy), and 3, 4, 5 (asks).
+  const withScore = (s) => {
+    const f = facts(s === 1 || s >= 4 ? 150 : 10);
+    if (s >= 2) f.process.lightenedByPerson = true;
+    if (s >= 3) f.process.escalations = 2;
+    // 4 adds the lines again, on top of 3
+    if (s >= 5) f.criteria.unverified = 1;
+    return f;
+  };
+  const row = (i, s) => ({ id: `mrg_${i}`, workspaceId: 'ws', missionId: `m${i}`, repo: 'acme/web', prNumber: i, headSha: 'a'.repeat(40), policyRef: 'shipped', verdict: 'ask', score: s, allowed: 2, wouldMerge: s <= 2, factors: [], reasons: [], facts: withScore(s), decidedAt: `2026-10-0${i + 1}T00:00:00.000Z`, voidedAt: null, commentId: null, mergedAt: null, mergedBy: null, mergeSha: null });
+  const rows = [0, 1, 2, 3, 4, 5].map((s, i) => row(i, s));
+  check('the fixture scores 0..5', eq(rows.map((r) => D.decideMerge(r.facts, { ...policy, autoMerge: 'on' }).score), [0, 1, 2, 3, 4, 5]), rows.map((r) => D.decideMerge(r.facts, { ...policy, autoMerge: 'on' }).score));
+  const reverted = [{ op: 'outcome', id: 'out_r', at: '2026-10-20T00:00:00.000Z', by: 'A', mission: 'm3', lane: 'quick', profile: { type: 'fix', size: 's', risk: 'low', areas: [] }, kind: 'reverted' }];
+  const result = D.backtest(rows, policy, { ...policy, autoMergeAtMost: 4 }, reverted);
+  check('a looser candidate merges two more', result.mergedCurrent === 3 && result.mergedCandidate === 5 && result.changed.length === 2, result);
+  check('…and says one of those was later reverted', result.changedThenReverted === 1 && result.changed.find((c) => c.decisionId === 'mrg_3')?.revertedOrBroke === true, result.changed);
+
+  section('switch');
+  const w = await world();
+  const service = w.h.services.mergePolicy;
+  const before = await service.get(w.ws);
+  check('the policy starts off, built in', before.policy.autoMerge === 'off' && before.origin === 'shipped', before);
+  await service.update(w.ws, { ...app.SHIPPED_MERGE, autoMerge: 'on' }, w.caller);
+  check('turning it on writes the repository\'s merge.yaml', w.files.written.merge?.raw.autoMerge === 'on', w.files.written.merge);
+  const decisions = w.h.container.resolve(app.DECISION_REPOSITORY).listByWorkspace(w.ws);
+  check('…and records a Decision', decisions.length === 1 && decisions[0].title === 'Auto-merge low-risk pull requests in Ship' && decisions[0].status === 'accepted', decisions.map((d) => d.title));
+  let refused = null;
+  try { await service.update(w.ws, { ...app.SHIPPED_MERGE, autoMerge: 'on' }, { ...w.caller, runtime: true }); } catch (e) { refused = e.message; }
+  check('a runtime may not change it', refused === 'Only a person can change the merge policy.', refused);
+  // A ship step waiting on a person: stop re-decides it as ask.
+  const m = await w.mission('fix: typo in the settings title');
+  const ship = () => w.h.repo.tasks.listByMission(m.id).find((t) => t.key === 'ship');
+  await w.h.until(() => ship()?.status === 'AWAITING_APPROVAL' || ship()?.status === 'AWAITING_EXTERNAL', 60000);
+  const n = w.h.repo.mergeDecisions.listByMission(m.id).length;
+  await service.stop(w.ws, w.caller);
+  check('stop writes autoMerge off', w.files.written.merge?.raw.autoMerge === 'off');
+  await w.h.until(() => w.h.repo.mergeDecisions.listByMission(m.id).length > n, 30000);
+  const last = w.h.repo.mergeDecisions.listByMission(m.id).at(-1);
+  check('…and a waiting ship step is decided again, as ask, auto-merge off', last.verdict === 'ask' && last.reasons[0] === D.AUTO_MERGE_OFF, last.reasons);
+});
+
 // @sections
 
 clearInterval(keepAlive);

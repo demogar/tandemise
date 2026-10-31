@@ -4,6 +4,7 @@ import { PlannerService } from './planning/planner-service.js';
 import { SHIP_CI_POLL_MS, SHIP_CI_TIMEOUT_MS, ShipService } from './engine/ship.js';
 import { policyRef } from './planning/planner-service.js';
 import { OutcomeRecorder } from './engine/outcomes.js';
+import { MergePolicyService } from './services/merge-policy-service.js';
 import type { PullRequestPort } from '@tandemise/domain';
 
 /** Until the daemon binds the `gh` flow: every pull request call says there is no GitHub here. */
@@ -1046,6 +1047,20 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       factorySource: r.resolve(t.FACTORY_CONFIG_SOURCE),
     }), { source: SOURCE });
 
+    bind(t.MERGE_POLICY_SERVICE, (r) => new MergePolicyService({
+      planner: r.resolve(t.PLANNER_SERVICE),
+      factorySource: r.resolve(t.FACTORY_CONFIG_SOURCE),
+      workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
+      mergeDecisions: r.resolve(t.MERGE_DECISION_REPOSITORY),
+      outcomes: r.resolve(t.OUTCOME_REPOSITORY),
+      decisions: r.resolve(t.DECISION_REPOSITORY),
+      tasks: r.resolve(t.TASK_REPOSITORY),
+      members: r.resolve(t.MEMBER_REPOSITORY),
+      recorder: r.resolve(t.EVENT_RECORDER),
+      clock: clock(r),
+      wake: () => r.resolve(t.SCHEDULER).wake(),
+    }), { source: SOURCE });
+
     bind(t.TANDEMISE_SERVICES, (r): TandemiseServices => ({
       system: r.resolve(t.SYSTEM_SERVICE),
       workspaces: r.resolve(t.WORKSPACE_SERVICE),
@@ -1074,6 +1089,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       issues: r.resolve(t.ISSUE_SERVICE),
       setup: r.resolve(t.SETUP_SERVICE),
       factory: r.resolve(t.FACTORY_SERVICE),
+      mergePolicy: r.resolve(t.MERGE_POLICY_SERVICE),
       contributions: r.resolve(t.CONTRIBUTION_SERVICE),
       evals: r.resolve(t.EVAL_SERVICE),
     }), { source: SOURCE });

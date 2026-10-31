@@ -46,11 +46,6 @@ export const SHIP_CI_POLL_MS = 30_000;
 export const SHIP_CI_TIMEOUT_MS = 3_600_000;
 /** Lines of a failing check's output given to the next round. */
 export const SHIP_LOG_TAIL_LINES = 40;
-/**
- * Phase 3 of #53 asks only: every decision is computed with auto-merge off, so
- * "what would have happened" is shown for weeks before anyone turns it on.
- */
-export const AUTO_MERGE_SHIPPED = false;
 
 export const PR_CHANGED = 'The pull request changed after it was checked; checking again.';
 export const PR_CLOSED = 'The pull request was closed without merging.';
@@ -222,8 +217,7 @@ export class ShipService {
       stats: foldOutcomes(d.outcomeRows.listByWorkspace(mission.workspaceId, new Date(this.deps.clock.epochMs() - 90 * 86_400_000).toISOString())),
       now: this.deps.clock.epochMs(),
     });
-    const policy = AUTO_MERGE_SHIPPED || 'error' in factory.merge ? factory.merge : { ...factory.merge, autoMerge: 'off' as const };
-    const decided: MergeDecision = decideMerge(facts, policy);
+    const decided: MergeDecision = decideMerge(facts, factory.merge);
     const record: MergeDecisionRecord = {
       id: ids.mergeDecision(), workspaceId: mission.workspaceId, missionId: mission.id, repo: pr.repo, prNumber: pr.number, headSha: pr.headSha,
       policyRef: factory.policyRef, verdict: decided.verdict, score: decided.score, allowed: decided.allowed, wouldMerge: decided.wouldMerge,

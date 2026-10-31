@@ -15,7 +15,7 @@ import {
   applySetupRequest, exportSetupRequest, previewSetupRequest,
   parkTaskRequest, handBackRequest, resolveWorkspaceLinkRequest,
   createEvalSuiteRequest, saveEvalCaseRequest, startEvalRunRequest, runScoresQuery,
-  planMissionRequest, setLaneRequest,
+  planMissionRequest, setLaneRequest, mergePolicyRequest,
 } from '@tandemise/api-contract';
 import type { EvalSuiteView } from '@tandemise/api-contract';
 import { normalizeLimits } from '@tandemise/domain';
@@ -248,6 +248,13 @@ export function buildRouter(services: TandemiseServices, options: { readonly tes
   r.get('/v1/workspaces/:id/factory', (ctx) => services.factory.factory(asId(ctx.params.id!)));
   r.get('/v1/workspaces/:id/routing', (ctx) => services.factory.routing(asId(ctx.params.id!)));
   r.post('/v1/workspaces/:id/factory/defaults', (ctx) => services.factory.writeDefaults(asId(ctx.params.id!), ctx.caller));
+  // Project → Merge (#53 §8.4): the policy, its backtest, a person's edit and the kill switch.
+  r.get('/v1/workspaces/:id/merge-policy', (ctx) => services.mergePolicy.get(asId(ctx.params.id!)));
+  r.put('/v1/workspaces/:id/merge-policy', async (ctx) =>
+    services.mergePolicy.update(asId(ctx.params.id!), (await ctx.body(mergePolicyRequest)).policy, ctx.caller));
+  r.post('/v1/workspaces/:id/merge-policy/backtest', async (ctx) =>
+    services.mergePolicy.backtest(asId(ctx.params.id!), (await ctx.body(mergePolicyRequest)).policy));
+  r.post('/v1/workspaces/:id/merge-policy/stop', (ctx) => services.mergePolicy.stop(asId(ctx.params.id!), ctx.caller));
   r.post('/v1/missions/:id/replan', async (ctx) =>
     services.planning.replan(asId(ctx.params.id!), { note: (await ctx.body(replanMissionRequest)).note ?? null }));
   r.post('/v1/missions/:id/start', (ctx) => services.missions.start(asId(ctx.params.id!)));

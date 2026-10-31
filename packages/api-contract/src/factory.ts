@@ -178,3 +178,25 @@ export interface FactoryView {
   /** Whether any file is still built in or from this computer, so writing the defaults would add one. */
   readonly canWriteDefaults: boolean;
 }
+
+// ------------------------------------------------------------- merge (#53 §8.4)
+
+/** `PUT /v1/workspaces/:id/merge-policy` and `POST …/merge-policy/backtest`: a whole merge.yaml as an object. */
+export const mergePolicyRequest = z.object({ policy: z.record(z.string(), z.unknown()) });
+
+export interface MergePolicyResponse {
+  readonly policy: Readonly<Record<string, unknown>> & { readonly autoMerge: 'on' | 'off'; readonly autoMergeAtMost: number };
+  readonly origin: 'project' | 'home' | 'shipped';
+  readonly path: string | null;
+  readonly error: string | null;
+}
+
+export interface BacktestResponse {
+  readonly total: number;
+  readonly mergedCurrent: number;
+  readonly mergedCandidate: number;
+  readonly changedThenReverted: number;
+  readonly changed: readonly { readonly decisionId: string; readonly pr: string; readonly from: 'merge' | 'ask'; readonly to: 'merge' | 'ask'; readonly revertedOrBroke: boolean }[];
+  /** "Over the last 90 days this would have merged 14 of 31 pull requests on its own; none of those 14 were reverted." */
+  readonly sentence: string;
+}

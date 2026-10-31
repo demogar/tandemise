@@ -213,6 +213,8 @@ export const GIT_CREDENTIAL_ENV = token<() => Readonly<Record<string, string>>>(
 export const SETUP_SERVICE = token<import('./services/setup-service.js').SetupService>('application.SetupService');
 /** "Why these steps", the lane switch and the opened pull request (#53 §10). */
 export const FACTORY_SERVICE = token<import('./services/factory-service.js').FactoryService>('application.FactoryService');
+/** Project settings → Merge (#53 §8.4). */
+export const MERGE_POLICY_SERVICE = token<import('./services/merge-policy-service.js').MergePolicyService>('application.MergePolicyService');
 /** Eval suites, saved cases and the run-score summary (P3b). */
 export const EVAL_SERVICE = token<import('./services/eval-service.js').EvalService>('application.EvalService');
 /**

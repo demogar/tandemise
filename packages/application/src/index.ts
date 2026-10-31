@@ -20,6 +20,7 @@ export * from './planning/factory-config.js';
 export * from './planning/planner-service.js';
 export * from './planning/signals.js';
 export * from './planning/routing.js';
+export { MergePolicyService, ONLY_A_PERSON } from './services/merge-policy-service.js';
 export * from './planning/tiebreak.js';
 export * from './planning/defaults/planner.js';
 export * from './planning/defaults/routing.js';

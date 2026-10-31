@@ -39,6 +39,7 @@ export const keys = {
   // Under 'workspaces': writing the defaults changes where the files come from; routing moves as outcomes land.
   factory: (ws?: string) => ['workspaces', 'factory', ws ?? 'all'] as const,
   routing: (ws?: string) => ['workspaces', 'routing', ws ?? 'all'] as const,
+  mergePolicy: (ws?: string) => ['workspaces', 'merge-policy', ws ?? 'all'] as const,
   mission: (id: string) => ['mission', id] as const,
   // Under 'mission' and scoped by id, so the mission's own invalidations refresh it.
   missionArtifacts: (id: string, all: boolean) => ['mission', id, 'artifacts', all ? 'all' : 'live'] as const,
@@ -163,6 +164,13 @@ export function useFactory() {
   const daemon = useDaemon();
   const workspaceId = useWorkspaceId();
   return useQuery({ queryKey: keys.factory(workspaceId), queryFn: () => daemon.factory(workspaceId ?? ''), enabled: Boolean(workspaceId) });
+}
+
+/** Project → Merge: the merge policy (#53 §8.4). */
+export function useMergePolicy() {
+  const daemon = useDaemon();
+  const workspaceId = useWorkspaceId();
+  return useQuery({ queryKey: keys.mergePolicy(workspaceId), queryFn: () => daemon.mergePolicy(workspaceId ?? ''), enabled: Boolean(workspaceId) });
 }
 
 /** Project → Factory → Routing: measured outcomes per step class and bucket. */

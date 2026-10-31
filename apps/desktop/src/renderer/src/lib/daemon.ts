@@ -1,5 +1,5 @@
 import type {
-  FactoryView, PlanDecisionView, RoutingView, SetLaneRequest, ShipView,
+  BacktestResponse, MergePolicyResponse, FactoryView, PlanDecisionView, RoutingView, SetLaneRequest, ShipView,
   IssuesOverview, RepositoryIssuesView, UpdateIssueSettingsRequest,
   ApiErrorBody,
   NotificationPreferencesView,
@@ -393,6 +393,23 @@ export class DaemonClient {
   /** Writes the built-in factory files the project doesn't have into its repository. */
   writeFactoryDefaults(workspaceId: string): Promise<FactoryView> {
     return this.#request('POST', `/workspaces/${workspaceId}/factory/defaults`, {});
+  }
+
+  /** Project → Merge (#53 §8.4). */
+  mergePolicy(workspaceId: string): Promise<MergePolicyResponse> {
+    return this.#get(`/workspaces/${workspaceId}/merge-policy`);
+  }
+
+  updateMergePolicy(workspaceId: string, policy: Record<string, unknown>): Promise<MergePolicyResponse> {
+    return this.#request('PUT', `/workspaces/${workspaceId}/merge-policy`, { policy });
+  }
+
+  backtestMergePolicy(workspaceId: string, policy: Record<string, unknown>): Promise<BacktestResponse> {
+    return this.#request('POST', `/workspaces/${workspaceId}/merge-policy/backtest`, { policy });
+  }
+
+  stopAutoMerge(workspaceId: string): Promise<MergePolicyResponse> {
+    return this.#request('POST', `/workspaces/${workspaceId}/merge-policy/stop`, {});
   }
 
   /** Per step class, per bucket: each model's measured record and where a new step starts. */

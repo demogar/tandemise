@@ -1,0 +1,57 @@
+/* Project settings → Merge (#53 §8.4). */
+
+.merge {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  font-size: var(--fs-sm);
+}
+
+.merge__switch,
+.merge__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+}
+
+.merge__state {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.merge[data-on='true'] .merge__state {
+  color: var(--status-succeeded);
+}
+
+.merge__hint,
+.merge__backtest,
+.merge__error {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.merge__preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.merge__backtest {
+  color: var(--text);
+}
+
+.merge__error {
+  color: var(--status-failed);
+}
+
+.merge__heading {
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--text-secondary);
+}
+
+.merge__list {
+  margin: 0;
+  padding-left: var(--s4);
+  color: var(--text);
+}
