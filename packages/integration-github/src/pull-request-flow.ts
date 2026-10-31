@@ -136,28 +136,49 @@ export class GhPullRequestFlow implements PullRequestPort {
     return { state, done: finished, total: total + waitingSuites, failing };
   }
 
+  /**
+   * What the base branch requires, from classic branch protection and from
+   * rulesets. Classic protection answering 404 means "none of that kind"; only
+   * when the rulesets API also answers is the branch known to be unprotected.
+   * Anything that can't be read is null, which never passes a rule (it asks).
+   */
   async protection(cwd: string, repo: string, branch: string): Promise<{ requiredChecks: boolean | null; reviewRequired: boolean | null; upToDate: boolean | null }> {
-    const result = await gh(this.#ctx(cwd), ['api', `repos/${repo}/branches/${branch}/protection`], { tolerateExitCodes: [1] });
-    if (result.exitCode !== 0) {
-      // A 404 is "not protected"; anything else is "could not tell", which never passes a rule.
-      return /404|Not Found|not protected/i.test(`${result.stderr}${result.stdout}`)
-        ? { requiredChecks: false, reviewRequired: false, upToDate: false }
-        : { requiredChecks: null, reviewRequired: null, upToDate: null };
+    const unknown = { requiredChecks: null, reviewRequired: null, upToDate: null };
+    const classic = await gh(this.#ctx(cwd), ['api', `repos/${repo}/branches/${branch}/protection`], { tolerateExitCodes: [1] });
+    let fromClassic: { requiredChecks: boolean; reviewRequired: boolean; upToDate: boolean } | null = null;
+    if (classic.exitCode === 0) {
+      try {
+        const p = JSON.parse(classic.stdout) as {
+          required_status_checks?: { strict?: boolean; contexts?: string[]; checks?: unknown[] } | null;
+          required_pull_request_reviews?: { required_approving_review_count?: number } | null;
+        };
+        const checks = p.required_status_checks ?? null;
+        fromClassic = {
+          requiredChecks: checks !== null && ((checks.contexts?.length ?? 0) + (checks.checks?.length ?? 0)) > 0,
+          reviewRequired: (p.required_pull_request_reviews?.required_approving_review_count ?? (p.required_pull_request_reviews ? 1 : 0)) > 0,
+          upToDate: checks?.strict === true,
+        };
+      } catch {
+        return unknown;
+      }
+    } else if (!/404|Not Found|not protected/i.test(`${classic.stderr}${classic.stdout}`)) {
+      return unknown;
     }
+    const rules = await gh(this.#ctx(cwd), ['api', `repos/${repo}/rules/branches/${branch}`], { tolerateExitCodes: [1] });
+    if (rules.exitCode !== 0) return fromClassic ?? unknown;
+    let list: { type?: string; parameters?: Record<string, unknown> }[];
     try {
-      const p = JSON.parse(result.stdout) as {
-        required_status_checks?: { strict?: boolean; contexts?: string[]; checks?: unknown[] } | null;
-        required_pull_request_reviews?: { required_approving_review_count?: number } | null;
-      };
-      const checks = p.required_status_checks ?? null;
-      return {
-        requiredChecks: checks !== null && ((checks.contexts?.length ?? 0) + (checks.checks?.length ?? 0)) > 0,
-        reviewRequired: (p.required_pull_request_reviews?.required_approving_review_count ?? (p.required_pull_request_reviews ? 1 : 0)) > 0,
-        upToDate: checks?.strict === true,
-      };
+      list = JSON.parse(rules.stdout) as typeof list;
     } catch {
-      return { requiredChecks: null, reviewRequired: null, upToDate: null };
+      return fromClassic ?? unknown;
     }
+    const review = list.some((r) => r.type === 'pull_request' && Number(r.parameters?.['required_approving_review_count'] ?? 0) > 0);
+    const statusRule = list.find((r) => r.type === 'required_status_checks');
+    return {
+      requiredChecks: (fromClassic?.requiredChecks ?? false) || statusRule !== undefined,
+      reviewRequired: (fromClassic?.reviewRequired ?? false) || review,
+      upToDate: (fromClassic?.upToDate ?? false) || statusRule?.parameters?.['strict_required_status_checks_policy'] === true,
+    };
   }
 
   async comment(cwd: string, repo: string, number: number, body: string, existingId: number | null): Promise<{ id: number }> {

@@ -508,6 +508,21 @@ await attempt('review: ci read completely, and not too early', async () => {
   check('…and decides again on the same head once CI appears', again[0].voidedAt !== null && again[1].headSha === noCi.headSha && again[1].facts.ci.state === 'PASS', again.map((d) => [d.facts.ci.state, d.voidedAt]));
 });
 
+await attempt('review: rulesets and unknown protection', async () => {
+  section('review: rulesets and unknown protection');
+  const fake = await import('./fake-gh.mjs');
+  const { realExecutor } = await import('./planner-harness.mjs');
+  const w = await world();
+  const flow = new GH.GhPullRequestFlow(realExecutor(`${w.ghDir}/bin`));
+  check('no protection and no rulesets: unprotected', JSON.stringify(await flow.protection(w.checkout, REPO, 'main')) === JSON.stringify({ requiredChecks: false, reviewRequired: false, upToDate: false }));
+  fake.setRepo(w.ghDir, REPO, { rules: [{ type: 'pull_request', parameters: { required_approving_review_count: 1 } }, { type: 'required_status_checks', parameters: { strict_required_status_checks_policy: true, required_status_checks: [{ context: 'unit' }] } }] });
+  const ruled = await flow.protection(w.checkout, REPO, 'main');
+  check('a ruleset that requires a review and checks is read', ruled.reviewRequired === true && ruled.requiredChecks === true && ruled.upToDate === true, ruled);
+  fake.setRepo(w.ghDir, REPO, { rules: undefined, rulesUnavailable: true });
+  const unknown = await flow.protection(w.checkout, REPO, 'main');
+  check('no classic protection and rulesets unreadable: unknown, so it asks', unknown.reviewRequired === null && unknown.requiredChecks === null, unknown);
+});
+
 // @sections
 
 clearInterval(keepAlive);

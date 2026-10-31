@@ -245,6 +245,12 @@ function main(argv) {
       out(p);
       return;
     }
+    c = /^repos\/([^/]+\/[^/]+)\/rules\/branches\/([^/]+)$/.exec(path);
+    if (c) {
+      if (repoOf(c[1]).rulesUnavailable) fail('gh: Resource not accessible by integration (HTTP 403)');
+      out(repoOf(c[1]).rules ?? []);
+      return;
+    }
     c = /^repos\/([^/]+\/[^/]+)\/commits$/.exec(path);
     if (c) {
       out((repoOf(c[1]).mainCommits ?? []).map((k) => ({ sha: k.sha, commit: { message: k.subject } })));
