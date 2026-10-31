@@ -7,7 +7,7 @@ import type { TandemiseServices } from '@tandemise/application';
 export function gitUserName(): string | undefined {
   try {
     const name = execFileSync('git', ['config', '--global', 'user.name'], {
-      encoding: 'utf8', timeout: 2_000, stdio: ['ignore', 'pipe', 'ignore'],
+      encoding: 'utf8', timeout: 2_000, stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true,
     }).trim();
     return name.length > 0 ? name : undefined;
   } catch {

@@ -2,6 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ToolDescriptor } from '@tandemise/domain';
+import { ownNodeEnv } from '@tandemise/shared';
 import type { RunScopedToolGateway } from '../gateway.js';
 import { BRIDGE_SOCKET_ENV, BRIDGE_TOKEN_ENV } from './protocol.js';
 
@@ -61,6 +62,10 @@ export async function writeMcpGatewayConfig(
         command: request.nodeExecutable ?? process.execPath,
         args: [request.serverEntryPath ?? defaultServerEntryPath()],
         env: {
+          // The agent starts this server with its own environment, not the
+          // daemon's: under a packaged app the default command is Electron's
+          // binary, which needs telling to act as Node.
+          ...(request.nodeExecutable === undefined ? ownNodeEnv() : {}),
           [BRIDGE_SOCKET_ENV]: request.socketPath,
           [BRIDGE_TOKEN_ENV]: request.token,
         },

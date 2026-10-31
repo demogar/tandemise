@@ -21,6 +21,7 @@ export const OFFLINE_CHECKS = [
   'coordination-app-check',
   'coordination-daemon-check',
   'daemon-node-check',
+  'daemon-upgrade-check',
   'demo-agent-check',
   'design-react-check',
   'env-leak-check',

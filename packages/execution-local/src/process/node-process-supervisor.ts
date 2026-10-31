@@ -340,6 +340,8 @@ function startChild(spec: ProcessSpec): ChildProcessWithoutNullStreams {
       stdio: ['pipe', 'pipe', 'pipe'],
       // Own process group, so cancellation can reach the whole tree.
       detached: true,
+      // No console window per child on Windows (scripts/check-windows-hide.mjs).
+      windowsHide: true,
     }) as ChildProcessWithoutNullStreams;
   } catch (cause) {
     throw new TandemiseError('INTERNAL', `Cannot spawn '${spec.command}': ${errorMessage(cause)}`, {

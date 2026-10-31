@@ -199,9 +199,41 @@ module like `electron`, `playwright`, `better-sqlite3`, or `child_process`.
   runs, releases only leases whose holder is genuinely dead, and tells you in the
   mission timeline that it happened.
 
+## Install
+
+Download the installer for your platform from the
+[latest release](https://github.com/tandemise/tandemise/releases/latest):
+
+| Platform | File |
+| --- | --- |
+| macOS, Apple Silicon | `Tandemise-<version>-mac-arm64.dmg` |
+| macOS, Intel | `Tandemise-<version>-mac-x64.dmg` |
+| Linux | `Tandemise-<version>-linux-x86_64.AppImage`, or `Tandemise-<version>-linux-amd64.deb` for Debian and Ubuntu |
+| Windows | `Tandemise-<version>-win-x64-setup.exe` |
+
+The app carries its own daemon and runs it on its own built-in Node, so you do
+not need Node.js installed. You still need `git`, and the agent CLIs you want to
+use (Claude Code, Codex, …) on your `PATH`.
+
+- **Linux AppImage:** `chmod +x Tandemise-*.AppImage` and run it. It needs FUSE
+  (`sudo apt install libfuse2` on Ubuntu). Without FUSE, run it as
+  `NO_CLEANUP=1 ./Tandemise-*.AppImage --appimage-extract-and-run`: the daemon
+  keeps running from the extracted copy after the window closes, and
+  `NO_CLEANUP=1` stops the AppImage from deleting that copy under it (when the
+  window closes, or when a second launch exits).
+- **Linux .deb:** `sudo apt install ./Tandemise-*-linux-amd64.deb`, then start
+  Tandemise from your applications menu (or `tandemise`).
+- **macOS and Windows:** until a release is signed, the system warns that the
+  developer cannot be verified. On macOS, right-click the app and choose
+  **Open** the first time; on Windows, choose **More info → Run anyway**.
+
+The daemon keeps running when you close the window, so missions carry on, and
+the next window you open reconnects to it. Everything it stores lives in
+`~/.tandemise`.
+
 ## Getting started
 
-Requires **Node 22** and macOS.
+To run from a source checkout instead, Tandemise needs **Node 22** (see `.nvmrc`).
 
 ```bash
 nvm use                 # 22.23.1, per .nvmrc

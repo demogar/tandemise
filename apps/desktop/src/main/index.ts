@@ -228,7 +228,19 @@ connector.on('status', (status) => {
   }
 });
 
+/**
+ * One installed app per person. Opening it again (a second click in the dock or
+ * the applications menu, which on Linux and Windows starts a new process)
+ * focuses the window already open, instead of a second app racing the first to
+ * start or replace the daemon. Development runs are left alone: test harnesses
+ * and developers run several windows side by side, each with its own data dir.
+ */
+const primaryInstance = isDev || app.requestSingleInstanceLock();
+if (!primaryInstance) app.quit();
+else app.on('second-instance', () => { if (app.isReady()) showWindow(); });
+
 app.whenReady().then(() => {
+  if (!primaryInstance) return;
   applyContentSecurityPolicy();
   installApplicationMenu();
   registerIpc();

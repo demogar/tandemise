@@ -32,6 +32,8 @@ export interface HttpServerOptions {
    * "Solo"). The bind stays loopback either way.
    */
   readonly unauthenticatedHooks?: () => boolean;
+  /** Which daemon this is, for the health response. */
+  readonly about?: { readonly version: string; readonly build: string };
 }
 
 const LOCAL_HOOK_PATH = /^\/v1\/hooks\/[^/]+$/;
@@ -152,7 +154,7 @@ export class HttpServer {
       // Health is the one unauthenticated route: it proves liveness and nothing
       // more, so the desktop can distinguish "starting" from "wrong token".
       if (url.pathname === '/v1/health') {
-        sendJson(res, 200, { ok: true, apiVersion: API_VERSION });
+        sendJson(res, 200, { ok: true, apiVersion: API_VERSION, ...(this.#opts.about ?? {}) });
         return;
       }
 

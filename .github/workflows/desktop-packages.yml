@@ -1,0 +1,163 @@
+name: Desktop packages
+
+# Builds the installers - Linux AppImage + .deb, macOS .dmg (arm64 and x64),
+# Windows NSIS - each on its own OS, because the daemon the app carries has
+# native modules that are picked per platform (apps/desktop/scripts/stage-daemon.mjs).
+#
+# - Called by release-please.yml once release-please has published a release: the
+#   installers are attached to that GitHub Release.
+# - Run by hand (Actions -> Desktop packages -> Run workflow): with a tag, the
+#   installers are attached to that existing release; without one they are only
+#   kept as workflow artifacts.
+# - On pull requests that change the packaging itself, as a build check.
+#
+# Token exposure: the build legs run third-party build code (npm install
+# scripts, electron-builder), so they get a read-only token that is not left in
+# the checkout. Only the `attach` job, which runs no repository code, can write
+# to a release.
+#
+# Signing is opt-in: with no signing secrets the build still succeeds, unsigned
+# (macOS ad-hoc). Each leg sees only its own platform's secrets. They are listed
+# in CONTRIBUTING.md, "Packaging the desktop app"; none of them ever lives in
+# the repository.
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: Release tag to attach the installers to.
+        type: string
+        required: true
+    secrets:
+      MAC_CSC_LINK:
+        required: false
+      MAC_CSC_KEY_PASSWORD:
+        required: false
+      APPLE_ID:
+        required: false
+      APPLE_APP_SPECIFIC_PASSWORD:
+        required: false
+      APPLE_TEAM_ID:
+        required: false
+      WIN_CSC_LINK:
+        required: false
+      WIN_CSC_KEY_PASSWORD:
+        required: false
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to attach the installers to (e.g. v0.10.0). Leave empty to only build them.
+        type: string
+        required: false
+        default: ''
+  pull_request:
+    paths:
+      - .github/workflows/desktop-packages.yml
+      - apps/desktop/electron-builder.config.mjs
+      - apps/desktop/scripts/stage-daemon.mjs
+      - apps/desktop/build/**
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-packages-${{ github.event.pull_request.number || inputs.tag || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  package:
+    name: Package (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The oldest supported Ubuntu runner: the AppImage and .deb link
+          # against its glibc, so they also run on older distributions.
+          - name: linux
+            os: ubuntu-22.04
+            target: --linux
+          - name: macos
+            os: macos-latest
+            target: --mac
+          - name: windows
+            os: windows-latest
+            target: --win
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+
+      - name: Build the installers
+        working-directory: apps/desktop
+        env:
+          # Each secret reaches only the leg that signs with it; on the other
+          # legs the expression is empty.
+          # macOS: Developer ID Application certificate (.p12, base64) and password.
+          CSC_LINK: ${{ matrix.name == 'macos' && secrets.MAC_CSC_LINK || '' }}
+          CSC_KEY_PASSWORD: ${{ matrix.name == 'macos' && secrets.MAC_CSC_KEY_PASSWORD || '' }}
+          # macOS notarization; all three, or it is skipped.
+          APPLE_ID: ${{ matrix.name == 'macos' && secrets.APPLE_ID || '' }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ matrix.name == 'macos' && secrets.APPLE_APP_SPECIFIC_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ matrix.name == 'macos' && secrets.APPLE_TEAM_ID || '' }}
+          # Windows: Authenticode certificate (.pfx, base64) and password.
+          WIN_CSC_LINK: ${{ matrix.name == 'windows' && secrets.WIN_CSC_LINK || '' }}
+          WIN_CSC_KEY_PASSWORD: ${{ matrix.name == 'windows' && secrets.WIN_CSC_KEY_PASSWORD || '' }}
+        run: |
+          # Without a certificate, do not go looking for one in the runner's keychain.
+          if [ -z "$CSC_LINK" ] && [ -z "$WIN_CSC_LINK" ]; then export CSC_IDENTITY_AUTO_DISCOVERY=false; fi
+          [ -n "$CSC_LINK" ] || unset CSC_LINK CSC_KEY_PASSWORD
+          [ -n "$WIN_CSC_LINK" ] || unset WIN_CSC_LINK WIN_CSC_KEY_PASSWORD
+          [ -n "$APPLE_ID" ] || unset APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID
+          npm run package -- ${{ matrix.target }}
+
+      - name: List the installers
+        run: ls -la apps/desktop/release
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: tandemise-${{ matrix.name }}
+          path: |
+            apps/desktop/release/*.AppImage
+            apps/desktop/release/*.deb
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.exe
+          if-no-files-found: error
+          retention-days: 14
+
+  # Attaches the installers to the release, only when every platform built:
+  # a release never gets a partial set. The only job that can write.
+  attach:
+    name: Attach to the release
+    needs: package
+    if: inputs.tag != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: tandemise-*
+          path: installers
+          merge-multiple: true
+      - name: Upload them
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          ls -la installers
+          gh release upload "$TAG" installers/* --clobber --repo "$GITHUB_REPOSITORY"

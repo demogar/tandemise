@@ -59,6 +59,25 @@ jobs:
           docker push "ghcr.io/tandemise/relay:${version}"
           docker push ghcr.io/tandemise/relay:latest
 
+  desktop-packages:
+    name: Desktop installers
+    needs: release-please
+    if: needs.release-please.outputs.release_created
+    permissions:
+      contents: write
+    uses: ./.github/workflows/desktop-packages.yml
+    with:
+      tag: ${{ needs.release-please.outputs.tag_name }}
+    # Only the (optional) signing secrets, by name; nothing else is passed down.
+    secrets:
+      MAC_CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+      MAC_CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+      WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+
   # A release created with GITHUB_TOKEN triggers no other workflow, so the
   # design package is published from here too; publish-design.yml skips a
   # version that is already on npm, so running on the release event as well

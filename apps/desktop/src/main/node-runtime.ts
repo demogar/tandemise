@@ -1,24 +1,23 @@
 /**
  * Which Node runs the daemon the desktop starts.
  *
- * The daemon is a plain Node program with a native SQLite module
- * (better-sqlite3). `npm install` compiles that module for the Node that ran
- * the install, and the root `package.json` pins that Node at 22 or newer.
- * Electron's bundled Node is a different runtime with a different native ABI
- * (Electron 33 ships Node 20.18, ABI 130, against Node 22's 127), so a daemon
- * started with `process.execPath` + `ELECTRON_RUN_AS_NODE` failed on its first
- * `new Database()` with "Cannot open database". The fix is to start the daemon
- * with the same kind of Node it was installed with.
+ * The daemon is a plain Node program with two native modules (better-sqlite3,
+ * node-pty). Both are N-API addons, so one binary loads under any Node new
+ * enough for the daemon, Electron's own included.
  *
- * Order, first usable wins:
+ * A packaged app carries its own daemon (`resources/daemon`) and always runs
+ * it with Electron's Node under `ELECTRON_RUN_AS_NODE` - see
+ * `bundledDaemonNode`. The person needs no Node at all.
+ *
+ * A checkout (`npm run desktop`) starts `apps/daemon/dist/main.js` with the
+ * same kind of Node a developer runs it with by hand. Order, first usable wins:
  *   1. `TANDEMISE_NODE` - an explicit path. If it is set and unusable, that is
  *      the answer: silently running a different Node would hide the typo.
  *   2. `node` on the search path: the login shell's PATH (a Finder-launched app
  *      inherits launchd's bare PATH, not the one nvm/Homebrew/volta set up),
  *      then this process's PATH, then the usual install directories.
  *   3. Electron's own Node, as a last resort, only if it meets the version
- *      floor. With Electron 33 it does not, so the person gets a clear message
- *      instead of a database error.
+ *      floor. (Electron 33 shipped Node 20, which did not; Electron 44 ships 24.)
  *
  * This module is pure: every filesystem lookup and process probe is passed in,
  * so `scratch/daemon-node-check.mjs` can drive it with a fake world. It has no
@@ -34,7 +33,7 @@ const WELL_KNOWN_DIRS: Record<string, readonly string[]> = {
   linux: ['/usr/local/bin', '/usr/bin'],
 };
 
-export type NodeSource = 'TANDEMISE_NODE' | 'PATH' | 'electron';
+export type NodeSource = 'TANDEMISE_NODE' | 'PATH' | 'electron' | 'bundled';
 
 export interface NodeCandidateReport {
   readonly path: string;
@@ -161,6 +160,48 @@ export function resolveDaemonNode(world: NodeWorld): NodeResolution {
     message: `Tandemise needs Node.js ${MIN_NODE_MAJOR} or newer to run its daemon, and none was found.${found} Install it from nodejs.org or with Homebrew (brew install node), or set TANDEMISE_NODE to the path of a Node ${MIN_NODE_MAJOR}+ binary, then press Retry.`,
     tried,
   };
+}
+
+/**
+ * The Node a packaged app's own daemon runs on: Electron's, always.
+ *
+ * Not a search. The bundled daemon was staged and load-checked against this
+ * runtime (apps/desktop/scripts/stage-daemon.mjs), and a system Node found on
+ * PATH could be any version. `TANDEMISE_NODE` does not apply either: it is for
+ * a checkout, where the daemon is whatever `npm run build` produced.
+ */
+export function bundledDaemonNode(electron: NodeWorld['electron']): NodeResolution {
+  const version = stripV(electron.nodeVersion);
+  const major = majorOf(electron.nodeVersion);
+  const tried: NodeCandidateReport[] = [{ path: electron.execPath, source: 'bundled' }];
+  if (major === null || major < MIN_NODE_MAJOR) {
+    return {
+      ok: false,
+      message: `This build of Tandemise runs its daemon on its own Node ${version}, and the daemon needs Node ${MIN_NODE_MAJOR} or newer. The app was packaged wrongly; please report it.`,
+      tried: [{ ...tried[0]!, rejected: `it is Node ${version}` }],
+    };
+  }
+  return { ok: true, command: electron.execPath, version, source: 'bundled', env: { ELECTRON_RUN_AS_NODE: '1' }, tried };
+}
+
+/**
+ * Whether a running daemon must make way for the one this app carries.
+ *
+ * Only a packaged app replaces anything, and only a daemon of another release:
+ * after an update the old daemon keeps running (it outlives every window), and
+ * its code, database migrations and API no longer match the new app. A daemon
+ * from before the handshake named its version is from an older release too. A
+ * checkout, or an explicit TANDEMISE_DAEMON_ENTRY, never stops a daemon - a
+ * developer's daemon is theirs to manage.
+ */
+export function daemonNeedsReplacing(input: {
+  readonly packaged: boolean;
+  readonly entryOverride: boolean;
+  readonly appVersion: string;
+  readonly daemonVersion: string | null;
+}): boolean {
+  if (!input.packaged || input.entryOverride) return false;
+  return input.daemonVersion !== input.appVersion;
 }
 
 function splitPath(value: string, sep: string): string[] {

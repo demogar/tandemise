@@ -1,6 +1,6 @@
 import { mkdirSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { TandemiseError, asId, errorMessage } from '@tandemise/shared';
+import { TandemiseError, asId, errorMessage, forgetElectronRunAsNode } from '@tandemise/shared';
 import { API_VERSION, STREAM_PATH } from '@tandemise/api-contract';
 import { loadConfig } from './config.js';
 import { COORDINATION_SWITCH, bootstrap } from './bootstrap.js';
@@ -100,6 +100,14 @@ export async function startDaemon(overrides: Parameters<typeof loadConfig>[0] = 
   const coordination = container.resolve(COORDINATION_SWITCH);
   await coordination.resume();
   const router = buildRouter(services, { testClock, testEvents, coordination });
+  // A desktop replacing this daemon after an update stops it here: SIGTERM
+  // cannot be sent on Windows. Bound to the real shutdown once it exists.
+  let requestShutdown: (reason: string) => void = () => undefined;
+  router.post('/v1/daemon/shutdown', () => {
+    log.info('daemon.shutdown_requested', {});
+    setTimeout(() => requestShutdown('http'), 100).unref();
+    return { stopping: true, pid: process.pid };
+  });
 
   let stream: StreamServer | undefined;
   const terminal = new TerminalSocketServer({ holds: services.holds, host: container.resolve(TERMINAL_HOST), log });
@@ -111,6 +119,7 @@ export async function startDaemon(overrides: Parameters<typeof loadConfig>[0] = 
     identityResolver: () => ({ personId: services.identity.localPerson().id }),
     unauthenticatedHooks: () => coordination.settings().localHooksUnauthenticated === true,
     port: config.port,
+    about: { version: config.version, build: config.build },
     // An intake token pushes for its one source only (spec 2026-10-30-intake-design.md §2).
     intakeTokenResolver: (bearer) => services.intake.resolveToken(bearer),
     onUpgrade: (req, socket, head, path) => {
@@ -136,6 +145,8 @@ export async function startDaemon(overrides: Parameters<typeof loadConfig>[0] = 
     pid: process.pid,
     apiVersion: API_VERSION,
     startedAt: new Date().toISOString(),
+    version: config.version,
+    build: config.build,
   });
 
   log.info('daemon.ready', { url, routes: router.routeTable().length });
@@ -154,7 +165,7 @@ export async function startDaemon(overrides: Parameters<typeof loadConfig>[0] = 
     lock.release();
   };
 
-  installShutdownHandlers({ log, shutdown: stop });
+  requestShutdown = installShutdownHandlers({ log, shutdown: stop });
   return { url, stop, container };
 }
 
@@ -175,6 +186,9 @@ function isEntryPoint(): boolean {
 // Tests and the desktop's spawner import `startDaemon` directly; only a direct
 // `node main.js` should start a daemon, or they would race a second instance.
 if (isEntryPoint()) {
+  // A packaged app runs this file on Electron's binary in Node mode; nothing
+  // the daemon starts should inherit that mode (see ownNodeEnv).
+  forgetElectronRunAsNode();
   startDaemon().catch((e) => {
     process.stderr.write(`tandemd failed to start: ${errorMessage(e)}\n`);
     process.exit(1);

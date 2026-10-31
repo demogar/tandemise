@@ -5,7 +5,7 @@ import type {
 } from '@tandemise/domain';
 import { NormalizingEventSink, SESSION_NOT_FOUND, classifyAbort } from '@tandemise/runtimes-core';
 import type { AgentRuntimeAdapter, RunRequest } from '@tandemise/runtimes-core';
-import { TandemiseError, errorMessage, isPathInside, systemClock } from '@tandemise/shared';
+import { TandemiseError, errorMessage, isPathInside, ownNodeEnv, systemClock } from '@tandemise/shared';
 import type { Clock, RunId } from '@tandemise/shared';
 import { DEFAULT_FAKE_SCRIPT, parseFakeScript, stepApplies, substituteStep } from './fake-script.js';
 import type { FakeScript, FakeStep } from './fake-script.js';
@@ -127,7 +127,7 @@ export class FakeRuntimeAdapter implements AgentRuntimeAdapter {
     return {
       file: process.execPath,
       args: ['-e', interactiveScript(opts.sessionFile, sessionRef)],
-      env: {},
+      env: { ...ownNodeEnv() },
       cwd: request.workingDirectory,
       sessionFile: opts.sessionFile,
     };
