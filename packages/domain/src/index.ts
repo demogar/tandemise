@@ -52,3 +52,5 @@ export * from './planner/routing.js';
 export * from './merge/policy.js';
 export * from './planner/words.js';
 export * from './merge/pr-text.js';
+export * from './merge/decide.js';
+export * from './merge/words.js';

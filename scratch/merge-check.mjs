@@ -66,6 +66,66 @@ await attempt('ship opens', async () => {
   check('opening again finds the same pull request', again.created === false && again.number === pr.number && fake.calls(w.ghDir).filter((c) => c.args[1] === 'create').length === 1);
 });
 
+await attempt('decision table, hard rules, no self-report', async () => {
+  section('decision table');
+  const policy = D.parseMergePolicy(app.SHIPPED_MERGE);
+  check('the shipped policy parses', !('error' in policy), policy);
+  const on = { ...policy, autoMerge: 'on' };
+  const base = {
+    changedPaths: ['apps/web/src/pages/settings.tsx'], deletedPaths: [], files: 1, linesAdded: 10, linesRemoved: 2, binaryFiles: 0, repos: 1,
+    areas: [], testsTouched: 1, dependenciesChanged: false, lockfileOnly: false, coverageChangedLines: null,
+    ci: { state: 'PASS', requiredPresent: true }, reviewRequired: false, checksTests: 'PASS',
+    review: { blocking: 0, major: 0, independent: true }, criteria: { unverified: 0, implicit: true },
+    process: { lane: 'quick', lightenedByPerson: false, stepsSkipped: 0, holds: 0, changesRequested: 0, escalations: 0, gateRetries: 0, personCommits: 0, revertOfAuto: false },
+    history: { areaReverts90d: null, areaRecentRevert: null },
+  };
+  const v = (patch) => ({ ...base, ...patch, ci: { ...base.ci, ...(patch.ci ?? {}) }, review: { ...base.review, ...(patch.review ?? {}) }, process: { ...base.process, ...(patch.process ?? {}) }, history: { ...base.history, ...(patch.history ?? {}) } });
+  const baseDecision = D.decideMerge(base, on);
+  check('the base set merges at score 0', baseDecision.verdict === 'merge' && baseDecision.score === 0, baseDecision);
+  const rows = [
+    ['a migration', v({ changedPaths: ['db/migrations/0042_add_index.sql'] }), 'ask', 'Touches db/migrations/0042_add_index.sql — never merged on its own in this project.'],
+    ['a workflow file', v({ changedPaths: ['.github/workflows/ci.yml'] }), 'ask', null],
+    ['an env file', v({ changedPaths: ['.env.local'] }), 'ask', null],
+    ['the auth area', v({ areas: [{ name: 'auth', sensitivity: 'critical', paths: ['src/auth/session.ts'] }], changedPaths: ['src/auth/session.ts'] }), 'ask', 'Touches src/auth/session.ts — never merged on its own in this project.'],
+    ['a deletion in a sensitive area', v({ deletedPaths: ['package.json'], areas: [{ name: 'dependencies', sensitivity: 'sensitive', paths: ['package.json'] }] }), 'ask', null],
+    ['the careful lane', v({ process: { lane: 'careful' } }), 'ask', null],
+    ['a person committed', v({ process: { personCommits: 1 } }), 'ask', null],
+    ['CI failed', v({ ci: { state: 'FAIL' } }), 'ask', 'CI is not green on this commit.'],
+    ['tests failed', v({ checksTests: 'FAIL' }), 'ask', null],
+    ['blocking findings', v({ review: { blocking: 2 } }), 'ask', null],
+    ['450 lines', v({ linesAdded: 400, linesRemoved: 50 }), 'ask', 'Risk score 4 of 2 allowed: over 400 lines changed, over 100 lines changed.'],
+    ['120 lines', v({ linesAdded: 100, linesRemoved: 20 }), 'merge', null],
+    ['16 files', v({ files: 16 }), 'merge', null],
+    ['two repositories', v({ repos: 2 }), 'merge', null],
+    ['a recent revert in the area', v({ history: { areaRecentRevert: true } }), 'ask', null],
+  ];
+  for (const [label, facts, verdict, reason] of rows) {
+    const d = D.decideMerge(facts, on);
+    check(`${label} → ${verdict}`, d.verdict === verdict && (reason === null || d.reasons.includes(reason)), { verdict: d.verdict, score: d.score, reasons: d.reasons });
+  }
+  const scores = { '120 lines': 1, '16 files': 2, 'two repositories': 2, 'a recent revert in the area': 3 };
+  for (const [label, score] of Object.entries(scores)) {
+    const facts = rows.find((r) => r[0] === label)[1];
+    check(`${label} scores ${score}`, D.decideMerge(facts, on).score === score, D.decideMerge(facts, on).score);
+  }
+  const coverage = baseDecision.factors.find((f) => f.rule.startsWith('coverage.changed_lines'));
+  check('unmeasured coverage adds nothing and is listed', coverage?.points === 0 && coverage.unmeasured.includes('coverage.changed_lines'), coverage);
+
+  section('hard rules');
+  const off = D.decideMerge(base, policy);
+  check('auto-merge off always asks, and says what would have happened', off.verdict === 'ask' && off.reasons[0] === D.AUTO_MERGE_OFF && off.wouldMerge === true, off);
+  const noCi = D.decideMerge(v({ ci: { state: 'NONE' } }), { ...on, requires: [] });
+  check('no CI asks even when the policy omits the CI rule', noCi.verdict === 'ask' && noCi.reasons.includes(D.NO_CI), noCi.reasons);
+  check('a required review asks', D.decideMerge(v({ reviewRequired: true }), on).reasons.includes(D.REVIEW_REQUIRED));
+  check('a malformed policy asks', D.decideMerge(base, { error: 'bad indent' }).reasons[0] === D.malformedPolicy('bad indent'));
+  check('an unmeasured review requirement asks', D.decideMerge(v({ reviewRequired: null }), on).verdict === 'ask');
+  check('a policy with a rule that does not lint is an error, never partial', 'error' in D.parseMergePolicy({ ...app.SHIPPED_MERGE, requires: ['item.prefix == "x"'] }));
+
+  section('no self-report');
+  const keys = Object.keys(D.MERGE_FACT_ORIGINS).sort();
+  check('every fact has a measured origin', keys.every((k) => ['git', 'github', 'daemon', 'ledger'].includes(D.MERGE_FACT_ORIGINS[k])) && eq(keys, Object.keys(base).sort()), keys);
+});
+
 // @sections
 
 clearInterval(keepAlive);
