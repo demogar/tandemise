@@ -15,6 +15,8 @@ export interface EventBusPort {
 export type ProjectionTopic =
   | 'missions' | 'tasks' | 'approvals' | 'artifacts' | 'runtimes'
   | 'integrations' | 'targets' | 'workspaces' | 'decisions' | 'checks' | 'criteria' | 'refinement'
+  /** Intake signals and the Inbox decisions they ask (plan Task 7). */
+  | 'intake'
   /** Claims, members and presence with the team (relay spec). */
   | 'coordination';
 

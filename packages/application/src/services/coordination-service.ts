@@ -1,12 +1,12 @@
 import type { Clock, Logger, MissionId } from '@tandemise/shared';
 import { TandemiseError, asId, errorMessage } from '@tandemise/shared';
-import { isTerminalMissionStatus, type IssueRepositoryPort, type Mission, type MissionRepositoryPort, type RepoRepositoryPort, type RunEventRecord } from '@tandemise/domain';
+import { isTerminalMissionStatus, type IssueRepositoryPort, type Mission, type MissionRepositoryPort, type RepoRepositoryPort, type RunEventRecord, type TrackerItemRepositoryPort } from '@tandemise/domain';
 import type {
   CoordinationClaimRowView, CoordinationStatusView, InboxUnclaimedView, MissionClaimView,
 } from '@tandemise/api-contract';
 import type { ClaimView, CoordDeviceView, CoordMemberView, CreateEndpointRequest, CreateInviteRequest, EndpointView, ImportReport } from '@tandemise/api-contract/relay';
 import {
-  DEFAULT_STALE_AFTER_MS, clockTime, githubItemRef, isStale, itemKey, lastSeenLabel, presenceOf, takeOverRefusal,
+  DEFAULT_STALE_AFTER_MS, clockTime, githubItemRef, isStale, itemKey, lastSeenLabel, normalizeItemRef, presenceOf, takeOverRefusal,
 } from '@tandemise/coordination/rules';
 import type { CoordinationControlPort, CoordinationPort, SettingsStorePort } from '../ports.js';
 import type { EventRecorder } from '../support/event-recorder.js';
@@ -17,6 +17,8 @@ export interface CoordinationDeps {
   readonly control: CoordinationControlPort | null;
   readonly missions: MissionRepositoryPort;
   readonly issues: Pick<IssueRepositoryPort, 'getLink'>;
+  /** The board's cache (intake spec §7): a mission started from a tracker item claims it. Optional for older harnesses. */
+  readonly trackerItems?: Pick<TrackerItemRepositoryPort, 'get'>;
   /** The workspace's repositories: the first one's remote names its project by default. Optional for older harnesses. */
   readonly repositories?: Pick<RepoRepositoryPort, 'listByWorkspace'>;
   readonly settings: SettingsStorePort;
@@ -35,6 +37,8 @@ export interface TrackerItem {
 
 export const STOPPED_FOR_CLAIM = 'Stopped: someone else is working on this.';
 export const PENDING_SENTENCE = "Will tell the team when you're back online.";
+/** Intake spec §3: a source's lease lives 2 minutes; the runner host renews it every 30 seconds while it runs the source. */
+export const SOURCE_LEASE_SECONDS = 120;
 
 /**
  * Who is working on which tracker item (relay spec, §Where the engine calls
@@ -97,12 +101,96 @@ export class CoordinationService {
     return this.projectKey(workspaceId);
   }
 
-  /** The tracker item a mission works on, or null. Today that is its GitHub issue link. */
+  /**
+   * The tracker item a mission works on, or null: the board item Start made
+   * it from (intake spec §7; its ref is already `<tracker>:<key>`, e.g.
+   * `youtrack:GAR-12`), else its P14 GitHub issue link.
+   */
   itemFor(mission: Mission): TrackerItem | null {
+    if (mission.trackerItemId !== null && mission.trackerItemId !== undefined) {
+      const item = this.deps.trackerItems?.get(mission.trackerItemId);
+      if (item !== undefined) return { itemRef: normalizeItemRef(item.ref), itemTitle: item.title, itemUrl: item.url || null };
+    }
     if (mission.issueLinkId === null || mission.issueLinkId === undefined) return null;
     const link = this.deps.issues.getLink(mission.issueLinkId);
     if (link === undefined) return null;
     return { itemRef: githubItemRef(link.githubRepo, link.number), itemTitle: link.title, itemUrl: link.url || null };
+  }
+
+  /**
+   * Intake's Start claims its item before the mission exists (intake spec §3
+   * and §7 step 1, Ruling 22), under the mission id it is about to use, so the
+   * mission's own start finds the claim already its own. Held by someone else
+   * on the team, it is refused in the holder's words. Solo (no relay
+   * connected) it is always granted: Start re-reads the item instead.
+   */
+  async claimItem(input: {
+    readonly workspaceId: string; readonly itemRef: string; readonly itemTitle: string; readonly itemUrl: string; readonly localRef: string;
+  }): Promise<{ readonly ok: true } | { readonly ok: false; readonly reason: string }> {
+    const port = this.deps.coordination;
+    if (port === null) return { ok: true };
+    const claim = { projectKey: this.projectKey(input.workspaceId), itemRef: normalizeItemRef(input.itemRef), itemTitle: input.itemTitle, itemUrl: input.itemUrl || null, localRef: input.localRef };
+    try {
+      let result = await port.claim(claim);
+      // Your own claim on this computer, left by a mission that is gone or over (a release that never landed): let it go and claim again.
+      if (result.kind === 'held_by' && result.self && result.claim.deviceId === port.me().deviceId && this.#over(result.claim.localRef)) {
+        await port.release(result.claim.id, 'released');
+        result = await port.claim(claim);
+      }
+      this.#invalidate();
+      if (result.kind !== 'held_by' || port.status().kind === 'local') return { ok: true };
+      return { ok: false, reason: result.sentence };
+    } catch (e) {
+      // A coordination fault is never a reason not to work.
+      this.deps.log.warn('item claim failed; starting anyway', { itemRef: input.itemRef, error: errorMessage(e) });
+      return { ok: true };
+    }
+  }
+
+  /** Whether the mission a claim was made for is gone or over. */
+  #over(localRef: string | null): boolean {
+    if (localRef === null || localRef === '') return true;
+    const mission = this.deps.missions.get(asId<'MissionId'>(localRef));
+    return mission === undefined || isTerminalMissionStatus(mission.status);
+  }
+
+  /** Lets go of your active claims on an item (a Start that failed after claiming). Never throws. */
+  /**
+   * Releases this member's claims on the item. With `localRef` (a failed
+   * Start, Ruling 27), only the claim made for that mission: another of the
+   * member's missions on the same item keeps its claim.
+   */
+  async releaseItem(itemRef: string, reason: 'done' | 'released', localRef?: string): Promise<void> {
+    const port = this.deps.coordination;
+    if (port === null) return;
+    try {
+      const ref = normalizeItemRef(itemRef);
+      const me = port.me().memberId;
+      for (const claim of port.claims().filter((c) => c.itemRef === ref && c.memberId === me && (localRef === undefined || c.localRef === localRef))) {
+        await port.release(claim.id, reason);
+      }
+      this.#invalidate();
+    } catch (e) {
+      this.deps.log.warn('could not release an item claim', { itemRef, error: errorMessage(e) });
+    }
+  }
+
+  /**
+   * May this daemon run the source now (intake spec §3, Ruling 22)? With the
+   * relay connected, only while it holds the lease `('source', sourceId)` in
+   * the project: the project key, not the workspace id, since each machine
+   * has its own workspace ids. Solo, or with no lease to ask, always yes.
+   */
+  async sourceClaim(workspaceId: string, sourceId: string): Promise<boolean> {
+    const port = this.deps.coordination;
+    if (port === null || port.lease === undefined || port.status().kind === 'local') return true;
+    try {
+      const lease = await port.lease({ projectKey: this.projectKey(workspaceId), scope: 'source', key: sourceId, ttlSeconds: SOURCE_LEASE_SECONDS });
+      return lease.granted;
+    } catch (e) {
+      this.deps.log.warn('source lease failed; running it here', { workspaceId, sourceId, error: errorMessage(e) });
+      return true;
+    }
   }
 
   /**
@@ -234,7 +322,7 @@ export class CoordinationService {
   inboxUnclaimed(workspaceId: string): InboxUnclaimedView[] {
     if (this.deps.coordination === null) return [];
     const live = this.deps.missions.list({ workspaceId: asId<'WorkspaceId'>(workspaceId) })
-      .filter((m) => !isTerminalMissionStatus(m.status) && m.issueLinkId != null);
+      .filter((m) => !isTerminalMissionStatus(m.status) && (m.issueLinkId != null || m.trackerItemId != null));
     return live.flatMap((m) => {
       const c = this.missionClaim(m.id);
       if (c === null || c.state !== 'unclaimed') return [];

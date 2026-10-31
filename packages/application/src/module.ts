@@ -13,6 +13,7 @@ import {
   TOOL_POLICY_GATE,
   COMMAND_EXECUTOR as INTEGRATION_COMMAND_EXECUTOR,
 } from '@tandemise/integrations-core';
+import { PRIMARY_TRACKER_FACTORIES } from '@tandemise/integrations-core';
 
 import type { TandemiseServices } from './services.js';
 import * as t from './tokens.js';
@@ -35,7 +36,7 @@ import { RuntimeOverrides } from './support/runtime-overrides.js';
 import { ApprovalWaiter, createApprovalGate, createPolicyEngineToolGate } from './support/tool-policy.js';
 import { createAskHumanTool } from './tools/ask-human.js';
 import { bindBrain, brainEdits, brainWorkflows } from './brain/module.js';
-import { BRAIN_CONTEXT_SUPPLY, BRAIN_SERVICE } from './brain/tokens.js';
+import { BRAIN_CONTEXT_SUPPLY, BRAIN_INTAKE_CONFIG, BRAIN_SERVICE } from './brain/tokens.js';
 import { RunDeadlines } from './engine/run-deadline.js';
 import { ConnectFlow } from './services/connect-flow.js';
 import { IntegrationCredentials } from './support/integration-credentials.js';
@@ -61,6 +62,7 @@ import { SkillService } from './services/skill-service.js';
 import { ContributionServiceImpl } from './services/contribution-service.js';
 import { SkillInstaller } from './engine/skill-installer.js';
 import { DEFAULT_QUIET_AFTER_MS, reachedReason, type IssueTrackerPort, type PullRequestSnapshotPort } from '@tandemise/domain';
+import { lexicalSimilarity } from '@tandemise/domain';
 import { SetupService } from './services/setup-service.js';
 import { RefinementServiceImpl } from './services/refinement-service.js';
 import { EvalService } from './services/eval-service.js';
@@ -75,6 +77,16 @@ import { TeamServiceImpl } from './services/team-service.js';
 import { StaffingServiceImpl } from './services/staffing-service.js';
 import { StaffingResolver } from './engine/staffing-resolver.js';
 import { DEFAULT_LOCAL_PERSON_NAME, LocalIdentity } from './support/identity.js';
+import * as it from './intake-tokens.js';
+import { IntakeService } from './services/intake-service.js';
+import { TrackerService } from './services/tracker-service.js';
+import { LocalIntakeConfigSource } from './intake/config-source.js';
+import { LinkedIntakeConfigSource } from './intake/linked-config-source.js';
+import { MemoryBlobs } from './intake/memory-blobs.js';
+import { TrackerResolver } from './intake/tracker-resolver.js';
+import { IntakeRunnerHost } from './intake/runner-host.js';
+import { ClosureService } from './services/closure-service.js';
+import { INTAKE_RUNNERS } from '@tandemise/integrations-core';
 
 const SOURCE = 'application';
 
@@ -382,6 +394,9 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       fireRoutines: () => r.resolve(t.ROUTINE_SERVICE).tick(),
       // Resolved per pass: issue sync creates missions through the mission service too.
       syncIssues: () => r.resolve(t.ISSUE_SERVICE).tick(),
+      // Resolved per pass: intake retries and recovers in the background (plan Task 7).
+      // The runner host starts due polls and drains the webhook mailbox there too (plan Task 10).
+      syncIntake: () => { r.resolve(it.INTAKE_SERVICE).tick(); r.resolve(it.TRACKER_SERVICE).tick(); r.resolve(it.INTAKE_RUNNER_HOST).tick(); r.resolve(it.CLOSURE_SERVICE).tick(); },
       pullBacklog: () => r.resolve(t.BACKLOG_SERVICE).pull(),
       limits: r.resolve(t.LIMIT_SERVICE),
       // Resolved per pass, like the backlog: it reads the planner, composed after this.
@@ -566,6 +581,8 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
         metrics: (workspaceId) => r.resolve(t.DESK_SERVICE).metrics(workspaceId),
         banners: (workspaceId, metrics) => r.resolve(t.DESK_SERVICE).banners(workspaceId, metrics),
       },
+      // Resolved per call: intake is composed after the projections (plan Task 7).
+      intakeDecisions: (workspaceId) => r.resolve(it.INTAKE_SERVICE).decisions(workspaceId),
       // Resolved per call for the same reason: a hold answers with a task view.
       holds: { standing: (task, mission) => r.resolve(t.HOLD_SERVICE).standing(task, mission) },
       // Resolved per call: the claim banner and the Unclaimed rows (relay spec).
@@ -753,6 +770,8 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
         control: r.tryResolve(t.COORDINATION_CONTROL) ?? null,
         missions: r.resolve(t.MISSION_REPOSITORY),
         issues: r.resolve(t.ISSUE_REPOSITORY),
+        // A mission Start made from a board item claims that item (intake spec §3, Ruling 22).
+        trackerItems: { get: (id) => r.tryResolve(it.TRACKER_ITEM_REPOSITORY)?.get(id) },
         repositories: r.resolve(t.REPO_REPOSITORY),
         settings: r.resolve(t.SETTINGS_STORE),
         recorder: r.resolve(t.EVENT_RECORDER),
@@ -928,6 +947,132 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       recorder: r.resolve(t.EVENT_RECORDER),
       clock: clock(r),
       log: log(r).child({ component: 'issues' }),
+      // "Use these issues as your tracker" (intake plan Task 10).
+      intakeConfig: r.resolve(it.INTAKE_CONFIG_SOURCE),
+      intake: r.resolve(it.INTAKE_REPOSITORY),
+    }), { source: SOURCE });
+
+    // Intake (spec 2026-10-30-intake-design.md, plan Task 3). The config comes
+    // from the local settings until the brain (#51) rebinds the source; inline
+    // attachments stay in memory unless the daemon gives them a disk.
+    bind(it.INTAKE_CONFIG_SOURCE, (r) => new LinkedIntakeConfigSource({
+      local: new LocalIntakeConfigSource({
+        settings: r.resolve(t.SETTINGS_STORE),
+        log: log(r).child({ component: 'intake' }),
+      }),
+      // A project linked to a brain (#51) reads factory/tracker.yaml and
+      // factory/intake.yaml from it (Ruling 21); the others stay local.
+      // Resolved per call: the brain's service depends on intake through P14.
+      brain: {
+        originFor: (ws) => r.tryResolve(BRAIN_INTAKE_CONFIG)?.originFor(ws) ?? 'local',
+        read: (ws) => r.resolve(BRAIN_INTAKE_CONFIG).read(ws),
+      },
+      log: log(r).child({ component: 'intake' }),
+    }), { source: SOURCE });
+    bind(it.INTAKE_BLOBS, () => new MemoryBlobs(), { source: SOURCE });
+    // The tracker per project (plan Task 5): each provider module contributes
+    // its kind's factory; the credential comes from the local secret store.
+    bind(it.TRACKER_RESOLVER, (r) => new TrackerResolver({
+      config: r.resolve(it.INTAKE_CONFIG_SOURCE),
+      secrets: r.resolve(t.SECRET_STORE),
+      // Ruling 23: the credential is bound to the address it was saved for.
+      origins: r.resolve(it.INTAKE_REPOSITORY).credentialOrigins,
+      factories: () => r.resolveAll(PRIMARY_TRACKER_FACTORIES),
+      log: log(r).child({ component: 'intake' }),
+    }), { source: SOURCE });
+    // Dedupe's scorer (plan Task 7): lexical, deterministic.
+    bind(it.INTAKE_SIMILARITY, () => ({ score: (signal, candidate) => lexicalSimilarity(signal, candidate) }), { source: SOURCE });
+    // The relay's claims (spec §3, Ruling 22): Start claims ('tracker_item', ref)
+    // and a runner runs only under its source's lease. Without the relay
+    // every claim is granted: Start re-reads the item instead.
+    bind(it.INTAKE_CLAIMS, (r) => ({
+      source: (workspaceId, sourceId) => r.resolve(t.COORDINATION_SERVICE).sourceClaim(workspaceId, sourceId),
+      item: (input) => r.resolve(t.COORDINATION_SERVICE).claimItem(input),
+      releaseItem: (itemRef, reason, localRef) => r.resolve(t.COORDINATION_SERVICE).releaseItem(itemRef, reason, localRef),
+    }), { source: SOURCE });
+    bind(it.INTAKE_SERVICE, (r) => new IntakeService({
+      intake: r.resolve(it.INTAKE_REPOSITORY),
+      config: r.resolve(it.INTAKE_CONFIG_SOURCE),
+      trackers: r.resolve(it.TRACKER_RESOLVER),
+      // A source's default API base, where its secrets are bound (Ruling 23).
+      runners: () => r.resolveAll(INTAKE_RUNNERS),
+      // A source's secrets (plan Task 11).
+      secrets: r.resolve(t.SECRET_STORE),
+      items: r.resolve(it.TRACKER_ITEM_REPOSITORY),
+      similarity: r.resolve(it.INTAKE_SIMILARITY),
+      unitOfWork: r.resolve(t.UNIT_OF_WORK),
+      projections: r.resolve(t.PROJECTION_BUS),
+      blobs: r.resolve(it.INTAKE_BLOBS),
+      workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
+      members: r.resolve(t.MEMBER_REPOSITORY),
+      clock: clock(r),
+      log: log(r).child({ component: 'intake' }),
+    }), { source: SOURCE });
+    // The board and Start (plan Task 8): missions are made only through the
+    // mission service, resolved per call since it is composed with the API services.
+    bind(it.TRACKER_SERVICE, (r) => new TrackerService({
+      config: r.resolve(it.INTAKE_CONFIG_SOURCE),
+      trackers: r.resolve(it.TRACKER_RESOLVER),
+      items: r.resolve(it.TRACKER_ITEM_REPOSITORY),
+      intake: r.resolve(it.INTAKE_REPOSITORY),
+      missions: r.resolve(t.MISSION_REPOSITORY),
+      createMission: (caller, request, origin) => r.resolve(t.MISSION_SERVICE).create(caller, request, origin),
+      claims: r.resolve(it.INTAKE_CLAIMS),
+      settings: r.resolve(t.SETTINGS_STORE),
+      members: r.resolve(t.MEMBER_REPOSITORY),
+      people: r.resolve(t.PERSON_REPOSITORY),
+      workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
+      recorder: r.resolve(t.EVENT_RECORDER),
+      tasks: r.resolve(t.TASK_REPOSITORY),
+      approvals: r.resolve(t.APPROVAL_REPOSITORY),
+      artifacts: r.resolve(t.ARTIFACT_REPOSITORY),
+      trace: (missionId) => r.resolve(t.GATE_SERVICE).trace(missionId).trace,
+      projections: r.resolve(t.PROJECTION_BUS),
+      unitOfWork: r.resolve(t.UNIT_OF_WORK),
+      clock: clock(r),
+      log: log(r).child({ component: 'intake' }),
+      // Resolved per call: the closure service reaches the runner host, which reads this board (plan Task 13).
+      detectClosures: (workspaceId, items) => r.resolve(it.CLOSURE_SERVICE).detect(workspaceId, items),
+    }), { source: SOURCE });
+    // The shipped runners (plan Task 10): contributed by the provider modules,
+    // read per pass, driven from the scheduler's `syncIntake`.
+    bind(it.INTAKE_RUNNER_HOST, (r) => new IntakeRunnerHost({
+      runners: () => r.resolveAll(INTAKE_RUNNERS),
+      config: r.resolve(it.INTAKE_CONFIG_SOURCE),
+      intake: r.resolve(it.INTAKE_REPOSITORY),
+      pipeline: r.resolve(it.INTAKE_SERVICE),
+      board: r.resolve(it.TRACKER_SERVICE),
+      claims: r.resolve(it.INTAKE_CLAIMS),
+      mailbox: r.resolve(it.WEBHOOK_MAILBOX),
+      // The team's mailbox (Ruling 24), resolved per call like INTAKE_CLAIMS.
+      relayMailbox: {
+        available: () => r.resolve(t.COORDINATION_SERVICE).available,
+        projectKey: (workspaceId) => r.resolve(t.COORDINATION_SERVICE).projectKey(workspaceId),
+        pull: (projectKey, max, leaseSeconds) => r.resolve(t.COORDINATION_SERVICE).pull(projectKey, max, leaseSeconds),
+        ack: (ids) => r.resolve(t.COORDINATION_SERVICE).ack(ids),
+      },
+      secrets: r.resolve(t.SECRET_STORE),
+      workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
+      members: r.resolve(t.MEMBER_REPOSITORY),
+      clock: clock(r),
+      log: log(r).child({ component: 'intake' }),
+    }), { source: SOURCE });
+    // Closing the loop (plan Task 13): the board refresh detects, the scheduler's
+    // `syncIntake` ticks, and each closure goes to its runner through the host.
+    bind(it.CLOSURE_SERVICE, (r) => new ClosureService({
+      intake: r.resolve(it.INTAKE_REPOSITORY),
+      config: r.resolve(it.INTAKE_CONFIG_SOURCE),
+      items: r.resolve(it.TRACKER_ITEM_REPOSITORY),
+      missions: r.resolve(t.MISSION_REPOSITORY),
+      artifacts: r.resolve(t.ARTIFACT_REPOSITORY),
+      repositories: r.resolve(t.REPO_REPOSITORY),
+      closer: r.resolve(it.INTAKE_RUNNER_HOST),
+      workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
+      members: r.resolve(t.MEMBER_REPOSITORY),
+      projections: r.resolve(t.PROJECTION_BUS),
+      unitOfWork: r.resolve(t.UNIT_OF_WORK),
+      clock: clock(r),
+      log: log(r).child({ component: 'intake' }),
     }), { source: SOURCE });
 
     // Default: no disk. The daemon rebinds it; a harness without one can still
@@ -1033,6 +1178,10 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       setup: r.resolve(t.SETUP_SERVICE),
       contributions: r.resolve(t.CONTRIBUTION_SERVICE),
       evals: r.resolve(t.EVAL_SERVICE),
+      intake: r.resolve(it.INTAKE_SERVICE),
+      tracker: r.resolve(it.TRACKER_SERVICE),
+      intakeRunners: r.resolve(it.INTAKE_RUNNER_HOST),
+      closures: r.resolve(it.CLOSURE_SERVICE),
       holds: r.resolve(t.HOLD_SERVICE),
       brain: r.resolve(BRAIN_SERVICE),
       coordination: r.resolve(t.COORDINATION_SERVICE),

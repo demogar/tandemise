@@ -31,7 +31,7 @@ import { checkSpecLedger, readHandoff, readTitle } from '../engine/harvester.js'
 import {
   buildIntakePrompt, hasAcceptanceCriteria, intakeArtifactFor, intakeTargetFor, missionUploads, uploadFilename,
   type IntakeTarget,
-} from '../planning/intake.js';
+} from '../planning/upload-intake.js';
 
 /** The role whose runtime routing the planner borrows (MVP.md §9.2). */
 const PLANNER_ROLE_ID = 'architecture';

@@ -8,6 +8,7 @@ import type {
   RunRepositoryPort, RuntimeProfileRepositoryPort, TaskRepositoryPort, UnitOfWork,
   WorkspaceRepositoryPort, WorkspaceBrainRepositoryPort, BrainRecordRepositoryPort,
 } from '@tandemise/domain';
+import type { IntakeRepositoryPort, TrackerItemRepositoryPort, WebhookMailboxPort } from '@tandemise/domain';
 import type { TandemiseDatabase } from './database.js';
 
 /**
@@ -53,6 +54,11 @@ export const SKILL_REPOSITORY = token<SkillRepositoryPort>('persistence.SkillRep
 export const ISSUE_REPOSITORY = token<IssueRepositoryPort>('persistence.IssueRepository');
 export const RUN_SCORE_REPOSITORY = token<RunScoreRepositoryPort>('persistence.RunScoreRepository');
 export const EVAL_REPOSITORY = token<EvalRepositoryPort>('persistence.EvalRepository');
+// Intake (plan Task 2). The application declares the same three names in
+// `intake-tokens.ts`, which is how the daemon's `aliasPorts` binds them.
+export const INTAKE_REPOSITORY = token<IntakeRepositoryPort>('persistence.IntakeRepository');
+export const TRACKER_ITEM_REPOSITORY = token<TrackerItemRepositoryPort>('persistence.TrackerItemRepository');
+export const WEBHOOK_MAILBOX = token<WebhookMailboxPort>('persistence.WebhookMailbox');
 export const TASK_HOLD_REPOSITORY = token<TaskHoldRepositoryPort>('persistence.TaskHoldRepository');
 export const WORKSPACE_BRAIN_REPOSITORY = token<WorkspaceBrainRepositoryPort>('persistence.WorkspaceBrainRepository');
 export const BRAIN_RECORD_REPOSITORY = token<BrainRecordRepositoryPort>('persistence.BrainRecordRepository');

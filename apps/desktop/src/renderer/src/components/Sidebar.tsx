@@ -16,6 +16,8 @@ interface NavEntry {
 
 const PRIMARY: readonly NavEntry[] = [
   { href: '/', label: 'Home', icon: 'home' },
+  // The tracker's board, where work is chosen and started (intake spec §7).
+  { href: '/board', label: 'Board', icon: 'flag' },
   { href: '/missions', label: 'Missions', icon: 'flag' },
   { href: '/inbox', label: 'Inbox', icon: 'approvals' },
   { href: '/artifacts', label: 'Artifacts', icon: 'artifacts' },

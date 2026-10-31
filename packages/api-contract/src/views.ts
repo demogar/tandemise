@@ -1,4 +1,5 @@
 import type { PlanDecision } from './for-me.js';
+import type { InboxIntakeDecisionView } from './intake.js';
 import type {
   Approval, ArtifactManifest, ArtifactType, CheckResult, CriteriaCounts, Decision, Evaluation, ExecutionTargetRecord,
   EvalCandidate, EvalRunStatus, EvalTrialStatus,
@@ -717,6 +718,11 @@ export interface InboxView {
    * so an Inbox built before P3 still type-checks; a live one always sends it.
    */
   readonly parked?: readonly InboxParkedView[];
+  /**
+   * Intake signals waiting on a person: "Is this the same as GAR-12?" or past
+   * the daily cap (intake plan Task 7). Optional, like `parked`.
+   */
+  readonly intakeDecisions?: readonly InboxIntakeDecisionView[];
   /** Missions whose tracker item someone else now holds (relay spec). */
   readonly unclaimed?: readonly InboxUnclaimedView[];
 }

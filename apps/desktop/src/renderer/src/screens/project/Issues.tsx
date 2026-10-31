@@ -67,9 +67,18 @@ function RepositoryIssues({ view }: { view: RepositoryIssuesView }): JSX.Element
 
   return (
     <div className="card" aria-label={`Issues for ${view.repositoryName}`}>
+      {view.offerTracker ? <UseAsTracker view={view} /> : null}
       <div className="list__row" style={{ padding: 0, alignItems: 'flex-start' }}>
         <div className="list__main">
-          <div className="list__title">{view.repositoryName}</div>
+          <div className="list__title">
+            {view.repositoryName}
+            {view.deprecated ? <span className="chip chip--muted" style={{ marginLeft: 'var(--s2)' }}>Deprecated</span> : null}
+          </div>
+          {view.deprecated ? (
+            <div className="list__subtitle" aria-label="Deprecated">
+              The old way in, kept for one more release. Intake replaces it: use the repository's GitHub Issues as your board, or add it as a source in Settings → Intake.
+            </div>
+          ) : null}
           <div className="list__subtitle">
             Open issues with the label become draft missions. An issue that lists “Done when” or “Acceptance criteria” is queued, ready to plan; any other waits for you to refine it.
           </div>
@@ -162,6 +171,48 @@ function RepositoryIssues({ view }: { view: RepositoryIssuesView }): JSX.Element
       </div>
       {update.isError ? <ErrorState error={update.error} /> : null}
       {checkNow.isError ? <ErrorState error={checkNow.error} /> : null}
+    </div>
+  );
+}
+
+/** Remembers "Not now" per repository on this computer; the offer is made once (intake spec §10). */
+const OFFER_DISMISSED = 'tandemise.intake.offer-dismissed.';
+
+function offerDismissed(repositoryId: string): boolean {
+  try {
+    return localStorage.getItem(OFFER_DISMISSED + repositoryId) === '1';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Intake spec §10: a project with P14 on and no tracker is offered, once,
+ * this repository's GitHub Issues as its board. Until it accepts, P14 keeps
+ * working as before.
+ */
+function UseAsTracker({ view }: { view: RepositoryIssuesView }): JSX.Element | null {
+  const [dismissed, setDismissed] = useState(() => offerDismissed(view.repositoryId));
+  const adopt = useDaemonMutation((daemon, _: void) => daemon.useIssuesAsTracker(view.repositoryId), ['missions', 'intake']);
+  if (dismissed) return null;
+  const repo = view.settings.githubRepo ?? view.suggestedRepo ?? view.repositoryName;
+  return (
+    <div className="banner banner--accent" role="status" aria-label="Use as tracker" style={{ marginBottom: 'var(--s3)' }}>
+      <span style={{ flex: 1 }}>Use {repo}'s GitHub Issues as this project's board?</span>
+      <button type="button" className="btn btn--primary" disabled={adopt.isPending} onClick={() => adopt.mutate()}>
+        {adopt.isPending ? 'Switching…' : 'Use them'}
+      </button>
+      <button
+        type="button"
+        className="btn btn--ghost"
+        onClick={() => {
+          try { localStorage.setItem(OFFER_DISMISSED + view.repositoryId, '1'); } catch { /* the offer simply comes back */ }
+          setDismissed(true);
+        }}
+      >
+        Not now
+      </button>
+      {adopt.isError ? <ErrorState error={adopt.error} /> : null}
     </div>
   );
 }

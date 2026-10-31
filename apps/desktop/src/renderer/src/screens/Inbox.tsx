@@ -17,6 +17,7 @@ import { pluralize, relativeTime, titleCase } from '../lib/format.js';
 import { REQUEST_CHANGES_OPTION, isLimitCard, isPlanFitCard } from '../lib/domain.js';
 import { QuietRow, StalledRow } from './inbox/LivenessRows.js';
 import { ParkedRow } from './inbox/ParkedRow.js';
+import { IntakeDecisionRow } from './inbox/IntakeDecisionRow.js';
 
 type Filter = 'me' | 'everyone';
 
@@ -36,7 +37,10 @@ export function Inbox({ only }: { only?: 'stalled' } = {}): JSX.Element {
   const [open, setOpen] = useState<string | null>(null);
   const [task, setTask] = useState<Extract<InboxItem, { kind: 'task' }> | null>(null);
   const [, navigate] = useLocation();
-  const unclaimed = useInboxView().data?.unclaimed ?? [];
+  const inboxView = useInboxView().data;
+  const unclaimed = inboxView?.unclaimed ?? [];
+  // Signals intake was unsure about: the same as an existing task, or new? (intake plan Task 7, Task 14)
+  const intakeDecisions = inboxView?.intakeDecisions ?? [];
 
   const mine = filter === 'me' ? inbox.pending.filter((i) => i.forMe) : inbox.pending;
   // Opened from Home's "Stalled" card (P10): only the missions nothing moves.
@@ -92,9 +96,17 @@ export function Inbox({ only }: { only?: 'stalled' } = {}): JSX.Element {
             </section>
           ) : null}
 
+          {intakeDecisions.length > 0 && only === undefined ? (
+            <section className="section" aria-label="Intake decisions" style={{ marginBottom: 'var(--s4)' }}>
+              <div className="card card--flush">
+                {intakeDecisions.map((view) => <IntakeDecisionRow key={view.signalId} view={view} />)}
+              </div>
+            </section>
+          ) : null}
+
           {inbox.isPending ? (
             <SkeletonList rows={3} />
-          ) : items.length === 0 ? (
+          ) : items.length === 0 && intakeDecisions.length > 0 && only === undefined ? null : items.length === 0 ? (
             <div className="card">
               <Empty
                 icon="check"

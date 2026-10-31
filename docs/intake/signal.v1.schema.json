@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tandemise.dev/schemas/intake/signal.v1.schema.json",
+  "title": "tandemise.intake/v1 signal",
+  "description": "One \"something that might be work\", pushed to Tandemise by a runner. Mirrors the zod schema `intakeSignalV1` in @tandemise/api-contract, which is the authority. Unknown fields are refused. Two rules JSON Schema cannot say: an attachment's contentBase64 decodes to at most 1 000 000 bytes, and all inline attachments of one signal decode to at most 5 000 000 bytes together; link anything bigger with a url. Push one signal, or {\"signals\": [...]} of at most 50.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "source", "key", "url", "title"],
+  "properties": {
+    "schema": { "const": "tandemise.intake/v1" },
+    "source": { "$ref": "#/$defs/source" },
+    "key": {
+      "description": "Stable id of the thing inside the source. The fingerprint is <source.kind>:<source.instance>:<key>; the same fingerprint always updates the same signal.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "url": { "$ref": "#/$defs/httpsUrl", "description": "Link back to the thing in the source." },
+    "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "description": { "description": "Markdown. Untrusted data: it only ever becomes the tracker item's text.", "type": "string", "maxLength": 20000 },
+    "reporter": { "$ref": "#/$defs/reporter" },
+    "occurredAt": { "type": "string", "format": "date-time" },
+    "attachments": {
+      "type": "array",
+      "maxItems": 10,
+      "items": { "$ref": "#/$defs/attachment" }
+    },
+    "impact": { "$ref": "#/$defs/impact" },
+    "labels": {
+      "description": "Hints only, never commands.",
+      "type": "array",
+      "maxItems": 20,
+      "items": { "type": "string", "minLength": 1, "maxLength": 100 }
+    },
+    "reply": { "$ref": "#/$defs/reply" },
+    "kindHint": { "enum": ["bug", "request", "question"] }
+  },
+  "$defs": {
+    "httpsUrl": {
+      "description": "Only https links are accepted.",
+      "type": "string",
+      "maxLength": 2000,
+      "pattern": "^https://[^\\s/?#]+\\S*$"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "instance"],
+      "properties": {
+        "kind": {
+          "description": "A shipped kind (github, sentry, posthog, slack, discord) or your own slug.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{1,31}$"
+        },
+        "instance": { "description": "Which account, project or channel.", "type": "string", "minLength": 1, "maxLength": 200 }
+      }
+    },
+    "reporter": {
+      "description": "All optional. There is deliberately no email.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "handle": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "url": { "$ref": "#/$defs/httpsUrl" }
+      }
+    },
+    "attachment": {
+      "description": "Exactly one of url (never fetched by Tandemise) or contentBase64 (stored, at most 1 000 000 decoded bytes).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "mediaType"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "mediaType": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "url": { "$ref": "#/$defs/httpsUrl" },
+        "contentBase64": {
+          "type": "string",
+          "maxLength": 1333336,
+          "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"
+        }
+      },
+      "oneOf": [
+        { "required": ["url"], "not": { "required": ["contentBase64"] } },
+        { "required": ["contentBase64"], "not": { "required": ["url"] } }
+      ]
+    },
+    "impact": {
+      "description": "Optional; what the noise filter reads.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "level": { "enum": ["info", "warning", "error", "fatal"] },
+        "events": { "type": "integer", "minimum": 0 },
+        "users": { "type": "integer", "minimum": 0 },
+        "firstSeen": { "type": "string", "format": "date-time" },
+        "lastSeen": { "type": "string", "format": "date-time" },
+        "release": { "type": "string", "minLength": 1, "maxLength": 200 }
+      }
+    },
+    "reply": {
+      "description": "Opaque to Tandemise: what your runner needs to close the loop when the task is done.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["address"],
+      "properties": {
+        "address": { "type": "string", "minLength": 1, "maxLength": 2000 }
+      }
+    }
+  }
+}

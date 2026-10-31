@@ -72,11 +72,16 @@ export const keys = {
   evalRuns: (suiteId: string) => ['evals', 'runs', suiteId] as const,
   evalRun: (id: string) => ['evals', 'run', id] as const,
   runScoreSummary: (ws: string | undefined, days: 7 | 30 | 90) => ['evals', 'run-scores', ws ?? 'all', String(days)] as const,
+  // Intake (plan Task 14): under 'intake', which every signal, board and closure change invalidates.
+  board: (ws?: string) => ['intake', 'board', ws ?? 'all'] as const,
+  intakeSignals: (ws?: string) => ['intake', 'signals', ws ?? 'all'] as const,
+  intakeConfig: (ws?: string) => ['intake', 'config', ws ?? 'all'] as const,
 };
 
 const TOPIC_KEYS: Readonly<Record<ProjectionTopic, readonly (readonly string[])[]>> = {
   // A mission's status alone can make it stalled, which is an Inbox row (P9).
-  missions: [['home'], ['missions'], ['mission'], ['inbox']],
+  // The Board shows each item's mission status in words (intake), so it follows too.
+  missions: [['home'], ['missions'], ['mission'], ['inbox'], ['intake', 'board']],
   tasks: [['mission'], ['home'], ['inbox'], ['mission-task-feedback']],
   // A decided review card or check can record a note, so a task's thread follows approvals too.
   approvals: [['approvals'], ['home'], ['mission'], ['inbox'], ['mission-task-feedback']],
@@ -93,6 +98,8 @@ const TOPIC_KEYS: Readonly<Record<ProjectionTopic, readonly (readonly string[])[
   // A refinement decision changes the mission's readiness and the inbox row that asks for it.
   // The backlog shows each draft's readiness too.
   refinement: [['mission'], ['inbox'], ['home'], ['missions']],
+  // A signal that needs a decision is an Inbox card (intake, plan Task 7).
+  intake: [['inbox'], ['home'], ['intake']],
   // Claims with the team: Home's "Who's working on what", a mission's claim banner and its Inbox row.
   coordination: [['coordination'], ['mission'], ['inbox'], ['team']],
 };
@@ -367,6 +374,46 @@ export function useApprovals() {
 }
 
 /** Everything waiting on a person in this project. Behind the always-mounted nav badge, so one request. */
+/**
+ * The project's board, from the tracker cache (intake spec §7). The daemon
+ * refreshes it on its own tick; a mission's status on a row follows missions.
+ */
+export function useBoard() {
+  const daemon = useDaemon();
+  const workspaceId = useWorkspaceId();
+  return useQuery({
+    queryKey: keys.board(workspaceId),
+    queryFn: () => daemon.board(workspaceId ?? ''),
+    enabled: Boolean(workspaceId),
+    refetchInterval: 10_000,
+    placeholderData: (previous) => previous,
+  });
+}
+
+/** Every signal the project recorded, newest first (intake spec §7, the Intake tab). */
+export function useIntakeSignals() {
+  const daemon = useDaemon();
+  const workspaceId = useWorkspaceId();
+  return useQuery({
+    queryKey: keys.intakeSignals(workspaceId),
+    queryFn: () => daemon.intakeSignals(workspaceId ?? ''),
+    enabled: Boolean(workspaceId),
+    refetchInterval: 10_000,
+    placeholderData: (previous) => previous,
+  });
+}
+
+/** The project's tracker and sources, and whether they are edited here or in the brain. */
+export function useIntakeConfig() {
+  const daemon = useDaemon();
+  const workspaceId = useWorkspaceId();
+  return useQuery({
+    queryKey: keys.intakeConfig(workspaceId),
+    queryFn: () => daemon.intakeConfig(workspaceId ?? ''),
+    enabled: Boolean(workspaceId),
+  });
+}
+
 export function useInboxView() {
   const daemon = useDaemon();
   const workspaceId = useWorkspaceId();

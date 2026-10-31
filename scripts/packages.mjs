@@ -21,6 +21,8 @@ export const LAYERS = {
   'execution-local': 4,
   terminal: 4,
   'integration-github': 4,
+  'integration-youtrack': 4,
+  'intake-runners': 4,
   'integration-mcp': 4,
   browser: 4,
   'desktop-control': 4,
@@ -32,7 +34,7 @@ export const LAYERS = {
 export const PROVIDER_PACKAGES = new Set([
   'runtime-claude', 'runtime-codex', 'runtime-generic',
   'execution-local', 'terminal', 'integration-github', 'integration-mcp', 'browser', 'desktop-control',
-  'persistence', 'artifacts', 'coordination-relay',
+  'persistence', 'artifacts', 'integration-youtrack', 'intake-runners', 'coordination-relay',
 ]);
 
 export const PACKAGES = {
@@ -55,6 +57,8 @@ export const PACKAGES = {
   'execution-local': { deps: ['shared', 'domain', 'kernel', 'execution-core'], ext: {} },
   terminal: { deps: ['shared', 'domain', 'kernel'], ext: { 'node-pty': '1.1.0' } },
   'integration-github': { deps: ['shared', 'kernel', 'domain', 'integrations-core', 'execution-core'], ext: {} },
+  'integration-youtrack': { deps: ['shared', 'kernel', 'domain', 'integrations-core'], ext: { zod: '^3.24.1' } },
+  'intake-runners': { deps: ['shared', 'kernel', 'domain', 'integrations-core'], ext: {} },
   'integration-mcp': { deps: ['shared', 'kernel', 'domain', 'integrations-core'], ext: { zod: '^3.24.1' } },
   browser: { deps: ['shared', 'kernel', 'domain', 'integrations-core'], ext: { playwright: '^1.49.1', zod: '^3.24.1' } },
   'desktop-control': { deps: ['shared', 'domain', 'kernel', 'integrations-core'], ext: {} },

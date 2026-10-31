@@ -70,6 +70,11 @@ export interface SchedulerDeps {
    */
   readonly syncIssues?: () => void;
   /**
+   * Intake's background pass (plan Task 7): finishes links a crash left
+   * pending and retries signals the tracker could not take. Returns at once.
+   */
+  readonly syncIntake?: () => void;
+  /**
    * The hard-limit admission rule (P8): null when work may start in the
    * mission, else why not (and the stop is applied). Optional so harnesses
    * built before limits still compose; the module always passes it.
@@ -215,6 +220,7 @@ export class SchedulerService implements LifecycleComponent {
     await this.#fireRoutines();
     // In the background: a draft it adds is pulled on a later pass.
     this.#syncIssues();
+    this.#syncIntake();
     // Before dispatch: a slot freed by the last pass is filled from the backlog
     // now, and the mission it pulls is planning by the time this pass reconciles.
     await this.#pullBacklog();
@@ -670,6 +676,15 @@ export class SchedulerService implements LifecycleComponent {
     } catch (e) {
       // Issue sync talks to GitHub; nothing it does may stop the pass.
       this.deps.log.warn('scheduler.issue_sync_failed', { error: errorMessage(e) });
+    }
+  }
+
+  #syncIntake(): void {
+    try {
+      this.deps.syncIntake?.();
+    } catch (e) {
+      // Intake talks to the tracker; nothing it does may stop the pass.
+      this.deps.log.warn('scheduler.intake_sync_failed', { error: errorMessage(e) });
     }
   }
 

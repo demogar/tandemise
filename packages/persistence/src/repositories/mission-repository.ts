@@ -30,6 +30,7 @@ interface MissionRow {
   limits: string | null;
   routine_id: string | null;
   issue_link_id: string | null;
+  tracker_item_id: string | null;
   eval_trial_id: string | null;
   created_at: string;
   updated_at: string;
@@ -78,6 +79,7 @@ function toRow(m: Mission): MissionRow {
     limits: m.limits === null || m.limits === undefined ? null : toJson(m.limits),
     routine_id: m.routineId ?? null,
     issue_link_id: m.issueLinkId ?? null,
+    tracker_item_id: m.trackerItemId ?? null,
     eval_trial_id: m.evalTrialId ?? null,
     created_at: m.createdAt,
     updated_at: m.updatedAt,
@@ -110,6 +112,7 @@ function fromRow(r: MissionRow): Mission {
     limits: r.limits === null ? null : parseJson<readonly Limit[]>(r.limits, []),
     routineId: r.routine_id === null ? null : asId<'RoutineId'>(r.routine_id),
     issueLinkId: r.issue_link_id === null ? null : asId<'IssueLinkId'>(r.issue_link_id),
+    trackerItemId: r.tracker_item_id === null ? null : asId<'TrackerItemId'>(r.tracker_item_id),
     evalTrialId: r.eval_trial_id === null ? null : asId<'EvalTrialId'>(r.eval_trial_id),
     createdAt: r.created_at,
     updatedAt: r.updated_at,
@@ -120,7 +123,7 @@ function fromRow(r: MissionRow): Mission {
 
 const COLUMNS = `id, workspace_id, repository_id, title, goal, constraints, success_criteria,
   status, autonomy, workflow_preset, workflow_inputs, integration_branch, base_branch, status_reason,
-  created_by, staffing, priority, rank, queued_at, limits, routine_id, issue_link_id, eval_trial_id, created_at, updated_at, started_at, completed_at`;
+  created_by, staffing, priority, rank, queued_at, limits, routine_id, issue_link_id, tracker_item_id, eval_trial_id, created_at, updated_at, started_at, completed_at`;
 
 export class SqliteMissionRepository implements MissionRepositoryPort {
   readonly #db: TandemiseDatabase;
@@ -140,7 +143,7 @@ export class SqliteMissionRepository implements MissionRepositoryPort {
       `INSERT INTO missions (${COLUMNS}) VALUES (
         :id, :workspace_id, :repository_id, :title, :goal, :constraints, :success_criteria,
         :status, :autonomy, :workflow_preset, :workflow_inputs, :integration_branch, :base_branch, :status_reason,
-        :created_by, :staffing, :priority, :rank, :queued_at, :limits, :routine_id, :issue_link_id, :eval_trial_id, :created_at, :updated_at, :started_at, :completed_at)`,
+        :created_by, :staffing, :priority, :rank, :queued_at, :limits, :routine_id, :issue_link_id, :tracker_item_id, :eval_trial_id, :created_at, :updated_at, :started_at, :completed_at)`,
     );
     this.#update = db.handle.prepare<MissionRow>(
       `UPDATE missions SET
@@ -150,6 +153,7 @@ export class SqliteMissionRepository implements MissionRepositoryPort {
          integration_branch = :integration_branch,
          base_branch = :base_branch, status_reason = :status_reason, created_by = :created_by, staffing = :staffing,
          priority = :priority, rank = :rank, queued_at = :queued_at, limits = :limits, routine_id = :routine_id, issue_link_id = :issue_link_id,
+         tracker_item_id = :tracker_item_id,
          updated_at = :updated_at,
          started_at = :started_at, completed_at = :completed_at
        WHERE id = :id`,
@@ -220,6 +224,7 @@ export class SqliteMissionRepository implements MissionRepositoryPort {
       limits: draft.limits ?? null,
       routineId: draft.routineId ?? null,
       issueLinkId: draft.issueLinkId ?? null,
+      trackerItemId: draft.trackerItemId ?? null,
       evalTrialId: draft.evalTrialId ?? null,
       createdAt: now,
       updatedAt: now,

@@ -5,6 +5,9 @@
   "private": true,
   "type": "module",
   "main": "./dist/main.js",
+  "bin": {
+    "tandemise": "./dist/cli.js"
+  },
   "scripts": {
     "build": "tsc -b"
   },
@@ -28,6 +31,8 @@
     "@tandemise/runtime-generic": "*",
     "@tandemise/execution-local": "*",
     "@tandemise/integration-github": "*",
+    "@tandemise/integration-youtrack": "*",
+    "@tandemise/intake-runners": "*",
     "@tandemise/browser": "*",
     "@tandemise/desktop-control": "*",
     "@tandemise/application": "*",

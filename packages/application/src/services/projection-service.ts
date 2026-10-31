@@ -11,6 +11,7 @@ import type {
   ActorRef, FeedCard, HomeView, InboxView, MissionDetail, MissionFeedView, MissionLimitsView, MissionSummary, RuntimeView, TaskView,
 } from '@tandemise/api-contract';
 import { humanActionForMember, isApprovalForMember, planStanding } from '@tandemise/api-contract';
+import type { InboxIntakeDecisionView } from '@tandemise/api-contract';
 import type { MissionId, TaskId, WorkspaceId } from '@tandemise/shared';
 import { TandemiseError, asId } from '@tandemise/shared';
 import type { HoldService, HoldStanding, ProjectionService, RuntimeService } from '../services.js';
@@ -30,7 +31,7 @@ import { versionLines } from '../support/artifact-versions.js';
 import { currentHandoff, isPlanAsking, isTaskAsking, primaryArtifact } from '../support/handoff-rules.js';
 import { resolveChanges, toFeedbackView } from '../support/feedback-view.js';
 import { missionTakesRounds } from '../support/feedback-rules.js';
-import { intakeArtifactFor, missionUploads, uploadFilename } from '../planning/intake.js';
+import { intakeArtifactFor, missionUploads, uploadFilename } from '../planning/upload-intake.js';
 import { isCoveredPlaceholder, parkedExternalOf, waitingForWorkIn } from '../support/outside-work.js';
 import { handedTo } from '../support/lineage.js';
 
@@ -81,6 +82,8 @@ export interface ProjectionDeps {
   readonly liveness?: Pick<LivenessService, 'stalled' | 'silentRuns' | 'watchOf'>;
   /** The desk's numbers and banners (P10); optional for harnesses built before it. */
   readonly desk?: Pick<DeskService, 'metrics' | 'banners'>;
+  /** Intake signals waiting on a person (intake plan Task 7); optional for harnesses built before it. */
+  readonly intakeDecisions?: (workspaceId: WorkspaceId) => readonly InboxIntakeDecisionView[];
   /** A step's open hold and whether it can be held; optional for harnesses built before holds. */
   readonly holds?: Pick<HoldService, 'standing'>;
   /** The claim banner and the Unclaimed Inbox rows (relay spec); optional for harnesses built before it. */
@@ -216,6 +219,7 @@ export class ProjectionServiceImpl implements ProjectionService {
       // again drops out with no state to clear (P9).
       stalled: this.deps.liveness?.stalled(workspaceId) ?? [],
       silentRuns: this.deps.liveness?.silentRuns(workspaceId) ?? [],
+      ...(this.deps.intakeDecisions === undefined ? {} : { intakeDecisions: this.deps.intakeDecisions(workspaceId) }),
       unclaimed: this.deps.coordination?.inboxUnclaimed(workspaceId) ?? [],
     };
   }

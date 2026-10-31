@@ -198,14 +198,16 @@ function clean(text: string): string {
 }
 
 /**
- * The "Done when" lines an issue states, deterministically (P14 spec §1).
+ * The "Done when" lines a text states, deterministically (P14 spec §1): a
+ * GitHub issue's body, or any tracker item's description (intake spec §7,
+ * which generalised it from `parseIssueCriteria`).
  *
  * Only a section headed "Done when" or "Acceptance criteria" counts - a
  * checklist elsewhere is a to-do list, not acceptance. Inside it, checklist
  * items win over list items, which win over paragraphs. A ticked box counts
- * like an empty one: ticking it on GitHub verifies nothing.
+ * like an empty one: ticking it in the tracker verifies nothing.
  */
-export function parseIssueCriteria(body: string): readonly string[] {
+export function parseCriteria(body: string): readonly string[] {
   const found: string[] = [];
   let section: string[] | null = null;
   const sections: string[][] = [];
@@ -244,6 +246,9 @@ export function parseIssueCriteria(body: string): readonly string[] {
   }
   return out;
 }
+
+/** P14's name for `parseCriteria`, kept so issue sync and its check read as before. */
+export const parseIssueCriteria = parseCriteria;
 
 function sectionCriteria(lines: readonly string[]): readonly string[] {
   const checks = lines.flatMap((l) => { const m = CHECK_ITEM.exec(l); return m ? [m[1] ?? ''] : []; });
@@ -342,6 +347,19 @@ export interface CompletedCriterion extends CommentCriterion {
   readonly result: TracedResult;
 }
 
+/**
+ * The P5 trace as a comment table, one row per criterion with its result in
+ * words. P14's completion comment and the tracker's activity comment (intake
+ * plan Task 9) both end with it.
+ */
+export function criteriaResultTable(rows: readonly CompletedCriterion[]): string[] {
+  return [
+    '| Key | Criterion | Result |',
+    '|---|---|---|',
+    ...rows.map((r) => `| ${r.key} | ${escapeForComment(r.statement)} | ${resultWord(r.result)} |`),
+  ];
+}
+
 export type CloseIntent = 'closing' | 'left_open' | 'off';
 
 export function completedCommentBody(input: {
@@ -355,9 +373,7 @@ export function completedCommentBody(input: {
     issueMarker('completed'),
     `Done in Tandemise — ${verified} of ${plural(input.rows.length, 'criterion', 'criteria')} verified.`,
     '',
-    '| Key | Criterion | Result |',
-    '|---|---|---|',
-    ...input.rows.map((r) => `| ${r.key} | ${escapeForComment(r.statement)} | ${resultWord(r.result)} |`),
+    ...criteriaResultTable(input.rows),
     ...(input.links.length > 0 ? ['', ...input.links.map((l) => `- ${escapeForComment(l.label)}: ${l.url}`)] : []),
     ...(input.close === 'closing' ? ['', 'Closing this issue: every criterion was verified.'] : []),
     ...(input.close === 'left_open' ? ['', `Left open: ${plural(notVerified, 'criterion was', 'criteria were')} not verified.`] : []),

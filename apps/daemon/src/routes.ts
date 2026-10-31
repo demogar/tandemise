@@ -15,6 +15,11 @@ import {
   applySetupRequest, exportSetupRequest, previewSetupRequest,
   parkTaskRequest, handBackRequest, resolveWorkspaceLinkRequest,
   createEvalSuiteRequest, saveEvalCaseRequest, startEvalRunRequest, runScoresQuery,
+  ACCEPTED_INTAKE_SCHEMAS, intakeSignalsQuery, mintIntakeTokenRequest,
+  decideIntakeSignalRequest,
+  startBoardItemRequest,
+  saveIntakeSourceSecretRequest, saveTrackerSecretRequest, setIntakeSourceEnabledRequest,
+  ackIntakeClosureRequest,
   connectRelayRequest, coordinationEndpointRequest, coordinationPullRequest, projectKeyRequest, takeOverClaimRequest,
 } from '@tandemise/api-contract';
 import type { EvalSuiteView } from '@tandemise/api-contract';
@@ -161,6 +166,68 @@ export function buildRouter(services: TandemiseServices, options: {
   r.patch('/v1/repositories/:id/issues', async (ctx) =>
     services.issues.configure(ctx.caller, asId(ctx.params.id!), await ctx.body(updateIssueSettingsRequest)));
   r.post('/v1/repositories/:id/issues/check', (ctx) => services.issues.checkNow(ctx.caller, asId(ctx.params.id!)));
+  // Intake spec §10: this repository's GitHub Issues become the project's tracker (plan Task 10).
+  r.post('/v1/repositories/:id/issues/use-as-tracker', (ctx) => services.issues.adoptAsTracker(ctx.caller, asId(ctx.params.id!)));
+
+  // Intake (spec 2026-10-30-intake-design.md §2): custom runners push signals
+  // with an intake token (the listener resolves it into ctx.intake) or the
+  // daemon token plus ?workspace=&source=. The push answers 202 per signal.
+  r.get('/v1/intake/schema', () => ({ accepted: [...ACCEPTED_INTAKE_SCHEMAS] }));
+  r.post('/v1/intake/signals', async (ctx) => {
+    const scope = services.intake.pushScope(ctx.intake, ctx.query.get('workspace'), ctx.query.get('source'));
+    return { results: await services.intake.ingestMany(scope, await ctx.body(z.unknown())) };
+  }, { status: 202 });
+  r.get('/v1/workspaces/:id/intake/signals', (ctx) => {
+    const q = query(ctx, intakeSignalsQuery);
+    return services.intake.list(asId(ctx.params.id!), { ...(q.status === undefined ? {} : { statuses: q.status }), ...(q.limit === undefined ? {} : { limit: q.limit }) });
+  });
+  r.get('/v1/workspaces/:id/intake/config', (ctx) => services.intake.config(asId(ctx.params.id!)));
+  r.put('/v1/workspaces/:id/intake/config', async (ctx) =>
+    services.intake.configure(ctx.caller, asId(ctx.params.id!), await ctx.body(z.unknown())));
+  r.post('/v1/workspaces/:id/intake/tokens', async (ctx) =>
+    services.intake.mintToken(ctx.caller, asId(ctx.params.id!), (await ctx.body(mintIntakeTokenRequest)).sourceId));
+  r.delete('/v1/intake/tokens/:id', (ctx) => { services.intake.revokeToken(ctx.caller, asId(ctx.params.id!)); });
+  // Secrets go to the local secret store only; the answer is 204 (plan Task 11, RULINGS ruling 17).
+  r.put('/v1/workspaces/:id/intake/sources/:sourceId/secret', async (ctx) => {
+    await services.intake.saveSourceSecret(ctx.caller, asId(ctx.params.id!), ctx.params.sourceId!, await ctx.body(saveIntakeSourceSecretRequest));
+  });
+  r.put('/v1/workspaces/:id/intake/tracker/secret', async (ctx) => {
+    await services.intake.saveTrackerSecret(ctx.caller, asId(ctx.params.id!), (await ctx.body(saveTrackerSecretRequest)).value);
+  });
+  // A source runs on this machine, or not (Ruling 22): a brain's source is off here until switched on.
+  r.put('/v1/workspaces/:id/intake/sources/:sourceId/enabled', async (ctx) =>
+    services.intake.setSourceEnabled(ctx.caller, asId(ctx.params.id!), ctx.params.sourceId!, (await ctx.body(setIntakeSourceEnabledRequest)).enabled));
+  // "Use the new address" (Ruling 23): a saved token follows a moved address only once its person confirms it.
+  r.post('/v1/workspaces/:id/intake/tracker/confirm-origin', (ctx) => services.intake.confirmTrackerOrigin(ctx.caller, asId(ctx.params.id!)));
+  r.post('/v1/workspaces/:id/intake/sources/:sourceId/confirm-origin', (ctx) =>
+    services.intake.confirmSourceOrigin(ctx.caller, asId(ctx.params.id!), ctx.params.sourceId!));
+  // The Inbox card's answer, and "try now" for a signal the tracker could not take (plan Task 7).
+  r.post('/v1/intake/signals/:id/decide', async (ctx) =>
+    services.intake.decide(ctx.caller, asId(ctx.params.id!), (await ctx.body(decideIntakeSignalRequest)).decision));
+  r.post('/v1/intake/signals/:id/retry', (ctx) => services.intake.retry(ctx.caller, asId(ctx.params.id!)));
+  // Closures (spec §2, §8, plan Task 13): a custom source pulls its own feed and
+  // acks each one, with its intake token or the daemon token plus ?workspace=.
+  // Retry is the Intake tab's, with the daemon token only.
+  r.get('/v1/intake/closures', (ctx) => {
+    const scope = services.closures.feedScope(ctx.intake, ctx.query.get('workspace'), ctx.query.get('sourceId'));
+    return services.closures.feed(scope, ctx.query.get('after'));
+  });
+  r.post('/v1/intake/closures/:id/ack', async (ctx) =>
+    services.closures.ack(ctx.intake, () => ctx.caller, ctx.params.id!, await ctx.body(ackIntakeClosureRequest)));
+  r.post('/v1/intake/closures/:id/retry', (ctx) => services.closures.retry(ctx.caller, ctx.params.id!));
+  // The board from the primary tracker, and Start (plan Task 8). Start names
+  // the item in the body: a GitHub ref holds `/` and `#`.
+  r.get('/v1/workspaces/:id/board', (ctx) => services.tracker.board(asId(ctx.params.id!)));
+  r.post('/v1/workspaces/:id/board/refresh', (ctx) => services.tracker.refreshBoard(asId(ctx.params.id!)));
+  // "Check sources now" (spec §2, plan Task 10): every poll at once, waited for, then the refreshed board.
+  r.post('/v1/workspaces/:id/intake/check', (ctx) => services.intakeRunners.checkNow(ctx.caller, asId(ctx.params.id!)));
+  r.post('/v1/workspaces/:id/board/start', async (ctx) => {
+    const workspaceId = asId<'WorkspaceId'>(ctx.params.id!);
+    const mission = await services.tracker.start(ctx.caller, workspaceId, (await ctx.body(startBoardItemRequest)).key);
+    const summary = services.missions.list({ workspaceId }).find((s) => s.mission.id === mission.id);
+    if (summary === undefined) throw TandemiseError.notFound('Mission', mission.id);
+    return summary;
+  });
 
   // Skills (P13): the project's library, imported by content hash and pinned per run.
   r.get('/v1/workspaces/:id/skills', (ctx) => services.skills.list(asId(ctx.params.id!)));

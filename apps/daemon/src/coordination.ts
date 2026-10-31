@@ -6,7 +6,7 @@ import type {
   ClaimResult, ClaimSync, CoordinationControlPort, CoordinationMe, CoordinationPort, CoordinationStatus, CoordinationTopic, SettingsStorePort,
 } from '@tandemise/application';
 import type {
-  ClaimView, CoordDeviceView, CoordMemberView, CreateEndpointRequest, CreateInviteRequest, EndpointView, ImportReport, MailboxMessage, PresenceView,
+  ClaimView, CoordDeviceView, CoordMemberView, CreateEndpointRequest, CreateInviteRequest, EndpointView, ImportReport, LeaseRequest, LeaseView, MailboxMessage, PresenceView,
 } from '@tandemise/api-contract/relay';
 import {
   ChangeEmitter, CoordinationStore, LocalCoordination, exportLines, filterWebhookHeaders, handshakeResponse, migrateCoordination, parkedMessages,
@@ -200,6 +200,13 @@ export class SwitchableCoordination implements CoordinationPort, CoordinationCon
   claim(input: Parameters<CoordinationPort['claim']>[0]): Promise<ClaimResult> { return this.#current().claim(input); }
   release(claimId: string, reason: 'done' | 'released'): Promise<void> { return this.#current().release(claimId, reason); }
   takeOver(claimId: string, localRef: string): Promise<ClaimResult> { return this.#current().takeOver(claimId, localRef); }
+  /** A source's lease (intake spec §3, Ruling 22): the relay's when connected; solo, always granted. */
+  async lease(input: LeaseRequest): Promise<LeaseView> {
+    const current = this.#current();
+    return current.lease === undefined
+      ? { granted: true, expiresAt: new Date(Date.parse(this.store.now()) + input.ttlSeconds * 1000).toISOString(), holderName: null, deviceLabel: null }
+      : current.lease(input);
+  }
   claims(projectKey?: string): readonly ClaimView[] { return this.#current().claims(projectKey); }
   claimByLocalRef(localRef: string): ClaimView | null { return this.#current().claimByLocalRef(localRef); }
   members(): readonly CoordMemberView[] { return this.#current().members(); }

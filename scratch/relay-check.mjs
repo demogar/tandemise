@@ -120,6 +120,31 @@ check('a member takes over once the holder has been away 24 h', memberTake.statu
 const heldDetails = await call('POST', '/relay/v1/claims', { token: A, body: { ...item, itemRef: 'github:acme/app#9', localRef: 'x' } });
 check('a 409 says whether the caller may take over', heldDetails.status === 409 && heldDetails.body.error.details.takeOver === true, heldDetails.body.error?.details);
 
+// Intake spec §3 (Ruling 22): one daemon of the team runs a source, under a
+// short lease that lapses when its holder stops renewing.
+section('source leases');
+{
+  const lease = (token, ttlSeconds = 120) => call('POST', '/relay/v1/leases', { token, body: { projectKey: 'p', scope: 'source', key: 'sentry-web', ttlSeconds } });
+  const la = await lease(A);
+  check('Ana takes the lease on sentry-web', la.status === 200 && la.body.granted === true && typeof la.body.expiresAt === 'string', la.body);
+  const lb = await lease(B);
+  check('…Bruno is refused while it is live, and told whose it is', lb.status === 200 && lb.body.granted === false && lb.body.holderName === 'Ana' && lb.body.deviceLabel === 'Ana laptop', lb.body);
+  check('…Ana renews it', (await lease(A)).body.granted === true);
+  await call('POST', '/relay/v1/test/advance-clock', { token: A, body: { ms: 121_000 } });
+  const lb2 = await lease(B);
+  check('after 2 minutes without a renewal it lapses, and Bruno takes it', lb2.body.granted === true, lb2.body);
+  check('…and now Ana is refused', (await lease(A)).body.granted === false);
+  const bad = await call('POST', '/relay/v1/leases', { token: A, body: { projectKey: 'p', scope: 'item', key: 'x', ttlSeconds: 120 } });
+  check('only the source scope is leased', bad.status === 400, bad.body);
+  // A device holds at most 200 live leases (Ruling 27): Bruno holds sentry-web, so 199 more fit.
+  const many = (i) => call('POST', '/relay/v1/leases', { token: B, body: { projectKey: 'p', scope: 'source', key: `s-${i}`, ttlSeconds: 120 } });
+  let granted = 0;
+  for (let i = 0; i < 199; i++) if ((await many(i)).body.granted === true) granted++;
+  const over = await many(199);
+  check('a device past 200 live leases is refused with 429', granted === 199 && over.status === 429 && over.body.error?.code === 'RATE_LIMITED', { granted, status: over.status, body: over.body });
+  check('…while renewing one it holds still works', (await many(0)).body.granted === true);
+}
+
 section('8. revoking a device closes its socket');
 const sB = await openStream(B);
 await until(() => sB.frames.some((f) => f.type === 'hello'));

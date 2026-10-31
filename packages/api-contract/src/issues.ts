@@ -30,6 +30,14 @@ export interface RepositoryIssuesView {
   readonly statusLabel: string;
   readonly linked: number;
   readonly checking: boolean;
+  /**
+   * Intake spec §10: true while issues are on here and the project has no
+   * primary tracker yet, to offer this repository's GitHub Issues as one
+   * (`POST /v1/repositories/:id/issues/use-as-tracker`).
+   */
+  readonly offerTracker: boolean;
+  /** Intake spec §10: this card is the legacy path, replaced by intake; the UI marks it so. */
+  readonly deprecated: boolean;
 }
 
 /** One issue Tandemise read, and its mission. */

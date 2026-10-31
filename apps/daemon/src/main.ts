@@ -111,6 +111,8 @@ export async function startDaemon(overrides: Parameters<typeof loadConfig>[0] = 
     identityResolver: () => ({ personId: services.identity.localPerson().id }),
     unauthenticatedHooks: () => coordination.settings().localHooksUnauthenticated === true,
     port: config.port,
+    // An intake token pushes for its one source only (spec 2026-10-30-intake-design.md §2).
+    intakeTokenResolver: (bearer) => services.intake.resolveToken(bearer),
     onUpgrade: (req, socket, head, path) => {
       if (path === STREAM_PATH) stream?.handleUpgrade(req, socket, head);
       else terminal.handleUpgrade(req, socket, head, path);

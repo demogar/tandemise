@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { IssueTrackerPort, UpstreamComment, UpstreamIssue } from '@tandemise/domain';
 import { splitGithubRepo } from '@tandemise/domain';
+import { TandemiseError } from '@tandemise/shared';
 import type { CommandExecutor } from '@tandemise/integrations-core';
 import { gh, ghJson, type GhContext } from './gh.js';
 
@@ -24,6 +25,49 @@ const commentSchema = z.object({
   body: z.string().nullable().optional(),
   user: z.object({ login: z.string() }).passthrough().nullable().optional(),
 }).passthrough();
+
+/**
+ * The top-level JSON values of `gh api --paginate`'s output: one per page,
+ * printed back to back (`[…][…]`), so not one JSON document. Splits on depth,
+ * minding strings, then parses each.
+ */
+function jsonValues(text: string): unknown[] {
+  const values: unknown[] = [];
+  let depth = 0;
+  let start = -1;
+  let inString = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (ch === '\\') i++;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === '[' || ch === '{') {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (ch === ']' || ch === '}') {
+      depth--;
+      if (depth === 0 && start !== -1) {
+        values.push(parseJson(text.slice(start, i + 1)));
+        start = -1;
+      }
+    }
+  }
+  if (depth !== 0 || (values.length === 0 && text.trim() !== '')) {
+    throw new TandemiseError('INTEGRATION_FAILED', `gh returned output that is not JSON: ${text.slice(0, 200)}`);
+  }
+  return values;
+}
+
+function parseJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new TandemiseError('INTEGRATION_FAILED', `gh returned output that is not JSON: ${text.slice(0, 200)}`);
+  }
+}
 
 function toIssue(raw: z.infer<typeof issueSchema>, fallbackState: 'OPEN' | 'CLOSED'): UpstreamIssue {
   return {
@@ -70,11 +114,26 @@ export class GhIssueTracker implements IssueTrackerPort {
     return me.login;
   }
 
+  /**
+   * Every comment, page by page (`--paginate`): a marker comment past the
+   * first 100 must still be found, or it would be posted again (Ruling 26).
+   * gh prints each page as its own JSON array, back to back.
+   */
   async comments(query: { repo: string; number: number; cwd?: string }): Promise<readonly UpstreamComment[]> {
     const { path } = splitGithubRepo(query.repo);
-    const rows = await ghJson(this.#ctx(query.cwd), [
-      'api', ...this.#host(query.repo), `repos/${path}/issues/${query.number}/comments?per_page=100`,
-    ], z.array(commentSchema), { timeoutMs: this.timeoutMs });
+    const result = await gh(this.#ctx(query.cwd), [
+      'api', ...this.#host(query.repo), '--paginate', `repos/${path}/issues/${query.number}/comments?per_page=100`,
+    ], { timeoutMs: this.timeoutMs });
+    const rows: z.infer<typeof commentSchema>[] = [];
+    for (const page of jsonValues(result.stdout)) {
+      const parsed = z.array(commentSchema).safeParse(page);
+      if (!parsed.success) {
+        throw new TandemiseError('INTEGRATION_FAILED',
+          `Unexpected gh response shape: ${parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')}`,
+          { details: { command: result.command } });
+      }
+      rows.push(...parsed.data);
+    }
     return rows.map((c) => ({ id: String(c.id), author: c.user?.login ?? null, body: c.body ?? '' }));
   }
 
@@ -94,8 +153,11 @@ export class GhIssueTracker implements IssueTrackerPort {
     ], { timeoutMs: this.timeoutMs });
   }
 
-  async close(query: { repo: string; number: number; cwd?: string }): Promise<void> {
-    await gh(this.#ctx(query.cwd), ['issue', 'close', String(query.number), '--repo', query.repo], { timeoutMs: this.timeoutMs });
+  /** `reason` is gh's own (intake's GitHub runner closes a won't-do item as "not planned"); unset, gh's default. */
+  async close(query: { repo: string; number: number; cwd?: string; reason?: 'completed' | 'not planned' }): Promise<void> {
+    await gh(this.#ctx(query.cwd), [
+      'issue', 'close', String(query.number), '--repo', query.repo, ...(query.reason === undefined ? [] : ['--reason', query.reason]),
+    ], { timeoutMs: this.timeoutMs });
   }
 
   #ctx(cwd: string | undefined): GhContext {

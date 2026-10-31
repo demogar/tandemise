@@ -6,13 +6,13 @@ import type {
   ArtifactStorePort,
 } from '@tandemise/domain';
 import {
-  ISSUE_CRITERIA_AUTHOR, canTransition, evaluateReadiness, indexTeam, isTaskFinished, isTerminalMissionStatus, normalizeLimits,
+  ISSUE_CRITERIA_AUTHOR, TRACKER_CRITERIA_AUTHOR, canTransition, evaluateReadiness, indexTeam, isTaskFinished, isTerminalMissionStatus, normalizeLimits,
   responsibleFor,
 } from '@tandemise/domain';
 import type {
   ClaimTaskRequest, CompleteTaskRequest, CreateMissionRequest, HandBackRequest, MissionSummary, ParkTaskRequest, TaskView,
 } from '@tandemise/api-contract';
-import type { Clock, IssueLinkId, Logger, MissionId, RepositoryId, RoutineId, TaskId, WorkspaceId } from '@tandemise/shared';
+import type { Clock, IssueLinkId, Logger, MissionId, RepositoryId, RoutineId, TaskId, TrackerItemId, WorkspaceId } from '@tandemise/shared';
 import { TandemiseError, asId, ids, slugify, summarize } from '@tandemise/shared';
 import type { ContributionService, FeedbackService, MissionService, PlanningService, PinnedContribution, ProjectionService } from '../services.js';
 import { ContributionError } from './contribution-service.js';
@@ -35,7 +35,7 @@ import {
   COVERED_MESSAGE, LINKABLE_OUTPUT_TYPES, continuedIn, isCoveredPlaceholder, parkedExternalOf, type ParkedExternal,
 } from '../support/outside-work.js';
 import { CLOSED_MISSION_MESSAGE, isReadableText, missionTakesRounds } from '../support/feedback-rules.js';
-import { uploadFilename } from '../planning/intake.js';
+import { uploadFilename } from '../planning/upload-intake.js';
 
 /** Where a step may be continued elsewhere from: queued, running, or done with nobody downstream on it yet (spec A4). */
 const PARKABLE_TASK_STATUSES: readonly MissionTask['status'][] = ['READY', 'RUNNING', 'SUCCEEDED'];
@@ -124,7 +124,9 @@ export class MissionServiceImpl implements MissionService {
     return missions.map((mission) => this.#summary(mission));
   }
 
-  async create(caller: Caller, request: CreateMissionRequest, origin: { routineId?: RoutineId; issueLinkId?: IssueLinkId } = {}): Promise<Mission> {
+  async create(
+    caller: Caller, request: CreateMissionRequest, origin: { routineId?: RoutineId; issueLinkId?: IssueLinkId; trackerItemId?: TrackerItemId; missionId?: MissionId } = {},
+  ): Promise<Mission> {
     const workspaceId = asId<'WorkspaceId'>(request.workspaceId);
     const workspace = this.deps.workspaces.get(workspaceId);
     if (workspace === undefined) throw TandemiseError.notFound('Workspace', workspaceId);
@@ -149,7 +151,8 @@ export class MissionServiceImpl implements MissionService {
       assertReadiness(null, evaluateReadiness({ criteria: lines, openQuestions: 0, proposedPending: 0 }));
     }
 
-    const id = ids.mission();
+    // Start names the id first: it claims the tracker item under it before the mission exists (intake, Ruling 22).
+    const id = origin.missionId ?? ids.mission();
     const title = request.title?.trim() || titleFromGoal(request.goal);
     // Queued only while it is a draft: a mission planned now is not waiting for anything.
     const queued = request.queued === true && request.planNow !== true;
@@ -188,12 +191,16 @@ export class MissionServiceImpl implements MissionService {
         ...(origin.routineId === undefined ? {} : { routineId: origin.routineId }),
         // Which GitHub issue it came from (P14): a restart finds it by this rather than making another.
         ...(origin.issueLinkId === undefined ? {} : { issueLinkId: origin.issueLinkId }),
+        // Which tracker item Start made it from (intake spec §7): Start refuses a second mission by this.
+        ...(origin.trackerItemId === undefined ? {} : { trackerItemId: origin.trackerItemId }),
       });
       // Numbered in the same transaction as the mission: the ledger is the
       // contract every later role is measured against, so a mission never
       // exists without it.
       // Lines parsed from an issue are marked as such, so an upstream edit replaces only those (P14).
-      this.deps.criteria?.addUserCriteria(id, request.successCriteria ?? [], origin.issueLinkId === undefined ? undefined : ISSUE_CRITERIA_AUTHOR);
+      // Lines parsed from a tracker item are recorded as coming from the tracker (intake spec §7).
+      this.deps.criteria?.addUserCriteria(id, request.successCriteria ?? [], origin.issueLinkId !== undefined ? ISSUE_CRITERIA_AUTHOR
+        : origin.trackerItemId !== undefined ? TRACKER_CRITERIA_AUTHOR : undefined);
       // The integration branch is named at creation rather than at merge time so
       // that every task branch can be cut from a name that already exists in the
       // record, and so the user can see where the work will land before it does.

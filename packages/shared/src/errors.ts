@@ -12,6 +12,7 @@ export type ErrorCode =
   | 'INTEGRATION_FAILED'
   | 'CANCELLED'
   | 'TIMEOUT'
+  | 'RATE_LIMITED'
   | 'INTERNAL';
 
 export class TandemiseError extends Error {

@@ -2,6 +2,7 @@ import type {
   ApprovalId, ArtifactId, CriterionId, FeedbackId, IntegrationId, IssueLinkId, QuestionId, MemberId, MissionId, PersonId, RepositoryId, RoutineId, RuntimeProfileId,
   TaskId, WorkspaceId,
 } from '@tandemise/shared';
+import type { TrackerItemId } from '@tandemise/shared';
 import type {
   Approval, ArtifactManifest, ExecutionTargetRecord, FeedbackAttachment, Mission, MissionTask, OutsideContribution, PullRequestSnapshot, RoleStaffing, RoleTemplate,
   RunEventRecord, RuntimeProfile, StaffingPatch,
@@ -70,6 +71,14 @@ export interface TandemiseServices {
   readonly contributions: ContributionService;
   /** Eval suites, saving a finished step as a case, and the run-score summary (P3b). */
   readonly evals: import('./services/eval-service.js').EvalService;
+  /** Signals from any source, recorded and landed in the project's primary tracker (intake). */
+  readonly intake: import('./services/intake-service.js').IntakeService;
+  /** The board from the primary tracker, and Start: a mission from one of its items (intake spec §7). */
+  readonly tracker: import('./services/tracker-service.js').TrackerService;
+  /** The shipped intake runners, and "Check sources now" (intake spec §2, plan Task 10). */
+  readonly intakeRunners: import('./intake/runner-host.js').IntakeRunnerHost;
+  /** Closing the loop at every source when the tracker item is done (intake spec §8, plan Task 13). */
+  readonly closures: import('./services/closure-service.js').ClosureService;
   /** A person taking the keyboard on an agent step, and handing it back. */
   readonly holds: HoldService;
   /** The project's brain repository: link, sync, memory and promotions (#51). */
@@ -178,7 +187,7 @@ export interface WorkspaceService {
 export interface MissionService {
   list(filter: { workspaceId?: string; status?: string; limit?: number }): readonly MissionSummary[];
   /** `origin.routineId` marks a mission a routine created (P11). */
-  create(caller: Caller, request: CreateMissionRequest, origin?: { routineId?: RoutineId; issueLinkId?: IssueLinkId }): Promise<Mission>;
+  create(caller: Caller, request: CreateMissionRequest, origin?: { routineId?: RoutineId; issueLinkId?: IssueLinkId; trackerItemId?: TrackerItemId; missionId?: MissionId }): Promise<Mission>;
   start(id: MissionId): Promise<Mission>;
   pause(id: MissionId): Promise<Mission>;
   resume(id: MissionId): Promise<Mission>;

@@ -59,6 +59,12 @@
       "path": "./packages/integration-github"
     },
     {
+      "path": "./packages/integration-youtrack"
+    },
+    {
+      "path": "./packages/intake-runners"
+    },
+    {
       "path": "./packages/integration-mcp"
     },
     {

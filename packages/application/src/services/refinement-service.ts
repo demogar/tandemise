@@ -18,7 +18,7 @@ import type { EventRecorder, EventScope } from '../support/event-recorder.js';
 import { requireSeat, type Caller } from '../support/identity.js';
 import { buildRefinementPrompt } from '../planning/refinement-prompt.js';
 import { refinementTitle } from '../planning/materialize.js';
-import { intakeArtifactFor, missionUploads } from '../planning/intake.js';
+import { intakeArtifactFor, missionUploads } from '../planning/upload-intake.js';
 import type { ReadinessService } from './readiness.js';
 import { ensureTandemiseIgnore } from '../support/ignore.js';
 
