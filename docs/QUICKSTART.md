@@ -78,6 +78,16 @@ lessons, the next run loads the relevant ones, and **Brain** in the sidebar show
 them, the rules they are becoming, and how the brain syncs. Sharing is
 `git pull` and `git push`: no server, and no secret ever enters the brain.
 
+## Hold and interact
+
+Open a running or waiting agent step and choose **Hold**. The run stops, and
+the task panel becomes a terminal inside the agent's own session and checkout:
+type to steer it, edit files, run commands. **Continue** hands the step back and
+the pipeline picks up from the work as it stands; **Release** ends the hold and
+keeps your changes without resuming the session. The first time Claude asks
+whether to trust the folder, answer it in the terminal. The terminal needs
+`node-pty`, which compiles on install (see CONTRIBUTING.md for Linux).
+
 ## Working as a team (optional relay)
 
 Nothing here needs a server. When a team wants to see who is working on
