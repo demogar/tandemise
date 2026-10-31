@@ -125,3 +125,5 @@ export type { AskHumanDeps } from './tools/ask-human.js';
 export { ConnectFlow, CONNECT_TIMEOUT_MS } from './services/connect-flow.js';
 export { IntegrationCredentials } from './support/integration-credentials.js';
 export type { OAuthCallback, OAuthCallbackListener, OAuthCallbackPort } from './ports.js';
+
+export * from './brain/layout.js';

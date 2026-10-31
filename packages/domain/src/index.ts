@@ -44,3 +44,7 @@ export * from './ports/event-bus.js';
 export * from './ports/secrets.js';
 export * from './ports/snapshot.js';
 export * from './ports/eval-blobs.js';
+
+export * from './brain/writer.js';
+export * from './brain/scrub.js';
+export * from './ports/brain.js';
