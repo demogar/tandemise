@@ -13,6 +13,7 @@ import { Merge } from './project/Merge.js';
 import { Issues } from './project/Issues.js';
 import { SetupAsCode } from './project/SetupAsCode.js';
 import { BrainLink } from './project/BrainLink.js';
+import { Badge, Button, Card } from '@tandemise/design/react';
 
 const AUTONOMY_ROWS: readonly { key: keyof AutonomySettings; label: string; hint: string; options: readonly string[] }[] = [
   { key: 'planApproval', label: 'Plan approval', hint: 'Show the proposed task graph before anything runs.', options: ['ask', 'auto'] },
@@ -66,7 +67,7 @@ export function Project(): JSX.Element {
             <>
               <section className="section">
                 <SectionHead title="Name" />
-                <div className="card">
+                <Card>
                   <Field label="Project name" hint="Shown in the switcher at the top of the sidebar.">
                     <input
                       className="input"
@@ -78,32 +79,32 @@ export function Project(): JSX.Element {
                       }}
                     />
                   </Field>
-                </div>
+                </Card>
               </section>
 
               <section className="section">
                               <SectionHead
                                 title="Repositories"
                                 action={
-                                  <button type="button" className="btn" onClick={() => void pickRepository()} disabled={addRepository.isPending}>
+                                  <Button onClick={() => void pickRepository()} disabled={addRepository.isPending}>
                                     <Icon name="folder" size={13} />
                                     {addRepository.isPending ? 'Adding…' : 'Add repository'}
-                                  </button>
+                                  </Button>
                                 }
                               />
                               {(workspaceView.repositories.length ?? 0) === 0 ? (
-                                <div className="card">
+                                <Card>
                                   <Empty
                                     icon="folder"
                                     title="No repositories yet"
                                     body="Tandemise never edits your checkout directly — it cuts a git worktree per task. Point it at a repository to get started."
                                     action={
-                                      <button type="button" className="btn btn--primary" onClick={() => void pickRepository()}>
+                                      <Button variant="primary" onClick={() => void pickRepository()}>
                                         Choose a folder
-                                      </button>
+                                      </Button>
                                     }
                                   />
-                                </div>
+                                </Card>
                               ) : (
                                 <div className="list">
                                   {(workspaceView.repositories ?? []).map((repository) => (
@@ -117,22 +118,20 @@ export function Project(): JSX.Element {
                                       </div>
                                       <div className="list__aside">
                                         <span className="chip chip--muted">{repository.defaultBranch}</span>
-                                        <button
-                                          type="button"
-                                          className="btn btn--icon btn--ghost"
+                                        <Button
+                                          iconOnly variant="ghost"
                                           aria-label={`Reveal ${repository.name} in Finder`}
                                           onClick={() => void window.tandemise.revealInFinder(repository.path)}
                                         >
                                           <Icon name="externalLink" size={13} />
-                                        </button>
-                                        <button
-                                          type="button"
-                                          className="btn btn--icon btn--ghost"
+                                        </Button>
+                                        <Button
+                                          iconOnly variant="ghost"
                                           aria-label={`Remove ${repository.name}`}
                                           onClick={() => setRemovingRepository(repository)}
                                         >
                                           <Icon name="trash" size={13} />
-                                        </button>
+                                        </Button>
                                       </div>
                                     </div>
                                   ))}
@@ -145,7 +144,7 @@ export function Project(): JSX.Element {
 
               <section className="section">
                               <SectionHead title="Autonomy" meta="Per action class, not one global dial" />
-                              <div className="card card--flush">
+                              <Card flush>
                                 {AUTONOMY_ROWS.map((row) => {
                                   const current = workspace.autonomy[row.key] ?? row.options[0] ?? 'ask';
                                   const locked = row.options.length === 1;
@@ -157,10 +156,10 @@ export function Project(): JSX.Element {
                                       </div>
                                       <div className="list__aside">
                                         {locked ? (
-                                          <span className="badge badge--failed">
+                                          <Badge tone="failed">
                                             <Icon name="shield" size={11} />
                                             Denied
-                                          </span>
+                                          </Badge>
                                         ) : (
                                           <Segmented
                                             value={current}
@@ -176,13 +175,13 @@ export function Project(): JSX.Element {
                                     </div>
                                   );
                                 })}
-                              </div>
+                              </Card>
                               {updateWorkspace.isError ? <ErrorState error={updateWorkspace.error} /> : null}
                             </section>
 
               <section className="section">
                               <SectionHead title="Concurrency" meta="How many workers may run at once" />
-                              <div className="card">
+                              <Card>
                                 <Field label="Maximum total workers" hint="Each worker is a child process with its own worktree. Three is a sane default on a laptop.">
                                   <input
                                     className="input"
@@ -199,7 +198,7 @@ export function Project(): JSX.Element {
                                     }}
                                   />
                                 </Field>
-                              </div>
+                              </Card>
                             </section>
 
               <Limits workspaceId={workspace.id} monthly={workspace.monthlyLimits ?? []} perMission={workspace.defaultMissionLimits ?? []} />

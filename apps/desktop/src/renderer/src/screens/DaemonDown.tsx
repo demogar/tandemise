@@ -1,6 +1,7 @@
 import { Icon } from '../components/Icon.js';
 import { Logo } from '../components/Logo.js';
 import { useConnection } from '../lib/connection.js';
+import { Button } from '@tandemise/design/react';
 
 /**
  * Shown whenever the daemon is not answering. It is a first-class screen, not
@@ -39,10 +40,10 @@ export function DaemonDown(): JSX.Element {
         </div>
 
         <div className="row" style={{ gap: 'var(--s2)' }}>
-          <button type="button" className="btn btn--primary btn--lg" onClick={reconnect} disabled={busy}>
+          <Button variant="primary" size="lg" onClick={reconnect} disabled={busy}>
             <Icon name="refresh" size={14} />
             {busy ? 'Trying…' : 'Retry'}
-          </button>
+          </Button>
         </div>
 
         <p className="dim" style={{ fontSize: 'var(--fs-xs)', lineHeight: 1.6 }}>

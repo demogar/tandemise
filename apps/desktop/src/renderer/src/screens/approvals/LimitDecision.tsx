@@ -3,6 +3,7 @@ import type { ApprovalView } from '@tandemise/api-contract';
 import { ErrorState } from '../../components/primitives.js';
 import { useDaemonMutation } from '../../lib/queries.js';
 import { KEEP_PAUSED_OPTION, RAISE_LIMIT_OPTION } from '../../lib/domain.js';
+import { Button } from '@tandemise/design/react';
 
 /**
  * The answer to a limit card (P8): a number to raise the limit to, then
@@ -51,12 +52,12 @@ export function LimitDecision({ view }: { view: ApprovalView }): JSX.Element {
             onChange={(event) => setValue(event.target.value)}
           />
         </label>
-        <button type="button" className="btn btn--primary" disabled={decide.isPending} onClick={raise}>
+        <Button variant="primary" disabled={decide.isPending} onClick={raise}>
           Raise limit and resume
-        </button>
-        <button type="button" className="btn" disabled={decide.isPending} onClick={() => decide.mutate({ optionId: KEEP_PAUSED_OPTION })}>
+        </Button>
+        <Button disabled={decide.isPending} onClick={() => decide.mutate({ optionId: KEEP_PAUSED_OPTION })}>
           Keep paused
-        </button>
+        </Button>
       </div>
       <span className="decide-inline__hint" data-warn={problem !== null || decide.isError}>
         {problem ?? 'The work resumes where it stopped. Keep paused and nothing more runs; you can raise the limit later.'}

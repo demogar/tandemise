@@ -8,6 +8,7 @@ import { FromYourRuns } from './FromYourRuns.js';
 import { RunsTab } from './RunsTab.js';
 import { SuitesTab } from './SuitesTab.js';
 import { evalsHref, parseEvalsQuery, type EvalsQuery, type EvalsTab } from './link.js';
+import { Tab, Tabs } from '@tandemise/design/react';
 
 /**
  * Evals (P3b): steps saved as cases, runs that try a change against them,
@@ -42,11 +43,11 @@ export function Evals(): JSX.Element {
     <>
       <PageHeader title="Evals" subtitle="Replay finished steps with a different model, skill or setup, and compare what was measured." />
 
-      <div className="tabs" role="tablist">
+      <Tabs label="Evals sections">
         <TabLink tab="suites" current={query.tab} label="Suites" suite={suiteId} />
         <TabLink tab="runs" current={query.tab} label="Runs" suite={suiteId} />
         <TabLink tab="yours" current={query.tab} label="From your runs" suite={suiteId} />
-      </div>
+      </Tabs>
 
       {query.tab === 'yours' ? (
         <div className="page">
@@ -81,8 +82,8 @@ export function Evals(): JSX.Element {
 
 function TabLink({ tab, current, label, suite }: { tab: EvalsTab; current: EvalsTab; label: string; suite: string | null }): JSX.Element {
   return (
-    <Link href={evalsHref({ tab, suite })} className="tab" role="tab" aria-selected={tab === current}>
+    <Tab as={Link} href={evalsHref({ tab, suite })} selected={tab === current}>
       {label}
-    </Link>
+    </Tab>
   );
 }

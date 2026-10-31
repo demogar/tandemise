@@ -6,6 +6,7 @@ import { useDaemon } from '../../lib/connection.js';
 import { useDaemonMutation, useDiscoveredSkills } from '../../lib/queries.js';
 import { useWorkspaceId } from '../../lib/workspace.js';
 import { SkillPreview } from './SkillPreview.js';
+import { Badge, Button, Card } from '@tandemise/design/react';
 
 type From = 'claude' | 'folder' | 'git';
 
@@ -72,13 +73,13 @@ function FromClaude({ onImported }: { onImported: (messages: readonly string[]) 
     <div className="stack" style={{ gap: 'var(--s3)' }}>
       <p className="dim" style={{ margin: 0, fontSize: 'var(--fs-xs)' }}>Looking in <span className="mono">{root}</span></p>
       {!exists || skills.length === 0 ? (
-        <div className="card">
+        <Card>
           <Empty
             icon="book"
             title={exists ? 'No skill folders here' : 'This folder does not exist'}
             body="Import a skill from a folder or a git repository instead."
           />
-        </div>
+        </Card>
       ) : (
         <div className="list" aria-label="Found skills">
           {skills.map((skill) => {
@@ -96,7 +97,7 @@ function FromClaude({ onImported }: { onImported: (messages: readonly string[]) 
                   <div className="list__title">{skill.name ?? skill.folder}</div>
                   {skill.description ? <div className="list__subtitle">{skill.description}</div> : null}
                   {skill.problem !== null ? (
-                    <div className="list__subtitle"><span className="badge badge--failed" style={{ whiteSpace: 'normal' }}>{skill.problem}</span></div>
+                    <div className="list__subtitle"><Badge tone="failed" style={{ whiteSpace: 'normal' }}>{skill.problem}</Badge></div>
                   ) : (
                     <div className="list__subtitle dim" style={{ fontSize: 'var(--fs-xs)' }}>
                       {skill.fileCount} {skill.fileCount === 1 ? 'file' : 'files'} · {skill.sizeLabel}
@@ -105,7 +106,7 @@ function FromClaude({ onImported }: { onImported: (messages: readonly string[]) 
                   )}
                 </div>
                 <div className="list__aside">
-                  <button type="button" className="btn btn--ghost" onClick={() => void open(skill.path)}>Preview</button>
+                  <Button variant="ghost" onClick={() => void open(skill.path)}>Preview</Button>
                 </div>
               </div>
             );
@@ -118,14 +119,13 @@ function FromClaude({ onImported }: { onImported: (messages: readonly string[]) 
       {importAll.isError ? <ErrorState error={importAll.error} /> : null}
 
       <div className="row" style={{ justifyContent: 'flex-end' }}>
-        <button
-          type="button"
-          className="btn btn--primary"
+        <Button
+          variant="primary"
           disabled={ticked.length === 0 || importAll.isPending}
           onClick={() => importAll.mutate(ticked, { onSuccess: (done) => onImported(done.map((d) => d.message)) })}
         >
           {importAll.isPending ? 'Importing…' : ticked.length === 0 ? 'Tick the skills to import' : ticked.length === 1 ? 'Import 1 skill' : `Import ${ticked.length} skills`}
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -173,7 +173,7 @@ function FromSource({ kind, onImported }: { kind: 'folder' | 'git'; onImported: 
         <Field label="Folder" hint="The folder that holds the SKILL.md.">
           <div className="row" style={{ gap: 'var(--s2)' }}>
             <input className="input" aria-label="Skill folder" value={path} placeholder="/path/to/skill" onChange={(e) => { setPath(e.target.value); setPreview(null); }} />
-            <button type="button" className="btn" onClick={() => void choose()}>Choose…</button>
+            <Button onClick={() => void choose()}>Choose…</Button>
           </div>
         </Field>
       ) : (
@@ -187,9 +187,9 @@ function FromSource({ kind, onImported }: { kind: 'folder' | 'git'; onImported: 
         </div>
       )}
       <div>
-        <button type="button" className="btn" disabled={!ready || previewing} onClick={() => void run()}>
+        <Button disabled={!ready || previewing} onClick={() => void run()}>
           {previewing ? 'Reading…' : 'Preview'}
-        </button>
+        </Button>
       </div>
 
       {error !== null ? <ErrorState error={error} /> : null}
@@ -198,14 +198,13 @@ function FromSource({ kind, onImported }: { kind: 'folder' | 'git'; onImported: 
 
       {preview !== null ? (
         <div className="row" style={{ justifyContent: 'flex-end' }}>
-          <button
-            type="button"
-            className="btn btn--primary"
+          <Button
+            variant="primary"
             disabled={preview.hash === null || preview.problem !== null || !preview.changes || doImport.isPending}
             onClick={() => doImport.mutate(preview.hash!, { onSuccess: (done) => onImported([done.message]) })}
           >
             {doImport.isPending ? 'Importing…' : 'Import'}
-          </button>
+          </Button>
         </div>
       ) : null}
     </div>

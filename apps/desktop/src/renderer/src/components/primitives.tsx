@@ -2,18 +2,15 @@ import { useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'r
 import { Icon, type IconName } from './Icon.js';
 import { describeError } from '../lib/daemon.js';
 import { humanizeStatus, type Tone } from '../lib/format.js';
+import { Button, Card, EmptyState, Field as DesignField, StatusDot as DesignStatusDot, StatusPill } from '@tandemise/design/react';
 
+/** A record's status in words, as a pill in its tone (`StatusPill` from the design package). */
 export function StatusBadge({ status, tone, icon }: { status: string; tone: Tone; icon?: IconName }): JSX.Element {
-  return (
-    <span className={`badge badge--${tone}`}>
-      {icon ? <Icon name={icon} size={12} /> : <span className={`dot dot--${tone}`} />}
-      {humanizeStatus(status)}
-    </span>
-  );
+  return <StatusPill tone={tone} label={humanizeStatus(status)} icon={icon ? <Icon name={icon} size={12} /> : undefined} />;
 }
 
 export function StatusDot({ tone, live = false }: { tone: Tone; live?: boolean }): JSX.Element {
-  return <span className={`dot dot--${tone}${live ? ' dot--pulse' : ''}`} />;
+  return <DesignStatusDot tone={tone} live={live} />;
 }
 
 export function Empty({
@@ -27,16 +24,7 @@ export function Empty({
   body: string;
   action?: ReactNode;
 }): JSX.Element {
-  return (
-    <div className="empty">
-      <div className="empty__icon">
-        <Icon name={icon} size={18} />
-      </div>
-      <div className="empty__title">{title}</div>
-      <p className="empty__body">{body}</p>
-      {action}
-    </div>
-  );
+  return <EmptyState icon={<Icon name={icon} size={18} />} title={title} body={body} action={action} />;
 }
 
 export function ErrorState({ error, onRetry }: { error: unknown; onRetry?: () => void }): JSX.Element {
@@ -49,10 +37,10 @@ export function ErrorState({ error, onRetry }: { error: unknown; onRetry?: () =>
         <p className="errorstate__body">{described.detail}</p>
       </div>
       {onRetry ? (
-        <button type="button" className="btn" onClick={onRetry}>
+        <Button onClick={onRetry}>
           <Icon name="refresh" size={13} />
           Retry
-        </button>
+        </Button>
       ) : null}
     </div>
   );
@@ -86,11 +74,11 @@ export function SkeletonCards({ count = 3 }: { count?: number }): JSX.Element {
   return (
     <div className="grid grid--3">
       {Array.from({ length: count }, (_, index) => (
-        <div key={index} className="card" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <Card key={index} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <Skeleton height={12} width="45%" />
           <Skeleton height={24} width="62%" />
           <Skeleton height={11} width="80%" />
-        </div>
+        </Card>
       ))}
     </div>
   );
@@ -108,11 +96,9 @@ export function Field({
   children: ReactNode;
 }): JSX.Element {
   return (
-    <label className="field">
-      <span className="field__label">{label}</span>
+    <DesignField label={label} hint={hint} error={error}>
       {children}
-      {error ? <span className="field__error">{error}</span> : hint ? <span className="field__hint">{hint}</span> : null}
-    </label>
+    </DesignField>
   );
 }
 

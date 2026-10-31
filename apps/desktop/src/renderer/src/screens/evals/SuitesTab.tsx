@@ -7,6 +7,7 @@ import { Empty, ErrorState, SkeletonList } from '../../components/primitives.js'
 import { useEvalCases, useRoles } from '../../lib/queries.js';
 import { pluralize, relativeTime } from '../../lib/format.js';
 import { Refusal, useEvalMutation } from './shared.js';
+import { Button, Card } from '@tandemise/design/react';
 
 type Deleting = { readonly kind: 'suite'; readonly suite: EvalSuiteView } | { readonly kind: 'case'; readonly kase: EvalCaseView };
 
@@ -20,9 +21,9 @@ export function SuitesTab({ suites, suiteId, onSuite }: {
     return (
       <div className="page">
         <div className="page__inner">
-          <div className="card">
+          <Card>
             <Empty icon="target" title="No suites yet" body="Save a finished step as a case from its card to start a suite." />
-          </div>
+          </Card>
         </div>
       </div>
     );
@@ -83,10 +84,10 @@ function SuiteDetail({ suite, onDeleted }: { suite: EvalSuiteView; onDeleted: ()
               <span>· created {relativeTime(suite.createdAt)}</span>
             </div>
           </div>
-          <button type="button" className="btn btn--ghost" onClick={() => setDeleting({ kind: 'suite', suite })}>
+          <Button variant="ghost" onClick={() => setDeleting({ kind: 'suite', suite })}>
             <Icon name="trash" size={13} />
             Delete suite
-          </button>
+          </Button>
         </div>
       </header>
 
@@ -100,7 +101,7 @@ function SuiteDetail({ suite, onDeleted }: { suite: EvalSuiteView; onDeleted: ()
       ) : list.length === 0 ? (
         <Empty icon="target" title="No cases in this suite" body="Save a finished step as a case from its card to start a suite." />
       ) : (
-        <div className="card card--flush">
+        <Card flush>
           <table className="table" aria-label="Cases">
             <thead>
               <tr>
@@ -139,15 +140,15 @@ function SuiteDetail({ suite, onDeleted }: { suite: EvalSuiteView; onDeleted: ()
                     )}
                   </td>
                   <td style={{ textAlign: 'right' }}>
-                    <button type="button" className="btn btn--ghost btn--icon" aria-label={`Delete case ${kase.name}`} title="Delete case" onClick={() => setDeleting({ kind: 'case', kase })}>
+                    <Button variant="ghost" iconOnly aria-label={`Delete case ${kase.name}`} title="Delete case" onClick={() => setDeleting({ kind: 'case', kase })}>
                       <Icon name="trash" size={13} />
-                    </button>
+                    </Button>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
+        </Card>
       )}
 
       {deleting ? (

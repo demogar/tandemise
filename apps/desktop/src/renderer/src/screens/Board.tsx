@@ -12,6 +12,7 @@ import { useWorkspaceId } from '../lib/workspace.js';
 import { humanizeStatus, missionTone, relativeTime } from '../lib/format.js';
 import { IntakeList } from './board/IntakeList.js';
 import './Board.css';
+import { Button, Card, Tab, Tabs } from '@tandemise/design/react';
 
 export type BoardTab = 'board' | 'intake';
 export const BOARD_TABS: readonly BoardTab[] = ['board', 'intake'];
@@ -65,26 +66,26 @@ export function Board({ tab }: { tab: BoardTab }): JSX.Element {
     <>
       <PageHeader title="Board" subtitle="The work in your tracker. Start an item to make it a mission." />
 
-      <div className="tabs" role="tablist">
-        <Link href="/board" className="tab" role="tab" aria-selected={tab === 'board'}>
-          Board<span className="tab__count">{counts.board}</span>
-        </Link>
-        <Link href="/board/intake" className="tab" role="tab" aria-selected={tab === 'intake'}>
-          Intake<span className="tab__count">{counts.intake}</span>
-        </Link>
-      </div>
+      <Tabs label="Board sections">
+        <Tab as={Link} href="/board" selected={tab === 'board'} count={counts.board}>
+          Board
+        </Tab>
+        <Tab as={Link} href="/board/intake" selected={tab === 'intake'} count={counts.intake}>
+          Intake
+        </Tab>
+      </Tabs>
 
       <div className="page">
         <div className="page__inner">
           {noTracker ? (
-            <div className="card">
+            <Card>
               <Empty
                 icon="flag"
                 title={NO_TRACKER}
                 body="Your board is your tracker's own list of work. Tandemise files what comes in there, once, and you start items from here."
                 action={<Link href="/settings/intake" className="btn btn--primary">Open Settings → Intake</Link>}
               />
-            </div>
+            </Card>
           ) : tab === 'intake' ? (
             <IntakeList signals={signals} />
           ) : (
@@ -95,10 +96,10 @@ export function Board({ tab }: { tab: BoardTab }): JSX.Element {
                   {label || 'Your tracker'}
                 </span>
                 {board.data?.refreshedAt ? <span className="board__refreshed">Read {relativeTime(board.data.refreshedAt)}</span> : null}
-                <button type="button" className="btn board__check" disabled={check.isPending} onClick={() => check.mutate(undefined, { onSuccess: (fresh) => queryClient.setQueryData(keys.board(workspaceId), fresh) })}>
+                <Button className="board__check" disabled={check.isPending} onClick={() => check.mutate(undefined, { onSuccess: (fresh) => queryClient.setQueryData(keys.board(workspaceId), fresh) })}>
                   <Icon name="refresh" size={13} />
                   {check.isPending ? 'Checking…' : 'Check sources now'}
-                </button>
+                </Button>
               </div>
               {board.data?.problem ? <div className="banner banner--warn board__problem" role="status">{board.data.problem}</div> : null}
               {check.isError ? <ErrorState error={check.error} /> : null}
@@ -106,9 +107,9 @@ export function Board({ tab }: { tab: BoardTab }): JSX.Element {
               {board.isPending ? (
                 <SkeletonList rows={4} />
               ) : board.data && counts.board === 0 ? (
-                <div className="card">
+                <Card>
                   <Empty icon="flag" title={`Nothing on your board yet. Check sources, or add work in ${label || 'your tracker'}.`} body="Items in a ready, in progress or in review state show here." />
-                </div>
+                </Card>
               ) : board.data ? (
                 GROUPS.map((group) => <Group key={group.key} id={group.key} label={group.label} items={board.data.groups[group.key]} />)
               ) : null}
@@ -129,9 +130,9 @@ function Group({ id, label, items }: { id: string; label: string; items: readonl
       {items.length === 0 ? (
         <p className="muted board__none">Nothing here.</p>
       ) : (
-        <div className="card card--flush">
+        <Card flush>
           {items.map((item) => <Row key={item.id} item={item} />)}
-        </div>
+        </Card>
       )}
     </section>
   );
@@ -172,15 +173,14 @@ function Row({ item }: { item: BoardItemView }): JSX.Element {
         {start.isError ? <ErrorState error={start.error} /> : null}
       </div>
       <div className="list__aside">
-        <button
-          type="button"
-          className="btn btn--primary board__start"
+        <Button
+          variant="primary" className="board__start"
           disabled={blocked !== null || start.isPending}
           title={blocked ?? `Start ${item.key} as a mission`}
           onClick={() => start.mutate()}
         >
           {start.isPending ? 'Starting…' : 'Start'}
-        </button>
+        </Button>
       </div>
     </div>
   );

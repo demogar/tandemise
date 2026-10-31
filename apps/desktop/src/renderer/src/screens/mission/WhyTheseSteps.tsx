@@ -3,6 +3,7 @@ import type { PlanDecisionView } from '@tandemise/api-contract';
 import { ErrorState } from '../../components/primitives.js';
 import { useDaemonMutation } from '../../lib/queries.js';
 import './WhyTheseSteps.css';
+import { Button } from '@tandemise/design/react';
 
 /**
  * "Why these steps" (#53 §10): what the factory believed about the task, the
@@ -39,14 +40,14 @@ export function WhyTheseSteps({ missionId, decision }: { missionId: string; deci
         </div>
         <div className="why__actions">
           {decision.canMakeCareful ? (
-            <button type="button" className="btn" disabled={lane.isPending} onClick={() => change('careful')}>
+            <Button disabled={lane.isPending} onClick={() => change('careful')}>
               Make it careful
-            </button>
+            </Button>
           ) : null}
           {decision.canMakeQuick ? (
-            <button type="button" className="btn btn--ghost" disabled={lane.isPending} onClick={() => change('quick')}>
+            <Button variant="ghost" disabled={lane.isPending} onClick={() => change('quick')}>
               Make it quick
-            </button>
+            </Button>
           ) : null}
         </div>
       </div>

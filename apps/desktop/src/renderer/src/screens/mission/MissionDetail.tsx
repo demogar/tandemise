@@ -22,6 +22,7 @@ import { describeError } from '../../lib/daemon.js';
 import { clearMissionNotice, useMissionNotice } from '../../lib/notices.js';
 import { useOpenTerminal } from '../../lib/terminal.js';
 import { TerminalPanel } from '../../components/TerminalPanel.js';
+import { Button, Card } from '@tandemise/design/react';
 
 // Feed first: it is where a mission opens, and the order of the tabs says so.
 export const MISSION_TABS = ['feed', 'plan', 'timeline', 'artifacts', 'checks', 'metrics'] as const;
@@ -99,10 +100,9 @@ export function MissionDetail({ id, tab }: { id: string; tab: MissionTab }): JSX
                 && (!factory || (detail.mission.laneRequest === 'careful' && action.lane === undefined));
               const notReady = gated && readiness?.ready !== true;
               return (
-                <button
+                <Button
                   key={`${action.id}${action.lane ?? ''}`}
-                  type="button"
-                  className={`btn${action.primary ? ' btn--primary' : ''}`}
+                  variant={action.primary ? 'primary' : 'secondary'}
                   disabled={act.isPending || notReady}
                   title={notReady ? readiness?.detail : undefined}
                   onClick={() => (action.id === 'cancel' ? setConfirming('cancel') : act.mutate(
@@ -113,12 +113,12 @@ export function MissionDetail({ id, tab }: { id: string; tab: MissionTab }): JSX
                 >
                   <Icon name={action.icon} size={13} />
                   {notReady && readiness !== undefined ? readiness.label : action.label}
-                </button>
+                </Button>
               );
             })}
-            <button type="button" className="btn btn--icon btn--ghost" title="Delete mission" onClick={() => setConfirming('delete')}>
+            <Button iconOnly variant="ghost" title="Delete mission" onClick={() => setConfirming('delete')}>
               <Icon name="trash" size={14} />
-            </button>
+            </Button>
           </>
         }
       />
@@ -159,9 +159,9 @@ export function MissionDetail({ id, tab }: { id: string; tab: MissionTab }): JSX
               <strong>The mission was created, but its staffing was not saved.</strong> {describeError(staffingNotice).detail} Set it
               per task from the plan, or in Team for the whole project.
             </span>
-            <button type="button" className="btn btn--ghost" onClick={() => clearMissionNotice(id)}>
+            <Button variant="ghost" onClick={() => clearMissionNotice(id)}>
               Dismiss
-            </button>
+            </Button>
           </div>
         </div>
       ) : null}
@@ -383,7 +383,7 @@ export function MissionNotFound(): JSX.Element {
       <PageHeader title="Mission not found" crumbs={[{ label: 'Missions', href: '/missions' }]} />
       <div className="page">
         <div className="page__inner">
-          <div className="card">
+          <Card>
             <Empty
               icon="search"
               title="That mission no longer exists"
@@ -394,7 +394,7 @@ export function MissionNotFound(): JSX.Element {
                 </Link>
               }
             />
-          </div>
+          </Card>
         </div>
       </div>
     </>

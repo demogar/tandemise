@@ -16,6 +16,7 @@ import { MemberDrawer, memberSubtitle, type MemberTarget } from './MemberForm.js
 import { StaffingEditor, applyPreset, needsPick, presetOf } from './StaffingEditor.js';
 import { RolesPane } from './RolesPane.js';
 import { RelayTeam } from './RelayTeam.js';
+import { Badge, Button, Card, Tab, Tabs } from '@tandemise/design/react';
 
 export type TeamTab = 'people' | 'staffing' | 'roles';
 
@@ -38,19 +39,19 @@ export function Team({ tab }: { tab: TeamTab }): JSX.Element {
         subtitle="Who does the work, and who answers for it."
         actions={
           tab === 'people' ? (
-            <button type="button" className="btn btn--primary" onClick={() => setTarget({ kind: 'new-agent' })}>
+            <Button variant="primary" onClick={() => setTarget({ kind: 'new-agent' })}>
               <Icon name="sparkle" size={13} />
               Add agent
-            </button>
+            </Button>
           ) : null
         }
       />
 
-      <div className="tabs" role="tablist">
+      <Tabs label="Team sections">
         <TabLink tab="people" current={tab} label="You & agents" count={actors.agents.length} />
         <TabLink tab="staffing" current={tab} label="Staffing" />
         <TabLink tab="roles" current={tab} label="Roles" />
-      </div>
+      </Tabs>
 
       {tab === 'roles' ? (
         <RolesPane />
@@ -80,10 +81,9 @@ export function Team({ tab }: { tab: TeamTab }): JSX.Element {
 
 function TabLink({ tab, current, label, count }: { tab: TeamTab; current: TeamTab; label: string; count?: number }): JSX.Element {
   return (
-    <Link href={tab === 'people' ? '/team' : `/team/${tab}`} className="tab" role="tab" aria-selected={tab === current}>
+    <Tab as={Link} href={tab === 'people' ? '/team' : `/team/${tab}`} selected={tab === current} count={count !== undefined && count > 0 ? count : undefined}>
       {label}
-      {count !== undefined && count > 0 ? <span className="tab__count">{count}</span> : null}
-    </Link>
+    </Tab>
   );
 }
 
@@ -117,7 +117,7 @@ function PeoplePane({
         </div>
       ))}
 
-      <div className="card card--flush">
+      <Card flush>
         {rows.map(({ member, depth }) => (
           <button
             key={member.id}
@@ -144,12 +144,12 @@ function PeoplePane({
                 </span>
               ))}
               {member.roleIds.length > 3 ? <span className="dim" style={{ fontSize: 'var(--fs-xs)' }}>+{member.roleIds.length - 3}</span> : null}
-              {!member.active ? <span className="badge">{member.status === 'removed' ? 'Removed' : 'Inactive'}</span> : null}
+              {!member.active ? <Badge>{member.status === 'removed' ? 'Removed' : 'Inactive'}</Badge> : null}
               <Icon name="chevronRight" size={13} className="dim" />
             </div>
           </button>
         ))}
-      </div>
+      </Card>
 
       {/* Solo and agent-less is the default install, not a broken one: say what
           happens today and offer the one step that changes it. */}
@@ -162,17 +162,17 @@ function PeoplePane({
               Every role runs on {enabledRuntimes.length > 0 ? namesOr(enabledRuntimes) : 'your enabled runtimes'}. Add an agent to pick which runtime does which role.
             </span>
           </span>
-          <button type="button" className="btn" onClick={onAddAgent}>
+          <Button onClick={onAddAgent}>
             Add agent
-          </button>
+          </Button>
         </div>
       ) : null}
 
       {removedCount > 0 ? (
         <div>
-          <button type="button" className="btn btn--ghost" onClick={() => setShowRemoved((v) => !v)}>
+          <Button variant="ghost" onClick={() => setShowRemoved((v) => !v)}>
             {showRemoved ? 'Hide removed' : `Show ${pluralize(removedCount, 'removed member')}`}
-          </button>
+          </Button>
         </div>
       ) : null}
     </div>
@@ -233,15 +233,15 @@ function StaffingPane({ actors }: { actors: Actors }): JSX.Element {
   if (staffing.isError) return <ErrorState error={staffing.error} onRetry={() => void staffing.refetch()} />;
   if ((roles.data ?? []).length === 0) {
     return (
-      <div className="card">
+      <Card>
         <Empty icon="workforce" title="No roles yet" body="Staffing is set per role. Roles appear here once the project has them." />
-      </div>
+      </Card>
     );
   }
 
   return (
     <div className="stack" style={{ gap: 'var(--s3)' }}>
-      <div className="card card--flush">
+      <Card flush>
         {(roles.data ?? []).map((role) => {
           const patch = staffing.data?.[role.id] ?? {};
           const recognised = presetOf({ ...patch, assignees: patch.assignees ?? builtInAssignees(role.id, actors) }, actors).preset;
@@ -277,13 +277,13 @@ function StaffingPane({ actors }: { actors: Actors }): JSX.Element {
               <span className="muted truncate" style={{ fontSize: 'var(--fs-sm)' }} title={staffingSummary(patch, role.id, actors)}>
                 {staffingSummary(patch, role.id, actors)}
               </span>
-              <button type="button" className="btn btn--ghost" onClick={() => { setStart(null); setStartCustom(false); setEditing(role); }}>
+              <Button variant="ghost" onClick={() => { setStart(null); setStartCustom(false); setEditing(role); }}>
                 Edit
-              </button>
+              </Button>
             </div>
           );
         })}
-      </div>
+      </Card>
       {save.isError ? <ErrorState error={save.error} /> : null}
       <p className="dim" style={{ fontSize: 'var(--fs-xs)', margin: 0 }}>
         The project default. A mission or a single task can override it; changes apply to tasks that have not started.
@@ -336,16 +336,16 @@ function RoleStaffingDrawer({
       footer={
         <>
           {Object.keys(initial).length > 0 ? (
-            <button type="button" className="btn btn--ghost" style={{ marginRight: 'auto' }} onClick={() => onSave(null)}>
+            <Button variant="ghost" style={{ marginRight: 'auto' }} onClick={() => onSave(null)}>
               Reset to default
-            </button>
+            </Button>
           ) : null}
-          <button type="button" className="btn btn--ghost" onClick={onClose}>
+          <Button variant="ghost" onClick={onClose}>
             Cancel
-          </button>
-          <button type="button" className="btn btn--primary" disabled={saving} onClick={() => onSave(draft)}>
+          </Button>
+          <Button variant="primary" disabled={saving} onClick={() => onSave(draft)}>
             {saving ? 'Saving…' : 'Save'}
-          </button>
+          </Button>
         </>
       }
     >

@@ -9,6 +9,7 @@ import { dateTime, relativeTime } from '../../lib/format.js';
 import { RunForm } from './RunForm.js';
 import { Scorecard } from './Scorecard.js';
 import { Refusal, RUN_TONES, UNMEASURED_COST, isLive, useEvalMutation, usd } from './shared.js';
+import { Button } from '@tandemise/design/react';
 
 /**
  * A suite's eval runs, newest first, beside the open run or the new-run form.
@@ -41,10 +42,10 @@ export function RunsTab({ suites, suiteId, runId, compose, candidate, onSuite, o
           ) : (
             <span className="field__label truncate" style={{ flex: 1, minWidth: 0 }}>{suites[0]?.name ?? 'No suite yet'}</span>
           )}
-          <button type="button" className="btn btn--primary" onClick={onCompose} disabled={suites.length === 0}>
+          <Button variant="primary" onClick={onCompose} disabled={suites.length === 0}>
             <Icon name="plus" size={13} />
             New run
-          </button>
+          </Button>
         </div>
         {runs.isError ? <div style={{ padding: 'var(--s4)' }}><ErrorState error={runs.error} onRetry={() => void runs.refetch()} /></div> : null}
         {runs.isPending && suiteId !== null ? <SkeletonList rows={3} /> : null}
@@ -157,10 +158,10 @@ function RunDetail({ id }: { id: string }): JSX.Element {
 
       {isLive(run.status) ? (
         <div className="row" style={{ gap: 'var(--s2)' }}>
-          <button type="button" className="btn btn--danger" disabled={cancel.isPending} onClick={() => cancel.mutate(run.id)}>
+          <Button variant="danger" disabled={cancel.isPending} onClick={() => cancel.mutate(run.id)}>
             <Icon name="stop" size={13} />
             {cancel.isPending ? 'Cancelling…' : 'Cancel run'}
-          </button>
+          </Button>
           <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>The trials that finished still make a scorecard.</span>
         </div>
       ) : null}

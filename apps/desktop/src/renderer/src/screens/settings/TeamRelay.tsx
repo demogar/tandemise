@@ -10,6 +10,7 @@ import { useWorkspaceId } from '../../lib/workspace.js';
 import { dateTime, pluralize } from '../../lib/format.js';
 import { showFlash } from '../../lib/notices.js';
 import './TeamRelay.css';
+import { Button, Card } from '@tandemise/design/react';
 
 /** An `http://` address that is not this machine: the person must say they understand it is unencrypted. */
 function isInsecure(url: string): boolean {
@@ -54,7 +55,7 @@ function LocalOnly(): JSX.Element {
   const insecure = isInsecure(url);
   const ready = url.trim() !== '' && code.trim() !== '' && name.trim() !== '' && device.trim() !== '' && (!insecure || allowInsecure);
   return (
-    <div className="card">
+    <Card>
       <p className="team-relay__lead">Only this computer knows what you're working on.</p>
       <p className="muted team-relay__detail">
         A team relay tells everyone's Tandemise who is working on which tracker item, and holds webhooks for you to pick up. Your work stays on this computer.
@@ -84,16 +85,16 @@ function LocalOnly(): JSX.Element {
           ) : null}
           {connect.isError ? <ErrorState error={connect.error} /> : null}
           <div className="row">
-            <button type="submit" className="btn btn--primary" disabled={!ready || connect.isPending}>
+            <Button type="submit" variant="primary" disabled={!ready || connect.isPending}>
               {connect.isPending ? 'Connecting…' : 'Connect to the relay'}
-            </button>
-            <button type="button" className="btn btn--ghost" onClick={() => setOpen(false)}>Cancel</button>
+            </Button>
+            <Button variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
           </div>
         </form>
       ) : (
-        <button type="button" className="btn btn--primary" onClick={() => setOpen(true)}>Connect</button>
+        <Button variant="primary" onClick={() => setOpen(true)}>Connect</Button>
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -103,7 +104,7 @@ function Connected({ status }: { status: Exclude<CoordinationStatusView, { kind:
   const bring = useDaemonMutation((d) => d.importToRelay(), ['coordination']);
   const failures = useQuery({ queryKey: ['coordination', 'failures'], queryFn: () => daemon.relayFailures(), refetchInterval: 10_000 });
   return (
-    <div className="card">
+    <Card>
       {status.kind === 'connected' ? (
         <p className="team-relay__lead">
           <span className="team-relay__dot" data-presence="online" /> Connected to {status.host}
@@ -131,23 +132,22 @@ function Connected({ status }: { status: Exclude<CoordinationStatusView, { kind:
       {status.kind === 'connected' && status.offerImport ? (
         <div className="banner team-relay__offer">
           <span style={{ flex: 1 }}>This relay is new. Bring what this computer knows: what you're working on, your webhook addresses and unread webhooks.</span>
-          <button
-            type="button"
-            className="btn btn--primary"
+          <Button
+            variant="primary"
             disabled={bring.isPending}
             onClick={() => bring.mutate(undefined, { onSuccess: (r) => showFlash(`Brought ${pluralize(r.claims.length, 'claim')}, ${pluralize(r.endpoints, 'webhook address', 'webhook addresses')} and ${pluralize(r.messages, 'webhook')}.`) })}
           >
             Bring my local data
-          </button>
+          </Button>
         </div>
       ) : null}
       {bring.isError ? <ErrorState error={bring.error} /> : null}
       {disconnect.isError ? <ErrorState error={disconnect.error} /> : null}
       <div className="row">
-        <button type="button" className="btn" disabled={disconnect.isPending} onClick={() => disconnect.mutate(undefined)}>Disconnect</button>
+        <Button disabled={disconnect.isPending} onClick={() => disconnect.mutate(undefined)}>Disconnect</Button>
         <span className="muted">Disconnecting keeps what you're working on, on this computer.</span>
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -176,7 +176,7 @@ function Webhooks(): JSX.Element {
   const list = endpoints.data ?? [];
   const dropped = list.some((e) => e.dropFlag);
   return (
-    <div className="card team-relay__webhooks" aria-label="Webhooks">
+    <Card className="team-relay__webhooks" aria-label="Webhooks">
       <h3 className="team-relay__subhead">Webhooks</h3>
       {dropped ? <div className="banner banner--warn"><Icon name="alert" size={15} /> Webhooks were dropped because nobody picked them up.</div> : null}
       {list.length === 0 ? <p className="muted">No webhook addresses yet.</p> : (
@@ -191,8 +191,8 @@ function Webhooks(): JSX.Element {
                   {` · ${e.pending} waiting · ${e.parked} couldn't be processed · ${e.droppedCount} dropped`}
                 </div>
               </div>
-              <button type="button" className="btn" onClick={() => { void navigator.clipboard.writeText(e.url); showFlash('Webhook address copied.'); }}>Copy</button>
-              {e.disabledAt === null ? <button type="button" className="btn btn--ghost" onClick={() => disable.mutate(e.id)}>Turn off</button> : <span className="muted">Off</span>}
+              <Button onClick={() => { void navigator.clipboard.writeText(e.url); showFlash('Webhook address copied.'); }}>Copy</Button>
+              {e.disabledAt === null ? <Button variant="ghost" onClick={() => disable.mutate(e.id)}>Turn off</Button> : <span className="muted">Off</span>}
             </li>
           ))}
         </ul>
@@ -204,8 +204,8 @@ function Webhooks(): JSX.Element {
               <span className="team-relay__endpoint-main">
                 Couldn't be processed: {list.find((e) => e.id === p.endpointId)?.name ?? 'a webhook'}, received {dateTime(p.receivedAt)}
               </span>
-              <button type="button" className="btn" onClick={() => retry.mutate(p.id)}>Retry</button>
-              <button type="button" className="btn btn--ghost" onClick={() => drop.mutate(p.id)}>Drop</button>
+              <Button onClick={() => retry.mutate(p.id)}>Retry</Button>
+              <Button variant="ghost" onClick={() => drop.mutate(p.id)}>Drop</Button>
             </li>
           ))}
         </ul>
@@ -222,8 +222,8 @@ function Webhooks(): JSX.Element {
           {handshake === 'meta_hub' ? <Field label="Verify token"><input className="input" value={secret} onChange={(e) => setSecret(e.target.value)} /></Field> : null}
         </div>
         {create.isError ? <ErrorState error={create.error} /> : null}
-        <div><button type="submit" className="btn" disabled={!name.trim() || !source.trim() || create.isPending}>Add a webhook address</button></div>
+        <div><Button type="submit" disabled={!name.trim() || !source.trim() || create.isPending}>Add a webhook address</Button></div>
       </form>
-    </div>
+    </Card>
   );
 }

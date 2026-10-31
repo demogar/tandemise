@@ -9,6 +9,7 @@ import { useActors } from '../lib/team.js';
 import { draftFor, openComposer, openImpact, saveDraft, showFlash, useComposerRequest } from '../lib/notices.js';
 import { roundStartedLine } from './ImpactDialog.js';
 import { ContributionPicker, type Contribution } from './ContributionPicker.js';
+import { Button, Field } from '@tandemise/design/react';
 
 /** The daemon's limit on a note, said before sending rather than as a refusal after. */
 const MAX_NOTE_CHARS = 4000;
@@ -140,18 +141,17 @@ export function RequestChangesComposer({
       footer={
         <>
           <RecordingFor actors={actors} value={recordFor} onChange={setRecordFor} />
-          <button type="button" className="btn" onClick={onClose}>
+          <Button onClick={onClose}>
             Cancel
-          </button>
-          <button type="button" className="btn btn--primary" disabled={trimmed === '' || tooLong || give.isPending} onClick={send}>
+          </Button>
+          <Button variant="primary" disabled={trimmed === '' || tooLong || give.isPending} onClick={send}>
             {give.isPending ? 'Sending…' : 'Request changes'}
-          </button>
+          </Button>
         </>
       }
     >
       <div className="composer">
-        <label className="field">
-          <span className="field__label">What should change?</span>
+        <Field label="What should change?" error={tooLong ? `At most ${MAX_NOTE_CHARS} characters.` : undefined}>
           <textarea
             className="textarea"
             rows={5}
@@ -164,12 +164,10 @@ export function RequestChangesComposer({
             placeholder="The next round works from exactly what you write."
             autoFocus
           />
-          {tooLong ? <span className="field__error">At most {MAX_NOTE_CHARS} characters.</span> : null}
-        </label>
+        </Field>
         <ContributionPicker value={attachments} onChange={setAttachments} max={MAX_ATTACHMENTS} label="Attach" />
         {showAbout ? (
-          <label className="field">
-            <span className="field__label">About</span>
+          <Field label="About">
             <select className="select" value={about} onChange={(e) => setAbout(e.target.value)}>
               <option value="">The whole task</option>
               {outputs.map((o) => (
@@ -178,7 +176,7 @@ export function RequestChangesComposer({
                 </option>
               ))}
             </select>
-          </label>
+          </Field>
         ) : null}
         {give.isError ? <ErrorState error={give.error} /> : null}
       </div>

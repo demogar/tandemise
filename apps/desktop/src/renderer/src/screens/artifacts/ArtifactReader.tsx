@@ -15,6 +15,7 @@ import { showFlash } from '../../lib/notices.js';
 import { actorLabel, useActors, type Actors } from '../../lib/team.js';
 import { bytes, dateTime, pluralize, titleCase } from '../../lib/format.js';
 import { lineDiff, type DiffLine } from '../../lib/line-diff.js';
+import { Badge, Button } from '@tandemise/design/react';
 
 /** Unchanged lines kept around each change in the comparison; the rest fold into "N unchanged lines". */
 const DIFF_CONTEXT = 2;
@@ -180,12 +181,11 @@ function ReaderDocument({ view, onVersion }: { view: ArtifactReadView; onVersion
           ) : null}
           {/* A note about length, not a failure: neutral, and it says only what was measured. */}
           {manifest.overBudget ? (
-            <span
-              className="badge"
+            <Badge
               title={manifest.wordCount != null ? `${pluralize(manifest.wordCount, 'word')}, longer than the word budget for its type` : 'Longer than the word budget for its type'}
             >
               Over budget
-            </span>
+            </Badge>
           ) : null}
           {manifest.sourceRefs.map((ref, index) => (
             <span key={index} className="chip chip--muted" title={ref.kind}>
@@ -261,9 +261,9 @@ function RevealButton({ artifactId }: { artifactId: string }): JSX.Element {
     }
   };
   return (
-    <button type="button" className="btn" disabled={busy} onClick={() => void reveal()}>
+    <Button disabled={busy} onClick={() => void reveal()}>
       Reveal in Finder
-    </button>
+    </Button>
   );
 }
 

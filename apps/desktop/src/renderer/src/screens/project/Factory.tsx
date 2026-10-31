@@ -3,6 +3,7 @@ import { ErrorState, SectionHead, SkeletonList } from '../../components/primitiv
 import { useDaemonMutation, useFactory, useRouting } from '../../lib/queries.js';
 import { shortenPath } from '../../lib/format.js';
 import './Factory.css';
+import { Button, Card } from '@tandemise/design/react';
 
 /**
  * Project → Factory (#53 §10): where the planner, routing and merge files came
@@ -23,18 +24,18 @@ export function Factory({ workspaceId }: { workspaceId: string }): JSX.Element {
         meta="How tasks are planned, which models they use, and when a pull request merges"
         action={
           view?.canWriteDefaults === true ? (
-            <button type="button" className="btn" disabled={write.isPending} onClick={() => write.mutate(undefined)}>
+            <Button disabled={write.isPending} onClick={() => write.mutate(undefined)}>
               {write.isPending ? 'Writing…' : 'Write the defaults into the repository'}
-            </button>
+            </Button>
           ) : undefined
         }
       />
       {view === undefined ? (
         factory.isError ? <ErrorState error={factory.error} onRetry={() => void factory.refetch()} /> : <SkeletonList rows={3} />
       ) : (
-        <div className="card card--flush">
+        <Card flush>
           {view.files.map((file) => <FactoryFile key={file.name} file={file} />)}
-        </div>
+        </Card>
       )}
       {view?.canWriteDefaults === true && view.repositoryName !== null ? (
         <p className="factory__hint">Writing the defaults puts the built-in files into {view.repositoryName}, so you can edit them there.</p>

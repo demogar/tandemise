@@ -9,6 +9,7 @@ import { useListNavigation } from '../lib/keyboard.js';
 import { missionTone, pluralize, relativeTime } from '../lib/format.js';
 import { Backlog } from './missions/Backlog.js';
 import { Routines } from './missions/Routines.js';
+import { Badge, Button, Card } from '@tandemise/design/react';
 
 type Filter = 'backlog' | 'routines' | 'active' | 'blocked' | 'finished' | 'all' | 'progress';
 
@@ -127,9 +128,9 @@ export function Missions({ initial = 'active' }: { initial?: Filter } = {}): JSX
             <div className="banner" style={{ marginBottom: 'var(--s4)' }}>
               <Icon name="activity" size={15} className="dim" />
               <span style={{ flex: 1 }}>Showing the {pluralize(counts.progress, 'mission')} in progress, blocked ones included: the work Home counts.</span>
-              <button type="button" className="btn" onClick={() => setFilter('all')}>
+              <Button onClick={() => setFilter('all')}>
                 Show all missions
-              </button>
+              </Button>
             </div>
           ) : null}
 
@@ -140,7 +141,7 @@ export function Missions({ initial = 'active' }: { initial?: Filter } = {}): JSX
           ) : missions.isPending ? (
             <SkeletonList rows={5} />
           ) : visible.length === 0 ? (
-            <div className="card">
+            <Card>
               {query.length > 0 ? (
                 <Empty icon="search" title={`Nothing matches “${query}”`} body="Try a shorter phrase, or clear the filter to see every mission." />
               ) : (
@@ -156,7 +157,7 @@ export function Missions({ initial = 'active' }: { initial?: Filter } = {}): JSX
                   }
                 />
               )}
-            </div>
+            </Card>
           ) : (
             <>
               <div className="list">
@@ -189,10 +190,10 @@ export function Missions({ initial = 'active' }: { initial?: Filter } = {}): JSX
                           </span>
                         ) : null}
                         {progress.pendingApprovals > 0 ? (
-                          <span className="badge badge--blocked">
+                          <Badge tone="blocked">
                             <Icon name="approvals" size={11} />
                             {progress.pendingApprovals}
-                          </span>
+                          </Badge>
                         ) : null}
                         {summary.repositoryName ? <span className="chip chip--muted">{summary.repositoryName}</span> : null}
                         {progress.totalTasks > 0 ? (

@@ -8,6 +8,7 @@ import { useDaemonMutation, useSetupStatus } from '../../lib/queries.js';
 import { showFlash } from '../../lib/notices.js';
 import { SkillPreview } from '../skills/SkillPreview.js';
 import { evalsHref } from '../evals/link.js';
+import { Button, Card } from '@tandemise/design/react';
 
 type NeedsImport = NonNullable<SetupItemView['needsImport']>;
 
@@ -117,7 +118,7 @@ export function SetupAsCode({ workspaceId, repositories, defaultRepositoryId }: 
     <section className="section" aria-label="Setup as code">
       <SectionHead title="Setup as code" meta={last === null ? 'Not exported yet' : `Last exported ${last.hash}`} />
 
-      <div className="card">
+      <Card>
         <div className="field__label">Export</div>
         <p className="field__hint" style={{ marginBottom: 'var(--s3)' }}>
           Writes your roles, workflows, routines, limits, project settings, skill pins and GitHub issue settings into{' '}
@@ -132,27 +133,27 @@ export function SetupAsCode({ workspaceId, repositories, defaultRepositoryId }: 
             <select className="input" aria-label="Export to repository" value={chosen} onChange={(e) => setRepositoryId(e.target.value)} style={{ maxWidth: 280 }}>
               {repositories.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
             </select>
-            <button type="button" className="btn" disabled={exportSetup.isPending || chosen === ''} onClick={runExport}>
+            <Button disabled={exportSetup.isPending || chosen === ''} onClick={runExport}>
               <Icon name="folder" size={13} />
               {exportSetup.isPending ? 'Exporting…' : 'Export'}
-            </button>
+            </Button>
           </div>
         )}
         {exportSetup.isError ? <ErrorState error={exportSetup.error} /> : null}
         {exported !== null ? <ExportResult view={exported} /> : null}
-      </div>
+      </Card>
 
-      <div className="card" style={{ marginTop: 'var(--s3)' }}>
+      <Card style={{ marginTop: 'var(--s3)' }}>
         <div className="field__label">Import</div>
         <p className="field__hint" style={{ marginBottom: 'var(--s3)' }}>
           Reads a <span className="mono">.tandemise</span> folder and shows what would change, item by item. Nothing changes until you
           press Apply. Imported routines and issue settings arrive off, so an import never starts work.
         </p>
         <div className="row" style={{ gap: 'var(--s2)' }}>
-          <button type="button" className="btn" disabled={previewSetup.isPending} onClick={() => void pickImport()}>
+          <Button disabled={previewSetup.isPending} onClick={() => void pickImport()}>
             <Icon name="folder" size={13} />
             {previewSetup.isPending ? 'Reading…' : 'Import from a folder…'}
-          </button>
+          </Button>
         </div>
         {previewSetup.isError ? <ErrorState error={previewSetup.error} /> : null}
         {preview !== null ? (
@@ -177,20 +178,18 @@ export function SetupAsCode({ workspaceId, repositories, defaultRepositoryId }: 
         {importSkill.isError ? <ErrorState error={importSkill.error} /> : null}
         {preview !== null ? (
           <div className="row" style={{ gap: 'var(--s2)', marginTop: 'var(--s3)' }}>
-            <button type="button" className="btn btn--primary" disabled={applySetup.isPending} onClick={runApply}>
+            <Button variant="primary" disabled={applySetup.isPending} onClick={runApply}>
               {applySetup.isPending ? 'Applying…' : taking === 0 ? 'Apply (nothing to take)' : `Apply ${taking} ${taking === 1 ? 'change' : 'changes'}`}
-            </button>
-            <button type="button" className="btn btn--ghost" onClick={() => { setPreview(null); setFetching(null); }}>Cancel</button>
+            </Button>
+            <Button variant="ghost" onClick={() => { setPreview(null); setFetching(null); }}>Cancel</Button>
             {/* Tries these files against the project's eval cases first; nothing here is applied. */}
-            <button
-              type="button"
-              className="btn"
+            <Button
               style={{ marginLeft: 'auto' }}
               onClick={() => navigate(evalsHref({ tab: 'runs', candidate: { kind: 'setup', folder: preview.path } }))}
             >
               <Icon name="target" size={13} />
               Try on evals
-            </button>
+            </Button>
           </div>
         ) : null}
         {applySetup.isError ? <ErrorState error={applySetup.error} /> : null}
@@ -205,7 +204,7 @@ export function SetupAsCode({ workspaceId, repositories, defaultRepositoryId }: 
             {applied.lines.map((line) => <p key={line} className="muted" style={{ fontSize: 'var(--fs-sm)' }}>{line}</p>)}
           </div>
         ) : null}
-      </div>
+      </Card>
     </section>
   );
 }
@@ -259,10 +258,10 @@ function FetchSkill({ wanted, preview, pending, onImport, onCancel }: {
         </div>
       ) : null}
       <div className="row" style={{ gap: 'var(--s2)' }}>
-        <button type="button" className="btn btn--primary" disabled={!matches || pending} onClick={onImport}>
+        <Button variant="primary" disabled={!matches || pending} onClick={onImport}>
           {pending ? 'Importing…' : `Import ${wanted.name}`}
-        </button>
-        <button type="button" className="btn btn--ghost" onClick={onCancel}>Cancel</button>
+        </Button>
+        <Button variant="ghost" onClick={onCancel}>Cancel</Button>
       </div>
     </div>
   );
@@ -298,15 +297,13 @@ function Preview({ view, choices, onChoose, onFetch, fetchingName }: {
                 {item.detail !== '' && item.action !== 'same' ? <div className="muted" style={{ fontSize: 'var(--fs-xs)' }}>{item.detail}</div> : null}
                 {item.problem !== null ? <div className="field__error">{item.problem}</div> : null}
                 {item.needsImport !== null ? (
-                  <button
-                    type="button"
-                    className="btn"
+                  <Button
                     style={{ marginTop: 'var(--s1)' }}
                     disabled={fetchingName !== null}
                     onClick={() => onFetch(item.needsImport!)}
                   >
                     {fetchingName === item.needsImport.name ? 'Reading…' : `Fetch ${item.needsImport.name} from its source…`}
-                  </button>
+                  </Button>
                 ) : null}
                 {item.notes.map((note) => <div key={note} className="muted" style={{ fontSize: 'var(--fs-xs)' }}>{note}</div>)}
               </td>

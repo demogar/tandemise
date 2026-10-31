@@ -11,6 +11,7 @@ import { isTypingTarget, useListCursor } from '../../lib/keyboard.js';
 import { MISSION_PRIORITIES, priorityLabel } from '../../lib/domain.js';
 import { showFlash } from '../../lib/notices.js';
 import { pluralize } from '../../lib/format.js';
+import { Badge, Button, Card } from '@tandemise/design/react';
 
 /** The limits one click away; any other value set elsewhere is shown too. */
 const LIMIT_OPTIONS = ['off', '1', '2', '3', '5'] as const;
@@ -114,7 +115,7 @@ export function Backlog(): JSX.Element {
       {update.isError ? <ErrorState error={update.error} /> : null}
 
       {items.length === 0 ? (
-        <div className="card">
+        <Card>
           <Empty
             icon="flag"
             title="The backlog is empty"
@@ -126,7 +127,7 @@ export function Backlog(): JSX.Element {
               </Link>
             }
           />
-        </div>
+        </Card>
       ) : (
         <>
           <section aria-label="Backlog" className="list">
@@ -200,15 +201,15 @@ function BacklogRow({
             <option key={priority} value={priority}>{priorityLabel(priority)}</option>
           ))}
         </select>
-        <button type="button" className="btn btn--ghost" disabled={busy} onClick={() => onChange({ queued: item.queuePosition === null })}>
+        <Button variant="ghost" disabled={busy} onClick={() => onChange({ queued: item.queuePosition === null })}>
           {item.queuePosition === null ? 'Add to queue' : 'Remove from queue'}
-        </button>
-        <button type="button" className="btn btn--ghost btn--icon" aria-label="Move up" title="Move up (⌥↑)" disabled={first || busy} onClick={() => onMove('up')}>
+        </Button>
+        <Button variant="ghost" iconOnly aria-label="Move up" title="Move up (⌥↑)" disabled={first || busy} onClick={() => onMove('up')}>
           <Icon name="arrowUp" size={14} />
-        </button>
-        <button type="button" className="btn btn--ghost btn--icon" aria-label="Move down" title="Move down (⌥↓)" disabled={last || busy} onClick={() => onMove('down')}>
+        </Button>
+        <Button variant="ghost" iconOnly aria-label="Move down" title="Move down (⌥↓)" disabled={last || busy} onClick={() => onMove('down')}>
           <Icon name="arrowDown" size={14} />
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -237,7 +238,7 @@ function IssueChip({ missionId, linkId }: { missionId: string; linkId: string | 
 /** Urgent and high stand out; normal and low stay quiet. */
 function PriorityChip({ priority }: { priority: MissionPriority }): JSX.Element {
   const label = priorityLabel(priority);
-  if (priority === 'urgent') return <span className="badge badge--failed" style={{ minWidth: 64, justifyContent: 'center' }}>{label}</span>;
-  if (priority === 'high') return <span className="badge badge--blocked" style={{ minWidth: 64, justifyContent: 'center' }}>{label}</span>;
+  if (priority === 'urgent') return <Badge tone="failed" style={{ minWidth: 64, justifyContent: 'center' }}>{label}</Badge>;
+  if (priority === 'high') return <Badge tone="blocked" style={{ minWidth: 64, justifyContent: 'center' }}>{label}</Badge>;
   return <span className="chip chip--muted" style={{ minWidth: 64, justifyContent: 'center' }}>{label}</span>;
 }

@@ -10,6 +10,7 @@ import { WhyTheseSteps } from './WhyTheseSteps.js';
 import { usePlanDecision } from '../../lib/queries.js';
 import { NowLine } from '../../components/TerminalPanel.js';
 import { duration, pluralize, taskBadge, taskTone } from '../../lib/format.js';
+import { Card } from '@tandemise/design/react';
 
 interface Edge {
   readonly id: string;
@@ -101,7 +102,7 @@ export function PlanPane({ detail }: { detail: MissionDetail }): JSX.Element {
     return (
       <div className="page">
         <div className="page__inner">
-          <div className="card">
+          <Card>
             {detail.planIssues.length > 0 ? (
               <>
                 <Empty
@@ -134,7 +135,7 @@ export function PlanPane({ detail }: { detail: MissionDetail }): JSX.Element {
                 body="Press Plan in the header and the planning role will propose a task graph. Nothing runs until you have seen it."
               />
             )}
-          </div>
+          </Card>
         </div>
       </div>
     );

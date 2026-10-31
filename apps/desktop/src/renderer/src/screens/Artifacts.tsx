@@ -6,6 +6,7 @@ import { ArtifactReader } from './artifacts/ArtifactReader.js';
 import { ArtifactRows } from './artifacts/ArtifactRows.js';
 import { useArtifactSearch } from '../lib/queries.js';
 import { pluralize } from '../lib/format.js';
+import { Card } from '@tandemise/design/react';
 
 export function Artifacts({ openId = null }: { openId?: string | null } = {}): JSX.Element {
   const [input, setInput] = useState('');
@@ -60,7 +61,7 @@ export function Artifacts({ openId = null }: { openId?: string | null } = {}): J
       ) : (artifacts.data ?? []).length === 0 ? (
         <div className="page">
           <div className="page__inner">
-            <div className="card">
+            <Card>
               <Empty
                 icon="artifacts"
                 title={query ? `Nothing matches “${query}”` : 'No artifacts yet'}
@@ -70,7 +71,7 @@ export function Artifacts({ openId = null }: { openId?: string | null } = {}): J
                     : 'Artifacts are the typed hand-off between roles. The first one appears as soon as a mission produces a spec or a plan.'
                 }
               />
-            </div>
+            </Card>
           </div>
         </div>
       ) : (

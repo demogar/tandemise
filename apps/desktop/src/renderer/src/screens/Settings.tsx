@@ -8,6 +8,7 @@ import { NotificationSettings } from './settings/Notifications.js';
 import { TeamRelay } from './settings/TeamRelay.js';
 import { IntakeSettings } from './settings/Intake.js';
 import { SettingsAbout } from './SettingsAbout.js';
+import { Button, Card } from '@tandemise/design/react';
 
 /** `section` is `/settings/<section>`'s: the Board's "Settings → Intake" link opens the page there. */
 export function Settings({ section = null }: { section?: string | null } = {}): JSX.Element {
@@ -30,7 +31,7 @@ export function Settings({ section = null }: { section?: string | null } = {}): 
             <>
               <section className="section">
                 <SectionHead title="Appearance" />
-                <div className="card">
+                <Card>
                   <Field label="Theme" hint="System follows macOS. An explicit choice overrides it everywhere.">
                     <Segmented<ThemePreference>
                       value={theme}
@@ -42,7 +43,7 @@ export function Settings({ section = null }: { section?: string | null } = {}): 
                       ]}
                     />
                   </Field>
-                </div>
+                </Card>
               </section>
 
               <NotificationSettings />
@@ -57,7 +58,7 @@ export function Settings({ section = null }: { section?: string | null } = {}): 
 
               <section className="section">
                 <SectionHead title="Daemon" meta={status.phase === 'connected' ? 'Running' : 'Not connected'} />
-                <div className="card card--flush">
+                <Card flush>
                   <table className="table">
                     <tbody>
                       <InfoRow label="Version" value={system.data?.daemonVersion ?? '—'} />
@@ -70,12 +71,12 @@ export function Settings({ section = null }: { section?: string | null } = {}): 
                       <InfoRow label="Node" value={system.data?.nodeVersion ?? '—'} />
                     </tbody>
                   </table>
-                </div>
+                </Card>
               </section>
 
               <section className="section">
                 <SectionHead title="Developer" />
-                <div className="card card--flush">
+                <Card flush>
                   <div className="list__row">
                     <div className="list__main">
                       <div className="list__title">Log level</div>
@@ -113,16 +114,14 @@ export function Settings({ section = null }: { section?: string | null } = {}): 
                       <div className="list__subtitle mono truncate">{settings.data?.home ? `${settings.data.home}/logs` : '~/.tandemise/logs'}</div>
                     </div>
                     <div className="list__aside">
-                      <button
-                        type="button"
-                        className="btn"
+                      <Button
                         onClick={() => void window.tandemise.revealInFinder(`${settings.data?.home ?? ''}/logs`)}
                       >
                         Reveal
-                      </button>
+                      </Button>
                     </div>
                   </div>
-                </div>
+                </Card>
                 {updateSettings.isError ? <ErrorState error={updateSettings.error} /> : null}
               </section>
 

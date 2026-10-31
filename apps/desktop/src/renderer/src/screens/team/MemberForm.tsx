@@ -8,6 +8,7 @@ import { useDaemonMutation, useIntegrations, useRoles, useRuntimes } from '../..
 import { useWorkspaceId } from '../../lib/workspace.js';
 import { pluralize } from '../../lib/format.js';
 import type { Actors } from '../../lib/team.js';
+import { Button } from '@tandemise/design/react';
 
 export type MemberTarget = { readonly kind: 'new-agent' } | { readonly kind: 'edit'; readonly member: MemberView };
 
@@ -100,22 +101,22 @@ export function MemberDrawer({ target, actors, onClose }: { target: MemberTarget
       footer={
         <>
           {editing && !removed && editing.id !== actors.meId ? (
-            <button type="button" className="btn btn--ghost" style={{ marginRight: 'auto' }} onClick={() => setConfirmRemove(true)}>
+            <Button variant="ghost" style={{ marginRight: 'auto' }} onClick={() => setConfirmRemove(true)}>
               <Icon name="trash" size={13} />
               Remove
-            </button>
+            </Button>
           ) : null}
           {removed ? (
-            <button type="button" className="btn" style={{ marginRight: 'auto' }} disabled={restore.isPending} onClick={() => restore.mutate(undefined, { onSuccess: onClose })}>
+            <Button style={{ marginRight: 'auto' }} disabled={restore.isPending} onClick={() => restore.mutate(undefined, { onSuccess: onClose })}>
               Restore
-            </button>
+            </Button>
           ) : null}
-          <button type="button" className="btn btn--ghost" onClick={onClose}>
+          <Button variant="ghost" onClick={onClose}>
             Cancel
-          </button>
-          <button type="button" className="btn btn--primary" disabled={!valid || save.isPending || removed} onClick={() => save.mutate(undefined, { onSuccess: onClose })}>
+          </Button>
+          <Button variant="primary" disabled={!valid || save.isPending || removed} onClick={() => save.mutate(undefined, { onSuccess: onClose })}>
             {save.isPending ? 'Saving…' : editing ? 'Save' : 'Add'}
-          </button>
+          </Button>
         </>
       }
     >
@@ -287,15 +288,15 @@ function RankedRuntimes({
                 <span className="routing__rank">{index + 1}</span>
                 <span className={`dot dot--${runtime?.healthy ? 'succeeded' : 'pending'}`} />
                 <span style={{ flex: 1 }}>{runtime?.name ?? 'Removed runtime'}</span>
-                <button type="button" className="btn btn--icon btn--ghost" disabled={index === 0} onClick={() => move(index, -1)} aria-label="Move up">
+                <Button iconOnly variant="ghost" disabled={index === 0} onClick={() => move(index, -1)} aria-label="Move up">
                   <Icon name="arrowUp" size={13} />
-                </button>
-                <button type="button" className="btn btn--icon btn--ghost" disabled={index === value.length - 1} onClick={() => move(index, 1)} aria-label="Move down">
+                </Button>
+                <Button iconOnly variant="ghost" disabled={index === value.length - 1} onClick={() => move(index, 1)} aria-label="Move down">
                   <Icon name="arrowDown" size={13} />
-                </button>
-                <button type="button" className="btn btn--icon btn--ghost" onClick={() => onChange(value.filter((v) => v !== id))} aria-label="Remove runtime">
+                </Button>
+                <Button iconOnly variant="ghost" onClick={() => onChange(value.filter((v) => v !== id))} aria-label="Remove runtime">
                   <Icon name="x" size={13} />
-                </button>
+                </Button>
               </div>
             );
           })}

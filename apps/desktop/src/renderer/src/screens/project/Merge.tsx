@@ -4,6 +4,7 @@ import { ErrorState, SectionHead, SkeletonList } from '../../components/primitiv
 import { useDaemonMutation, useMergePolicy } from '../../lib/queries.js';
 import { useDaemon } from '../../lib/connection.js';
 import './Merge.css';
+import { Button, Card } from '@tandemise/design/react';
 
 interface NeverRule { readonly paths?: readonly string[]; readonly areas?: readonly string[]; readonly when?: string }
 interface ScoreRule { readonly why: string; readonly points: number }
@@ -47,13 +48,13 @@ export function Merge({ workspaceId }: { workspaceId: string }): JSX.Element {
   return (
     <section className="section" aria-label="Merge">
       <SectionHead title="Merge" meta="When Tandemise merges a pull request on its own" />
-      <div className="card merge" data-on={on}>
+      <Card className="merge" data-on={on}>
         <div className="merge__switch">
           <span className="merge__state">{on ? 'Auto-merge is on' : 'Auto-merge is off'}</span>
           {on ? (
-            <button type="button" className="btn btn--danger" disabled={stop.isPending} onClick={() => stop.mutate(undefined)}>Stop auto-merging</button>
+            <Button variant="danger" disabled={stop.isPending} onClick={() => stop.mutate(undefined)}>Stop auto-merging</Button>
           ) : preview === null ? (
-            <button type="button" className="btn" onClick={() => void askToTurnOn()}>Turn auto-merge on…</button>
+            <Button onClick={() => void askToTurnOn()}>Turn auto-merge on…</Button>
           ) : null}
         </div>
         <p className="merge__hint">
@@ -65,10 +66,10 @@ export function Merge({ workspaceId }: { workspaceId: string }): JSX.Element {
           <div className="merge__preview">
             <p className="merge__backtest">{preview.sentence}</p>
             <div className="merge__actions">
-              <button type="button" className="btn btn--primary" disabled={save.isPending} onClick={() => save.mutate({ ...policy, autoMerge: 'on' }, { onSuccess: () => setPreview(null) })}>
+              <Button variant="primary" disabled={save.isPending} onClick={() => save.mutate({ ...policy, autoMerge: 'on' }, { onSuccess: () => setPreview(null) })}>
                 Turn it on
-              </button>
-              <button type="button" className="btn" onClick={() => setPreview(null)}>Not now</button>
+              </Button>
+              <Button onClick={() => setPreview(null)}>Not now</Button>
             </div>
           </div>
         ) : null}
@@ -87,7 +88,7 @@ export function Merge({ workspaceId }: { workspaceId: string }): JSX.Element {
         <ul className="merge__list">
           {score.map((rule, i) => <li key={i}>{rule.why}: {rule.points} {rule.points === 1 ? 'point' : 'points'}</li>)}
         </ul>
-      </div>
+      </Card>
     </section>
   );
 }

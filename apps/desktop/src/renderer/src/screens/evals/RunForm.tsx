@@ -7,6 +7,7 @@ import { Field, Segmented } from '../../components/primitives.js';
 import { useEvalCases, useRoles, useSkills } from '../../lib/queries.js';
 import { evalsHref } from './link.js';
 import { Refusal, useEvalMutation } from './shared.js';
+import { Button, Card } from '@tandemise/design/react';
 
 /** A brain candidate is started by a promotion, never from this form (#51). */
 type Kind = Exclude<EvalCandidate['kind'], 'brain'>;
@@ -65,16 +66,16 @@ export function RunForm({ suites, suiteId: initialSuiteId, candidate, onStarted,
 
   if (suites.length === 0) {
     return (
-      <div className="card stack" aria-label="New run" style={{ gap: 'var(--s2)' }}>
+      <Card className="stack" aria-label="New run" style={{ gap: 'var(--s2)' }}>
         <div className="field__label">New run</div>
         <p style={{ margin: 0 }}>
           Save a case first. A run replays a suite's cases, so it needs at least one:{' '}
           <Link href={evalsHref({ tab: 'suites' })}>go to Suites</Link>.
         </p>
         <div className="row">
-          <button type="button" className="btn btn--ghost" onClick={onCancel}>Close</button>
+          <Button variant="ghost" onClick={onCancel}>Close</Button>
         </div>
-      </div>
+      </Card>
     );
   }
 
@@ -144,7 +145,7 @@ export function RunForm({ suites, suiteId: initialSuiteId, candidate, onStarted,
   };
 
   return (
-    <div className="card stack" aria-label="New run" style={{ gap: 'var(--s4)' }}>
+    <Card className="stack" aria-label="New run" style={{ gap: 'var(--s4)' }}>
       <div className="field__label">New run</div>
       <div className="grid grid--2">
         <Field label="Suite">
@@ -165,10 +166,10 @@ export function RunForm({ suites, suiteId: initialSuiteId, candidate, onStarted,
             <span className={`mono truncate${folder === '' ? ' dim' : ''}`} style={{ flex: 1, minWidth: 0, fontSize: 'var(--fs-sm)' }} title={folder}>
               {folder === '' ? 'No folder chosen' : folder}
             </span>
-            <button type="button" className="btn" onClick={() => void chooseFolder()}>
+            <Button onClick={() => void chooseFolder()}>
               <Icon name="folder" size={13} />
               {folder === '' ? 'Choose…' : 'Change…'}
-            </button>
+            </Button>
           </div>
         </Field>
       ) : suiteRoles.length === 0 ? (
@@ -243,12 +244,12 @@ export function RunForm({ suites, suiteId: initialSuiteId, candidate, onStarted,
       {start.isError ? <Refusal error={start.error} /> : null}
 
       <div className="row" style={{ gap: 'var(--s2)' }}>
-        <button type="button" className="btn btn--primary" disabled={start.isPending || suiteId === ''} onClick={submit}>
+        <Button variant="primary" disabled={start.isPending || suiteId === ''} onClick={submit}>
           <Icon name="play" size={13} />
           {start.isPending ? 'Starting…' : 'Start run'}
-        </button>
-        <button type="button" className="btn btn--ghost" onClick={onCancel}>Cancel</button>
+        </Button>
+        <Button variant="ghost" onClick={onCancel}>Cancel</Button>
       </div>
-    </div>
+    </Card>
   );
 }

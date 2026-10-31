@@ -6,6 +6,7 @@ import { useDaemon } from '../../lib/connection.js';
 import { useDaemonMutation } from '../../lib/queries.js';
 import { useWorkspaceId } from '../../lib/workspace.js';
 import { relativeTime } from '../../lib/format.js';
+import { Button, Card } from '@tandemise/design/react';
 
 /** `youtrack:GAR-12` → `GAR-12`, `github:acme/web#42` → `acme/web#42`: the key as the tracker shows it. */
 function itemKey(ref: string | null): string {
@@ -64,13 +65,13 @@ export function IntakeList({ signals }: { signals: UseQueryResult<readonly Intak
     <section className="intake-list" aria-label="Intake signals">
       {signals.isError ? <ErrorState error={signals.error} onRetry={() => void signals.refetch()} /> : null}
       {list.length === 0 ? (
-        <div className="card">
+        <Card>
           <Empty icon="flag" title="Nothing has come in yet" body="Signals from your sources land here, filed, linked, held back or waiting for you, each with the reason." />
-        </div>
+        </Card>
       ) : (
-        <div className="card card--flush">
+        <Card flush>
           {list.map((s) => <SignalRow key={s.id} signal={s} />)}
-        </div>
+        </Card>
       )}
     </section>
   );
@@ -97,7 +98,7 @@ function SignalRow({ signal }: { signal: IntakeSignalView }): JSX.Element {
       <div className="list__aside">
         <span className="dim intake-list__when">{relativeTime(signal.lastSeenAt)}</span>
         {signal.status === 'received' ? (
-          <button type="button" className="btn" disabled={retrySignal.isPending} onClick={() => retrySignal.mutate()}>Try now</button>
+          <Button disabled={retrySignal.isPending} onClick={() => retrySignal.mutate()}>Try now</Button>
         ) : null}
         {signal.status === 'closure_failed' ? <RetryClosure signal={signal} /> : null}
       </div>
@@ -121,9 +122,9 @@ function RetryClosure({ signal }: { signal: IntakeSignalView }): JSX.Element {
   }, ['intake']);
   return (
     <>
-      <button type="button" className="btn" disabled={retry.isPending} onClick={() => retry.mutate()}>
+      <Button disabled={retry.isPending} onClick={() => retry.mutate()}>
         {retry.isPending ? 'Retrying…' : 'Retry'}
-      </button>
+      </Button>
       {retry.isError ? <ErrorState error={retry.error} /> : null}
     </>
   );

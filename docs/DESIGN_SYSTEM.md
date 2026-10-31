@@ -182,19 +182,28 @@ Rules:
 
 ## Component vocabulary
 
-Build screens from these classes before inventing new ones. Each class uses
-roles only.
+Build screens from these before inventing new ones. Where a component exists
+in `@tandemise/design/react`, use it rather than typing the classes: it carries
+the accessibility (`Button`, `Badge`, `StatusPill`, `StatusDot`, `Card`,
+`Icon`, `Logo`, `Field`, `Dialog`, `Tabs`/`Tab`, `Tooltip`, `EmptyState`). The
+desktop's `components/primitives.tsx` and `components/Modal.tsx` wrap them with
+the app's own vocabulary (`StatusBadge` takes a status string, `ConfirmDialog`
+its copy). A router link that must look like a button takes `buttonClass()`.
+Each class uses roles only; the component classes live in
+`@tandemise/design/components.css`, the rest in the desktop's `styles/`.
 
 | Need | Use |
 |---|---|
-| Actions | `.btn`, plus `--primary` (at most one per view), `--ghost`, `--danger`, `--lg`, `--icon`, `--block` |
+| Actions | `Button` / `.btn`, plus `--primary` (at most one per view), `--ghost`, `--danger`, `--lg`, `--icon`, `--block`; `loading` for work in flight |
+| Navigation | `Tabs` + `Tab` (`.tabs`, `.tab`, `.tab__count`), rendered as router links |
 | State | `.badge--{running,blocked,failed,succeeded,release,accent}`, `.dot--{tone}`, `.dot--pulse` for live |
 | Inputs | `.field`, `.input`, `.textarea`, `.select`, `.segmented`, `.switch`, `.search` |
 | Containers | `.card`, `.list` / `.list__row`, `.table`, `.banner--{accent,warn}`, `.modal`, `.overlay`, `.palette` |
 | Values | `.chip`, `.idchip` (copyable id), `.mono`, `.stat`, `.meter` |
 | Identity | `.monogram[data-tint=1..5]` for things with no icon of their own |
 | Empty and error | `.empty`, `.errorstate`, `.skeleton` |
-| Icons | `components/Icon.tsx`, drawing `ICON_PATHS` from `@tandemise/design/icons`: stroke icons in `currentColor` at 1.7 weight on a 24px grid |
+| Icons | `Icon` (`@tandemise/design/react`, re-exported by `components/Icon.tsx`), drawing `ICON_PATHS`: stroke icons in `currentColor` at 1.7 weight on a 24px grid |
+| Hints | `Tooltip` for a hint a keyboard user must reach too; native `title` is still used for long values that are only truncated |
 
 Status always maps through `Tone` (`lib/format.ts`):
 `running | blocked | failed | succeeded | pending`. Add a tone there and in

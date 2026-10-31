@@ -9,6 +9,7 @@ import { useConnectors, useDaemonMutation, useIntegrations } from '../lib/querie
 import { useDaemon } from '../lib/connection.js';
 import { useWorkspace } from '../lib/workspace.js';
 import { healthTone, relativeTime } from '../lib/format.js';
+import { Button } from '@tandemise/design/react';
 
 /** Gallery order: roughly the order work flows through a project. */
 const CATEGORIES: readonly { id: string; title: string }[] = [
@@ -62,10 +63,10 @@ export function Integrations(): JSX.Element {
         title="Integrations"
         subtitle="Connect the tools this project already uses. Each one reaches the workers who do that kind of work."
         actions={
-          <button type="button" className="btn" onClick={() => setCustom(true)}>
+          <Button onClick={() => setCustom(true)}>
             <Icon name="plus" size={13} />
             Custom server
-          </button>
+          </Button>
         }
       />
 
@@ -223,9 +224,9 @@ function ConnectedCard({
             label={integration.enabled ? `Turn off ${integration.name}` : `Turn on ${integration.name}`}
             onChange={(enabled) => update.mutate(enabled)}
           />
-          <button type="button" className="btn btn--icon btn--ghost" aria-label={`Disconnect ${integration.name}`} onClick={onRemove}>
+          <Button iconOnly variant="ghost" aria-label={`Disconnect ${integration.name}`} onClick={onRemove}>
             <Icon name="trash" size={14} />
-          </button>
+          </Button>
         </div>
       </div>
       {update.isError ? <ErrorState error={update.error} /> : null}
@@ -299,9 +300,9 @@ function GithubCard({ connected }: { connected: boolean }): JSX.Element {
           </span>
         ) : <span className="dim" style={{ fontSize: 'var(--fs-xs)' }}>Run <span className="mono">gh auth login</span> first</span>}
         {connected ? null : (
-          <button type="button" className="btn btn--primary" disabled={add.isPending || !workspaceId} onClick={() => add.mutate(undefined)}>
+          <Button variant="primary" disabled={add.isPending || !workspaceId} onClick={() => add.mutate(undefined)}>
             {add.isPending ? 'Connecting…' : 'Use gh login'}
-          </button>
+          </Button>
         )}
       </div>
     </article>
@@ -378,14 +379,14 @@ function ConnectDialog({ target, onClose }: { target: ConnectTarget; onClose: ()
       onClose={cancel}
       footer={
         attempt?.status === 'connected' ? (
-          <button type="button" className="btn btn--primary" onClick={onClose}>Done</button>
+          <Button variant="primary" onClick={onClose}>Done</Button>
         ) : attempt?.status === 'failed' || error !== null ? (
           <>
-            <button type="button" className="btn btn--ghost" onClick={onClose}>Close</button>
-            <button type="button" className="btn btn--primary" onClick={() => void start()}>Try again</button>
+            <Button variant="ghost" onClick={onClose}>Close</Button>
+            <Button variant="primary" onClick={() => void start()}>Try again</Button>
           </>
         ) : (
-          <button type="button" className="btn btn--ghost" onClick={cancel}>Cancel</button>
+          <Button variant="ghost" onClick={cancel}>Cancel</Button>
         )
       }
     >
@@ -417,15 +418,14 @@ function ConnectDialog({ target, onClose }: { target: ConnectTarget; onClose: ()
               </span>
             </div>
             {attempt.authorizationUrl ? (
-              <button
-                type="button"
-                className="btn btn--ghost"
+              <Button
+                variant="ghost"
                 style={{ alignSelf: 'flex-start' }}
                 onClick={() => void window.tandemise.openExternal(attempt.authorizationUrl!)}
               >
                 <Icon name="externalLink" size={12} />
                 Open the sign-in page again
-              </button>
+              </Button>
             ) : null}
             <p className="dim" style={{ margin: 0, fontSize: 'var(--fs-xs)' }}>
               Tandemise never sees your password. The access it receives is stored in your keychain, and you can disconnect at any
@@ -481,10 +481,9 @@ function CustomServerDialog({ onClose, onConnect }: { onClose: () => void; onCon
       onClose={onClose}
       footer={
         <>
-          <button type="button" className="btn btn--ghost" onClick={onClose}>Cancel</button>
-          <button
-            type="button"
-            className="btn btn--primary"
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button
+            variant="primary"
             disabled={!valid || add.isPending || !workspaceId}
             onClick={() => {
               if (mode === 'hosted') onConnect({ kind: 'custom', url: url.trim(), name: name.trim(), capability });
@@ -492,7 +491,7 @@ function CustomServerDialog({ onClose, onConnect }: { onClose: () => void; onCon
             }}
           >
             {mode === 'command' ? (add.isPending ? 'Starting it…' : 'Add server') : 'Connect'}
-          </button>
+          </Button>
         </>
       }
     >
