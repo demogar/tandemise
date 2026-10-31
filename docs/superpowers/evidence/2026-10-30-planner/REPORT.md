@@ -1,11 +1,12 @@
 # Planner and risk-based merge (#53): real-app acceptance, PM1–PM10
 
-Run: 2026-10-31T03:00:41.700Z · build 27a306a · fresh install at /tmp/tdm-planner-run-mvvsw5cr
+Run: 2026-10-31T03:39:34.213Z · build 817ae73 · fresh install at /tmp/tdm-planner-run-mvvua4zp
 Result: **ALL PASS** (10/10 scenarios)
 
 ## PM1 — A tiny fix plans at once in the quick lane and opens a pull request: PASS
 
-- note: mission msn_01m67xnqa8khev7xgpzn
+- note: mission msn_01m67zwxbqvgmx3s2ncr
+- note: saw the ship step opening: Opening the pull request.
 - note: mission ends EXECUTING
 - ok New mission: the workflow defaults to "Let the factory decide" — `"Let the factory decide"`
 - ok a factory draft offers Plan, Plan quick and Plan careful, Plan not held back for a Done-when line — `["Plan","Plan quick","Plan careful",""]`
@@ -17,9 +18,9 @@ Result: **ALL PASS** (10/10 scenarios)
 - ok …the step line "Implement · role model" — `"Fix\ntiny\nlow risk\nMake it careful\n\nFix · tiny · low risk\n\nQuick lane: one step, then a pull request. The project's lane rules matched it.\n\nNo plan approval.\nNo separate review or QA: the tests carry it, and th`
 - ok the "Fix" chip opens its signals as sentences — `"Title prefix fix: → type fix"`
 - ok one agent step, then the ship step — `["implement:agent","ship:ship"]`
-- ok GET /ship: one pull request opened on acme/web — `{"missionId":"msn_01m67xnqa8khev7xgpzn","taskId":"tsk_01m67xns8d9mdg7g08k6","prs":[{"repo":"acme/web","number":1,"url":"https://github.com/acme/web/pull/1","state":"opened","decision":{"id":"mrg_01m67xnwah1xwv3n4syr","ve`
+- ok GET /ship: one pull request opened on acme/web — `{"missionId":"msn_01m67zwxbqvgmx3s2ncr","taskId":"tsk_01m67zwz9hyd4xqmn4ne","prs":[{"repo":"acme/web","number":1,"url":"https://github.com/acme/web/pull/1","state":"opened","decision":null}],"stage":"opening","headline":`
 - ok ship card shows the pull request with Open in GitHub — `"Waiting for your review\n\nWaiting for your review: Auto-merge is off for this project.\n\nacme/web #1\nOpen in GitHub\nMerge\nAuto-merge is off for this project.\nThis repository has no CI checks, so Tandemise never me`
-- ok fake gh saw `pr create` without --draft — `["pr create --repo acme/web --head tandemise/fix-typo-in-the-settings-title/fix-typo-in-the-settings-title-implement-dg7g08k5 --base main --title fix: typo in the settings title --body-file -"]`
+- ok fake gh saw `pr create` without --draft — `["pr create --repo acme/web --head tandemise/fix-typo-in-the-settings-title/fix-typo-in-the-settings-title-implement-4xqmn4nd --base main --title fix: typo in the settings title --body-file -"]`
 - ok the pull request is not a draft and is titled from the profile — `{"title":"fix: typo in the settings title","isDraft":false}`
 - screenshot: `pm1-draft.png`
 - screenshot: `pm1-why-these-steps.png`
@@ -27,9 +28,9 @@ Result: **ALL PASS** (10/10 scenarios)
 
 ## PM2 — With auto-merge off, a green tiny fix asks for review and says what would have happened: PASS
 
-- note: mission msn_01m67xpwhb6rsw8k4j4y
+- note: mission msn_01m67zy21h48p1y15xpj
 - ok GET /ship: waiting for your review — `"Waiting for your review"`
-- ok …the decision asks, with "Auto-merge is off for this project." — `{"id":"mrg_01m67xq0yndsp33nfzrd","verdict":"ask","headSha":"799a6c26f7cfdc560c47b2045c9b64289be87ceb","scoreLine":"Risk score 1 of 2 allowed","reasons":["Auto-merge is off for this project."],"factors":["no independent r`
+- ok …the decision asks, with "Auto-merge is off for this project." — `{"id":"mrg_01m67zy6n5r68chxtaex","verdict":"ask","headSha":"4965057a42db357e0301971e24353131f39a9c0a","scoreLine":"Risk score 1 of 2 allowed","reasons":["Auto-merge is off for this project."],"factors":["no independent r`
 - ok …and would have merged: score 1 of 2 (no independent review in the quick lane) — `"would have merged: score 1 of 2"`
 - ok the ship card says "Waiting for your review" — `"Waiting for your review\n\nWaiting for your review: Auto-merge is off for this project.\n\nacme/web #2\nOpen in GitHub\nMerge\nAuto-merge is off for this project.\n\nRisk score 1 of 2 allowed: no independent review (+1)`
 - ok …"Auto-merge is off for this project." — `"Waiting for your review\n\nWaiting for your review: Auto-merge is off for this project.\n\nacme/web #2\nOpen in GitHub\nMerge\nAuto-merge is off for this project.\n\nRisk score 1 of 2 allowed: no independent review (+1)`
@@ -51,16 +52,16 @@ Result: **ALL PASS** (10/10 scenarios)
 
 ## PM4 — A tiny fix with CI green merges on its own: PASS
 
-- note: mission msn_01m67ycje8hdg4kf6ssw
-- ok GET /ship: "Merged on its own" — `{"headline":"Merged on its own","d":{"id":"mrg_01m67ycp0yv05em0a2ne","verdict":"merge","headSha":"cf638e1ee50aaec163a4ea4f61ae3ad70537e288","scoreLine":"Risk score 1 of 2 allowed","reasons":[],"factors":["no independent `
-- ok fake gh saw `pr merge … --squash --match-head-commit <the decided sha>` — `"pr merge 8 --repo acme/web --squash --match-head-commit cf638e1ee50aaec163a4ea4f61ae3ad70537e288 --subject fix: typo in the about title (#8) --body Tandemise-Merge: auto; score 1/2\nTandemise-Policy: planner shipped, ro`
-- ok the PR comment says "Tandemise merged this on its own: risk score …" — `["Tandemise merged this on its own: risk score 1 of 2 allowed. Touched `hello.txt` (no sensitive areas), 1 line, no tests changed, CI green on `cf638e1`. Policy: planner shipped, routing shipped, merge sha256:f2d128653d6`
-- ok the ship card reads "Merged on its own" with the score, the policy and Revert — `"Merged on its own\n\nMerged on its own: risk score 1 of 2 allowed.\n\nacme/web #8\nOpen in GitHub\nRevert\n\nRisk score 1 of 2 allowed: no independent review (+1)\n\nChecked cf638e1 · policy planner shipped, routing shi`
+- note: mission msn_01m680kqab307wb2b5bs
+- ok GET /ship: "Merged on its own" — `{"headline":"Merged on its own","d":{"id":"mrg_01m680kvqqn6rws787vc","verdict":"merge","headSha":"9eed7ab2e1504171a09f8d706817f03e04d56010","scoreLine":"Risk score 1 of 2 allowed","reasons":[],"factors":["no independent `
+- ok fake gh saw `pr merge … --squash --match-head-commit <the decided sha>` — `"pr merge 8 --repo acme/web --squash --match-head-commit 9eed7ab2e1504171a09f8d706817f03e04d56010 --subject fix: typo in the about title (#8) --body Tandemise-Merge: auto; score 1/2\nTandemise-Policy: planner shipped, ro`
+- ok the PR comment says "Tandemise merged this on its own: risk score …" — `["Tandemise merged this on its own: risk score 1 of 2 allowed. Touched `hello.txt` (no sensitive areas), 1 line, no tests changed, CI green on `9eed7ab`. Policy: planner shipped, routing shipped, merge sha256:f2d128653d6`
+- ok the ship card reads "Merged on its own" with the score, the policy and Revert — `"Merged on its own\n\nMerged on its own: risk score 1 of 2 allowed.\n\nacme/web #8\nOpen in GitHub\nRevert\n\nRisk score 1 of 2 allowed: no independent review (+1)\n\nChecked 9eed7ab · policy planner shipped, routing shi`
 - screenshot: `pm4-ship-card.png`
 
 ## PM5 — A change that touches a migration always asks: PASS
 
-- note: mission msn_01m67xr19452qv1052ff
+- note: mission msn_01m67zz6s43rf4p1097b
 - ok the decision asks: "Touches db/migrations/0042_add_index.sql — never merged on its own in this project." — `["Auto-merge is off for this project.","Touches db/migrations/0042_add_index.sql — never merged on its own in this project.","This was careful work, which always asks for a review.","Risk score 3 of 2 allowed: no tests c`
 - ok the ship card says so — `"Waiting for your review\n\nWaiting for your review: Auto-merge is off for this project.\n\nacme/web #3\nOpen in GitHub\nMerge\nAuto-merge is off for this project.\nTouches db/migrations/0042_add_index.sql — never merged`
 - ok fake gh saw no pr merge
@@ -68,22 +69,22 @@ Result: **ALL PASS** (10/10 scenarios)
 
 ## PM6 — A quick fix that touches auth gets a security review before its pull request: PASS
 
-- note: mission msn_01m67xs7fst7cqdyppns
+- note: mission msn_01m6800czqete92679r2
 - ok predicted quick: "Quick lane: one step, then a pull request." — `"Fix\ntiny\nlow risk\nMake it careful\n\nFix · tiny · low risk\n\nQuick lane: one step, then a pull request. The project's lane rules matched it.\n\nNo plan approval.\nNo separate review or QA: the tests carry it, and th`
 - ok a Security review step was added and ran — `{"title":"Security review","status":"SUCCEEDED"}`
 - ok the mission's events say "It touched src/auth/session.ts, so I added a security review." — `["Mission created: fix: typo in the login button label SCRIPTED_TOUCH=src/auth/session.ts","Plan chosen by the factory (2 tasks: development → ship): quick lane.","It touched src/auth/session.ts, so I added a security re`
-- ok the Timeline shows it in those words — `"msn_01m67xs7fst7cqdyppns\nMissions\nChosen by the factory\nfix: typo in the login button label…\nfix: typo in the login button label SCRIPTED_TOUCH=src/auth/session.ts\nExecuting\nPause\nCancel\n1 decision waiting on yo`
+- ok the Timeline shows it in those words — `"msn_01m6800czqete92679r2\nMissions\nChosen by the factory\nfix: typo in the login button label…\nfix: typo in the login button label SCRIPTED_TOUCH=src/auth/session.ts\nExecuting\nPause\nCancel\n1 decision waiting on yo`
 - ok the Plan header now says "Added a security review because it touches auth." — `"Fix\ntiny\nhigh risk\n\nFix · tiny · high risk\n\nCareful lane now: the change turned out riskier than planned, so 2 steps run before a pull request that always asks for review. The project's lane rules matched it.\n\nN`
 - ok …and lists the Security review step — `"Fix\ntiny\nhigh risk\n\nFix · tiny · high risk\n\nCareful lane now: the change turned out riskier than planned, so 2 steps run before a pull request that always asks for review. The project's lane rules matched it.\n\nN`
-- ok GET /ship: the pull request opened after the review — `{"missionId":"msn_01m67xs7fst7cqdyppns","taskId":"tsk_01m67xs8wppzbwgkq6pg","prs":[{"repo":"acme/web","number":4,"url":"https://github.com/acme/web/pull/4","state":"opened","decision":{"id":"mrg_01m67xsd7epbxnyte1vz","ve`
-- ok …and only after the security review finished — `{"reviewDone":"2026-10-31T02:49:28.152Z","opened":"2026-10-31T02:49:28.482Z"}`
+- ok GET /ship: the pull request opened after the review — `{"missionId":"msn_01m6800czqete92679r2","taskId":"tsk_01m6800echr28nybmge3","prs":[{"repo":"acme/web","number":4,"url":"https://github.com/acme/web/pull/4","state":"opened","decision":{"id":"mrg_01m6800jx0q51emrhew5","ve`
+- ok …and only after the security review finished — `{"reviewDone":"2026-10-31T03:28:20.512Z","opened":"2026-10-31T03:28:20.819Z"}`
 - screenshot: `pm6-predicted.png`
 - screenshot: `pm6-timeline.png`
 - screenshot: `pm6-measured.png`
 
 ## PM7 — Plan careful asks for a Done-when line first, then plans with an approval card: PASS
 
-- note: mission msn_01m67xtdhwmjmdr93hsg
+- note: mission msn_01m6801jvw1wd67gt47s
 - ok Plan careful with no criteria opens "Get it ready" on the feed — `"Get it ready\nNeeds a Done-when criterion\n\nBefore anything is planned, say what done means. Refine asks the product agent to read your request, propose criteria you can check, and ask only what would change the plan. `
 - ok …the mission stays a draft, marked careful — `{"status":"DRAFT","laneRequest":"careful"}`
 - ok …and Plan now waits for the Done-when line — `["(disabled) Add at least one Done-when criterion to plan","Plan quick","Plan careful",""]`
@@ -91,33 +92,33 @@ Result: **ALL PASS** (10/10 scenarios)
 - ok …with a plan card — `["Approve the plan for fix: the export button label is wrong?"]`
 - ok the Plan header carries the lane line "Careful lane" — `"Fix\nsmall\nlow risk\nMake it quick\n\nFix · small · low risk\n\nCareful lane: 4 steps, a plan you approve, then a pull request that always asks for review. You chose it.\n\nInvestigate · role model\nImplement · role mo`
 - ok …and says you chose it — `"Fix\nsmall\nlow risk\nMake it quick\n\nFix · small · low risk\n\nCareful lane: 4 steps, a plan you approve, then a pull request that always asks for review. You chose it.\n\nInvestigate · role model\nImplement · role mo`
-- ok GET /ship: waiting, no pull request yet — `{"missionId":"msn_01m67xtdhwmjmdr93hsg","taskId":"tsk_01m67xtkrtc18z3r8peq","prs":[],"stage":"waiting","headline":"Pull request not open yet","status":"The pull request opens once the steps before it are done."}`
+- ok GET /ship: waiting, no pull request yet — `{"missionId":"msn_01m6801jvw1wd67gt47s","taskId":"tsk_01m6801rzrrc378k4qck","prs":[],"stage":"waiting","headline":"Pull request not open yet","status":"The pull request opens once the steps before it are done."}`
 - screenshot: `pm7-get-ready.png`
 - screenshot: `pm7-plan.png`
 - screenshot: `pm7-plan-card.png`
 
 ## PM8 — A push after the decision voids it and decides again: PASS
 
-- note: mission msn_01m67ydppr2vwr046wjv
-- ok the first decision was voided — `[{"headSha":"029d40c23c84bb2bddb8271520a03b47baf97da3","voidedAt":"2026-10-31T03:00:37.814Z","verdict":"merge"},{"headSha":"dddddddddddddddddddddddddddddddddddddddd","voidedAt":null,"verdict":"ask"}]`
-- ok …and a new one made on the new sha — `[{"headSha":"029d40c23c84bb2bddb8271520a03b47baf97da3","voidedAt":"2026-10-31T03:00:37.814Z","verdict":"merge"},{"headSha":"dddddddddddddddddddddddddddddddddddddddd","voidedAt":null,"verdict":"ask"}]`
+- note: mission msn_01m680mw2hh9mnd2bg7k
+- ok the first decision was voided — `[{"headSha":"1454ccf1cec407058acce6a61efa29932fed7f95","voidedAt":"2026-10-31T03:39:30.163Z","verdict":"merge"},{"headSha":"dddddddddddddddddddddddddddddddddddddddd","voidedAt":null,"verdict":"ask"}]`
+- ok …and a new one made on the new sha — `[{"headSha":"1454ccf1cec407058acce6a61efa29932fed7f95","voidedAt":"2026-10-31T03:39:30.163Z","verdict":"merge"},{"headSha":"dddddddddddddddddddddddddddddddddddddddd","voidedAt":null,"verdict":"ask"}]`
 - ok the feed says "The pull request changed after it was checked; checking again." — `["Mission created: fix: typo in the help title","Plan chosen by the factory (2 tasks: development → ship): quick lane.","Opened the pull request https://github.com/acme/web/pull/9.","The pull request changed after it was`
-- ok the refused merge was bound to the first decision's sha — `"pr merge 9 --repo acme/web --squash --match-head-commit 029d40c23c84bb2bddb8271520a03b47baf97da3 --subject fix: typo in the help title (#9) --body Tandemise-Merge: auto; score 1/2\nTandemise-Policy: planner shipped, rou`
+- ok the refused merge was bound to the first decision's sha — `"pr merge 9 --repo acme/web --squash --match-head-commit 1454ccf1cec407058acce6a61efa29932fed7f95 --subject fix: typo in the help title (#9) --body Tandemise-Merge: auto; score 1/2\nTandemise-Policy: planner shipped, rou`
 
 ## PM9 — Revert undoes an auto-merge through its own pull request: PASS
 
-- ok Revert opened a revert mission that completed — `{"id":"msn_01m67ydxqfwkt5pxjf4w","status":"COMPLETE"}`
-- ok …its pull request "revert: …" merged on its own — `{"missionId":"msn_01m67ydxqfwkt5pxjf4w","taskId":"tsk_01m67ydxqfwkt5pxjf4x","prs":[{"repo":"acme/web","number":10,"url":"https://github.com/acme/web/pull/10","state":"opened","decision":{"id":"mrg_01m67ydxxw26q1mgdkem","`
+- ok Revert opened a revert mission that completed — `{"id":"msn_01m680n3jg3zm65axnt2","status":"COMPLETE"}`
+- ok …its pull request "revert: …" merged on its own — `{"missionId":"msn_01m680n3jg3zm65axnt2","taskId":"tsk_01m680n3jhmgyjesajtc","prs":[{"repo":"acme/web","number":10,"url":"https://github.com/acme/web/pull/10","state":"opened","decision":{"id":"mrg_01m680n3sxjbkpztcvhv","`
 - ok …titled revert: fix: typo in the about title — `["revert: fix: typo in the about title","MERGED"]`
 - ok the original mission's history shows the revert — `["merge.decided","merge.merged","merge.reverted"]`
 
 ## PM10 — People stepping in tightens the next plan; Project → Factory shows the files and routing: PASS
 
-- note: desktop-ui fix 1: mission msn_01m67xvncxmtb4xhmkvr
-- note: desktop-ui fix 2: mission msn_01m67y0a3s68ra5pjwfh
-- note: desktop-ui fix 3: mission msn_01m67y4ysrremvb3px6a
-- note: fourth desktop-ui fix: mission msn_01m67y9kdjpvtwtkp8gp
-- note: routed fix: mission msn_01m67yams6m6d2req562
+- note: desktop-ui fix 1: mission msn_01m6802thw5h3tff29dk
+- note: desktop-ui fix 2: mission msn_01m6807f9t5ng3eg4nf7
+- note: desktop-ui fix 3: mission msn_01m680c4055xnbsc0wyr
+- note: fourth desktop-ui fix: mission msn_01m680grmegjt8z1zf0d
+- note: routed fix: mission msn_01m680hsqn21wz8p18p5
 - ok fix 1: a round started on its implement step — `{"round":2,"status":"READY"}`
 - ok fix 2: a round started on its implement step — `{"round":2,"status":"READY"}`
 - ok fix 3: a round started on its implement step — `{"round":2,"status":"READY"}`
@@ -129,11 +130,11 @@ Result: **ALL PASS** (10/10 scenarios)
 - ok …routing and merge are "Built in" — `"Factory\nHow tasks are planned, which models they use, and when a pull request merges\nWrite the defaults into the repository\nPlanner rules\nFrom this project's repository\n· …/project/.tandemise/factory/planner.yaml\n`
 - ok …with a Routing section that says every step uses its role's model — `"Factory\nHow tasks are planned, which models they use, and when a pull request merges\nWrite the defaults into the repository\nPlanner rules\nFrom this project's repository\n· …/project/.tandemise/factory/planner.yaml\n`
 - ok GET /factory: planner from the project, routing and merge built in — `[["planner","project","/tmp/tdm-planner/project/.tandemise/factory/planner.yaml"],["routing","shipped",null],["merge","shipped",null]]`
-- ok GET /routing: no ladder written, with the empty sentence — `{"workspaceId":"ws_01m67xnke12khj3asftb","ruleLine":"A model is chosen once its success rate is confidently at least 80%, over at least 8 similar steps; until then a step starts at its class's default.","classes":[],"emp`
+- ok GET /routing: no ladder written, with the empty sentence — `{"workspaceId":"ws_01m67zws3dfgt70tvsbs","ruleLine":"A model is chosen once its success rate is confidently at least 80%, over at least 8 similar steps; until then a step starts at its class's default.","classes":[],"emp`
 - ok Write the defaults: routing and merge now come from the repository — `[["planner","project","/tmp/tdm-planner/project/.tandemise/factory/planner.yaml"],["routing","project","/tmp/tdm-planner/project/.tandemise/factory/routing.yaml"],["merge","project","/tmp/tdm-planner/project/.tandemise/f`
 - ok …the project's own planner file is left as it was
 - ok …and the Factory section says so for all three, with the button gone — `"Factory\nHow tasks are planned, which models they use, and when a pull request merges\nPlanner rules\nFrom this project's repository\n· …/project/.tandemise/factory/planner.yaml\nsha256:e1b5c187953c\nModel routing\nFrom`
-- ok GET /routing: implement, "Quick lane · not sensitive", starting at sonnet — `{"workspaceId":"ws_01m67xnke12khj3asftb","ruleLine":"A model is chosen once its success rate is confidently at least 80%, over at least 8 similar steps; until then a step starts at its class's default.","classes":[{"step`
+- ok GET /routing: implement, "Quick lane · not sensitive", starting at sonnet — `{"workspaceId":"ws_01m67zws3dfgt70tvsbs","ruleLine":"A model is chosen once its success rate is confidently at least 80%, over at least 8 similar steps; until then a step starts at its class's default.","classes":[{"step`
 - ok …the runs measured so far show as their own row (the model they ran on), never as a cost of $0 — `[{"model":"haiku","onLadder":true,"tasks":0,"firstPass":"not measured","success":"not measured","medianCost":"not measured","medianTime":"not measured","starting":false},{"model":"sonnet","onLadder":true,"tasks":0,"first`
 - ok Project → Factory → Routing: a table for implement steps — `"Factory\nHow tasks are planned, which models they use, and when a pull request merges\nPlanner rules\nFrom this project's repository\n· …/project/.tandemise/factory/planner.yaml\nsha256:e1b5c187953c\nModel routing\nFrom`
 - ok Plan header: "Implement · sonnet · … · if it fails, opus" — `"Fix\ntiny\nlow risk\nMake it careful\n\nFix · tiny · low risk\n\nQuick lane: one step, then a pull request. The project's lane rules matched it.\n\nNo plan approval.\nNo separate review or QA: the tests carry it, and th`
