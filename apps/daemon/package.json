@@ -21,6 +21,7 @@
     "@tandemise/integrations-core": "*",
     "@tandemise/context": "*",
     "@tandemise/evaluation": "*",
+    "@tandemise/coordination": "*",
     "@tandemise/runtime-claude": "*",
     "@tandemise/runtime-codex": "*",
     "@tandemise/runtime-generic": "*",

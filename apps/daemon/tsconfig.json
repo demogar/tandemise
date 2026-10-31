@@ -45,6 +45,9 @@
       "path": "../../packages/evaluation"
     },
     {
+      "path": "../../packages/coordination"
+    },
+    {
       "path": "../../packages/runtime-claude"
     },
     {

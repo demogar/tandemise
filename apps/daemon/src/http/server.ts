@@ -18,7 +18,15 @@ export interface HttpServerOptions {
   readonly onUpgrade: (req: IncomingMessage, socket: Duplex, head: Buffer) => void;
   /** 0 lets the OS pick, which is what MVP.md §7.2 asks for. */
   readonly port?: number;
+  /**
+   * The local webhook ingress may skip the bearer check, only when the person
+   * explicitly turned `coordination.localHooksUnauthenticated` on (relay spec,
+   * "Solo"). The bind stays loopback either way.
+   */
+  readonly unauthenticatedHooks?: () => boolean;
 }
+
+const LOCAL_HOOK_PATH = /^\/v1\/hooks\/[^/]+$/;
 
 /**
  * The daemon's HTTP surface.
@@ -141,7 +149,8 @@ export class HttpServer {
       }
 
       const authorization = req.headers[AUTH_HEADER] as string | undefined;
-      if (!verifyBearer(authorization, this.#opts.token)) {
+      const openHook = LOCAL_HOOK_PATH.test(url.pathname) && this.#opts.unauthenticatedHooks?.() === true;
+      if (!openHook && !verifyBearer(authorization, this.#opts.token)) {
         log.warn('daemon.unauthenticated_request');
         sendError(res, TandemiseError.permissionDenied('Missing or invalid daemon token.'), log);
         return;
@@ -160,8 +169,8 @@ export class HttpServer {
         return;
       }
 
-      const bearer = bearerToken(authorization!);
-      const ctx = makeContext(req, matched.params, url.searchParams, log, () => this.#opts.identityResolver(bearer), {
+      const bearer = bearerToken(authorization ?? '');
+      const ctx = makeContext(req, res, matched.params, url.searchParams, log, () => this.#opts.identityResolver(bearer), {
         maxBodyBytes: matched.route.maxBodyBytes,
         overflowMessage: matched.route.overflowMessage,
       });

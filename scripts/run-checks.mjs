@@ -17,6 +17,7 @@ export const OFFLINE_CHECKS = [
   'concurrency-check',
   'coordination-check',
   'coordination-app-check',
+  'coordination-daemon-check',
   'daemon-node-check',
   'env-leak-check',
   'first-run-words-check',
