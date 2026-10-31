@@ -200,7 +200,12 @@ await attempt('ship decides, audit, person merge, closed, crash', async () => {
   const { realExecutor } = await import('./planner-harness.mjs');
   const exec = realExecutor(`${w2.ghDir}/bin`);
   const again = await engineHarness(w2.h.paths.root, { factory: w2.files, commandExecutor: exec, pullRequests: new GH.GhPullRequestFlow(exec) });
-  for (let i = 0; i < 8; i++) { await again.scheduler.tick(); await again.sleep(100); }
+  // Until the restarted engine has looked at the pull request again (a deadline, not a timed sleep).
+  const callsBefore = fake.calls(w2.ghDir).length;
+  const deadline = Date.now() + 20000;
+  while (fake.calls(w2.ghDir).length === callsBefore && Date.now() < deadline) { await again.scheduler.tick(); await again.sleep(50); }
+  check('restarted, the engine looks at the waiting pull request again', fake.calls(w2.ghDir).length > callsBefore);
+  await again.scheduler.tick();
   check('restarted, it decides nothing twice and merges nothing', again.repo.mergeDecisions.listByMission(m4.id).length === before && !fake.calls(w2.ghDir).some((c) => c.args[1] === 'merge'), again.repo.mergeDecisions.listByMission(m4.id).length);
   check('the ship step is still waiting for a review', again.repo.tasks.listByMission(m4.id).find((t) => t.key === 'ship').status === 'AWAITING_APPROVAL');
 });
@@ -308,6 +313,9 @@ await attempt('revert and watch', async () => {
   w.files.files.merge = { ...app.SHIPPED_MERGE, autoMerge: 'off' };
   const revert = await w.h.services.shipActions.revert(decision.id, w.caller);
   check('Revert opens a revert mission', revert.title === 'revert: fix: typo in the settings title' && revert.workflowInputs.revertOfAuto === 'true', revert.title);
+  let twice = null;
+  try { await w.h.services.shipActions.revert(decision.id, w.caller); } catch (e) { twice = e.message; }
+  check('a second Revert of the same merge is refused', twice === 'A revert of this merge is already on its way.', twice);
   await w.h.until(() => w.h.repo.missions.get(revert.id).status === 'COMPLETE' || w.h.repo.tasks.listByMission(revert.id)[0]?.status === 'AWAITING_APPROVAL', 60000);
   const revertPr = fake.pullRequests(w.ghDir, REPO).at(-1);
   const merges = fake.calls(w.ghDir).filter((c) => c.args[1] === 'merge');
@@ -462,6 +470,9 @@ await attempt('review: queued auto-merge is cancelled', async () => {
   await w.h.until(() => w.h.repo.mergeDecisions.listByMission(m.id).some((d) => d.voidedAt === null && d.verdict === 'ask'), 30000);
   check('…and the pull request is decided again, as ask', w.h.repo.mergeDecisions.listByMission(m.id).at(-1).verdict === 'ask');
   check('no gh call ever passes --admin', !fake.calls(w.ghDir).some((c) => c.args.includes('--admin')));
+  const { readFileSync: rf, readdirSync: rd } = await import('node:fs');
+  const ghDist = `${root}/packages/integration-github/dist`;
+  check('nothing in the GitHub integration can pass --admin', rd(ghDist).filter((f) => f.endsWith('.js')).every((f) => !rf(`${ghDist}/${f}`, 'utf8').includes('--admin')));
   // No required checks: GitHub's auto-merge would not wait for CI, so it is never used.
   const w2 = await world({ factory: { merge: { ...app.SHIPPED_MERGE, autoMerge: 'on' } }, brain: true });
   await w2.authorize();

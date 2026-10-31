@@ -40,6 +40,12 @@ rmSync(EVIDENCE, { recursive: true, force: true });
 mkdirSync(EVIDENCE, { recursive: true });
 
 const ghBin = installFakeGh(`${LINK}/gh`, { login: 'acme-bot' });
+// No run may reach real GitHub: the daemon's PATH must resolve gh to the fake before anything starts.
+const resolvedGh = execFileSync('sh', ['-c', 'command -v gh'], { env: { ...process.env, PATH: `${ghBin}:${process.env.PATH}` }, encoding: 'utf8' }).trim();
+if (resolvedGh !== `${ghBin}/gh`) {
+  console.error(`refusing to run: gh resolves to ${resolvedGh}, not the fake at ${ghBin}/gh`);
+  process.exit(2);
+}
 
 // The project exists before setup so it is registered with a GitHub remote.
 const project = `${LINK}/project`;

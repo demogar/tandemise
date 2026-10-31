@@ -402,6 +402,8 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
     bind(t.OUTCOME_RECORDER, (r) => new OutcomeRecorder({
       outcomes: r.resolve(t.OUTCOME_REPOSITORY),
       sink: (workspaceId, event) => { void r.resolve(t.OUTCOME_HISTORY).send(workspaceId, event); },
+      bus: r.resolve(t.EVENT_BUS),
+      tasks: r.resolve(t.TASK_REPOSITORY),
       missions: r.resolve(t.MISSION_REPOSITORY),
       planDecisions: r.resolve(t.PLAN_DECISION_REPOSITORY),
       runScores: r.resolve(t.RUN_SCORE_REPOSITORY),

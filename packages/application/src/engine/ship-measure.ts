@@ -31,6 +31,8 @@ export interface MeasureInput {
   readonly pushedSha: string | null;
   readonly repos: number;
   readonly stats: Pick<OutcomeStats, 'areas'>;
+  /** Holds on this mission's steps, from its outcomes (#50). */
+  readonly holds: number;
   readonly now: number;
 }
 
@@ -126,7 +128,7 @@ export async function measureMergeFacts(deps: MeasureDeps, input: MeasureInput):
       lane: decision?.lane ?? 'standard',
       lightenedByPerson: decision?.lightenedByPerson ?? false,
       stepsSkipped: decision?.skipped.length ?? 0,
-      holds: 0,
+      holds: input.holds,
       changesRequested: agentTasks.reduce((n, t) => n + Math.max(0, (t.round ?? 1) - 1), 0),
       escalations: agentTasks.filter((t) => t.attempts >= 2 && (t.modelPolicy?.escalate?.length ?? 0) > 0).length
         + agentTasks.filter((t) => t.modelPolicy?.reason === 'moved up after changes were requested').length,

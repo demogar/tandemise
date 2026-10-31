@@ -97,6 +97,9 @@ export interface ShipDecideDeps {
 }
 
 export class ShipService {
+  /** Ship steps whose decision must ask whatever the policy says, with why. */
+  readonly #mustAsk = new Map<string, string>();
+
   constructor(protected readonly deps: ShipDeps) {}
 
   async run(mission: Mission, task: MissionTask, signal: AbortSignal): Promise<ShipOutcome> {
@@ -135,7 +138,9 @@ export class ShipService {
           return { kind: 'escalated', added };
         }
       } catch (e) {
+        // What the change touched couldn't be re-checked: it ships, but the decision asks.
         this.deps.log.warn('ship.escalate_failed', { missionId: mission.id, error: errorMessage(e) });
+        this.#mustAsk.set(task.id, `Tandemise couldn't re-check what this change touches (${errorMessage(e)}), so it asks.`);
       }
     }
 
@@ -180,6 +185,15 @@ export class ShipService {
     const pushedSha = local.exitCode === 0 ? local.stdout.trim() : pr.headSha;
     this.deps.recorder.record(scope, { type: 'ship.pr_opened', repo, number: pr.number, url: pr.url, headSha: pushedSha });
     if (pr.created) this.deps.recorder.note(scope, `Opened the pull request ${pr.url}.`);
+    // A revert's pull request now exists: only now does the merge it undoes count as reverted (#53 §8.7).
+    const revertOf = mission.workflowInputs['revertOf'];
+    if (pr.created && revertOf !== undefined) {
+      const original = this.deps.decide?.mergeDecisions.get(revertOf);
+      if (original !== undefined) {
+        this.deps.recorder.record({ workspaceId: original.workspaceId, missionId: original.missionId }, { type: 'merge.reverted', decisionId: original.id, revertPr: pr.url, by: 'tandemise' });
+        this.deps.decide?.outcomes()?.reverted(original);
+      }
+    }
     this.deps.recorder.invalidate('ship', mission.id);
     return { kind: 'opened', prs: [pr] };
   }
@@ -228,6 +242,7 @@ export class ShipService {
         await this.#git(repository, ['fetch', '--quiet', 'origin', `pull/${pr.number}/head:refs/tandemise/pr/${pr.number}`], true);
       }
     }
+    const recent = d.outcomeRows.listByWorkspace(mission.workspaceId, new Date(this.deps.clock.epochMs() - 90 * 86_400_000).toISOString());
     let measured: MergeFacts;
     try {
       measured = await measureMergeFacts({
@@ -236,7 +251,8 @@ export class ShipService {
     }, {
       mission, repository, pr, baseRef, checks, protection, policy: factory.merge, planner: factory.planner,
       pushedSha: this.#pushedSha(mission, pr), repos: 1,
-      stats: foldOutcomes(d.outcomeRows.listByWorkspace(mission.workspaceId, new Date(this.deps.clock.epochMs() - 90 * 86_400_000).toISOString())),
+      stats: foldOutcomes(recent),
+      holds: recent.filter((o) => o.mission === mission.id && o.kind === 'held').length,
       now: this.deps.clock.epochMs(),
     });
     } catch (e) {
@@ -246,6 +262,8 @@ export class ShipService {
     // Auto-merge counts only when the policy came from the brain and a person turned it on in the app (#53 §8.4);
     // a merge.yaml in a repository or on this computer saying "on" is not that.
     const policy = 'error' in factory.merge || factory.autoMergeAuthorized ? factory.merge : { ...factory.merge, autoMerge: 'off' as const, revertAutoMerge: 'off' as const };
+    const forced = this.#mustAsk.get(task.id);
+    if (forced !== undefined) return this.#recordDecision(mission, task, repository, pr, factory.policyRef, commentId, null, forced);
     return this.#recordDecision(mission, task, repository, pr, factory.policyRef, commentId, { facts, decided: decideMerge(facts, policy) }, null);
   }
 
@@ -575,8 +593,10 @@ export class ShipService {
 
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
-    const timer = setTimeout(resolve, ms);
-    signal.addEventListener('abort', () => { clearTimeout(timer); resolve(); }, { once: true });
+    // The abort listener goes when the sleep ends either way: a long CI wait adds one per poll otherwise.
+    const onAbort = (): void => { clearTimeout(timer); resolve(); };
+    const timer = setTimeout(() => { signal.removeEventListener('abort', onAbort); resolve(); }, ms);
+    signal.addEventListener('abort', onAbort, { once: true });
   });
 }
 

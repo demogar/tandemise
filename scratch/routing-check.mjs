@@ -129,6 +129,25 @@ await attempt('rung choice, bounds, escalation', async () => {
   check('with nothing above, it stays', eq(app.moveUpAfterChanges({ model: 'opus', escalate: [], reason: 'routed: x' }), { model: 'opus', escalate: [], reason: 'routed: x' }));
 });
 
+await attempt('holds count', async () => {
+  section('holds count');
+  const appended = [];
+  let listener = null;
+  const task = { id: 'tsk_h', missionId: 'msn_h', key: 'implement', executor: 'agent', stepClass: 'implement', roleId: 'development', attempts: 1, modelPolicy: null };
+  const recorder = new app.OutcomeRecorder({
+    outcomes: { append: (o) => appended.push(o), listByWorkspace: () => [] },
+    missions: { get: () => ({ id: 'msn_h', workspaceId: 'ws_h' }) },
+    planDecisions: { latest: () => ({ lane: 'quick', profile: { type: 'fix', size: 'xs', risk: 'low', areas: [] } }) },
+    recorder: { record: () => {} }, clock: { now: () => new Date().toISOString() }, log: { warn: () => {} },
+    bus: { subscribe: (fn) => { listener = fn; return () => { listener = null; }; } },
+    tasks: { get: () => task },
+  });
+  await recorder.start();
+  listener({ taskId: 'tsk_h', missionId: 'msn_h', body: { type: 'task.hold_ended', ending: 'continued' } });
+  check('a hold that ends (task.hold_ended) is recorded as a held outcome on that step', appended.length === 1 && appended[0].kind === 'held' && appended[0].step.taskKey === 'implement', appended);
+  await recorder.stop();
+});
+
 // @sections
 
 console.log(`\n${passed} passed, ${failures.length} failed`);

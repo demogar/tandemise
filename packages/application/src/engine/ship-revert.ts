@@ -33,9 +33,11 @@ export interface ShipRevertDeps {
 }
 
 export class ShipRevert {
+  readonly #inFlight = new Set<string>();
+
   constructor(private readonly deps: ShipRevertDeps) {}
 
-  async revert(decisionId: string, by: string): Promise<Mission> {
+  async revert(decisionId: string, _by: string): Promise<Mission> {
     const decision = this.deps.mergeDecisions.get(decisionId);
     if (decision === undefined) throw TandemiseError.notFound('Merge decision', decisionId);
     if (decision.mergeSha === null) throw new TandemiseError('PRECONDITION_FAILED', 'This pull request was never merged, so there is nothing to revert.');
@@ -44,6 +46,21 @@ export class ShipRevert {
     if (original === undefined || repository === undefined || this.deps.exec === null) {
       throw new TandemiseError('PRECONDITION_FAILED', 'The repository this was merged into isn\'t here any more.');
     }
+    const merged = { ...decision, mergeSha: decision.mergeSha };
+    // One revert per merge: a second press (or a double click) finds the first on its way.
+    const already = this.deps.missions.list({ workspaceId: original.workspaceId })
+      .find((m) => m.workflowInputs['revertOf'] === decision.id && m.status !== 'CANCELLED' && m.status !== 'FAILED');
+    if (already !== undefined) throw new TandemiseError('CONFLICT', 'A revert of this merge is already on its way.', { details: { missionId: already.id } });
+    if (this.#inFlight.has(decision.id)) throw new TandemiseError('CONFLICT', 'A revert of this merge is already on its way.');
+    this.#inFlight.add(decision.id);
+    try {
+      return await this.#revert(merged, original, repository);
+    } finally {
+      this.#inFlight.delete(decision.id);
+    }
+  }
+
+  async #revert(decision: NonNullable<ReturnType<MergeDecisionRepositoryPort['get']>> & { mergeSha: string }, original: Mission, repository: NonNullable<ReturnType<RepoRepositoryPort['get']>>): Promise<Mission> {
     const pr = await this.deps.pullRequests.view(repository.path, decision.repo, decision.prNumber);
     const branch = `revert/${decision.mergeSha.slice(0, 12)}`;
     const dir = `${this.deps.tmpRoot}/${slugify(branch)}-${Date.now()}`;
@@ -87,9 +104,8 @@ export class ShipRevert {
     }
     const started = this.deps.missions.update(id, { status: 'EXECUTING', statusReason: `Reverting ${prTitle({ type: 'fix' }, pr.title)}.`, startedAt: now });
     this.deps.recorder.record({ workspaceId: mission.workspaceId, missionId: id }, { type: 'mission.status', from: 'DRAFT', to: 'EXECUTING', reason: started.statusReason ?? '' });
-    this.deps.recorder.record({ workspaceId: original.workspaceId, missionId: original.id }, { type: 'merge.reverted', decisionId: decision.id, revertPr: null, by });
+    // The merge counts as reverted once the revert's pull request exists (the ship step records it then).
     this.deps.recorder.note({ workspaceId: original.workspaceId, missionId: original.id }, `Reverting it: ${title}.`);
-    this.deps.outcomes()?.reverted(decision);
     this.deps.recorder.invalidate('missions');
     this.deps.wake();
     return started;

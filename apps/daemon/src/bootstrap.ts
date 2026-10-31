@@ -233,6 +233,8 @@ export function bootstrap(config: DaemonConfig, options: { readonly localPersonN
   lifecycle.add(container.resolve(EVAL_RUNNER));
   lifecycle.add(container.resolve(applicationTokens.BRAIN_SYNC_LOOP));
   lifecycle.add(container.resolve(applicationTokens.BRAIN_SIGNALS));
+  // Holds ending (#50) become outcomes for routing (#53).
+  lifecycle.add(container.resolve(applicationTokens.OUTCOME_RECORDER));
 
   return { container, services, lifecycle, events, projections, log, testClock };
 }

@@ -1,6 +1,6 @@
 import type {
   MergeDecisionRecord, Mission, MissionRepositoryPort, MissionTask, OutcomeEvent, OutcomeKind, OutcomeRepositoryPort,
-  PlanDecisionRepositoryPort, RunScoreRepositoryPort,
+  PlanDecisionRepositoryPort, RunScoreRepositoryPort, EventBusPort, TaskRepositoryPort,
 } from '@tandemise/domain';
 import { isTrialMission, maxSensitivity, stepClassFor } from '@tandemise/domain';
 import { ids, type Clock, type Logger, type MissionId, type WorkspaceId } from '@tandemise/shared';
@@ -24,10 +24,32 @@ export interface OutcomeRecorderDeps {
   readonly writer?: () => string;
   /** Also sends each outcome to the brain's ledger when the project has one (#53 Task 20). */
   readonly sink?: (workspaceId: WorkspaceId, event: OutcomeEvent) => void;
+  /** Where `task.hold_ended` arrives from, and the task it names. */
+  readonly bus?: Pick<EventBusPort, 'subscribe'>;
+  readonly tasks?: Pick<TaskRepositoryPort, 'get'>;
 }
 
 export class OutcomeRecorder {
+  readonly name = 'hold-outcomes';
+  #unsubscribe: (() => void) | null = null;
+
   constructor(private readonly deps: OutcomeRecorderDeps) {}
+
+  /** Listens for holds ending (#50 records \`task.hold_ended\`): each one counts against that step's rung. */
+  async start(): Promise<void> {
+    if (this.#unsubscribe !== null || this.deps.bus === undefined || this.deps.tasks === undefined) return;
+    const tasks = this.deps.tasks;
+    this.#unsubscribe = this.deps.bus.subscribe((record) => {
+      if ((record.body as { type: string }).type !== 'task.hold_ended' || record.taskId == null) return;
+      const task = tasks.get(record.taskId);
+      if (task !== undefined) this.held(task);
+    });
+  }
+
+  async stop(): Promise<void> {
+    this.#unsubscribe?.();
+    this.#unsubscribe = null;
+  }
 
   /** A step's attempt settled: its score as a `step_result`. */
   stepSettled(mission: Mission, task: MissionTask): void {
@@ -42,7 +64,7 @@ export class OutcomeRecorder {
     });
   }
 
-  /** A hold (#50) ended; counts against the step's rung. Wired when #50 lands. */
+  /** A hold (#50) ended; counts against the step's rung. */
   held(task: MissionTask): void {
     this.#write(task.missionId, 'held', { step: this.#stepOf(task) });
   }

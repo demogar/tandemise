@@ -95,7 +95,7 @@ export class FactoryService {
       modules: decision.modules.map((name) => moduleSentence(
         modules.find((m) => m.name === name) as Parameters<typeof moduleSentence>[0], name, decision.profile,
       )),
-      dropped: decision.dropped.map((d) => `${d.name}: ${d.why}`),
+      dropped: decision.dropped.map((d) => (d.name.startsWith('skill ') ? `Left out the ${d.name.slice(6)} skill: ${d.why}` : `${d.name}: ${d.why}`)),
       steps: decision.steps.filter((s) => s.stepClass !== 'ship').map((s) => ({ key: s.key, line: stepLine(s, titles.get(s.key)) })),
       approvals: [...new Set(decision.approvals.map((a) => a.reason))],
       tiebreak: decision.tiebreak === null ? null : tiebreakSentence(decision.tiebreak),
