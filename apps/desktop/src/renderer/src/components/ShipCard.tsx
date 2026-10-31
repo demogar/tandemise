@@ -28,6 +28,7 @@ export function ShipCard({ missionId }: { missionId: string }): JSX.Element | nu
 
 function ShipPullRequest({ missionId, pr }: { missionId: string; pr: ShipPullRequestView }): JSX.Element {
   const merge = useDaemonMutation((daemon, cardId: string) => daemon.decideApproval(cardId, { optionId: 'approve' }), ['ship', 'approvals', 'tasks'], missionId);
+  const revert = useDaemonMutation((daemon, decisionId: string) => daemon.revertShip(decisionId), ['ship', 'missions'], missionId);
   const decision = pr.decision;
   return (
     <div className="ship__pr">
@@ -40,6 +41,11 @@ function ShipPullRequest({ missionId, pr }: { missionId: string; pr: ShipPullReq
         {decision?.cardId != null ? (
           <button type="button" className="btn btn--primary" disabled={merge.isPending} onClick={() => merge.mutate(decision.cardId!)}>
             Merge
+          </button>
+        ) : null}
+        {decision?.canRevert === true ? (
+          <button type="button" className="btn" disabled={revert.isPending || revert.isSuccess} onClick={() => revert.mutate(decision.id)}>
+            {revert.isSuccess ? 'Reverting…' : 'Revert'}
           </button>
         ) : null}
       </div>
@@ -56,6 +62,7 @@ function ShipPullRequest({ missionId, pr }: { missionId: string; pr: ShipPullReq
           )}
           <p className="ship__policy">Checked {decision.headSha.slice(0, 7)} · policy {decision.policyRef}</p>
           {merge.isError ? <p className="ship__error">{(merge.error as Error).message}</p> : null}
+          {revert.isError ? <p className="ship__error">{(revert.error as Error).message}</p> : null}
         </div>
       )}
     </div>

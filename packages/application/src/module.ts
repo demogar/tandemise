@@ -4,7 +4,10 @@ import { PlannerService } from './planning/planner-service.js';
 import { SHIP_CI_POLL_MS, SHIP_CI_TIMEOUT_MS, ShipService } from './engine/ship.js';
 import { policyRef } from './planning/planner-service.js';
 import { OutcomeRecorder } from './engine/outcomes.js';
+import { MergeWatch } from './engine/merge-watch.js';
+import { ShipRevert } from './engine/ship-revert.js';
 import { MergePolicyService } from './services/merge-policy-service.js';
+import { actorFor } from './support/identity.js';
 import type { PullRequestPort } from '@tandemise/domain';
 
 /** Until the daemon binds the `gh` flow: every pull request call says there is no GitHub here. */
@@ -365,6 +368,20 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
     }), { source: SOURCE });
 
     bind(t.PULL_REQUEST_FLOW, () => NO_PULL_REQUESTS, { source: SOURCE });
+    bind(t.MERGE_WATCH, (r) => new MergeWatch({
+      workspaces: r.resolve(t.WORKSPACE_REPOSITORY), missions: r.resolve(t.MISSION_REPOSITORY), tasks: r.resolve(t.TASK_REPOSITORY),
+      repositories: r.resolve(t.REPO_REPOSITORY), mergeDecisions: r.resolve(t.MERGE_DECISION_REPOSITORY), outcomeRows: r.resolve(t.OUTCOME_REPOSITORY),
+      pullRequests: r.resolve(t.PULL_REQUEST_FLOW), approvals: r.resolve(t.APPROVAL_REPOSITORY), approvalFactory: r.resolve(APPROVAL_FACTORY),
+      outcomes: () => r.tryResolve(t.OUTCOME_RECORDER), recorder: r.resolve(t.EVENT_RECORDER), clock: clock(r), log: log(r).child({ component: 'merge-watch' }),
+    }), { source: SOURCE });
+    bind(t.SHIP_REVERT, (r) => new ShipRevert({
+      missions: r.resolve(t.MISSION_REPOSITORY), tasks: r.resolve(t.TASK_REPOSITORY), repositories: r.resolve(t.REPO_REPOSITORY),
+      mergeDecisions: r.resolve(t.MERGE_DECISION_REPOSITORY), planDecisions: r.resolve(t.PLAN_DECISION_REPOSITORY), pullRequests: r.resolve(t.PULL_REQUEST_FLOW),
+      exec: r.tryResolve(INTEGRATION_COMMAND_EXECUTOR) ?? null,
+      ...(r.has(t.GIT_CREDENTIAL_ENV) ? { credentialEnv: r.resolve(t.GIT_CREDENTIAL_ENV) } : {}),
+      outcomes: () => r.tryResolve(t.OUTCOME_RECORDER), recorder: r.resolve(t.EVENT_RECORDER), clock: clock(r),
+      wake: () => r.resolve(t.SCHEDULER).wake(), tmpRoot: `${paths(r).root}/ship-reverts`,
+    }), { source: SOURCE });
     bind(t.OUTCOME_RECORDER, (r) => new OutcomeRecorder({
       outcomes: r.resolve(t.OUTCOME_REPOSITORY),
       missions: r.resolve(t.MISSION_REPOSITORY),
@@ -387,6 +404,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       clock: clock(r),
       log: log(r).child({ component: 'ship' }),
       escalate: (mission, paths) => r.resolve(t.PLANNER_SERVICE).escalate(mission, paths, { fromShip: true }),
+      revert: (decisionId, by) => r.resolve(t.SHIP_REVERT).revert(decisionId, by),
       pushedSha: (mission, pr) => {
         const opened = r.resolve(t.EVENT_REPOSITORY).listByMission(mission.id)
           .filter((e) => e.body.type === 'ship.pr_opened' && e.body.repo === pr.repo && e.body.number === pr.number);
@@ -430,6 +448,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       outcomes: r.resolve(t.OUTCOME_RECORDER),
       ship: r.resolve(t.SHIP_SERVICE),
       shipPollMs,
+      watchMerges: () => r.resolve(t.MERGE_WATCH).tick(),
       recorder: r.resolve(t.EVENT_RECORDER),
       staffing: r.resolve(t.STAFFING_RESOLVER),
       members: r.resolve(t.MEMBER_REPOSITORY),
@@ -1090,6 +1109,21 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       setup: r.resolve(t.SETUP_SERVICE),
       factory: r.resolve(t.FACTORY_SERVICE),
       mergePolicy: r.resolve(t.MERGE_POLICY_SERVICE),
+      shipActions: {
+        merge: async (decisionId, caller) => {
+          const decision = r.resolve(t.MERGE_DECISION_REPOSITORY).get(decisionId);
+          const card = decision === undefined ? undefined : r.resolve(t.APPROVAL_REPOSITORY).list({ missionId: decision.missionId, statuses: ['PENDING'] })
+            .find((a) => a.evidence.some((e) => e.label === 'Decision' && e.value === decisionId));
+          if (card === undefined) throw new TandemiseError('CONFLICT', 'This pull request isn\'t waiting for your review any more.');
+          return r.resolve(t.APPROVAL_SERVICE).decide(caller, card.id, { optionId: 'approve' });
+        },
+        revert: async (decisionId, caller) => {
+          const decision = r.resolve(t.MERGE_DECISION_REPOSITORY).get(decisionId);
+          if (decision === undefined) throw TandemiseError.notFound('Merge decision', decisionId);
+          const { actorId } = actorFor({ members: r.resolve(t.MEMBER_REPOSITORY) }, decision.workspaceId, caller);
+          return r.resolve(t.SHIP_REVERT).revert(decisionId, actorId);
+        },
+      },
       contributions: r.resolve(t.CONTRIBUTION_SERVICE),
       evals: r.resolve(t.EVAL_SERVICE),
     }), { source: SOURCE });

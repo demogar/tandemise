@@ -130,3 +130,12 @@ spec (`docs/superpowers/specs/2026-10-30-planner-and-merge-design.md`).
   rather than merging. The spec's PM8 only requires that the decision be voided and
   remade on the new sha. The squash trailers carry the decision's own score (1/2 for
   a quick change with no review), not the spec example's 0/2.
+- Ruling (Task 17): a revert mission's only step is the ship step, shipping a
+  `revert/<sha>` branch the daemon made with `git revert` (`workflowInputs.shipBranch`,
+  daemon-set, along with `revertOfAuto`). The fake gh's merge now makes a real squash
+  commit on a local bare origin so a revert has something to undo. The
+  "Main is failing" card sits on the original ship step: Revert on it reverts
+  through the same path, and Leave it does nothing. Main-watch, revert and clean are
+  checked with `MergeWatch.sweep(nowMs)` for the 8-day case. PM3, PM4, PM8 and
+  PM9 run after PM10 in the suite, so PM10's file origins hold. The revert-and-watch
+  checks were written after the code, so there was no red run for them.

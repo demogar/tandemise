@@ -309,7 +309,17 @@ function prCommand(dir, state, args, out) {
     if (args.includes('--auto')) { pr.autoMerge = { method: ['--squash', '--merge', '--rebase'].find((m) => args.includes(m)) }; }
     pr.state = 'MERGED';
     pr.mergedBy = { login: state.login };
-    pr.mergeCommit = { oid: `${'f'.repeat(32)}${String(number).padStart(8, '0')}` };
+    // A real squash commit on the base when the remote is a local repository, so a revert has something to undo.
+    let oid = `${'f'.repeat(32)}${String(number).padStart(8, '0')}`;
+    try {
+      const g = (...a) => execFileSync('git', a, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+      g('fetch', '-q', 'origin', pr.baseRefName, pr.headRefName);
+      const tree = g('rev-parse', `origin/${pr.headRefName}^{tree}`);
+      const parent = g('rev-parse', `origin/${pr.baseRefName}`);
+      oid = execFileSync('git', ['-c', 'user.name=GitHub', '-c', 'user.email=noreply@github.com', 'commit-tree', tree, '-p', parent, '-m', flag(args, '--subject') ?? pr.title], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+      g('push', '-q', 'origin', `${oid}:refs/heads/${pr.baseRefName}`);
+    } catch { /* not a local remote: a made-up merge commit */ }
+    pr.mergeCommit = { oid };
     pr.mergeSubject = flag(args, '--subject');
     pr.mergeBody = flag(args, '--body');
     save();

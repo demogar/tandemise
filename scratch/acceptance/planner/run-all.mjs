@@ -75,7 +75,7 @@ desktop.unref();
 
 const keepGoing = process.argv.includes('--keep-going');
 const only = process.argv.find((a) => a.startsWith('--only='))?.slice('--only='.length).split(',');
-const scenarios = ['pm01.mjs', 'pm02.mjs', 'pm05.mjs', 'pm06.mjs', 'pm07.mjs', 'pm10.mjs'].filter((file) => !only || only.some((o) => file.includes(o)));
+const scenarios = ['pm01.mjs', 'pm02.mjs', 'pm05.mjs', 'pm06.mjs', 'pm07.mjs', 'pm10.mjs', 'pm03.mjs', 'pm04.mjs', 'pm08.mjs', 'pm09.mjs'].filter((file) => !only || only.some((o) => file.includes(o)));
 
 let failed = null;
 for (const file of scenarios) {

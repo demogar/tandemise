@@ -118,6 +118,8 @@ export const PULL_REQUEST_FLOW = token<import('@tandemise/domain').PullRequestPo
 /** The daemon-owned ship step (#53 §8.1). */
 export const SHIP_SERVICE = token<import('./engine/ship.js').ShipService>('application.ShipService');
 /** Outcomes for routing and learning (#53 §9.1). */
+export const MERGE_WATCH = token<import('./engine/merge-watch.js').MergeWatch>('application.MergeWatch');
+export const SHIP_REVERT = token<import('./engine/ship-revert.js').ShipRevert>('application.ShipRevert');
 export const OUTCOME_RECORDER = token<import('./engine/outcomes.js').OutcomeRecorder>('application.OutcomeRecorder');
 /** The `.tandemise` setup folder on disk (P15). The daemon binds the real one. */
 export const SETUP_FOLDER = token<import('./ports.js').SetupFolderPort>('port.SetupFolder');

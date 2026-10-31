@@ -292,6 +292,59 @@ await attempt('reviewed commit', async () => {
   check('every pr merge call carried --match-head-commit', merges().length >= 3 && merges().every((c) => c.args.includes('--match-head-commit')), merges().length);
 });
 
+await attempt('revert and watch', async () => {
+  section('revert and watch');
+  const fake = await import('./fake-gh.mjs');
+  const w = await world({ factory: { merge: { ...app.SHIPPED_MERGE, autoMerge: 'on' } } });
+  fake.setRepo(w.ghDir, REPO, { defaultChecks: [{ name: 'unit', conclusion: 'success' }] });
+  const m = await w.mission('fix: typo in the settings title');
+  await w.h.until(() => w.h.repo.missions.get(m.id).status === 'COMPLETE', 60000);
+  const decision = w.h.repo.mergeDecisions.listByMission(m.id).at(-1);
+  check('the fake merge made a real commit on main', git(w.origin, 'rev-parse', 'main') === decision.mergeSha, [decision.mergeSha]);
+  // Auto-merge off now: the revert of an auto-merge may still merge on its own (revertAutoMerge).
+  w.files.files.merge = { ...app.SHIPPED_MERGE, autoMerge: 'off' };
+  const revert = await w.h.services.shipActions.revert(decision.id, w.caller);
+  check('Revert opens a revert mission', revert.title === 'revert: fix: typo in the settings title' && revert.workflowInputs.revertOfAuto === 'true', revert.title);
+  await w.h.until(() => w.h.repo.missions.get(revert.id).status === 'COMPLETE' || w.h.repo.tasks.listByMission(revert.id)[0]?.status === 'AWAITING_APPROVAL', 60000);
+  const revertPr = fake.pullRequests(w.ghDir, REPO).at(-1);
+  const merges = fake.calls(w.ghDir).filter((c) => c.args[1] === 'merge');
+  check('…and its PR merges on its own, bound to its head', revertPr.title === 'revert: fix: typo in the settings title' && revertPr.state === 'MERGED' && merges.at(-1).args.includes('--match-head-commit'), [revertPr.title, revertPr.state, w.h.repo.mergeDecisions.listByMission(revert.id).at(-1)?.reasons]);
+  check('the original records merge.reverted and a reverted outcome', w.h.repo.events.listByMission(m.id).some((e) => e.body.type === 'merge.reverted') && w.h.repo.outcomes.listByWorkspace(w.ws, '1970').some((o) => o.mission === m.id && o.kind === 'reverted'));
+  const migration = D.decideMerge({ ...w.h.repo.mergeDecisions.listByMission(revert.id).at(-1).facts, changedPaths: ['db/migrations/1.sql'] }, D.parseMergePolicy({ ...app.SHIPPED_MERGE, autoMerge: 'off' }));
+  check('a revert that touches a migration still asks', migration.verdict === 'ask', migration.reasons);
+
+  // Watching main on a second merge.
+  const m2 = await w.mission('fix: typo in the footer');
+  const ship2 = () => w.h.repo.tasks.listByMission(m2.id).find((t) => t.key === 'ship');
+  await w.h.until(() => ship2()?.status === 'AWAITING_APPROVAL', 60000);
+  const card = w.h.repo.approvals.list({ missionId: m2.id, statuses: ['PENDING'] })[0];
+  await w.h.services.approvals.decide(w.caller, card.id, { optionId: 'approve' });
+  await w.h.until(() => w.h.repo.missions.get(m2.id).status === 'COMPLETE', 30000);
+  const d2 = w.h.repo.mergeDecisions.listByMission(m2.id).at(-1);
+  check('a person\'s Merge on the card merges it', d2.mergeSha !== null && d2.mergedBy !== 'tandemise', [d2.mergedBy, d2.mergeSha]);
+  fake.setChecks(w.ghDir, REPO, d2.mergeSha, [{ name: 'unit', conclusion: 'failure', logTail: 'boom' }]);
+  const watch = w.h.container.resolve(app.MERGE_WATCH);
+  const before = fake.calls(w.ghDir).filter((c) => c.args[1] === 'merge').length;
+  await watch.sweep();
+  await watch.sweep();
+  const broke = w.h.repo.outcomes.listByWorkspace(w.ws, '1970').filter((o) => o.mission === m2.id && o.kind === 'broke_main');
+  const cards = w.h.repo.approvals.list({ missionId: m2.id, statuses: ['PENDING'] }).filter((a) => a.title.startsWith('Main is failing after'));
+  check('a failing check on the merge commit: one broke_main and one card, after two looks', broke.length === 1 && cards.length === 1, [broke.length, cards.map((c) => c.title)]);
+  check('…and nothing was merged or reverted on its own', fake.calls(w.ghDir).filter((c) => c.args[1] === 'merge').length === before && w.h.repo.missions.list({ workspaceId: w.ws }).filter((x) => x.title.startsWith('revert:')).length === 1);
+  // A revert someone else made on main.
+  fake.setRepo(w.ghDir, REPO, { mainCommits: [{ sha: 'b'.repeat(40), subject: `Revert "${fake.pullRequests(w.ghDir, REPO).find((p) => p.number === d2.prNumber).title}"` }] });
+  await watch.sweep();
+  await watch.sweep();
+  check('a Revert "…" commit on main records reverted once', w.h.repo.outcomes.listByWorkspace(w.ws, '1970').filter((o) => o.mission === m2.id && o.kind === 'reverted').length === 1);
+  // Eight days on, the first merge (never broken, its revert aside) — a third merge is clean.
+  w.files.files.merge = { ...app.SHIPPED_MERGE, autoMerge: 'on' };
+  const m3 = await w.mission('fix: typo in the header');
+  await w.h.until(() => w.h.repo.missions.get(m3.id).status === 'COMPLETE', 60000);
+  await watch.sweep(Date.now() + 8 * 86_400_000);
+  await watch.sweep(Date.now() + 8 * 86_400_000);
+  check('after 8 days with no revert and no broken main: merged_clean, once', w.h.repo.outcomes.listByWorkspace(w.ws, '1970').filter((o) => o.mission === m3.id && o.kind === 'merged_clean').length === 1);
+});
+
 // @sections
 
 clearInterval(keepAlive);

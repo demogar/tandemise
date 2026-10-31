@@ -41,6 +41,8 @@ export interface SchedulerDeps {
   readonly ship?: ShipService;
   /** How often a waiting ship step is looked at again. */
   readonly shipPollMs?: number;
+  /** Watches main after merges (#53 §8.7), throttled and in the background. */
+  readonly watchMerges?: () => void;
   /** Records each settled attempt for routing (#53 §9.1). Optional for older harnesses. */
   readonly outcomes?: Pick<OutcomeRecorder, 'stepSettled'>;
   readonly remediation: RemediationPlanner;
@@ -217,6 +219,7 @@ export class SchedulerService implements LifecycleComponent {
   }
 
   async #pass(): Promise<void> {
+    try { this.deps.watchMerges?.(); } catch (e) { this.deps.log.warn('scheduler.merge_watch_failed', { error: errorMessage(e) }); }
     this.#sweepStrandedFeedback();
     // First, so a step re-resolved to an agent is dispatched in this same pass.
     this.#sweepEscalations();

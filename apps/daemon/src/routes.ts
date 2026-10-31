@@ -254,6 +254,8 @@ export function buildRouter(services: TandemiseServices, options: { readonly tes
     services.mergePolicy.update(asId(ctx.params.id!), (await ctx.body(mergePolicyRequest)).policy, ctx.caller));
   r.post('/v1/workspaces/:id/merge-policy/backtest', async (ctx) =>
     services.mergePolicy.backtest(asId(ctx.params.id!), (await ctx.body(mergePolicyRequest)).policy));
+  r.post('/v1/ship/:decisionId/merge', (ctx) => services.shipActions.merge(ctx.params.decisionId!, ctx.caller));
+  r.post('/v1/ship/:decisionId/revert', (ctx) => services.shipActions.revert(ctx.params.decisionId!, ctx.caller));
   r.post('/v1/workspaces/:id/merge-policy/stop', (ctx) => services.mergePolicy.stop(asId(ctx.params.id!), ctx.caller));
   r.post('/v1/missions/:id/replan', async (ctx) =>
     services.planning.replan(asId(ctx.params.id!), { note: (await ctx.body(replanMissionRequest)).note ?? null }));

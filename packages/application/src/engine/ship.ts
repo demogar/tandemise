@@ -68,6 +68,8 @@ export interface ShipDeps {
   readonly escalate?: (mission: Mission, paths: readonly string[]) => Promise<readonly string[]>;
   /** The head Tandemise last pushed for a pull request, from its `ship.pr_opened` events. */
   readonly pushedSha?: (mission: Mission, pr: PullRequestRef) => string | null;
+  /** Reverts a merge (#53 §8.7). */
+  readonly revert?: (decisionId: string, by: string) => Promise<unknown>;
   /** The decision (#53 §8). Optional so the open-only harnesses still compose. */
   readonly decide?: ShipDecideDeps;
 }
@@ -111,9 +113,11 @@ export class ShipService {
   async open(mission: Mission, task: MissionTask, repository: Repository, signal: AbortSignal): Promise<ShipOutcome> {
     const scope: EventScope = { workspaceId: mission.workspaceId, missionId: mission.id, taskId: task.id };
 
+    // A revert ships the branch the daemon made for it (#53 §8.7); nothing to measure or integrate.
+    const fixed = mission.workflowInputs['shipBranch'];
     // Measured before anything leaves this machine: a change that touched more
     // than its plan expected gets its steps first, then ships (#53 §5.4).
-    const early = this.#codeBranch(mission);
+    const early = fixed === undefined ? this.#codeBranch(mission) : null;
     if (early !== null && this.deps.escalate !== undefined) {
       const base = mission.baseBranch ?? repository.defaultBranch;
       const diff = await this.#git(repository, ['diff', '--name-only', `${base}...${early}`], false);
@@ -130,7 +134,9 @@ export class ShipService {
       }
     }
 
-    const integrated = await this.deps.integration.integrate(mission);
+    const integrated = fixed !== undefined
+      ? { conflictTaskKey: null, results: [], integrationBranch: null }
+      : await this.deps.integration.integrate(mission);
     if (integrated.conflictTaskKey !== null) {
       // The ship step waits behind the conflict's resolution, then integrates again.
       const current = this.deps.tasks.get(task.id) ?? task;
@@ -138,9 +144,9 @@ export class ShipService {
       return { kind: 'conflict', taskKey: integrated.conflictTaskKey };
     }
     if (signal.aborted) return { kind: 'cancelled' };
-    const branch = integrated.results.length >= 2 && integrated.integrationBranch !== null
+    const branch = fixed ?? (integrated.results.length >= 2 && integrated.integrationBranch !== null
       ? integrated.integrationBranch
-      : this.#codeBranch(mission);
+      : this.#codeBranch(mission));
     if (branch === null) return { kind: 'skipped', reason: 'No step changed any code, so there is nothing to ship.' };
 
     const repo = githubRepoFromRemote(repository.remoteUrl);
@@ -351,6 +357,12 @@ export class ShipService {
     const task = this.deps.tasks.get(approval.taskId);
     const mission = d.missions.get(approval.missionId);
     if (task === undefined || mission === undefined || task.executor !== 'ship') return;
+    // Main broke after a merge: Revert is the person's call, never the daemon's (§8.7).
+    const broke = approval.evidence.find((e) => e.label === 'Broke main')?.value;
+    if (broke !== undefined) {
+      if (approval.selectedOptionId === APPROVE_OPTION) await this.deps.revert?.(broke, approval.decidedBy ?? 'a person');
+      return;
+    }
     const decisionId = approval.evidence.find((e) => e.label === DECISION_LABEL)?.value;
     const decision = decisionId === undefined ? undefined : d.mergeDecisions.get(decisionId);
     const repository = mission.repositoryId === null ? undefined : this.deps.repositories.get(mission.repositoryId);

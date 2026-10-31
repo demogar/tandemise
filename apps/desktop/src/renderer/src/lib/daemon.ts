@@ -395,6 +395,11 @@ export class DaemonClient {
     return this.#request('POST', `/workspaces/${workspaceId}/factory/defaults`, {});
   }
 
+  /** Reverts a merged pull request through a revert pull request (#53 §8.7). */
+  revertShip(decisionId: string): Promise<unknown> {
+    return this.#request('POST', `/ship/${decisionId}/revert`, {});
+  }
+
   /** Project → Merge (#53 §8.4). */
   mergePolicy(workspaceId: string): Promise<MergePolicyResponse> {
     return this.#get(`/workspaces/${workspaceId}/merge-policy`);
