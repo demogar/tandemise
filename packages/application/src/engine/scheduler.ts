@@ -39,6 +39,8 @@ export interface SchedulerDeps {
   readonly waiter: Waiter;
   /** The daemon-owned ship step (#53 §8). Optional so harnesses built before it still compose. */
   readonly ship?: ShipService;
+  /** How often a waiting ship step is looked at again. */
+  readonly shipPollMs?: number;
   /** Records each settled attempt for routing (#53 §9.1). Optional for older harnesses. */
   readonly outcomes?: Pick<OutcomeRecorder, 'stepSettled'>;
   readonly remediation: RemediationPlanner;
@@ -114,6 +116,8 @@ export class SchedulerService implements LifecycleComponent {
 
   readonly #active = new Map<TaskId, AbortController>();
   /** In-flight waits, which are deliberately not workers. */
+  /** When each waiting ship step was last looked at. */
+  readonly #shipWatched = new Map<string, number>();
   readonly #waiting = new Map<TaskId, AbortController>();
   readonly #inFlight = new Set<Promise<void>>();
   readonly #retryAfter = new Map<TaskId, number>();
@@ -359,6 +363,15 @@ export class SchedulerService implements LifecycleComponent {
     // A wait lives in memory. One left AWAITING_EXTERNAL by a previous daemon
     // has no poller, and nothing else would ever move it: adopt it again.
     for (const task of tasks) {
+      // A ship step waiting on CI, GitHub or a person is watched again every so often (#53 §8.1),
+      // and adopted again after a restart.
+      if ((task.status === 'AWAITING_EXTERNAL' || task.status === 'AWAITING_APPROVAL') && task.executor === 'ship' && !this.#waiting.has(task.id)) {
+        const last = this.#shipWatched.get(task.id) ?? 0;
+        if (now - last >= (this.deps.shipPollMs ?? 30_000)) {
+          this.#shipWatched.set(task.id, now);
+          this.#startShip(mission, task);
+        }
+      }
       if (task.status === 'AWAITING_EXTERNAL' && task.executor === 'wait' && !this.#waiting.has(task.id)) {
         this.#startWait(mission, task);
       }
@@ -474,7 +487,7 @@ export class SchedulerService implements LifecycleComponent {
     if (this.#waiting.has(task.id)) return;
     const controller = new AbortController();
     this.#waiting.set(task.id, controller);
-    this.#setStatus(task, scopeOf(mission), 'RUNNING', 'Opening the pull request.');
+    if (task.status === 'READY' || task.status === 'PENDING') this.#setStatus(task, scopeOf(mission), 'RUNNING', 'Opening the pull request.');
     if (task.startedAt === null) this.deps.tasks.update(task.id, { startedAt: this.deps.clock.now() });
     void ship.run(mission, task, controller.signal)
       .then((outcome) => {
@@ -483,8 +496,10 @@ export class SchedulerService implements LifecycleComponent {
           this.#setStatus(current, scopeOf(mission), status, reason);
           if (status !== 'BLOCKED') this.deps.tasks.update(task.id, { finishedAt: this.deps.clock.now() });
         };
-        if (outcome.kind === 'cancelled') return;
-        if (outcome.kind === 'opened') finish('SUCCEEDED', `Pull request opened: ${outcome.prs.map((p) => p.url).join(', ')}`);
+        if (outcome.kind === 'cancelled' || outcome.kind === 'waiting') return;
+        if (outcome.kind === 'merged') finish('SUCCEEDED', outcome.reason);
+        else if (outcome.kind === 'reopened') this.#setStatus(current, scopeOf(mission), 'PENDING', outcome.reason);
+        else if (outcome.kind === 'opened') finish('SUCCEEDED', `Pull request opened: ${outcome.prs.map((p) => p.url).join(', ')}`);
         else if (outcome.kind === 'skipped') finish('SKIPPED', outcome.reason);
         else if (outcome.kind === 'blocked') finish('BLOCKED', outcome.reason);
         else if (outcome.kind === 'escalated') this.#setStatus(current, scopeOf(mission), 'PENDING', `Waiting for ${outcome.added.join(', ')} before opening the pull request.`);

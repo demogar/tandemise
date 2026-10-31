@@ -1,7 +1,8 @@
 import { defineModule, type Container, type Resolver, type TandemiseModule } from '@tandemise/kernel';
 import { SHIPPED_FACTORY_SOURCE } from './planning/factory-config.js';
 import { PlannerService } from './planning/planner-service.js';
-import { ShipService } from './engine/ship.js';
+import { SHIP_CI_POLL_MS, SHIP_CI_TIMEOUT_MS, ShipService } from './engine/ship.js';
+import { policyRef } from './planning/planner-service.js';
 import { OutcomeRecorder } from './engine/outcomes.js';
 import type { PullRequestPort } from '@tandemise/domain';
 
@@ -96,6 +97,8 @@ export interface ApplicationModuleOptions {
   readonly localPersonName?: string;
   /** A run is quiet after this long without an agent event (P9). The daemon passes TANDEMISE_QUIET_MS. */
   readonly quietAfterMs?: number;
+  /** How often the ship step reads CI and a waiting pull request (#53). The daemon passes TANDEMISE_SHIP_POLL_MS. */
+  readonly shipPollMs?: number;
 }
 
 /**
@@ -114,6 +117,7 @@ export interface ApplicationModuleOptions {
  * worse diagnostic than one that logs nowhere.
  */
 export function createApplicationModule(options: ApplicationModuleOptions = {}): TandemiseModule {
+  const shipPollMs = options.shipPollMs ?? SHIP_CI_POLL_MS;
   return defineModule(SOURCE, (container: Container) => {
     const bind = container.bind.bind(container);
 
@@ -382,6 +386,30 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       clock: clock(r),
       log: log(r).child({ component: 'ship' }),
       escalate: (mission, paths) => r.resolve(t.PLANNER_SERVICE).escalate(mission, paths, { fromShip: true }),
+      pushedSha: (mission, pr) => {
+        const opened = r.resolve(t.EVENT_REPOSITORY).listByMission(mission.id)
+          .filter((e) => e.body.type === 'ship.pr_opened' && e.body.repo === pr.repo && e.body.number === pr.number);
+        const last = opened.at(-1)?.body;
+        return last !== undefined && last.type === 'ship.pr_opened' ? last.headSha : null;
+      },
+      decide: {
+        missions: r.resolve(t.MISSION_REPOSITORY),
+        mergeDecisions: r.resolve(t.MERGE_DECISION_REPOSITORY),
+        approvals: r.resolve(t.APPROVAL_REPOSITORY),
+        approvalFactory: r.resolve(APPROVAL_FACTORY),
+        evaluations: r.resolve(t.EVALUATION_REPOSITORY),
+        runScores: r.resolve(t.RUN_SCORE_REPOSITORY),
+        outcomeRows: r.resolve(t.OUTCOME_REPOSITORY),
+        unitOfWork: r.resolve(t.UNIT_OF_WORK),
+        rounds: () => r.resolve(t.FEEDBACK_ROUNDS),
+        outcomes: () => r.tryResolve(t.OUTCOME_RECORDER),
+        factory: async (workspaceId) => {
+          const config = await r.resolve(t.PLANNER_SERVICE).config(asId(workspaceId));
+          return { planner: config.planner, merge: config.merge, policyRef: policyRef(config) };
+        },
+        pollMs: shipPollMs,
+        timeoutMs: SHIP_CI_TIMEOUT_MS,
+      },
     }), { source: SOURCE });
 
     bind(t.SCHEDULER, (r) => new SchedulerService({
@@ -400,6 +428,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       integration: r.resolve(t.BRANCH_INTEGRATION_SERVICE),
       outcomes: r.resolve(t.OUTCOME_RECORDER),
       ship: r.resolve(t.SHIP_SERVICE),
+      shipPollMs,
       recorder: r.resolve(t.EVENT_RECORDER),
       staffing: r.resolve(t.STAFFING_RESOLVER),
       members: r.resolve(t.MEMBER_REPOSITORY),
@@ -688,6 +717,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
 
     bind(t.APPROVAL_SERVICE, (r) => new ApprovalServiceImpl({
       laneApproved: (approval) => r.resolve(t.PLANNER_SERVICE).laneApproved(approval),
+      shipDecided: (approval) => r.resolve(t.SHIP_SERVICE).personDecided(approval),
       approvals: r.resolve(t.APPROVAL_REPOSITORY),
       missions: r.resolve(t.MISSION_REPOSITORY),
       tasks: r.resolve(t.TASK_REPOSITORY),

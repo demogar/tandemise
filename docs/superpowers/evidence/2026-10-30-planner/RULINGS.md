@@ -107,3 +107,15 @@ spec (`docs/superpowers/specs/2026-10-30-planner-and-merge-design.md`).
   Rule problems show the daemon's message, not the YAML path. The fold counts a
   task once (its first result) in both `steppedIn` and the routing buckets, so a
   round's rerun is not another task.
+- Ruling (Task 13): the ship step watches GitHub itself: each scheduler pass
+  (every `shipPollMs`, default 30 s, `TANDEMISE_SHIP_POLL_MS` in the daemon) re-adopts
+  a ship step waiting on CI, GitHub or a person, so the same path covers a
+  restart. A decision already made for the current head is never made again.
+  The "Review and merge" card uses the approve option labelled Merge and the
+  reject option labelled "I'll merge it in GitHub", so the existing approval
+  semantics hold; ApprovalService hands a ship card to the ship step after the
+  commit instead of resuming the task. `process.person_commits` counts commits
+  past the head Tandemise last pushed (agents commit with any identity, so
+  author email can't tell them apart). `history.*` facts are filled from the
+  fold here rather than in Task 18. Task 13's checks were written after the
+  ship-step code, so there was no red run for them.

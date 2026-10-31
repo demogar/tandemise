@@ -46,16 +46,14 @@ await attempt('ship opens', async () => {
   const w = await world();
   const m = await w.mission('fix: typo in the settings title');
   const ship = () => w.h.repo.tasks.listByMission(m.id).find((t) => t.key === 'ship');
-  await w.h.until(() => ['SUCCEEDED', 'BLOCKED', 'FAILED', 'SKIPPED'].includes(ship()?.status), 60000);
+  await w.h.until(() => ['SUCCEEDED', 'BLOCKED', 'FAILED', 'SKIPPED', 'AWAITING_APPROVAL'].includes(ship()?.status), 60000);
   const creates = fake.calls(w.ghDir).filter((c) => c.args[0] === 'pr' && c.args[1] === 'create');
   const implement = w.h.repo.tasks.listByMission(m.id).find((t) => t.key === 'implement');
   check('implement succeeded', implement.status === 'SUCCEEDED', [implement.status, implement.statusReason]);
   check('one pr create, titled from the profile, not a draft', creates.length === 1 && creates[0].args.includes('fix: typo in the settings title') && !creates[0].args.includes('--draft'), creates.map((c) => c.args));
   const head = creates[0]?.args[creates[0].args.indexOf('--head') + 1];
   check('the head is the task branch, pushed to origin', typeof head === 'string' && git(w.origin, 'branch', '--list', head).includes(head), [head, git(w.origin, 'branch', '--list')]);
-  check('the ship task says the pull request is open', ship().status === 'SUCCEEDED' && ship().statusReason.startsWith('Pull request opened: https://github.com/acme/web/pull/'), [ship().status, ship().statusReason]);
-  await w.h.until(() => w.h.repo.missions.get(m.id).status === 'COMPLETE', 10000);
-  check('the mission completes', w.h.repo.missions.get(m.id).status === 'COMPLETE', w.h.repo.missions.get(m.id).statusReason);
+  check('with no CI on the repository, the ship step asks', ship().status === 'AWAITING_APPROVAL', [ship().status, ship().statusReason]);
   check('the ship task kept its executor', ship().executor === 'ship');
   const pr = fake.pullRequests(w.ghDir, REPO)[0];
   check('the body carries no agent text', pr !== undefined && !pr.body.includes('ZZ-AGENT-SAYS') && pr.body.includes('Done when'), pr?.body);
@@ -124,6 +122,87 @@ await attempt('decision table, hard rules, no self-report', async () => {
   section('no self-report');
   const keys = Object.keys(D.MERGE_FACT_ORIGINS).sort();
   check('every fact has a measured origin', keys.every((k) => ['git', 'github', 'daemon', 'ledger'].includes(D.MERGE_FACT_ORIGINS[k])) && eq(keys, Object.keys(base).sort()), keys);
+});
+
+await attempt('ship decides, audit, person merge, closed, crash', async () => {
+  section('ship decides');
+  const fake = await import('./fake-gh.mjs');
+  const w = await world({ factory: { merge: { ...app.SHIPPED_MERGE, reviewers: ['sam'] } } });
+  const pending = [{ name: 'unit', status: 'in_progress' }, { name: 'lint', status: 'queued' }];
+  const prOf = () => fake.pullRequests(w.ghDir, REPO).at(-1);
+  // CI is pending on every head this world pushes until the check says otherwise.
+  const watch = setInterval(() => { const pr = prOf(); if (pr !== undefined && !(fake.readState(w.ghDir).repos[REPO].checks ?? {})[pr.headRefOid]) fake.setChecks(w.ghDir, REPO, pr.headRefOid, pending); }, 20);
+  const m = await w.mission('fix: typo in the settings title');
+  const ship = () => w.h.repo.tasks.listByMission(m.id).find((t) => t.key === 'ship');
+  await w.h.until(() => ship()?.status === 'AWAITING_EXTERNAL' && ship().statusReason.startsWith('Waiting for CI'), 60000);
+  check('after the PR opens it waits for CI', ship().statusReason === 'Waiting for CI (0 of 2 checks done)', ship().statusReason);
+  const sha1 = prOf().headRefOid;
+  fake.setChecks(w.ghDir, REPO, sha1, [{ name: 'unit', conclusion: 'success' }, { name: 'lint', conclusion: 'success' }]);
+  await w.h.until(() => ship().status === 'AWAITING_APPROVAL', 30000);
+  const rows = w.h.repo.mergeDecisions.listByMission(m.id);
+  check('green CI → one decision, ask, auto-merge off, would have merged', rows.length === 1 && rows[0].verdict === 'ask' && rows[0].reasons.includes(D.AUTO_MERGE_OFF) && rows[0].wouldMerge === true, rows.map((r) => [r.verdict, r.reasons, r.score]));
+  const cards = w.h.repo.approvals.list({ missionId: m.id, statuses: ['PENDING'] });
+  check('one Review and merge card', cards.length === 1 && cards[0].kind === 'release' && cards[0].title === 'Review and merge fix: typo in the settings title', cards.map((c) => c.title));
+  check('the reviewers in the policy were asked', fake.calls(w.ghDir).some((c) => c.args[1] === 'edit' && c.args.includes('--add-reviewer') && c.args.includes('sam')));
+
+  section('audit');
+  const facts = rows[0].facts;
+  check('the row keeps every measured fact', Object.keys(D.MERGE_FACT_ORIGINS).every((k) => k in facts), Object.keys(facts));
+  check('no agent text reached the facts', !JSON.stringify(facts).includes('ZZ-AGENT-SAYS'));
+  const comments = () => fake.readState(w.ghDir).repos[REPO].comments[String(prOf().number)] ?? [];
+  check('one PR comment that asks and names the commit', comments().length === 1 && comments()[0].body.includes('Tandemise asks for a review') && comments()[0].body.includes(sha1.slice(0, 7)), comments());
+  // A new head: the decision is void and a second is made, editing the same comment.
+  const sha2 = 'e'.repeat(40);
+  fake.putPullRequest(w.ghDir, REPO, { ...prOf(), headRefOid: sha2 });
+  fake.setChecks(w.ghDir, REPO, sha2, [{ name: 'unit', conclusion: 'success' }]);
+  await w.h.until(() => w.h.repo.mergeDecisions.listByMission(m.id).length === 2, 30000);
+  const two = w.h.repo.mergeDecisions.listByMission(m.id);
+  check('a moved head voids the decision and decides again on the new sha', two[0].voidedAt !== null && two[1].headSha === sha2, two.map((r) => [r.headSha.slice(0, 7), r.voidedAt]));
+  check('the same comment is edited, not a second one', comments().length === 1 && fake.calls(w.ghDir).some((c) => c.args.includes('PATCH')));
+  check('the feed says it is checking again', w.h.repo.events.listByMission(m.id).some((e) => e.body.type === 'note' && e.body.text === 'The pull request changed after it was checked; checking again.'));
+
+  section('person merge');
+  fake.putPullRequest(w.ghDir, REPO, { ...prOf(), state: 'MERGED', mergedBy: { login: 'sam' }, mergeCommit: { oid: 'a'.repeat(40) } });
+  await w.h.until(() => w.h.repo.missions.get(m.id).status === 'COMPLETE', 30000);
+  check('a merge in GitHub finishes the step and the mission', ship().status === 'SUCCEEDED' && w.h.repo.missions.get(m.id).status === 'COMPLETE', [ship().status, ship().statusReason]);
+  check('it is a merged_by_person outcome', w.h.repo.outcomes.listByWorkspace(w.ws, '1970').some((o) => o.mission === m.id && o.kind === 'merged_by_person'));
+  check('no pr merge was ever called', !fake.calls(w.ghDir).some((c) => c.args[0] === 'pr' && c.args[1] === 'merge'));
+
+  section('closed');
+  const m2 = await w.mission('fix: typo in the footer');
+  const ship2 = () => w.h.repo.tasks.listByMission(m2.id).find((t) => t.key === 'ship');
+  await w.h.until(() => ship2()?.status === 'AWAITING_EXTERNAL', 60000);
+  fake.setChecks(w.ghDir, REPO, prOf().headRefOid, [{ name: 'unit', conclusion: 'success' }]);
+  await w.h.until(() => ship2().status === 'AWAITING_APPROVAL', 30000);
+  fake.putPullRequest(w.ghDir, REPO, { ...prOf(), state: 'CLOSED' });
+  await w.h.until(() => ship2().status === 'BLOCKED', 30000);
+  check('a closed PR blocks with the exact sentence', ship2().statusReason === 'The pull request was closed without merging.', ship2().statusReason);
+
+  section('ci fails');
+  const m3 = await w.mission('fix: typo in the header');
+  const task3 = (k) => w.h.repo.tasks.listByMission(m3.id).find((t) => t.key === k);
+  await w.h.until(() => task3('ship')?.status === 'AWAITING_EXTERNAL', 60000);
+  fake.setChecks(w.ghDir, REPO, prOf().headRefOid, [{ name: 'unit', conclusion: 'failure', logTail: 'expected 1 to be 2' }]);
+  await w.h.until(() => (task3('implement').round ?? 1) >= 2, 30000);
+  const fb = w.h.container.resolve(app.FEEDBACK_REPOSITORY).listByTask(task3('implement').id);
+  check('a failing check starts round 2 on implement with the log', (task3('implement').round ?? 1) === 2 && fb.some((f) => f.text.startsWith('CI failed: unit') && f.text.includes('expected 1 to be 2')), fb.map((f) => f.text));
+  clearInterval(watch);
+
+  section('crash between decide and merge');
+  const w2 = await world();
+  const m4 = await w2.mission('fix: typo in the sidebar');
+  const ship4 = () => w2.h.repo.tasks.listByMission(m4.id).find((t) => t.key === 'ship');
+  await w2.h.until(() => ship4()?.status === 'AWAITING_APPROVAL', 60000);
+  const before = w2.h.repo.mergeDecisions.listByMission(m4.id).length;
+  // A restart: a new engine over the same database and home adopts the waiting ship step.
+  const { engineHarness } = await import('./planner-harness.mjs');
+  const GH = await import('@tandemise/integration-github');
+  const { realExecutor } = await import('./planner-harness.mjs');
+  const exec = realExecutor(`${w2.ghDir}/bin`);
+  const again = await engineHarness(w2.h.paths.root, { factory: w2.files, commandExecutor: exec, pullRequests: new GH.GhPullRequestFlow(exec) });
+  for (let i = 0; i < 8; i++) { await again.scheduler.tick(); await again.sleep(100); }
+  check('restarted, it decides nothing twice and merges nothing', again.repo.mergeDecisions.listByMission(m4.id).length === before && !fake.calls(w2.ghDir).some((c) => c.args[1] === 'merge'), again.repo.mergeDecisions.listByMission(m4.id).length);
+  check('the ship step is still waiting for a review', again.repo.tasks.listByMission(m4.id).find((t) => t.key === 'ship').status === 'AWAITING_APPROVAL');
 });
 
 // @sections

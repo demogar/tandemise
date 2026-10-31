@@ -1,10 +1,19 @@
 import type {
-  Mission, MissionCriteriaRepositoryPort, MissionTask, PlanDecisionRepositoryPort, PullRequestPort, PullRequestRef,
-  RepoRepositoryPort, Repository, TaskRepositoryPort,
+  Approval, ApprovalRepositoryPort, EvaluationRepositoryPort, MergeDecision, MergeDecisionRecord, MergeDecisionRepositoryPort,
+  MergeFacts, MergePolicyOrError, Mission, MissionCriteriaRepositoryPort, MissionRepositoryPort, MissionTask, OutcomeRepositoryPort,
+  PlanDecisionRepositoryPort, PlannerConfig, PullRequestPort, PullRequestRef, RepoRepositoryPort, Repository, RunScoreRepositoryPort,
+  TaskRepositoryPort, TaskStatus, UnitOfWork,
 } from '@tandemise/domain';
-import { githubRepoFromRemote, isTrialMission, prBody, prTitle, profileLine } from '@tandemise/domain';
+import {
+  APPROVE_OPTION, DEFAULT_ESCALATE_AFTER_MS, REJECT_OPTION, RUNTIME_ACTOR, decideMerge, decisionComment, foldOutcomes,
+  githubRepoFromRemote, isTrialMission, prBody, prTitle, profileLine, stepClassFor,
+} from '@tandemise/domain';
+import type { ApprovalFactory } from '@tandemise/policy';
 import type { CommandExecutor } from '@tandemise/integrations-core';
-import { errorMessage, type Clock, type Logger } from '@tandemise/shared';
+import { errorMessage, ids, type Clock, type Logger, type Timestamp } from '@tandemise/shared';
+import { measureMergeFacts } from './ship-measure.js';
+import type { FeedbackRounds } from './feedback-rounds.js';
+import type { OutcomeRecorder } from './outcomes.js';
 import type { EventRecorder, EventScope } from '../support/event-recorder.js';
 import type { BranchIntegrationService } from './branch-integration.js';
 
@@ -17,6 +26,12 @@ import type { BranchIntegrationService } from './branch-integration.js';
  */
 export type ShipOutcome =
   | { readonly kind: 'opened'; readonly prs: readonly PullRequestRef[] }
+  /** Merged, by Tandemise or a person; the step is done. */
+  | { readonly kind: 'merged'; readonly reason: string }
+  /** Waiting on a person or on GitHub; the status says which. Nothing for the scheduler to change. */
+  | { readonly kind: 'waiting' }
+  /** CI failed: the code step went back for another round, and the ship step waits behind it. */
+  | { readonly kind: 'reopened'; readonly reason: string }
   | { readonly kind: 'conflict'; readonly taskKey: string }
   /** The measured change called for more steps (#53 §5.4); the ship step waits behind them. */
   | { readonly kind: 'escalated'; readonly added: readonly string[] }
@@ -25,6 +40,22 @@ export type ShipOutcome =
   | { readonly kind: 'cancelled' };
 
 const PUSH_TIMEOUT_MS = 120_000;
+/** How often the ship step reads CI and the pull request: the waiter's own default interval. */
+export const SHIP_CI_POLL_MS = 30_000;
+/** CI that hasn't finished in an hour is something a person should look at. */
+export const SHIP_CI_TIMEOUT_MS = 3_600_000;
+/** Lines of a failing check's output given to the next round. */
+export const SHIP_LOG_TAIL_LINES = 40;
+/**
+ * Phase 3 of #53 asks only: every decision is computed with auto-merge off, so
+ * "what would have happened" is shown for weeks before anyone turns it on.
+ */
+export const AUTO_MERGE_SHIPPED = false;
+
+export const PR_CHANGED = 'The pull request changed after it was checked; checking again.';
+export const PR_CLOSED = 'The pull request was closed without merging.';
+export const WAITING_FOR_GITHUB_MERGE = 'Waiting for you to merge it in GitHub.';
+const DECISION_LABEL = 'Decision';
 
 export interface ShipDeps {
   readonly tasks: TaskRepositoryPort;
@@ -40,16 +71,50 @@ export interface ShipDeps {
   readonly log: Logger;
   /** Re-profiles from the changed paths and adds steps (#53 §5.4); the keys it added. */
   readonly escalate?: (mission: Mission, paths: readonly string[]) => Promise<readonly string[]>;
+  /** The head Tandemise last pushed for a pull request, from its `ship.pr_opened` events. */
+  readonly pushedSha?: (mission: Mission, pr: PullRequestRef) => string | null;
+  /** The decision (#53 §8). Optional so the open-only harnesses still compose. */
+  readonly decide?: ShipDecideDeps;
+}
+
+export interface ShipDecideDeps {
+  readonly missions: MissionRepositoryPort;
+  readonly mergeDecisions: MergeDecisionRepositoryPort;
+  readonly approvals: ApprovalRepositoryPort;
+  readonly approvalFactory: ApprovalFactory;
+  readonly evaluations: EvaluationRepositoryPort;
+  readonly runScores: RunScoreRepositoryPort;
+  readonly outcomeRows: OutcomeRepositoryPort;
+  readonly unitOfWork: UnitOfWork;
+  readonly rounds: () => FeedbackRounds;
+  readonly outcomes: () => OutcomeRecorder | undefined;
+  /** The project's planner and merge policy, read fresh, with the files' refs. */
+  readonly factory: (workspaceId: string) => Promise<{ planner: PlannerConfig; merge: MergePolicyOrError; policyRef: string }>;
+  readonly pollMs: number;
+  readonly timeoutMs: number;
 }
 
 export class ShipService {
   constructor(protected readonly deps: ShipDeps) {}
 
   async run(mission: Mission, task: MissionTask, signal: AbortSignal): Promise<ShipOutcome> {
-    const scope: EventScope = { workspaceId: mission.workspaceId, missionId: mission.id, taskId: task.id };
     if (isTrialMission(mission)) return { kind: 'skipped', reason: 'An eval trial never opens a pull request.' };
     const repository = mission.repositoryId === null ? undefined : this.deps.repositories.get(mission.repositoryId);
     if (repository === undefined) return { kind: 'skipped', reason: 'This mission has no repository, so there is no pull request to open.' };
+    const d = this.deps.decide;
+    // Adopted after a restart, or watched while a person decides: never push or decide twice for one head.
+    if (d !== undefined && (task.status === 'AWAITING_APPROVAL' || task.status === 'AWAITING_EXTERNAL')) {
+      const latest = d.mergeDecisions.listByMission(mission.id).at(-1);
+      if (latest !== undefined) return this.#watch(mission, task, repository, latest, signal);
+    }
+    const opened = await this.open(mission, task, repository, signal);
+    if (opened.kind !== 'opened' || d === undefined) return opened;
+    return this.#afterOpen(mission, task, repository, opened.prs[0]!, signal);
+  }
+
+  /** Integrate, push and open (#53 §8.1 steps 1-2). */
+  async open(mission: Mission, task: MissionTask, repository: Repository, signal: AbortSignal): Promise<ShipOutcome> {
+    const scope: EventScope = { workspaceId: mission.workspaceId, missionId: mission.id, taskId: task.id };
 
     // Measured before anything leaves this machine: a change that touched more
     // than its plan expected gets its steps first, then ships (#53 §5.4).
@@ -105,10 +170,226 @@ export class ShipService {
     } catch (e) {
       return { kind: 'blocked', reason: `Couldn't open the pull request: ${errorMessage(e)}` };
     }
-    this.deps.recorder.record(scope, { type: 'ship.pr_opened', repo, number: pr.number, url: pr.url, headSha: pr.headSha });
+    const local = await this.#git(repository, ['rev-parse', `refs/heads/${branch}`], false);
+    const pushedSha = local.exitCode === 0 ? local.stdout.trim() : pr.headSha;
+    this.deps.recorder.record(scope, { type: 'ship.pr_opened', repo, number: pr.number, url: pr.url, headSha: pushedSha });
     if (pr.created) this.deps.recorder.note(scope, `Opened the pull request ${pr.url}.`);
     this.deps.recorder.invalidate('ship', mission.id);
     return { kind: 'opened', prs: [pr] };
+  }
+
+  // ------------------------------------------------- CI, decide, ask (§8.1 3-6)
+
+  async #afterOpen(mission: Mission, task: MissionTask, repository: Repository, opened: PullRequestRef, signal: AbortSignal): Promise<ShipOutcome> {
+    const d = this.deps.decide!;
+    let pr = opened;
+    const started = this.deps.clock.epochMs();
+    for (;;) {
+      if (signal.aborted) return { kind: 'cancelled' };
+      // A decision already made for this exact head (a restart between decide and merge) is not made again.
+      const existing = d.mergeDecisions.latestFor(mission.id, pr.repo);
+      if (existing !== undefined && existing.voidedAt === null && existing.headSha === pr.headSha) {
+        return this.#settle(mission, task, repository, pr, existing);
+      }
+      const checks = await this.deps.pullRequests.checks(repository.path, pr.repo, pr.headSha);
+      if (checks.state === 'PENDING') {
+        this.#status(mission, task, 'AWAITING_EXTERNAL', `Waiting for CI (${checks.done} of ${checks.total} checks done)`);
+        if (this.deps.clock.epochMs() - started > d.timeoutMs) return { kind: 'blocked', reason: 'CI didn\'t finish within an hour.' };
+        await sleep(d.pollMs, signal);
+        const now = await this.deps.pullRequests.view(repository.path, pr.repo, pr.number);
+        if (now.state !== 'OPEN') return this.#closedOrMerged(mission, task, now, existing ?? null);
+        pr = now;
+        continue;
+      }
+      if (checks.state === 'FAIL') return this.#ciFailed(mission, task, checks.failing[0] ?? { name: 'a check', link: null, logTail: null });
+      const decision = await this.#decide(mission, task, repository, pr, checks, existing?.commentId ?? null);
+      return this.#settle(mission, task, repository, pr, decision);
+    }
+  }
+
+  async #decide(mission: Mission, task: MissionTask, repository: Repository, pr: PullRequestRef, checks: Awaited<ReturnType<PullRequestPort['checks']>>, commentId: number | null): Promise<MergeDecisionRecord> {
+    const d = this.deps.decide!;
+    const factory = await d.factory(mission.workspaceId);
+    const protection = await this.deps.pullRequests.protection(repository.path, pr.repo, pr.baseBranch);
+    const fetched = await this.#git(repository, ['fetch', '--quiet', 'origin', pr.baseBranch], true);
+    const baseRef = fetched.exitCode === 0 ? `origin/${pr.baseBranch}` : pr.baseBranch;
+    const facts = await measureMergeFacts({
+      git: (args) => this.#git(repository, args, false),
+      tasks: this.deps.tasks, evaluations: d.evaluations, runScores: d.runScores, criteria: this.deps.criteria, planDecisions: this.deps.planDecisions,
+    }, {
+      mission, repository, pr, baseRef, checks, protection, policy: factory.merge, planner: factory.planner,
+      pushedSha: this.#pushedSha(mission, pr), repos: 1,
+      stats: foldOutcomes(d.outcomeRows.listByWorkspace(mission.workspaceId, new Date(this.deps.clock.epochMs() - 90 * 86_400_000).toISOString())),
+      now: this.deps.clock.epochMs(),
+    });
+    const policy = AUTO_MERGE_SHIPPED || 'error' in factory.merge ? factory.merge : { ...factory.merge, autoMerge: 'off' as const };
+    const decided: MergeDecision = decideMerge(facts, policy);
+    const record: MergeDecisionRecord = {
+      id: ids.mergeDecision(), workspaceId: mission.workspaceId, missionId: mission.id, repo: pr.repo, prNumber: pr.number, headSha: pr.headSha,
+      policyRef: factory.policyRef, verdict: decided.verdict, score: decided.score, allowed: decided.allowed, wouldMerge: decided.wouldMerge,
+      factors: decided.factors, reasons: decided.reasons, facts: facts as unknown as Record<string, unknown>,
+      decidedAt: this.deps.clock.now() as Timestamp, voidedAt: null, commentId, mergedAt: null, mergedBy: null, mergeSha: null,
+    };
+    const scope: EventScope = { workspaceId: mission.workspaceId, missionId: mission.id, taskId: task.id };
+    // The row exists before anything acts on it: a crash after this decides nothing twice.
+    this.deps.recorder.deferred(() => d.unitOfWork.transaction(() => {
+      d.mergeDecisions.create(record);
+      this.deps.recorder.record(scope, { type: 'merge.decided', decisionId: record.id, verdict: record.verdict, score: record.score, repo: pr.repo, number: pr.number, headSha: pr.headSha });
+    }));
+    try {
+      const comment = await this.deps.pullRequests.comment(repository.path, pr.repo, pr.number, decisionComment(decided, facts, { headSha: pr.headSha, policyRef: factory.policyRef }), commentId);
+      d.mergeDecisions.update(record.id, { commentId: comment.id });
+    } catch (e) {
+      this.deps.log.warn('ship.comment_failed', { missionId: mission.id, error: errorMessage(e) });
+    }
+    this.deps.recorder.invalidate('ship', mission.id);
+    return d.mergeDecisions.get(record.id) ?? record;
+  }
+
+  /** After a decision: merge, or ask a person and wait (§8.1 step 6). */
+  async #settle(mission: Mission, task: MissionTask, repository: Repository, pr: PullRequestRef, decision: MergeDecisionRecord): Promise<ShipOutcome> {
+    if (decision.verdict === 'merge') return this.mergeDecided(mission, task, repository, decision, 'auto');
+    const d = this.deps.decide!;
+    const scope: EventScope = { workspaceId: mission.workspaceId, missionId: mission.id, taskId: task.id };
+    const cards = d.approvals.list({ missionId: mission.id }).filter((a) => a.taskId === task.id && a.evidence.some((e) => e.label === DECISION_LABEL && e.value === decision.id));
+    const current = this.deps.tasks.get(task.id) ?? task;
+    if (cards.length === 0) {
+      const factory = await d.factory(mission.workspaceId);
+      const reviewers = 'error' in factory.merge ? [] : factory.merge.reviewers;
+      try { await this.deps.pullRequests.requestReviewers(repository.path, pr.repo, pr.number, reviewers); } catch (e) {
+        this.deps.log.warn('ship.reviewers_failed', { missionId: mission.id, error: errorMessage(e) });
+      }
+      const card = d.approvalFactory.createOrThrow({
+        workspaceId: mission.workspaceId, missionId: mission.id, taskId: task.id, kind: 'release', risk: 'release',
+        title: `Review and merge ${this.title(mission)}`,
+        rationale: decision.reasons.join(' '),
+        effect: 'Merge merges this exact commit with your approval. "I\'ll merge it in GitHub" leaves it to you; Tandemise finishes when GitHub says it merged.',
+        evidence: [
+          ...decision.reasons.map((r) => ({ kind: 'text' as const, label: 'Why it asks', value: r })),
+          { kind: 'link' as const, label: 'Pull request', value: pr.url },
+          { kind: 'text' as const, label: DECISION_LABEL, value: decision.id },
+        ],
+        options: [
+          { id: APPROVE_OPTION, label: 'Merge', recommended: true },
+          { id: REJECT_OPTION, label: 'I\'ll merge it in GitHub' },
+        ],
+        addressees: mission.createdBy === null || mission.createdBy === undefined ? [] : [mission.createdBy],
+        escalateAfterMs: DEFAULT_ESCALATE_AFTER_MS,
+      });
+      d.approvals.create(card);
+      this.deps.recorder.record(scope, { type: 'approval.requested', approvalId: card.id });
+      this.deps.recorder.record(scope, { type: 'merge.asked', decisionId: decision.id, reasons: [...decision.reasons] });
+      this.deps.recorder.invalidate('approvals', mission.id);
+      this.#status(mission, current, 'AWAITING_APPROVAL', `Waiting for your review: ${decision.reasons[0] ?? 'the merge policy asks'}`);
+    }
+    return { kind: 'waiting' };
+  }
+
+  /** Each pass while a person decides: did GitHub merge it, close it, or move its head? */
+  async #watch(mission: Mission, task: MissionTask, repository: Repository, decision: MergeDecisionRecord, signal: AbortSignal): Promise<ShipOutcome> {
+    const pr = await this.deps.pullRequests.view(repository.path, decision.repo, decision.prNumber);
+    if (pr.state !== 'OPEN') return this.#closedOrMerged(mission, task, pr, decision);
+    if (decision.voidedAt === null && pr.headSha !== decision.headSha) {
+      this.#void(mission, task, decision);
+      return this.#afterOpen(mission, task, repository, pr, signal);
+    }
+    if (decision.voidedAt !== null) return this.#afterOpen(mission, task, repository, pr, signal);
+    return this.#settle(mission, task, repository, pr, decision);
+  }
+
+  #void(mission: Mission, task: MissionTask, decision: MergeDecisionRecord): void {
+    const d = this.deps.decide!;
+    d.mergeDecisions.update(decision.id, { voidedAt: this.deps.clock.now() as Timestamp });
+    for (const card of d.approvals.list({ missionId: mission.id, statuses: ['PENDING'] }).filter((a) => a.evidence.some((e) => e.label === DECISION_LABEL && e.value === decision.id))) {
+      d.approvals.update(card.id, { status: 'CANCELLED', decidedAt: this.deps.clock.now() });
+    }
+    this.deps.recorder.note({ workspaceId: mission.workspaceId, missionId: mission.id, taskId: task.id }, PR_CHANGED);
+    this.deps.recorder.invalidate('approvals', mission.id);
+  }
+
+  #closedOrMerged(mission: Mission, task: MissionTask, pr: PullRequestRef, decision: MergeDecisionRecord | null): ShipOutcome {
+    const d = this.deps.decide!;
+    if (pr.state === 'MERGED') {
+      if (decision !== null && decision.mergedAt === null) {
+        d.mergeDecisions.update(decision.id, { mergedAt: this.deps.clock.now() as Timestamp, mergedBy: pr.mergedBy ?? 'a person', mergeSha: pr.mergeSha });
+        this.deps.recorder.record({ workspaceId: mission.workspaceId, missionId: mission.id, taskId: task.id }, { type: 'merge.merged', decisionId: decision.id, mergeSha: pr.mergeSha ?? '', by: pr.mergedBy ?? 'a person' });
+        d.outcomes()?.merged(decision, 'person');
+      }
+      this.#cancelCards(mission, task);
+      return { kind: 'merged', reason: `Merged in GitHub by ${pr.mergedBy ?? 'a person'}: ${pr.url}` };
+    }
+    if (decision !== null) d.outcomes()?.closedUnmerged(decision);
+    this.#cancelCards(mission, task);
+    return { kind: 'blocked', reason: PR_CLOSED };
+  }
+
+  #cancelCards(mission: Mission, task: MissionTask): void {
+    const d = this.deps.decide!;
+    for (const card of d.approvals.list({ missionId: mission.id, statuses: ['PENDING'] }).filter((a) => a.taskId === task.id)) {
+      d.approvals.update(card.id, { status: 'CANCELLED', decidedAt: this.deps.clock.now() });
+    }
+    this.deps.recorder.invalidate('approvals', mission.id);
+  }
+
+  /** CI failed: the code step gets another round with the log tail, up to its attempts (§8.1 step 3). */
+  #ciFailed(mission: Mission, task: MissionTask, failing: { name: string; link: string | null; logTail: string | null }): ShipOutcome {
+    const d = this.deps.decide!;
+    const code = [...this.deps.tasks.listByMission(mission.id)].reverse().find((t) => stepClassFor(t) === 'implement' || stepClassFor(t) === 'resolve_conflicts');
+    if (code === undefined || (code.round ?? 1) >= code.retryPolicy.maxAttempts) {
+      return { kind: 'blocked', reason: `CI kept failing on ${failing.name}.` };
+    }
+    const tail = (failing.logTail ?? '').split('\n').slice(-SHIP_LOG_TAIL_LINES).join('\n');
+    const note = `CI failed: ${failing.name}${tail.length > 0 ? `\n\n${tail}` : ''}`;
+    const rounds = d.rounds();
+    d.unitOfWork.transaction(() => {
+      const item = rounds.record({ task: code, text: note, artifactId: null, authorId: RUNTIME_ACTOR, recordedBy: RUNTIME_ACTOR, status: 'open', round: code.round ?? 1 });
+      rounds.beginRound({ task: code, feedbackIds: [item.id], downstream: 'redo', actorId: RUNTIME_ACTOR });
+    });
+    return { kind: 'reopened', reason: `CI failed on ${failing.name}; ${code.title.toLowerCase()} goes again with the log.` };
+  }
+
+  /** A person chose on the "Review and merge" card (§8.1 step 6). */
+  async personDecided(approval: Approval): Promise<void> {
+    const d = this.deps.decide;
+    if (d === undefined || approval.taskId === null || approval.missionId === null) return;
+    const task = this.deps.tasks.get(approval.taskId);
+    const mission = d.missions.get(approval.missionId);
+    if (task === undefined || mission === undefined || task.executor !== 'ship') return;
+    const decisionId = approval.evidence.find((e) => e.label === DECISION_LABEL)?.value;
+    const decision = decisionId === undefined ? undefined : d.mergeDecisions.get(decisionId);
+    const repository = mission.repositoryId === null ? undefined : this.deps.repositories.get(mission.repositoryId);
+    if (decision === undefined || repository === undefined) return;
+    if (approval.selectedOptionId === APPROVE_OPTION) {
+      const outcome = await this.mergeDecided(mission, task, repository, decision, 'person', approval.decidedBy ?? 'a person');
+      if (outcome.kind === 'merged') this.#status(mission, this.deps.tasks.get(task.id) ?? task, 'SUCCEEDED', outcome.reason, true);
+      else if (outcome.kind === 'blocked') this.#status(mission, this.deps.tasks.get(task.id) ?? task, 'BLOCKED', outcome.reason);
+      return;
+    }
+    this.#status(mission, task, 'AWAITING_EXTERNAL', WAITING_FOR_GITHUB_MERGE);
+  }
+
+  /**
+   * Merges the decided head (§8.5). Until auto-merge ships (Task 16) a
+   * person's Merge is recorded and the merge is left to GitHub.
+   */
+  protected async mergeDecided(mission: Mission, task: MissionTask, _repository: Repository, decision: MergeDecisionRecord, by: 'auto' | 'person', _member?: string): Promise<ShipOutcome> {
+    void by;
+    this.#status(mission, task, 'AWAITING_EXTERNAL', WAITING_FOR_GITHUB_MERGE);
+    void decision;
+    return { kind: 'waiting' };
+  }
+
+  #pushedSha(mission: Mission, pr: PullRequestRef): string | null {
+    return this.deps.pushedSha?.(mission, pr) ?? null;
+  }
+
+  #status(mission: Mission, task: MissionTask, status: TaskStatus, reason: string, finished = false): void {
+    const current = this.deps.tasks.get(task.id) ?? task;
+    if (current.status === status && current.statusReason === reason) return;
+    this.deps.tasks.update(task.id, { status, statusReason: reason, ...(finished ? { finishedAt: this.deps.clock.now() } : {}) });
+    this.deps.recorder.record({ workspaceId: mission.workspaceId, missionId: mission.id, taskId: task.id }, { type: 'task.status', from: current.status, to: status, reason });
+    this.deps.recorder.invalidate('tasks', mission.id);
+    this.deps.recorder.invalidate('ship', mission.id);
   }
 
   /** `<type>: <title>` from the plan decision's profile. */
@@ -157,6 +438,13 @@ export class ShipService {
       env: { GIT_TERMINAL_PROMPT: '0', ...(credentials ? this.deps.credentialEnv?.() ?? {} : {}) },
     });
   }
+}
+
+function sleep(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    signal.addEventListener('abort', () => { clearTimeout(timer); resolve(); }, { once: true });
+  });
 }
 
 function firstLine(text: string): string {
