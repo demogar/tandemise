@@ -1,0 +1,131 @@
+{
+  "id": "H3",
+  "title": "Continue: a resumed pass on the captured session, no attempt spent, output gated as usual",
+  "ok": true,
+  "checks": [
+    {
+      "label": "the panel is open on the held step",
+      "ok": true
+    },
+    {
+      "label": "Continue ends the hold and the panel closes",
+      "ok": true
+    },
+    {
+      "label": "the step finishes",
+      "ok": true,
+      "observed": {
+        "status": "SUCCEEDED",
+        "reason": null
+      }
+    },
+    {
+      "label": "proof (API): continuing spent no attempt",
+      "ok": true,
+      "observed": {
+        "before": 1,
+        "after": 1
+      }
+    },
+    {
+      "label": "proof (DB): the hold ended as continued, and its continuation was taken",
+      "ok": true,
+      "observed": {
+        "id": "hld_01m67xcsapn1fs8jg9qw",
+        "heldBy": "mem_01m67xb142hsmj76myye",
+        "fromStatus": "RUNNING",
+        "profileId": "rt_01m67xb3g2q6h2qxsf5w",
+        "sessionBefore": "sess-hold-run_01m67xb8nbc62b5974gj",
+        "sessionAfter": "fake-session-1793414676875",
+        "endedAt": "2026-10-31T02:45:08.035Z",
+        "ending": "continued",
+        "consumedAt": "2026-10-31T02:45:08.093Z",
+        "diffStat": "{\"files\":1,\"insertions\":1,\"deletions\":0}",
+        "dir": "/tmp/tdm-hold/home/workspaces/ws_01m67xb142hsmj76myyd/missions/msn_01m67xb5jj7y1qxsk2dr/holds/hld_01m67xcsapn1fs8jg9qw"
+      }
+    },
+    {
+      "label": "proof (DB): one new pass ran",
+      "ok": true,
+      "observed": {
+        "id": "run_01m67xhev71m2k1szpjc",
+        "attempt": 2,
+        "status": "SUCCEEDED",
+        "round": 1,
+        "purpose": "retry",
+        "sessionId": "sess-hold-run_01m67xhev71m2k1szpjc",
+        "profileId": "rt_01m67xb3g2q6h2qxsf5w",
+        "startedAt": "2026-10-31T02:45:08.093Z",
+        "errorCode": null,
+        "errorMessage": null
+      }
+    },
+    {
+      "label": "proof (DB): that pass resumed the session the terminal captured",
+      "ok": true,
+      "observed": {
+        "sessionAfter": "fake-session-1793414676875",
+        "resumedOn": [
+          {
+            "type": "checkpoint",
+            "externalSessionId": "fake-session-1793414676875",
+            "label": "session.resumed"
+          }
+        ]
+      }
+    },
+    {
+      "label": "proof (API): task.hold_ended carries the diff stat (d.txt added)",
+      "ok": true,
+      "observed": {
+        "files": 1,
+        "insertions": 1,
+        "deletions": 0
+      }
+    },
+    {
+      "label": "proof (API): and who held it, from where, the sessions and how long",
+      "ok": true,
+      "observed": {
+        "type": "task.hold_ended",
+        "holdId": "hld_01m67xcsapn1fs8jg9qw",
+        "ending": "continued",
+        "endedBy": "mem_01m67xb142hsmj76myye",
+        "sessionAfter": "fake-session-1793414676875",
+        "durationMs": 153069,
+        "diffStat": {
+          "files": 1,
+          "insertions": 1,
+          "deletions": 0
+        }
+      }
+    },
+    {
+      "label": "proof (API): the continuation's DesignBrief was harvested",
+      "ok": true,
+      "observed": [
+        {
+          "type": "DesignBrief",
+          "run": "run_01m67xhev71m2k1szpjc"
+        }
+      ]
+    },
+    {
+      "label": "proof (API): and gated as usual",
+      "ok": true,
+      "observed": null
+    },
+    {
+      "label": "proof (API): a finished step is no longer holdable, in words",
+      "ok": true,
+      "observed": {
+        "ok": false,
+        "reason": "This step is done; request changes instead."
+      }
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/home/demogar/projects/tandemise/tandemise/docs/superpowers/evidence/2026-10-30-hold/H3-done.png"
+  ]
+}

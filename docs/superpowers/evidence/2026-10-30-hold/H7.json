@@ -1,0 +1,76 @@
+{
+  "id": "H7",
+  "title": "Hold a ready step: a fresh session in a worktree made for it",
+  "ok": true,
+  "checks": [
+    {
+      "label": "proof (API): one step runs and the other waits ready, never started",
+      "ok": true,
+      "observed": {
+        "status": "READY",
+        "reason": "Waiting for a runtime slot. 'Hold fake one slot': saturated: 1/1 runs in flight",
+        "holdable": {
+          "ok": true
+        }
+      }
+    },
+    {
+      "label": "proof (API): it has no worktree yet",
+      "ok": true
+    },
+    {
+      "label": "its card offers Hold",
+      "ok": true,
+      "observed": {
+        "text": "Hold",
+        "disabled": false,
+        "title": "Stop the agent and work with it in its own terminal"
+      }
+    },
+    {
+      "label": "Hold opens the terminal panel on it",
+      "ok": true
+    },
+    {
+      "label": "a fresh session starts (nothing to resume)",
+      "ok": true,
+      "observed": "Fake session new\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
+    },
+    {
+      "label": "proof (DB): a hold from READY, with no session before it",
+      "ok": true,
+      "observed": {
+        "id": "hld_01m67xnpa7m0hkzssk0b",
+        "heldBy": "mem_01m67xb142hsmj76myye",
+        "fromStatus": "READY",
+        "profileId": "rt_01m67xnbsp7tdwdg0a0e",
+        "sessionBefore": null,
+        "sessionAfter": null,
+        "endedAt": null,
+        "ending": null,
+        "consumedAt": null,
+        "diffStat": null,
+        "dir": "/tmp/tdm-hold/home/workspaces/ws_01m67xb142hsmj76myyd/missions/msn_01m67xndw19veh51thbb/holds/hld_01m67xnpa7m0hkzssk0b"
+      }
+    },
+    {
+      "label": "proof (API): its worktree was provisioned",
+      "ok": true,
+      "observed": "/tmp/tdm-hold/home/workspaces/ws_01m67xb142hsmj76myyd/missions/msn_01m67xndw19veh51thbb/worktrees/two-pages-mvvsvzul-settings-addg434n"
+    },
+    {
+      "label": "proof (disk): the session works in that worktree",
+      "ok": true
+    },
+    {
+      "label": "Release ends the hold and the panel closes",
+      "ok": true
+    }
+  ],
+  "notes": [
+    "setup: both steps go to one fake runtime with a single slot"
+  ],
+  "shots": [
+    "/home/demogar/projects/tandemise/tandemise/docs/superpowers/evidence/2026-10-30-hold/H7-fresh-session.png"
+  ]
+}

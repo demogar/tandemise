@@ -19,6 +19,8 @@ import { useApprovals, useDaemonMutation, useMission, useMissionRefinement, useM
 import { missionTone, pluralize } from '../../lib/format.js';
 import { describeError } from '../../lib/daemon.js';
 import { clearMissionNotice, useMissionNotice } from '../../lib/notices.js';
+import { useOpenTerminal } from '../../lib/terminal.js';
+import { TerminalPanel } from '../../components/TerminalPanel.js';
 
 // Feed first: it is where a mission opens, and the order of the tabs says so.
 export const MISSION_TABS = ['feed', 'plan', 'timeline', 'artifacts', 'checks', 'metrics'] as const;
@@ -33,6 +35,7 @@ export function MissionDetail({ id, tab }: { id: string; tab: MissionTab }): JSX
   // Set by the "waiting on you" banner and cleared by the feed once it has scrolled,
   // so revisiting the tab later does not jump to "Needs you" again.
   const [focusNeeds, setFocusNeeds] = useState(false);
+  const terminalTaskId = useOpenTerminal();
 
   const act = useDaemonMutation(
     (daemon, args: { action: 'plan' | 'replan' | 'start' | 'pause' | 'resume' | 'cancel' }) => daemon.missionAction(id, args.action),
@@ -167,6 +170,12 @@ export function MissionDetail({ id, tab }: { id: string; tab: MissionTab }): JSX
       </div>
 
       {renderPane(tab, detail, focusNeeds, () => setFocusNeeds(false))}
+
+      {/* Over every tab: a held step's terminal stays open while you move around the mission. */}
+      {(() => {
+        const held = terminalTaskId === null ? undefined : detail.tasks.find((t) => t.id === terminalTaskId);
+        return held ? <TerminalPanel key={held.id} task={held} detail={detail} /> : null;
+      })()}
 
       {confirming === 'cancel' ? (
         <ConfirmDialog

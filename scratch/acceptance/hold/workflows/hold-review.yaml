@@ -1,0 +1,9 @@
+name: Hold review
+description: One design step whose output waits for your review, so holding it opens a new round.
+steps:
+  - key: design
+    role: design
+    isolation: worktree
+    approval: after
+    objective: Design the onboarding.
+    outputs: [DesignBrief]

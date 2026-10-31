@@ -1,0 +1,69 @@
+{
+  "id": "H4",
+  "title": "Close the panel mid-hold: the terminal keeps going, and reopening repaints it",
+  "ok": true,
+  "checks": [
+    {
+      "label": "Close terminal closes the panel",
+      "ok": true
+    },
+    {
+      "label": "proof (API): the step is still HELD, its terminal still open",
+      "ok": true,
+      "observed": {
+        "holdId": "hld_01m67xcsapn1fs8jg9qw",
+        "heldBy": "mem_01m67xb142hsmj76myye",
+        "heldByName": "Demostenes Garcia",
+        "startedAt": "2026-10-31T02:42:34.966Z",
+        "terminalOpen": true
+      }
+    },
+    {
+      "label": "proof (OS): the terminal process is still running",
+      "ok": true,
+      "observed": {
+        "pid": 3532701,
+        "alive": true
+      }
+    },
+    {
+      "label": "the held step's drawer offers Open terminal, Release and Continue",
+      "ok": true,
+      "observed": [
+        "Details",
+        "Open terminal",
+        "Release",
+        "Continue",
+        "Request changes",
+        "Close"
+      ]
+    },
+    {
+      "label": "and no Hold",
+      "ok": true,
+      "observed": {
+        "text": "Open terminal",
+        "disabled": false,
+        "title": ""
+      }
+    },
+    {
+      "label": "the drawer steps aside for the panel",
+      "ok": true
+    },
+    {
+      "label": "the reopened panel repaints the scrollback: the greeting, your typing, the file",
+      "ok": true,
+      "observed": "Fake session sess-hold-run_01m67xb8nbc62b5974gj\nhello from the panel\n> hello from the panel\nwrite d.txt\n> write d.txt\nwrote d.txt\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
+    },
+    {
+      "label": "proof (DB): still the same hold",
+      "ok": true
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/home/demogar/projects/tandemise/tandemise/docs/superpowers/evidence/2026-10-30-hold/H4-drawer-held.png",
+    "/home/demogar/projects/tandemise/tandemise/docs/superpowers/evidence/2026-10-30-hold/H4-reopened.png"
+  ]
+}

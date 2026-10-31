@@ -1,0 +1,9 @@
+name: Hold checked
+description: One design step whose gate runs the repository's tests, so it spends a while checking its work.
+steps:
+  - key: design
+    role: design
+    isolation: worktree
+    objective: Design the onboarding.
+    outputs: [DesignBrief]
+    gate: artifact.DesignBrief.exists && checks.tests == PASS

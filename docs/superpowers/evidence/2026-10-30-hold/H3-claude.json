@@ -1,0 +1,108 @@
+{
+  "id": "H3-claude",
+  "title": "Continue on the real Claude Code: its own session in the panel, then a resumed pass",
+  "ok": true,
+  "checks": [
+    {
+      "label": "proof (DB): the Claude run ended RESUMABLE and the hold starts from its session",
+      "ok": true,
+      "observed": {
+        "run": "RESUMABLE",
+        "hold": {
+          "id": "hld_01m67xxc30mr50945c6x",
+          "heldBy": "mem_01m67xx2q10y635q7kbk",
+          "fromStatus": "RUNNING",
+          "profileId": "rt_01m67xx52zyny0nbp1kv",
+          "sessionBefore": "135c0f0a-6d74-40de-ab29-209be00ba15a",
+          "sessionAfter": null,
+          "endedAt": null,
+          "ending": null,
+          "consumedAt": null,
+          "diffStat": null,
+          "dir": "/tmp/tdm-hold/home/workspaces/ws_01m67xx2q0r1nx5z3z66/missions/msn_01m67xx75g9p5kcvq6p3/holds/hld_01m67xxc30mr50945c6x"
+        }
+      }
+    },
+    {
+      "label": "you answered its question in the terminal, and the session went on",
+      "ok": true,
+      "observed": "    stop: <only when the steps after yours should not run as planned: why, in one sentence, at most 200 characters; otherwise delete this line>\n  flows:\n    - <named user flow, e.g. \"First-run onboarding\">\n  accessibility:\n    - <a concrete requirement, e.g. \"All controls reachable by keyboard in DO"
+    },
+    {
+      "label": "the panel shows Claude Code's own interactive session",
+      "ok": true,
+      "observed": "    stop: <only when the steps after yours should not run as planned: why, in one sentence, at most 200 characters; otherwise delete this line>\n  flows:\n    - <named user flow, e.g. \"First-run onboarding\">\n  accessibility:\n    - <a concrete requirement, e.g. \"All controls reachable by keyboard in DOM order\">\n  openQuestions:\n    - <a choice that needs a human, or delete this key's items if there are none>\n  ---\n\n  ## Flows and states\n  <Each flow, step by step, with its empty / loading / error / success states.>\n\n  ## Design references\n  <Links to Figma frames, existing screens, or prototypes."
+    },
+    {
+      "label": "proof (DB): the terminal's session was captured",
+      "ok": true,
+      "observed": {
+        "id": "hld_01m67xxc30mr50945c6x",
+        "heldBy": "mem_01m67xx2q10y635q7kbk",
+        "fromStatus": "RUNNING",
+        "profileId": "rt_01m67xx52zyny0nbp1kv",
+        "sessionBefore": "135c0f0a-6d74-40de-ab29-209be00ba15a",
+        "sessionAfter": "135c0f0a-6d74-40de-ab29-209be00ba15a",
+        "endedAt": "2026-10-31T02:51:50.040Z",
+        "ending": "continued",
+        "consumedAt": null,
+        "diffStat": "{\"files\":0,\"insertions\":0,\"deletions\":0}",
+        "dir": "/tmp/tdm-hold/home/workspaces/ws_01m67xx2q0r1nx5z3z66/missions/msn_01m67xx75g9p5kcvq6p3/holds/hld_01m67xxc30mr50945c6x"
+      }
+    },
+    {
+      "label": "the step finishes",
+      "ok": true,
+      "observed": {
+        "status": "SUCCEEDED",
+        "reason": null
+      }
+    },
+    {
+      "label": "proof (DB): the continuation ran on Claude Code and took the hold",
+      "ok": true,
+      "observed": {
+        "id": "run_01m67xxr0vvmh7gwjdd6",
+        "attempt": 2,
+        "status": "SUCCEEDED",
+        "round": 1,
+        "purpose": "retry",
+        "sessionId": "135c0f0a-6d74-40de-ab29-209be00ba15a",
+        "profileId": "rt_01m67xx52zyny0nbp1kv",
+        "startedAt": "2026-10-31T02:51:50.701Z",
+        "errorCode": null,
+        "errorMessage": null
+      }
+    },
+    {
+      "label": "proof (DB): the continuation spent no attempt (it ran as the attempt the hold stopped)",
+      "ok": true,
+      "observed": {
+        "before": 1,
+        "continuation": 1
+      }
+    },
+    {
+      "label": "proof (DB): it resumed the captured session",
+      "ok": true,
+      "observed": {
+        "pass": "135c0f0a-6d74-40de-ab29-209be00ba15a",
+        "captured": "135c0f0a-6d74-40de-ab29-209be00ba15a"
+      }
+    },
+    {
+      "label": "proof (API): its DesignBrief was harvested",
+      "ok": true,
+      "observed": "First-run onboarding note"
+    }
+  ],
+  "notes": [
+    "setup: the Design agent runs on Claude Code",
+    "session before 135c0f0a-6d74-40de-ab29-209be00ba15a, captured 135c0f0a-6d74-40de-ab29-209be00ba15a (kept by --resume)"
+  ],
+  "shots": [
+    "/home/demogar/projects/tandemise/tandemise/docs/superpowers/evidence/2026-10-30-hold/H3-claude-claude-trust.png",
+    "/home/demogar/projects/tandemise/tandemise/docs/superpowers/evidence/2026-10-30-hold/H3-claude-claude-in-panel.png",
+    "/home/demogar/projects/tandemise/tandemise/docs/superpowers/evidence/2026-10-30-hold/H3-claude-claude-done.png"
+  ]
+}
