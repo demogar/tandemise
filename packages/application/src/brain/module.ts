@@ -40,6 +40,7 @@ export function bindBrain(container: Container): void {
     host: r.resolve(b.BRAIN_HOST),
     setup: r.resolve(t.SETUP_SERVICE),
     skills: r.resolve(t.SKILL_SERVICE),
+    skillFiles: r.resolve(t.SKILL_FILES),
     decisions: r.resolve(t.DECISION_REPOSITORY),
     workspaces: r.resolve(t.WORKSPACE_SERVICE),
     paths: paths(r),
@@ -58,3 +59,15 @@ export function bindBrain(container: Container): void {
 const log = (r: Resolver) => r.tryResolve(EXECUTION_LOGGER) ?? nullLogger;
 const clock = (r: Resolver) => r.tryResolve(EXECUTION_CLOCK) ?? systemClock;
 const paths = (r: Resolver) => r.tryResolve(EXECUTION_PATHS) ?? createPaths();
+
+/**
+ * The brain as the services' edit hook and workflow reader, resolved lazily:
+ * the brain depends on the setup service, which depends on these services.
+ */
+export function brainEdits(r: Resolver): { edited(workspaceId: import('@tandemise/shared').WorkspaceId, what: string): void } {
+  return { edited: (workspaceId, what) => r.resolve(b.BRAIN_SERVICE).edited(workspaceId, what) };
+}
+
+export function brainWorkflows(r: Resolver): import('./workflows.js').BrainWorkflowReader {
+  return { brainWorkflows: (workspaceId) => r.resolve(b.BRAIN_SERVICE).brainWorkflows(workspaceId) };
+}

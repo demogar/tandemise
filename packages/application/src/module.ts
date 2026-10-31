@@ -34,7 +34,7 @@ import { RepositoryProber } from './support/repository-prober.js';
 import { RuntimeOverrides } from './support/runtime-overrides.js';
 import { ApprovalWaiter, createApprovalGate, createPolicyEngineToolGate } from './support/tool-policy.js';
 import { createAskHumanTool } from './tools/ask-human.js';
-import { bindBrain } from './brain/module.js';
+import { bindBrain, brainEdits, brainWorkflows } from './brain/module.js';
 import { BRAIN_SERVICE } from './brain/tokens.js';
 import { RunDeadlines } from './engine/run-deadline.js';
 import { ConnectFlow } from './services/connect-flow.js';
@@ -429,6 +429,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
         people: r.resolve(t.PERSON_REPOSITORY),
         members: r.resolve(t.MEMBER_REPOSITORY),
         unitOfWork: r.resolve(t.UNIT_OF_WORK),
+        factoryEdits: brainEdits(r),
       },
     ), { source: SOURCE });
 
@@ -455,6 +456,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
     bind(t.ROLE_SERVICE, (r) => new RoleServiceImpl(
       r.resolve(t.ROLE_REPOSITORY), clock(r),
       (workspaceId, skills) => r.resolve(t.SKILL_SERVICE).validateRoleSkills(workspaceId, skills),
+      brainEdits(r),
     ), { source: SOURCE });
 
     // P13: the daemon rebinds the files port (it reads folders and runs git); this one finds nothing.
@@ -469,6 +471,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
     }), { source: SOURCE });
 
     bind(t.SKILL_SERVICE, (r) => new SkillService({
+      factoryEdits: brainEdits(r),
       skills: r.resolve(t.SKILL_REPOSITORY),
       roles: r.resolve(t.ROLE_REPOSITORY),
       files: r.resolve(t.SKILL_FILES),
@@ -570,6 +573,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
     bind(t.WORKFLOW_SERVICE, (r) => new WorkflowServiceImpl(
       r.resolve(t.WORKFLOW_SOURCE),
       r.resolve(t.REPO_REPOSITORY),
+      brainWorkflows(r),
     ), { source: SOURCE });
 
     bind(t.READINESS_SERVICE, (r) => new ReadinessService({
@@ -584,6 +588,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
       repositories: r.resolve(t.REPO_REPOSITORY),
       workflows: r.resolve(t.WORKFLOW_SOURCE),
+      brain: brainWorkflows(r),
       missions: r.resolve(t.MISSION_REPOSITORY),
       tasks: r.resolve(t.TASK_REPOSITORY),
       runs: r.resolve(t.RUN_REPOSITORY),
@@ -790,6 +795,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
     }), { source: SOURCE });
 
     bind(t.ROUTINE_SERVICE, (r) => new RoutineService({
+      factoryEdits: brainEdits(r),
       routines: r.resolve(t.ROUTINE_REPOSITORY),
       workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
       missions: r.resolve(t.MISSION_REPOSITORY),
@@ -880,6 +886,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       issues: r.resolve(t.ISSUE_SERVICE),
       integrations: r.resolve(t.INTEGRATION_REPOSITORY),
       workflows: r.resolve(t.WORKFLOW_SOURCE),
+      brain: brainWorkflows(r),
       folder: r.resolve(t.SETUP_FOLDER),
       settings: r.resolve(t.SETTINGS_STORE),
       unitOfWork: r.resolve(t.UNIT_OF_WORK),

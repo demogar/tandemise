@@ -8,7 +8,8 @@ import { makeWriterId } from '@tandemise/domain';
 import type { BrainAdoptPreview, BrainView, SetupItemView } from '@tandemise/api-contract';
 import type { Clock, Logger, TandemisePaths, WorkspaceId } from '@tandemise/shared';
 import { TandemiseError, errorMessage, slugify } from '@tandemise/shared';
-import type { SettingsStorePort } from '../ports.js';
+import type { LoadedWorkflow, SettingsStorePort, SkillFilesPort } from '../ports.js';
+import { BrainFactory } from './factory-cache.js';
 import type { WorkspaceService } from '../services.js';
 import type { SetupService } from '../services/setup-service.js';
 import type { SkillService } from '../services/skill-service.js';
@@ -33,6 +34,8 @@ export interface BrainServiceDeps {
   readonly host: BrainHostPort;
   readonly setup: Pick<SetupService, 'snapshotFor' | 'previewFiles' | 'applyFiles' | 'isApplyingFromBrain'>;
   readonly skills: Pick<SkillService, 'content'>;
+  /** This machine's skills store, filled from the brain's vendored copies (spec §2). */
+  readonly skillFiles?: Pick<SkillFilesPort, 'store' | 'read'>;
   readonly decisions: Pick<DecisionRepositoryPort, 'listByWorkspace'>;
   readonly workspaces: Pick<WorkspaceService, 'view'>;
   readonly paths: TandemisePaths;
@@ -75,7 +78,46 @@ export class BrainService {
   readonly #pending = new Map<string, PendingAdopt>();
   readonly #listeners: BrainSyncListener[] = [];
 
-  constructor(private readonly deps: BrainServiceDeps) {}
+  readonly #factory: BrainFactory;
+
+  constructor(private readonly deps: BrainServiceDeps) {
+    this.#factory = new BrainFactory(this, {
+      repo: deps.repo, host: deps.host, setup: deps.setup, skillFiles: deps.skillFiles, identity: deps.identity,
+      recorder: deps.recorder, log: deps.log,
+    });
+    this.onSync((ws, from, to) => this.#factory.refreshFactory(ws, from, to).then(() => undefined));
+    this.resolveConflict = (ws, conflicted) => this.#factory.resolveConflict(ws, conflicted);
+    this.beforeAdoptPreview.push(async (_ws, clonePath, head) => { await this.#factory.fillSkills(clonePath, head); });
+  }
+
+  /** A person's edit in the app on this project (Team → Roles, routines, settings): written through (spec §8). */
+  edited(workspaceId: WorkspaceId, what: string): void {
+    this.#factory.edited(workspaceId, what);
+  }
+
+  /** Waits for a scheduled write-through to finish. */
+  settleEdits(workspaceId: WorkspaceId): Promise<void> {
+    return this.#factory.settle(workspaceId);
+  }
+
+  /** The brain's own workflows, read at the last pull (spec §2 precedence). */
+  brainWorkflows(workspaceId: WorkspaceId): Promise<readonly LoadedWorkflow[]> {
+    return this.#factory.brainWorkflows(workspaceId);
+  }
+
+  /** A local-only brain moved: its new head is what the next run reads. */
+  markPulled(workspaceId: WorkspaceId, sha: string | null): void {
+    if (this.deps.brains.get(workspaceId) === undefined) return;
+    this.deps.brains.update(workspaceId, { lastPulledSha: sha, lastSyncAt: this.deps.clock.now() });
+  }
+
+  /** A problem to show on the Brain section until the next sync. */
+  reportProblem(workspaceId: WorkspaceId, problem: string): void {
+    this.extraProblems.set(workspaceId, [...(this.extraProblems.get(workspaceId) ?? []), problem]);
+    const info = this.#info.get(workspaceId);
+    if (info !== undefined) info.problems.push(problem);
+    this.deps.log.warn('brain.problem', { workspaceId, problem });
+  }
 
   /** Registers work that follows a sync (Task 6's factory refresh, intake config, promotions). */
   onSync(listener: BrainSyncListener): void {

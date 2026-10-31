@@ -134,3 +134,6 @@ export { BrainSyncLoop } from './brain/sync-loop.js';
 export { decisionFile, decisionFileName, decisionFiles } from './brain/decisions.js';
 export { createBrainLayout, projectRules, scrubDocument, PROJECT_RULES_FILE } from './brain/create-layout.js';
 export * from './brain/constants.js';
+export { listProjectWorkflows } from './brain/workflows.js';
+export type { BrainWorkflowReader } from './brain/workflows.js';
+export { BrainFactory } from './brain/factory-cache.js';

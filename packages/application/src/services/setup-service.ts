@@ -9,6 +9,7 @@ import type {
 import type { Clock, Logger, RoutineId, WorkspaceId } from '@tandemise/shared';
 import { TandemiseError, asId } from '@tandemise/shared';
 import type { SettingsStorePort, SetupFolderPort, WorkflowSourcePort } from '../ports.js';
+import { listProjectWorkflows, type BrainWorkflowReader } from '../brain/workflows.js';
 import type { RoleService, WorkspaceService } from '../services.js';
 import type { EventRecorder } from '../support/event-recorder.js';
 import type { Caller } from '../support/identity.js';
@@ -37,6 +38,8 @@ export interface SetupDeps {
   /** The project's integrations, for `mcps.yaml` (#51). Optional: P15 alone does not need it. */
   readonly integrations?: Pick<IntegrationRepositoryPort, 'listByWorkspace'>;
   readonly workflows: WorkflowSourcePort;
+  /** The project's brain, whose workflows come first (#51). */
+  readonly brain?: BrainWorkflowReader;
   readonly folder: SetupFolderPort;
   readonly settings: SettingsStorePort;
   readonly unitOfWork: UnitOfWork;
@@ -528,7 +531,7 @@ export class SetupService {
       workflow: r.workflowPreset,
       schedule: r.schedule,
     }));
-    const loaded = await this.deps.workflows.list(view.repositories.map((r) => r.path));
+    const loaded = (await listProjectWorkflows({ workflows: this.deps.workflows, brain: this.deps.brain }, workspaceId, view.repositories.map((r) => r.path))).workflows;
     const workflowSources = new Map<string, string>();
     const workflows: WorkflowSetup[] = [];
     for (const w of loaded) {

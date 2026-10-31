@@ -499,6 +499,126 @@ if (H1 !== null) {
   check('readAt refuses evals/', evalsRefused === 'The evals folder can only be changed by a person.', evalsRefused);
 }
 
+// ------------------------------------------------------------------ factory
+const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+let scratchN = 0;
+/** A person's own clone of the brain: edit, commit, push. */
+function scratchEdit(edits, message = 'chore: edit by hand') {
+  const dir = join(HOME, `scratch-${++scratchN}`);
+  execFileSync('git', ['clone', '-q', remoteDir, dir], { stdio: 'ignore' });
+  for (const [path, content] of Object.entries(edits)) {
+    mkdirSync(dirname(join(dir, path)), { recursive: true });
+    writeFileSync(join(dir, path), typeof content === 'function' ? content(existsSync(join(dir, path)) ? readFileSync(join(dir, path), 'utf8') : null) : content);
+  }
+  git(dir, 'add', '-A');
+  git(dir, 'commit', '-q', '-m', message);
+  git(dir, 'push', '-q', 'origin', 'main');
+  return dir;
+}
+const commitCount = () => Number(git(remoteDir, 'rev-list', '--count', 'main').trim());
+const withModel = (text, model) => {
+  const read = app.readRole('roles/development.md', text);
+  return app.renderRole({ ...read.role, model });
+};
+
+if (H1 !== null && (wants('factory') || wants('ledger') || wants('loading') || wants('tools') || wants('signals') || wants('promotion') || wants('intake'))) {
+  section('factory: the database is a cache of factory/, your edits write through');
+  const { services: s1, r: r1, caller: c1, ws: ws1 } = H1;
+  const { services: s2, ws: ws2 } = H2;
+
+  // A routine made here writes through to the brain.
+  const routine = s1.routines.create(c1, ws1, { name: 'Nightly tidy', kind: 'mission', goal: 'Tidy up', successCriteria: ['Nothing is left untidy.'], priority: 'normal', limits: null, workflowPreset: null, schedule: { type: 'daily', at: '03:00' }, enabled: false }).routine;
+  await sleep(3000);
+  await s1.brain.sync(ws1, 'person');
+  check('a new routine writes through to factory/routines.yaml', git(remoteDir, 'show', 'main:factory/routines.yaml').includes('Nightly tidy'));
+  // Personal fields: switch it on and route Developer here.
+  s1.routines.update(routine.id, { enabled: true });
+  const profileX = r1(app.RUNTIME_PROFILE_REPOSITORY).list()[0]?.id ?? 'rt-x';
+  s1.workspaces.update(ws1, { routing: { development: [profileX] } });
+  await sleep(2600);
+  await s1.brain.sync(ws1, 'person');
+  const beforeCount = commitCount();
+  const beforeGh = ghLog().length;
+
+  scratchEdit({
+    'factory/roles/development.md': (t) => withModel(t, 'other-model'),
+    'factory/routines.yaml': (t) => t.replace("at: \"03:00\"", "at: \"04:30\"").replace("at: '03:00'", "at: '04:30'").replace('at: 03:00', 'at: 04:30'),
+  });
+  const afterEdit = commitCount();
+  await s1.brain.sync(ws1, 'person');
+  const dev = s1.roles.list(ws1).find((x) => x.id === 'development');
+  check('a pushed role edit reaches the database after sync (no preview)', dev?.models?.model === 'other-model', dev?.models);
+  const tidy = r1(app.ROUTINE_REPOSITORY).list(ws1).find((x) => x.name === 'Nightly tidy');
+  check('the routine took the brain schedule', tidy?.schedule?.at === '04:30', tidy?.schedule);
+  check('this machine keeps the routine switched on', tidy?.enabled === true, tidy?.enabled);
+  check('routing still names this machine\'s profile', JSON.stringify(s1.workspaces.view(ws1).workspace.routing.development) === JSON.stringify([profileX]));
+  await sleep(2600);
+  check('the refresh did not write back (loop guard)', commitCount() === afterEdit && ghLog().length === beforeGh, { beforeCount, afterEdit, now: commitCount() });
+
+  // Write-through, direct.
+  const devRole = s1.roles.list(ws1).find((x) => x.id === 'development');
+  s1.roles.upsert({ ...devRole, workspaceId: ws1, models: { model: 'third-model', escalate: [], economyModel: null } });
+  await sleep(3000);
+  const last = git(remoteDir, 'log', '-1', '--format=%an%x1f%s', 'main').trim().split('\x1f');
+  check('your edit is a commit on main within 3 s', git(remoteDir, 'show', 'main:factory/roles/development.md').includes('third-model') && last[1].startsWith('chore: '), last);
+  check('the commit is authored by you', last[0] === s1.identity.localPerson().displayName, last);
+
+  // Write-through, as a pull request.
+  scratchEdit({ 'brain.yaml': (t) => t.replace('humanEdits: direct', 'humanEdits: pr') });
+  await s1.brain.sync(ws1, 'person');
+  const ghBefore = ghLog().length;
+  s1.roles.upsert({ ...s1.roles.list(ws1).find((x) => x.id === 'development'), workspaceId: ws1, models: { model: 'fourth-model', escalate: [], economyModel: null } });
+  await sleep(3000);
+  const prLine = ghLog().slice(ghBefore).find((l) => l.argv[0] === 'pr' && l.argv[1] === 'create');
+  check('with humanEdits: pr your edit opens a PR from tandemise/edit/', prLine?.argv[prLine.argv.indexOf('--head') + 1]?.startsWith('tandemise/edit/'), prLine?.argv);
+  check('and main is unchanged', !git(remoteDir, 'show', 'main:factory/roles/development.md').includes('fourth-model'));
+  scratchEdit({ 'brain.yaml': (t) => t.replace('humanEdits: pr', 'humanEdits: direct') });
+  await s1.brain.sync(ws1, 'person');
+
+  // Workflow precedence.
+  const wf = (name) => `name: ${name}\ndescription: One step.\nsteps:\n  - key: build\n    role: development\n    objective: Build it.\n    outputs: [ChangeSet]\n    gate: artifact.ChangeSet.exists\n`;
+  mkdirSync(join(H1.repoDir, '.tandemise', 'workflows'), { recursive: true });
+  writeFileSync(join(H1.repoDir, '.tandemise', 'workflows', 'build-feature.yaml'), wf('From the code repo'));
+  scratchEdit({ 'factory/workflows/build-feature.yaml': wf('From the brain') });
+  await s1.brain.sync(ws1, 'person');
+  const { FileWorkflowSource } = await import('../apps/daemon/dist/workflow-source.js');
+  const listed = await app.listProjectWorkflows({ workflows: new FileWorkflowSource(quiet), brain: s1.brain }, ws1, [H1.repoDir]);
+  const bf = listed.workflows.find((w) => w.id === 'build-feature');
+  check('a brain workflow wins over the code repo', bf?.origin === 'brain' && bf.definition?.name === 'From the brain', bf);
+  check('the code repo copy is listed as shadowed', listed.shadowed.some((w) => w.id === 'build-feature' && w.origin === 'repository'));
+  const viaService = await s1.workflows.list(ws1);
+  check('the workflow service lists the brain one', viaService.find((w) => w.id === 'build-feature')?.name === 'From the brain', viaService.map((w) => [w.id, w.name]));
+
+  // Vendored skills close P15 Ruling 14.
+  const skillText = '---\nname: tdd\ndescription: Test first.\n---\n\nWrite the failing test first.\n';
+  const skillHashV = D.hashSkillFiles([{ path: 'SKILL.md', bytes: Buffer.from(skillText) }]);
+  scratchEdit({
+    [`skills/tdd/${skillHashV.slice(0, 12)}/SKILL.md`]: skillText,
+    'factory/skills.lock': `skills:\n  - hash: ${skillHashV}\n    name: tdd\n    source:\n      kind: git\n      subpath: tdd\n      url: https://github.com/garipass/skills\n    version: 1\nversion: 1\n`,
+    'factory/roles/review.md': (t) => { const read = app.readRole('roles/review.md', t); return app.renderRole({ ...read.role, skills: [{ name: 'tdd', version: 1, hash: skillHashV }] }); },
+  });
+  const ws4 = (await s2.workspaces.create(H2.caller, { name: 'Third', repositoryPath: H2.repoDir })).workspace.id;
+  const pv = await s2.brain.link(H2.caller, ws4, { mode: 'adopt', remote: 'github.com/garipass/brain' });
+  check('the adopt preview has no Needs import for a vendored skill', !pv.items.some((i) => i.needsImport !== null), pv.items.filter((i) => i.needsImport !== null).map((i) => i.id));
+  await s2.brain.applyAdopt(H2.caller, ws4, { hash: pv.hash, choices: {} });
+  check('the skill is in the store after adopt', (await s2.skills.content(skillHashV)) !== null);
+  check('the reviewer pins it', (s2.roles.list(ws4).find((x) => x.id === 'review')?.skills ?? []).some((p) => p.name === 'tdd'));
+  await s1.brain.sync(ws1, 'person');
+  check('home 1 fills its store from the brain on sync', (await s1.skills.content(skillHashV)) !== null);
+
+  // A conflict on a rules file becomes a PR.
+  const link1 = r1(app.WORKSPACE_BRAIN_REPOSITORY).get(ws1);
+  await H1.brainRepo.commit(link1.clonePath, [{ path: 'memory/rules/project.md', mode: 'write', content: '# Mine\n' }], 'chore: rules here', null);
+  scratchEdit({ 'memory/rules/project.md': '# Theirs\n' });
+  const ghC = ghLog().length;
+  const conflicted = await s1.brain.sync(ws1, 'person');
+  const cpr = ghLog().slice(ghC).find((l) => l.argv[0] === 'pr' && l.argv[1] === 'create');
+  check('a conflicting change opens a PR from tandemise/local/', cpr?.argv[cpr.argv.indexOf('--head') + 1]?.startsWith('tandemise/local/'), cpr?.argv);
+  check('the sync error says what conflicts', r1(app.WORKSPACE_BRAIN_REPOSITORY).get(ws1).lastSyncError?.startsWith('Your change to memory/rules/project.md conflicts'), r1(app.WORKSPACE_BRAIN_REPOSITORY).get(ws1).lastSyncError);
+  check('the cache follows origin/main', git(remoteDir, 'rev-parse', 'main').trim() === conflicted.lastPulledSha, conflicted);
+  await s2.brain.sync(ws2, 'person');
+}
+
 // ------------------------------------------------------------------ end
 rmSync(HOME, { recursive: true, force: true });
 console.log(`\n${passed} passed, ${failures.length} failed`);

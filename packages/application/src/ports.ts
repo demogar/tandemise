@@ -123,6 +123,8 @@ export interface LoadedWorkflow {
   readonly issues: readonly WorkflowIssue[];
   /** The file's text as it is on disk, so an export can copy it byte for byte (P15). */
   readonly text?: string;
+  /** Where it was read from: the project's brain, or a code repository (#51). */
+  readonly origin?: 'brain' | 'repository';
 }
 
 /**

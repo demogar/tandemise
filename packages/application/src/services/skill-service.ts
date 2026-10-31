@@ -14,6 +14,8 @@ import { TandemiseError, asId, ids, isPathInside } from '@tandemise/shared';
 import type { ScannedSkillFolder, SkillFilesPort } from '../ports.js';
 
 export interface SkillDeps {
+  /** A linked brain hears of each edit so it can write it through (#51). */
+  readonly factoryEdits?: { edited(workspaceId: WorkspaceId, what: string): void };
   readonly skills: SkillRepositoryPort;
   readonly roles: RoleRepositoryPort;
   readonly files: SkillFilesPort;
@@ -155,6 +157,7 @@ export class SkillService {
       if (!this.deps.skills.hashInUse(hash)) await this.deps.files.drop(hash);
     }
     this.deps.log.info('skills.removed', { skillId, name: skill.name });
+    this.deps.factoryEdits?.edited(skill.workspaceId, `remove the skill ${skill.name}`);
   }
 
   // ------------------------------------------------------------------ pins
@@ -332,6 +335,7 @@ export class SkillService {
     // Content first: a version row must never name a hash the store lacks.
     await this.deps.files.store(judged.hash!, judged.scan.files);
     const recorded = this.#record(workspaceId, judged);
+    if (recorded.created !== 'unchanged') this.deps.factoryEdits?.edited(workspaceId, `add the skill ${recorded.skill.name}`);
     const skill = await this.#view(recorded.skill, this.deps.roles.list(workspaceId), false);
     if (recorded.created === 'unchanged') {
       return { skill, version: recorded.version, created: 'unchanged', message: `${recorded.skill.name} v${recorded.version} already has these files.` };
