@@ -107,6 +107,8 @@ export const EVAL_BLOBS = token<EvalBlobPort>('port.EvalBlobs');
 export const ARTIFACT_STORE = token<ArtifactStorePort>('port.ArtifactStore');
 /** Workflow files, read from the project's repositories. */
 export const WORKFLOW_SOURCE = token<WorkflowSourcePort>('port.WorkflowSource');
+/** The factory's planner, routing and merge files (#53). The daemon binds the real one. */
+export const FACTORY_CONFIG_SOURCE = token<import('./ports.js').FactoryConfigSourcePort>('port.FactoryConfigSource');
 /** The `.tandemise` setup folder on disk (P15). The daemon binds the real one. */
 export const SETUP_FOLDER = token<import('./ports.js').SetupFolderPort>('port.SetupFolder');
 export const WORKFLOW_SERVICE = token<WorkflowService>('service.Workflow');

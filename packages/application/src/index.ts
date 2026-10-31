@@ -16,6 +16,11 @@ export * from './planning/prompt.js';
 export * from './planning/refinement-prompt.js';
 export * from './planning/parse.js';
 export * from './planning/materialize.js';
+export * from './planning/factory-config.js';
+export * from './planning/defaults/planner.js';
+export * from './planning/defaults/routing.js';
+export * from './planning/defaults/merge.js';
+export * from './planning/defaults/lanes.js';
 
 export { SchedulerService } from './engine/scheduler.js';
 export type { SchedulerDeps } from './engine/scheduler.js';

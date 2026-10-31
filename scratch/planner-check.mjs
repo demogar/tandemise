@@ -279,6 +279,52 @@ await attempt('persistence', async () => {
   check('outcomes outlive the mission', R.outcomes.listByWorkspace(ws.id, '1970-01-01').length === 3 && R.merges.listByWorkspace(ws.id, '1970-01-01').length === 0);
 });
 
+await attempt('factory source', async () => {
+  section('factory source');
+  const { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { FileFactoryConfigSource } = await import(`${root}/apps/daemon/dist/factory-config-source.js`);
+  const repo = mkdtempSync(join(tmpdir(), 'tdm-factory-repo-'));
+  const home = mkdtempSync(join(tmpdir(), 'tdm-factory-home-'));
+  const source = new FileFactoryConfigSource(join(home, 'factory'));
+  const shipped = await source.read('planner', [repo]);
+  check('nothing on disk reads the shipped file', shipped.origin === 'shipped' && shipped.ref === 'shipped' && shipped.path === null, shipped);
+  mkdirSync(join(home, 'factory'), { recursive: true });
+  writeFileSync(join(home, 'factory', 'planner.yaml'), 'version: 1\ntiebreak: off\n');
+  check('a file on this computer wins over the shipped one', (await source.read('planner', [repo])).origin === 'home');
+  mkdirSync(join(repo, '.tandemise', 'factory'), { recursive: true });
+  writeFileSync(join(repo, '.tandemise', 'factory', 'planner.yaml'), 'version: 1\nlanes:\n  - lane: quick\n');
+  const project = await source.read('planner', [repo]);
+  check('the project repository wins over this computer', project.origin === 'project' && /^sha256:[0-9a-f]{12}$/.test(project.ref) && project.raw.lanes[0].lane === 'quick', project);
+  writeFileSync(join(repo, '.tandemise', 'factory', 'merge.yaml'), 'autoMerge: [on\n  - :\n');
+  const broken = await source.read('merge', [repo]);
+  check('a merge file that is not YAML keeps its error', typeof broken.error === 'string' && broken.raw === null, broken);
+  const loaded = await app.loadFactoryConfig(source, [repo]);
+  check('a broken merge policy is never replaced by the shipped one', typeof loaded.merge.error === 'string' && loaded.merge.autoMerge === undefined, loaded.merge);
+  check('the planner reads the project file', loaded.planner.lanes[0].lane === 'quick' && loaded.refs.planner === project.ref);
+  const written = await source.write('merge', repo, { version: 1, autoMerge: 'off' });
+  check('a write lands in the repository', existsSync(join(repo, '.tandemise', 'factory', 'merge.yaml')) && written.path.endsWith('merge.yaml') && readFileSync(written.path, 'utf8').includes('autoMerge: off'));
+  check('and reads back', (await source.read('merge', [repo])).raw.autoMerge === 'off');
+  const parsed = D.parsePlannerConfig(app.SHIPPED_PLANNER);
+  check('the shipped planner parses with no problems', parsed.problems.length === 0, parsed.problems);
+  check('the shipped planner has no project-specific area', !parsed.config.areas.some((a) => a.name === 'desktop-ui') && !parsed.config.modules.some((m) => m.name === 'ui-look'));
+  check('the shipped merge policy is off', app.SHIPPED_MERGE.autoMerge === 'off' && app.SHIPPED_MERGE.revertAutoMerge === 'on');
+  check('the shipped routing has no ladders', eq(app.SHIPPED_ROUTING.classes, {}) && app.SHIPPED_ROUTING.target === 0.8);
+  const roles = app.BUILT_IN_ROLES;
+  const isolationForRole = (id) => roles.find((r) => r.id === id)?.defaultIsolation;
+  for (const hasTestCommand of [false, true]) {
+    const lanes = app.laneWorkflows({ hasTestCommand });
+    for (const id of ['quick', 'standard', 'careful', 'fix', 'fix-careful']) {
+      const compiled = D.compileWorkflow(lanes[id], {}, { isolationForRole });
+      const valid = compiled.ok ? D.validateMissionPlan(compiled.value, { knownRoleIds: new Set(roles.map((r) => r.id)), satisfiableCapabilities: new Set(compiled.value.tasks.flatMap((t) => t.requiredCapabilities)) }) : compiled;
+      check(`the ${id} lane compiles and validates${hasTestCommand ? ' with a test command' : ''}`, compiled.ok && valid.ok && compiled.value.tasks.at(-1).executor === 'ship', compiled.ok ? valid.error : compiled.error);
+    }
+  }
+  const quick = D.compileWorkflow(app.laneWorkflows({ hasTestCommand: true }).quick, {}, { isolationForRole });
+  check('the quick lane is implement then ship, tests in the gate', eq(quick.value.tasks.map((t) => t.key), ['implement', 'ship']) && quick.value.tasks[0].completionGate.includes('checks.tests == PASS'), quick.value?.tasks.map((t) => [t.key, t.completionGate]));
+});
+
 // @sections
 
 console.log(`\n${passed} passed, ${failures.length} failed`);

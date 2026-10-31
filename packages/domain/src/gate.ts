@@ -195,6 +195,9 @@ function parse(src: string): Result<Node, string> {
     if (t.t === 'ident') {
       if (t.v === 'true') return { kind: 'literal', value: true };
       if (t.v === 'false') return { kind: 'literal', value: false };
+      // `x == null` asks whether a fact was not measured: a merge rule tolerates
+      // a review that never ran with `review.blocking_findings == null` (#53).
+      if (t.v === 'null') return { kind: 'literal', value: undefined };
       // Bare PASS/FAIL/SKIP read as string literals so `checks.x == PASS` works
       // without quoting - the form that appears throughout MVP.md.
       if (/^(PASS|FAIL|SKIP|APPROVED|REJECTED|PENDING)$/.test(t.v)) return { kind: 'literal', value: t.v };

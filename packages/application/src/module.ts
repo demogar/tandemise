@@ -1,4 +1,5 @@
 import { defineModule, type Container, type Resolver, type TandemiseModule } from '@tandemise/kernel';
+import { SHIPPED_FACTORY_SOURCE } from './planning/factory-config.js';
 import type { Clock, Logger, TandemisePaths } from '@tandemise/shared';
 import { TandemiseError, asId, createPaths, nullLogger, systemClock } from '@tandemise/shared';
 import { APPROVAL_FACTORY, GRANT_BUILDER, POLICY_ENGINE } from '@tandemise/policy';
@@ -564,6 +565,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
     // can read the filesystem rebinds it; one that cannot - a test, an embedder
     // - still gets the built-in presets rather than an unresolved token.
     bind(t.WORKFLOW_SOURCE, () => ({ list: async () => [] }), { source: SOURCE });
+    bind(t.FACTORY_CONFIG_SOURCE, () => SHIPPED_FACTORY_SOURCE, { source: SOURCE });
 
     bind(t.WORKFLOW_SERVICE, (r) => new WorkflowServiceImpl(
       r.resolve(t.WORKFLOW_SOURCE),

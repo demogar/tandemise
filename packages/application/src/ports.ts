@@ -232,3 +232,31 @@ export interface SkillFilesPort {
   /** Removes stored content. */
   drop(hash: string): Promise<void>;
 }
+
+/**
+ * The factory's files (#53): `planner.yaml`, `routing.yaml`, `merge.yaml`.
+ * Read from each repository's `.tandemise/factory/`, then this computer's
+ * `$TANDEMISE_HOME/factory/`, then the shipped defaults. The brain (#51)
+ * becomes the first source once it lands.
+ */
+export const FACTORY_FILES = ['planner', 'routing', 'merge'] as const;
+export type FactoryFileName = (typeof FACTORY_FILES)[number];
+
+export interface LoadedFactoryFile {
+  readonly name: FactoryFileName;
+  readonly origin: 'project' | 'home' | 'shipped';
+  /** Null for the shipped file. */
+  readonly path: string | null;
+  /** Parsed YAML, or the shipped object; null when `error` is set. */
+  readonly raw: unknown;
+  /** A YAML parse error. */
+  readonly error: string | null;
+  /** `shipped`, or `sha256:<first 12 hex>` of the file's text. */
+  readonly ref: string;
+}
+
+export interface FactoryConfigSourcePort {
+  read(name: FactoryFileName, repositoryPaths: readonly string[]): Promise<LoadedFactoryFile>;
+  /** A person's edit or "Write the defaults": writes `<repo>/.tandemise/factory/<name>.yaml`. */
+  write(name: FactoryFileName, repositoryPath: string, raw: unknown): Promise<{ readonly path: string; readonly ref: string }>;
+}

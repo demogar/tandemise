@@ -27,3 +27,15 @@ spec (`docs/superpowers/specs/2026-10-30-planner-and-merge-design.md`).
   re-deriving them from `factors` would duplicate decideMerge.
 - Ruling: the three repositories live in one file,
   `packages/persistence/src/repositories/planner-repositories.ts`.
+- Ruling: in `fix-careful` the code step's key is `implement` (titled "Fix the
+  defect"), not `fix`, so modules that insert after `implement` (the security
+  review) apply to careful fixes too.
+- Ruling: the shipped lanes' review step does not set `independentOf`. With one
+  runtime and no models configured, `review.independent` can never be true and
+  every standard task would block. Independence comes from `routing.yaml`'s
+  `independentOf` (spec §6.1), which writes it into the step's model policy.
+- Ruling: `null` is a literal in the gate language (unmeasured), so the shipped
+  `requires` line `review.blocking_findings == 0 || review.blocking_findings == null`
+  lints and means what it says. `routing.yaml` and `merge.yaml` schemas land
+  with the factory source (Task 4) because `loadFactoryConfig` returns them; their
+  behaviour is tested in Tasks 10 and 12.
