@@ -43,8 +43,9 @@ for (const [name, spec] of Object.entries(PACKAGES)) {
     for (const mod of specifiers) {
       if (!mod || mod.startsWith('.')) continue;
       if (mod.startsWith('@tandemise/')) {
-        const dep = mod.slice('@tandemise/'.length);
-        if (!allowed.has(mod)) {
+        // A subpath export (`@tandemise/api-contract/relay`) is judged as its package.
+        const dep = mod.slice('@tandemise/'.length).split('/')[0];
+        if (!allowed.has(`@tandemise/${dep}`)) {
           errors.push(`${file}: imports ${mod} which is not a declared dependency of @tandemise/${name}`);
         } else if ((LAYERS[dep] ?? 99) >= (LAYERS[name] ?? 99)) {
           errors.push(`${file}: layer violation - ${name}(L${LAYERS[name]}) -> ${dep}(L${LAYERS[dep]})`);
