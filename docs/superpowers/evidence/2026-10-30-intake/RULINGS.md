@@ -163,3 +163,40 @@ was ambiguous or wrong, decided against the spec
   - `IntakeSimilarity.score` takes the signal's `title`, `description` and `url`, and the
     candidate `TrackerItem`; `lexicalSimilarity` reads only the candidate's title and description,
     so it also scores the board cache's `TrackedItem`.
+- Ruling 12 (the pipeline, Task 7): decided from spec §4, §5 and §6.1:
+  - A pending link for a create stores a **null** `item_ref` (Ruling 6's nullable column), not the plan's
+    `pending:<signalId>` pseudo-ref: a pending link with no ref *is* a pending create, everywhere
+    (`#finishPending`, the check). `completeLink` sets the real ref.
+  - `ingest` answers with what was recorded and queues the pipeline in the background, one signal at a
+    time per project (`settle()` waits for it, as `IssueService`'s): a slow tracker never holds a runner's
+    push open. A repeat's answer therefore carries the reason it still waits (the daemon check's CLI case
+    now accepts the `Couldn't reach …` line under the status).
+  - A pending link is finished first on any pass over its signal, whatever the status: a crash in
+    `decide` leaves `needs_decision` with a pending link, and recover must still finish it. A pending
+    create searches `{ url, unresolvedOnly: true }` and adopts the oldest unresolved hit (ties to the
+    lower key, as Task 8's merge keeps); only with no hit does it create. Exact-URL dedupe (step 2.3) picks
+    the same way. "Unresolved" is the tracker's flag plus the mapping: a state in `done` or `wont_do` never
+    counts as a hit or a candidate.
+  - The tracker's text search wants every word (YouTrack and GitHub alike), so a candidate whose title
+    lacks one of the signal's words is never found by the full title (the plan's own case: GAR-1's title
+    plus " in checkout"). When the full-title search finds nothing at or above `ask`, one broader search with
+    the title's first ⌈ask × n⌉ tokens follows. Both searches are `unresolvedOnly`, top 20.
+  - "Last count written" needs a record: `intake_links` gains a nullable `written` JSON column
+    (`{ level?, events?, itemResolved? }`) in 022 itself (unshipped; Ruling 1), set when a link completes
+    and when the sources comment is updated. A change matters when the level rises, the events reach 10×
+    the written count, or the board cache shows the item resolved and the last write did not. A
+    `source_is_item` link writes nothing and is never updated. A failed update leaves the signal `linked`
+    (not `received`) and is retried on the next reading, since `written` did not move.
+  - Text: the description is escaped line by line with `escapeForComment` (mentions broken, markers
+    defused), and a line that reads as a `Sources` heading is escaped as `\## Sources`, so a signal cannot
+    add URLs to what exact-URL dedupe matches. The title only has its mentions broken (it is one line, not
+    markdown). URL attachments are listed under `Attachments:` before the Sources section; inline ones
+    are uploaded when the tracker takes uploads, otherwise named there.
+  - Sentences the plan leaves open: `decide('same')` on a signal with no candidate (the daily cap's) is
+    `PRECONDITION_FAILED` "There is no task to link this to. Choose New task or Not work."; `retry` on a
+    signal that is not `received` is `PRECONDITION_FAILED` "Only a signal that is waiting for the tracker
+    can be tried again." A tracker error's message loses its trailing period inside "Couldn't reach
+    <YouTrack|GitHub>: <message>. Tandemise will try again." A failure while deciding leaves the signal
+    `received` with that reason and its pending link, which the retry finishes.
+  - The daily cap counts from the UTC day start. `ProjectionTopic` gains `'intake'`, so the desktop's
+    `TOPIC_KEYS` gains its line (it is an exhaustive record).

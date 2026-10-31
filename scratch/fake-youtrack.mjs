@@ -302,7 +302,8 @@ export async function startFakeYouTrack(options = {}) {
   });
 
   await new Promise((resolve) => server.listen(options.port ?? 0, '127.0.0.1', resolve));
-  const url = `http://127.0.0.1:${server.address().port}`;
+  const port = server.address().port;
+  const url = `http://127.0.0.1:${port}`;
   return {
     url,
     issues,
@@ -315,6 +316,20 @@ export async function startFakeYouTrack(options = {}) {
     setState,
     /** The next request to `path` waits `ms` before it is answered. */
     delayNext(path, ms) { delays.set(path, ms); },
+    /**
+     * YouTrack goes away: the port stops answering, and everything it holds
+     * stays, so `restart()` brings back the same YouTrack on the same URL.
+     */
+    stop() {
+      server.closeAllConnections();
+      return new Promise((resolve) => server.close(() => resolve()));
+    },
+    restart() {
+      return new Promise((resolve, reject) => {
+        server.once('error', reject);
+        server.listen(port, '127.0.0.1', () => { server.off('error', reject); resolve(); });
+      });
+    },
     close() {
       server.closeAllConnections();
       return new Promise((resolve) => server.close(() => resolve()));

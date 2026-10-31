@@ -1,6 +1,7 @@
 import { token } from '@tandemise/kernel';
 import type {
-  EvalBlobPort, IntakeConfigSource, IntakeRepositoryPort, TrackerItemRepositoryPort, WebhookMailboxPort,
+  EvalBlobPort, IntakeClaimsPort, IntakeConfigSource, IntakeRepositoryPort, IntakeSimilarity, TrackerItemRepositoryPort,
+  WebhookMailboxPort,
 } from '@tandemise/domain';
 import type { IntakeService } from './services/intake-service.js';
 import type { TrackerResolver } from './intake/tracker-resolver.js';
@@ -25,3 +26,7 @@ export const INTAKE_SERVICE = token<IntakeService>('application.IntakeService');
 export const INTAKE_BLOBS = token<EvalBlobPort>('port.IntakeBlobs');
 /** A project's primary tracker, built from its config and its credential (plan Task 5). */
 export const TRACKER_RESOLVER = token<TrackerResolver>('application.TrackerResolver');
+/** Ranks dedupe's candidates (spec §5 step 4): lexical by default, a model-backed judge later (plan Task 7). */
+export const INTAKE_SIMILARITY = token<IntakeSimilarity>('port.IntakeSimilarity');
+/** Who works on what across daemons (plan Global Constraints): always granted locally; the relay (#54) rebinds it. */
+export const INTAKE_CLAIMS = token<IntakeClaimsPort>('port.IntakeClaims');

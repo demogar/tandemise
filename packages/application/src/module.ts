@@ -59,6 +59,7 @@ import { SkillService } from './services/skill-service.js';
 import { ContributionServiceImpl } from './services/contribution-service.js';
 import { SkillInstaller } from './engine/skill-installer.js';
 import { DEFAULT_QUIET_AFTER_MS, reachedReason, type IssueTrackerPort, type PullRequestSnapshotPort } from '@tandemise/domain';
+import { lexicalSimilarity } from '@tandemise/domain';
 import { SetupService } from './services/setup-service.js';
 import { RefinementServiceImpl } from './services/refinement-service.js';
 import { EvalService } from './services/eval-service.js';
@@ -384,6 +385,8 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       fireRoutines: () => r.resolve(t.ROUTINE_SERVICE).tick(),
       // Resolved per pass: issue sync creates missions through the mission service too.
       syncIssues: () => r.resolve(t.ISSUE_SERVICE).tick(),
+      // Resolved per pass: intake retries and recovers in the background (plan Task 7).
+      syncIntake: () => r.resolve(it.INTAKE_SERVICE).tick(),
       pullBacklog: () => r.resolve(t.BACKLOG_SERVICE).pull(),
       limits: r.resolve(t.LIMIT_SERVICE),
       // Resolved per pass, like the backlog: it reads the planner, composed after this.
@@ -564,6 +567,8 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
         metrics: (workspaceId) => r.resolve(t.DESK_SERVICE).metrics(workspaceId),
         banners: (workspaceId, metrics) => r.resolve(t.DESK_SERVICE).banners(workspaceId, metrics),
       },
+      // Resolved per call: intake is composed after the projections (plan Task 7).
+      intakeDecisions: (workspaceId) => r.resolve(it.INTAKE_SERVICE).decisions(workspaceId),
     }), { source: SOURCE });
 
     // Default: this installation has no workflow files. A composition root that
@@ -880,10 +885,22 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       factories: () => r.resolveAll(PRIMARY_TRACKER_FACTORIES),
       log: log(r).child({ component: 'intake' }),
     }), { source: SOURCE });
+    // Dedupe's scorer (plan Task 7): lexical, deterministic.
+    bind(it.INTAKE_SIMILARITY, () => ({ score: (signal, candidate) => lexicalSimilarity(signal, candidate) }), { source: SOURCE });
+    // Without the relay (#54) every claim is granted: Start re-reads the item instead (spec §3).
+    bind(it.INTAKE_CLAIMS, () => ({
+      source: async () => true,
+      item: async () => ({ ok: true as const }),
+      releaseItem: async () => {},
+    }), { source: SOURCE });
     bind(it.INTAKE_SERVICE, (r) => new IntakeService({
       intake: r.resolve(it.INTAKE_REPOSITORY),
       config: r.resolve(it.INTAKE_CONFIG_SOURCE),
       trackers: r.resolve(it.TRACKER_RESOLVER),
+      items: r.resolve(it.TRACKER_ITEM_REPOSITORY),
+      similarity: r.resolve(it.INTAKE_SIMILARITY),
+      unitOfWork: r.resolve(t.UNIT_OF_WORK),
+      projections: r.resolve(t.PROJECTION_BUS),
       blobs: r.resolve(it.INTAKE_BLOBS),
       workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
       members: r.resolve(t.MEMBER_REPOSITORY),

@@ -19,6 +19,8 @@ import type { Migration } from './types.js';
  *    Tandemise last wrote, so write-back never overrides a person's change.
  *  - `intake_links` is one row per signal, written `pending` before the
  *    tracker call (the ref is null until a create returns) and `done` after.
+ *    `written` is what Tandemise last wrote to the tracker for it (level,
+ *    events), the bar for a change that matters (plan Task 7).
  *  - `intake_closures` is one row per `(signal, kind)`: exactly-once closure.
  *  - `tracker_comments` is the one comment per `(item, marker)`, as P14's
  *    `issue_comments`.
@@ -125,6 +127,7 @@ CREATE TABLE intake_links (
   status       TEXT NOT NULL CHECK (status IN ('pending','done')),
   linked_by    TEXT NOT NULL CHECK (linked_by IN ('created','url','source_is_item','similarity','person','merged')),
   score        REAL,
+  written      TEXT,
   created_at   TEXT NOT NULL,
   updated_at   TEXT NOT NULL
 );

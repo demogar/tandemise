@@ -1,18 +1,23 @@
 import { createHash, randomBytes } from 'node:crypto';
 import type {
-  EvalBlobPort, IntakeAttachment, IntakeConfigSource, IntakeRepositoryPort, IntakeSignal, IntakeSourceConfig, MemberRepositoryPort,
-  SignalStatus, WorkspaceRepositoryPort,
+  AttachmentRef, EvalBlobPort, IntakeAttachment, IntakeConfig, IntakeConfigSource, IntakeLink, IntakeLinkedBy, IntakeRepositoryPort,
+  IntakeSignal, IntakeSimilarity, IntakeSourceConfig, MemberRepositoryPort, PrimaryTracker, ProjectionBusPort, SignalStatus, TrackerConfig,
+  TrackerItem, TrackerItemRepositoryPort, TrackerRef, UnitOfWork, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
-import { sourceLabel } from '@tandemise/domain';
+import {
+  dailyCapReason, evaluateNoise, linkChangeMatters, linkWritten, sourceLabel, titleTokens, trackerLabel,
+} from '@tandemise/domain';
 import {
   formatIntakeIssues, intakePushBody, pushedSignals, updateIntakeConfigRequest, validateIntakeSignal,
-  type IngestResultView, type IntakeConfigView, type IntakeSignalV1, type IntakeSignalView, type IntakeTokenMintedView,
+  type IngestResultView, type InboxIntakeDecisionView, type IntakeConfigView, type IntakeDecision, type IntakeSignalV1,
+  type IntakeSignalView, type IntakeTokenMintedView,
 } from '@tandemise/api-contract';
-import type { Clock, IntakeTokenId, Logger, WorkspaceId } from '@tandemise/shared';
-import { TandemiseError, asId } from '@tandemise/shared';
+import type { Clock, IntakeTokenId, Logger, SignalId, WorkspaceId } from '@tandemise/shared';
+import { TandemiseError, asId, errorMessage } from '@tandemise/shared';
 import { requireSeat, type Caller } from '../support/identity.js';
 import { SlidingWindowLimit } from '../intake/rate-limit.js';
 import type { TrackerResolver } from '../intake/tracker-resolver.js';
+import { createDraft, sourceEntry } from '../intake/item-text.js';
 
 /**
  * Who a push is for: one project and one of its sources. From an intake token
@@ -29,11 +34,22 @@ export interface IntakeScope {
 export interface IntakeDeps {
   readonly intake: IntakeRepositoryPort;
   readonly config: IntakeConfigSource;
-  /** Checks a tracker's state mapping against the tracker itself before it is saved (plan Task 5). */
-  readonly trackers: Pick<TrackerResolver, 'problemWith'>;
+  /**
+   * The project's tracker for the pipeline (plan Task 7), and the check of a
+   * tracker's state mapping before it is saved (plan Task 5).
+   */
+  readonly trackers: Pick<TrackerResolver, 'problemWith' | 'for'>;
+  /** The board cache: every item the pipeline creates, links or asks about (plan Task 7). */
+  readonly items: TrackerItemRepositoryPort;
+  /** Ranks the tracker's candidates (spec §5 step 4); lexical by default. */
+  readonly similarity: IntakeSimilarity;
+  /** Completes a link, caches its item and sets the signal's status together. */
+  readonly unitOfWork: UnitOfWork;
   /** Inline attachments, content-addressed (spec §1 "Attachments"). */
   readonly blobs: EvalBlobPort;
-  readonly workspaces: Pick<WorkspaceRepositoryPort, 'get'>;
+  readonly workspaces: Pick<WorkspaceRepositoryPort, 'get' | 'list'>;
+  /** Tells open windows the Intake tab and the Inbox changed; optional for harnesses. */
+  readonly projections?: Pick<ProjectionBusPort, 'invalidate'>;
   readonly members: MemberRepositoryPort;
   readonly clock: Clock;
   readonly log: Logger;
@@ -44,15 +60,36 @@ export const INTAKE_SIGNALS_PER_MINUTE = 60;
 /** What an intake token starts with, so a stray one is recognisable in a log or a shell history. */
 export const INTAKE_TOKEN_PREFIX = 'tdi_';
 const UNREADABLE_TITLE = '(unreadable signal)';
+/** Plan Task 7: a signal the tracker could not take is tried again no more than once a minute. */
+export const INTAKE_RETRY_EVERY_MS = 60_000;
+/** How many exact-URL hits are worth reading; any one of them is the item. */
+const URL_SEARCH_LIMIT = 5;
+/** Spec §5 step 4: the tracker's own search, top 20. */
+const TEXT_SEARCH_LIMIT = 20;
+/**
+ * The statuses a new reading runs the pipeline for. A `needs_decision` signal
+ * waits for its person, a dismissed one stays dismissed, and the closure
+ * states belong to closing the loop (plan Task 13).
+ */
+const PIPELINE_STATUSES: ReadonlySet<SignalStatus> = new Set<SignalStatus>(['received', 'held_back', 'linked', 'created']);
+
+/** The tracker and its configuration, for one pass over one signal. */
+interface TrackerContext {
+  readonly tracker: PrimaryTracker;
+  readonly config: TrackerConfig;
+}
 
 /**
  * The intake pipeline (spec §4), one service for every runner.
  *
- * Plan Task 3 implements its first two steps: validate against
- * `tandemise.intake/v1` and record. Everything that enters is recorded, a
- * rejected signal included, with the reason the push is answered with. Later
- * tasks add the noise filter, dedupe and the tracker; until then a valid
- * signal stays `received`.
+ * Validate against `tandemise.intake/v1` and record (plan Task 3): everything
+ * that enters is recorded, a rejected signal included, with the reason the
+ * push is answered with. Then, in the background and one signal at a time per
+ * project (plan Task 7): filter noise, dedupe, then create or link in the
+ * primary tracker. A link is written `pending` before the tracker call and
+ * `done` after it, so a crash between the two is finished on restart instead
+ * of filing twice: a pending create searches the tracker by its exact URL
+ * before it creates (Review Focus 1).
  *
  * Signal text is data: nothing read from a signal selects the project, the
  * source, the tracker or a threshold. The scope comes from the token, or from
@@ -60,6 +97,15 @@ const UNREADABLE_TITLE = '(unreadable signal)';
  */
 export class IntakeService {
   readonly #limit: SlidingWindowLimit;
+  /** One pipeline per project, in arrival order: an outcome is stored before the next signal runs (spec §4 step 5). */
+  readonly #queues = new Map<WorkspaceId, Promise<void>>();
+  /** Every pass started and not finished, for `settle()`. */
+  readonly #running = new Set<Promise<void>>();
+  /** Signals waiting in a queue, so a tick does not queue them twice. */
+  readonly #queued = new Set<SignalId>();
+  /** When each signal last went through the pipeline, for the once-a-minute retry. */
+  readonly #lastAttemptMs = new Map<SignalId, number>();
+  #recovered = false;
 
   constructor(private readonly deps: IntakeDeps) {
     this.#limit = new SlidingWindowLimit(deps.clock, INTAKE_SIGNALS_PER_MINUTE);
@@ -141,6 +187,10 @@ export class IntakeService {
     const { signal, firstTime } = this.deps.intake.upsertSignal(scope.workspaceId, source.id, checked.signal, this.deps.clock.now());
     await this.#keepAttachments(signal, checked.signal);
     this.deps.log.info('intake.signal_recorded', { workspaceId: scope.workspaceId, sourceId: source.id, fingerprint: signal.fingerprint, firstTime });
+    this.#invalidate();
+    // The push is answered with what was recorded; the tracker is talked to
+    // after, so a slow tracker never holds a runner's request open.
+    this.#enqueue(signal, 'reading');
     return { fingerprint: signal.fingerprint, signalId: signal.id, status: signal.status, reason: signal.reason };
   }
 
@@ -159,6 +209,375 @@ export class IntakeService {
       const known = kept.some((k) => k.name === entry.name && k.blobSha256 === entry.blobSha256 && k.url === entry.url);
       if (!known) this.deps.intake.addAttachment(signal.id, entry);
     }
+  }
+
+  // ------------------------------------------------------------------ the pipeline (plan Task 7)
+
+  /**
+   * Scheduler hook. The first call finishes every link a crash left pending
+   * (`recover`); every call queues the `received` signals whose last attempt
+   * is a minute old, so a tracker that was down is tried again. Returns at
+   * once: the work runs in the background, one signal at a time per project.
+   */
+  tick(): void {
+    try {
+      if (!this.#recovered) {
+        this.#recovered = true;
+        this.#recover();
+      }
+      const nowMs = this.deps.clock.epochMs();
+      const waiting = new Set<SignalId>();
+      for (const workspace of this.deps.workspaces.list()) {
+        for (const signal of this.deps.intake.listSignals(workspace.id, { statuses: ['received'] })) {
+          waiting.add(signal.id);
+          if (this.#queued.has(signal.id)) continue;
+          const last = this.#lastAttemptMs.get(signal.id);
+          if (last !== undefined && nowMs - last < INTAKE_RETRY_EVERY_MS) continue;
+          this.#enqueue(signal, 'retry');
+        }
+      }
+      // Only waiting signals need their last attempt remembered.
+      for (const id of this.#lastAttemptMs.keys()) if (!waiting.has(id)) this.#lastAttemptMs.delete(id);
+    } catch (e) {
+      this.deps.log.warn('intake.tick_failed', { error: errorMessage(e) });
+    }
+  }
+
+  /** Resolves when every pass started so far has finished (tests, shutdown). */
+  async settle(): Promise<void> {
+    while (this.#running.size > 0) await Promise.allSettled([...this.#running]);
+  }
+
+  /**
+   * A person's answer to an Inbox card (spec §5 step 4): `same` links the
+   * signal to the candidate, `new` files a new item past the daily cap, and
+   * `not_work` dismisses it. Runs in the project's queue, so it never races
+   * the pipeline over the same signal.
+   */
+  async decide(caller: Caller, signalId: SignalId, decision: IntakeDecision): Promise<IntakeSignalView> {
+    const found = this.#requireSignal(signalId);
+    requireSeat(this.deps, found.workspaceId, caller);
+    return this.#serial(found.workspaceId, async () => {
+      const signal = this.#requireSignal(signalId);
+      if (signal.status !== 'needs_decision') throw new TandemiseError('CONFLICT', 'This signal was already decided.');
+      if (decision === 'not_work') {
+        this.deps.intake.setStatus(signal.id, 'dismissed', 'You marked this as not work.');
+        this.deps.log.info('intake.signal_dismissed', { signalId, by: caller.personId });
+      } else if (decision === 'same') {
+        const candidate = signal.candidateRef;
+        if (candidate === null) {
+          throw new TandemiseError('PRECONDITION_FAILED', 'There is no task to link this to. Choose New task or Not work.');
+        }
+        await this.#attempt(signal, (ctx) => this.#linkTo(ctx, signal, candidate as TrackerRef, 'person', null));
+      } else {
+        // A person's "new task" is not counted against the cap: the cap only
+        // stops a flood from filing on its own (spec §4.1).
+        await this.#attempt(signal, (ctx) => this.#create(ctx, signal));
+      }
+      this.#invalidate();
+      return this.#signalView(this.#requireSignal(signalId));
+    });
+  }
+
+  /** Runs a `received` signal through the pipeline now, rather than at the next minute's retry. */
+  async retry(caller: Caller, signalId: SignalId): Promise<IntakeSignalView> {
+    const found = this.#requireSignal(signalId);
+    requireSeat(this.deps, found.workspaceId, caller);
+    if (found.status !== 'received') {
+      throw new TandemiseError('PRECONDITION_FAILED', 'Only a signal that is waiting for the tracker can be tried again.');
+    }
+    await this.#serial(found.workspaceId, () => this.#process(signalId, 'retry'));
+    return this.#signalView(this.#requireSignal(signalId));
+  }
+
+  /** The Inbox cards intake raises: signals waiting on a person (plan Task 7). */
+  decisions(workspaceId: WorkspaceId): readonly InboxIntakeDecisionView[] {
+    return this.deps.intake.listSignals(workspaceId, { statuses: ['needs_decision'] }).map((s) => {
+      const item = s.candidateRef === null ? undefined : this.deps.items.byRef(workspaceId, s.candidateRef);
+      return {
+        signalId: s.id,
+        title: s.title,
+        sourceLabel: sourceLabel(s.kind),
+        question: s.reason ?? '',
+        candidate: item === undefined ? null : { key: item.key, title: item.title, url: item.url },
+        reason: s.reason,
+        receivedAt: s.firstSeenAt,
+      };
+    });
+  }
+
+  /**
+   * Every link a crash left `pending`, in any project, is finished first
+   * (Review Focus 1): a link to a known item is written again (idempotent),
+   * and a create searches the tracker by the signal's exact URL before it
+   * creates, so the item exists once whether the crash came before or after
+   * the tracker answered.
+   */
+  #recover(): void {
+    for (const link of this.deps.intake.pendingLinks()) {
+      const signal = this.deps.intake.getSignal(link.signalId);
+      if (signal !== undefined) this.#enqueue(signal, 'recover');
+    }
+  }
+
+  /** Queues a pass over a signal. Never rejects: a failure is on the signal, or logged. */
+  #enqueue(signal: IntakeSignal, why: 'reading' | 'retry' | 'recover'): void {
+    this.#queued.add(signal.id);
+    void this.#serial(signal.workspaceId, async () => {
+      this.#queued.delete(signal.id);
+      await this.#process(signal.id, why === 'retry' ? 'retry' : 'any');
+    }).catch((e: unknown) => {
+      this.deps.log.warn('intake.process_crashed', { signalId: signal.id, error: errorMessage(e) });
+    });
+  }
+
+  #serial<T>(workspaceId: WorkspaceId, fn: () => Promise<T>): Promise<T> {
+    const run = (this.#queues.get(workspaceId) ?? Promise.resolve()).then(fn);
+    const tail = run.then(() => undefined, () => undefined);
+    this.#queues.set(workspaceId, tail);
+    this.#running.add(tail);
+    void tail.then(() => {
+      this.#running.delete(tail);
+      if (this.#queues.get(workspaceId) === tail) this.#queues.delete(workspaceId);
+    });
+    return run;
+  }
+
+  /**
+   * One pass over one signal, in the plan's order: a pending link first, then
+   * the local index, noise, dedupe, the daily cap, and create. `retry` passes
+   * only touch a signal still `received`.
+   */
+  async #process(signalId: SignalId, mode: 'any' | 'retry'): Promise<void> {
+    const signal = this.deps.intake.getSignal(signalId);
+    if (signal === undefined) return;
+    this.#lastAttemptMs.set(signalId, this.deps.clock.epochMs());
+    const link = this.deps.intake.linkFor(signalId);
+    if (link?.status === 'pending') {
+      await this.#attempt(signal, (ctx) => this.#finishPending(ctx, signal, link));
+      return;
+    }
+    if (mode === 'retry' && signal.status !== 'received') return;
+    if (!PIPELINE_STATUSES.has(signal.status)) return;
+    const config = this.deps.config.read(signal.workspaceId);
+    if (config.tracker === null) return;
+    // 2.1 The local index: this fingerprint already has its item.
+    if (link?.status === 'done') {
+      await this.#relink(signal, link, config.tracker);
+      return;
+    }
+    const source = config.sources.find((s) => s.id === signal.sourceId);
+    if (source === undefined) {
+      this.deps.log.warn('intake.source_gone', { signalId, sourceId: signal.sourceId });
+      return;
+    }
+    // 1. Noise, re-evaluated on every reading: 3 events can become 300.
+    const noise = evaluateNoise(signal, source.filter, this.deps.clock.now());
+    if (noise.verdict === 'held_back') {
+      if (signal.status !== 'held_back' || signal.reason !== noise.reason) {
+        this.deps.intake.setStatus(signalId, 'held_back', noise.reason);
+        this.#invalidate();
+      }
+      return;
+    }
+    await this.#attempt(signal, (ctx) => this.#dedupeAndFile(ctx, signal, config));
+  }
+
+  /** Spec §5 steps 2 to 4, the daily cap, then create (plan Task 7). */
+  async #dedupeAndFile(ctx: TrackerContext, signal: IntakeSignal, config: IntakeConfig): Promise<void> {
+    const ws = signal.workspaceId;
+    // 2.2 The source is the tracker: a GitHub issue of the tracker repository is that item.
+    const own = ctx.tracker.refFromUrl?.(signal.url) ?? null;
+    if (own !== null) {
+      const link = this.deps.intake.createPendingLink(ws, signal.id, own, 'source_is_item');
+      this.#complete(signal, link, own, null, 'linked', null);
+      return;
+    }
+    // 2.3 Exact URL: every item Tandemise files or links lists its sources' URLs.
+    const byUrl = oldest(unresolved(await ctx.tracker.search({ url: signal.url, unresolvedOnly: true, limit: URL_SEARCH_LIMIT }), ctx.config));
+    if (byUrl !== null) {
+      this.deps.items.upsert(ws, byUrl);
+      await this.#linkTo(ctx, signal, byUrl.ref, 'url', null);
+      return;
+    }
+    // 2.4 Similarity among unresolved items.
+    const best = await this.#bestCandidate(ctx, signal, config.similarity.ask);
+    if (best !== null && best.score >= config.similarity.link) {
+      this.deps.items.upsert(ws, best.item);
+      await this.#linkTo(ctx, signal, best.item.ref, 'similarity', best.score);
+      return;
+    }
+    if (best !== null && best.score >= config.similarity.ask) {
+      this.deps.items.upsert(ws, best.item);
+      this.deps.intake.setStatus(signal.id, 'needs_decision', `Is this the same as ${best.item.key}?`, { candidateRef: best.item.ref, score: best.score });
+      this.#invalidate();
+      return;
+    }
+    // 3. The daily cap: past it, a person decides (spec §4.1).
+    const now = this.deps.clock.now();
+    if (this.deps.intake.createdToday(ws, signal.sourceId, `${now.slice(0, 10)}T00:00:00.000Z`) >= config.dailyCap) {
+      this.deps.intake.setStatus(signal.id, 'needs_decision', dailyCapReason(config.dailyCap), { candidateRef: null, score: null });
+      this.#invalidate();
+      return;
+    }
+    // 4. Create.
+    await this.#create(ctx, signal);
+  }
+
+  /**
+   * The best unresolved candidate by `IntakeSimilarity`, ties to the older
+   * item. The tracker's search wants every word, so a candidate whose title
+   * lacks one of the signal's words is not found by the full title; when that
+   * search finds nothing at or above `ask`, one broader search with the
+   * title's first ⌈ask × n⌉ words follows (RULINGS ruling 12).
+   */
+  async #bestCandidate(ctx: TrackerContext, signal: IntakeSignal, ask: number): Promise<{ item: TrackerItem; score: number } | null> {
+    const seen = new Map<string, TrackerItem>();
+    const add = (items: readonly TrackerItem[]): void => { for (const i of unresolved(items, ctx.config)) if (!seen.has(i.ref)) seen.set(i.ref, i); };
+    add(await ctx.tracker.search({ text: signal.title, unresolvedOnly: true, limit: TEXT_SEARCH_LIMIT }));
+    let best = this.#rank(signal, seen);
+    const words = titleTokens(signal.title);
+    const fewer = Math.max(1, Math.ceil(words.length * ask));
+    if ((best === null || best.score < ask) && fewer < words.length) {
+      add(await ctx.tracker.search({ text: words.slice(0, fewer).join(' '), unresolvedOnly: true, limit: TEXT_SEARCH_LIMIT }));
+      best = this.#rank(signal, seen);
+    }
+    return best;
+  }
+
+  #rank(signal: IntakeSignal, candidates: ReadonlyMap<string, TrackerItem>): { item: TrackerItem; score: number } | null {
+    let best: { item: TrackerItem; score: number } | null = null;
+    for (const item of candidates.values()) {
+      const score = this.deps.similarity.score({ title: signal.title, description: signal.description, url: signal.url }, item);
+      if (best === null || score > best.score || (score === best.score && item.createdAt < best.item.createdAt)) best = { item, score };
+    }
+    return best;
+  }
+
+  /** Links the signal to an existing item: pending link, the sources comment, then done. */
+  async #linkTo(ctx: TrackerContext, signal: IntakeSignal, ref: TrackerRef, by: IntakeLinkedBy, score: number | null): Promise<void> {
+    const link = this.deps.intake.createPendingLink(signal.workspaceId, signal.id, ref, by, score);
+    await ctx.tracker.link(ref, sourceEntry(signal, sourceLabel(signal.kind)));
+    this.#complete(signal, link, ref, null, 'linked', linkWritten(signal.impact, this.#cachedResolved(signal.workspaceId, ref, ctx.config)));
+  }
+
+  /**
+   * Files a new item. The link is written first, with no ref: if the daemon
+   * dies before the tracker answers, `#finishPending` searches by URL before
+   * it creates again.
+   */
+  async #create(ctx: TrackerContext, signal: IntakeSignal): Promise<void> {
+    const link = this.deps.intake.createPendingLink(signal.workspaceId, signal.id, null, 'created');
+    const item = await ctx.tracker.create(await this.#draft(ctx, signal));
+    this.#complete(signal, link, item.ref, item, 'created', linkWritten(signal.impact, false));
+  }
+
+  /** Finishes a link a crash or a failed call left pending (Review Focus 1). */
+  async #finishPending(ctx: TrackerContext, signal: IntakeSignal, link: IntakeLink): Promise<void> {
+    if (link.itemRef !== null) {
+      const ref = link.itemRef as TrackerRef;
+      if (link.linkedBy === 'source_is_item') {
+        this.#complete(signal, link, ref, null, 'linked', null);
+        return;
+      }
+      // Idempotent: a URL already in the sources comment has its entry replaced, not added.
+      await ctx.tracker.link(ref, sourceEntry(signal, sourceLabel(signal.kind)));
+      this.#complete(signal, link, ref, null, 'linked', linkWritten(signal.impact, this.#cachedResolved(signal.workspaceId, ref, ctx.config)));
+      return;
+    }
+    // A create that may or may not have reached the tracker: the exact URL decides.
+    const found = oldest(unresolved(await ctx.tracker.search({ url: signal.url, unresolvedOnly: true, limit: URL_SEARCH_LIMIT }), ctx.config));
+    if (found !== null) this.deps.log.info('intake.pending_create_adopted', { signalId: signal.id, ref: found.ref });
+    const item = found ?? await ctx.tracker.create(await this.#draft(ctx, signal));
+    this.#complete(signal, link, item.ref, item, 'created', linkWritten(signal.impact, false));
+  }
+
+  /**
+   * 2.1: the signal again. Its status reads `linked`; the sources comment is
+   * updated only when the change matters (spec §6.1), and a tracker that fails
+   * here leaves the link as it is: the next reading tries again.
+   */
+  async #relink(signal: IntakeSignal, link: IntakeLink, config: TrackerConfig): Promise<void> {
+    const ref = link.itemRef as TrackerRef;
+    const resolved = this.#cachedResolved(signal.workspaceId, ref, config);
+    if (link.linkedBy !== 'source_is_item' && linkChangeMatters(link.written, { impact: signal.impact, itemResolved: resolved })) {
+      try {
+        const { tracker } = await this.deps.trackers.for(signal.workspaceId);
+        await tracker.link(ref, sourceEntry(signal, sourceLabel(signal.kind)));
+        this.deps.intake.setLinkWritten(link.id, linkWritten(signal.impact, resolved));
+      } catch (e) {
+        this.deps.log.warn('intake.sources_update_failed', { signalId: signal.id, ref, error: errorMessage(e) });
+      }
+    }
+    if (signal.status !== 'linked' || signal.reason !== null) {
+      this.deps.intake.setStatus(signal.id, 'linked', null);
+      this.#invalidate();
+    }
+  }
+
+  /**
+   * Runs a step against the project's tracker. Any failure leaves the signal
+   * `received`, with the reason in plain words, and the minute's retry (or a
+   * restart's recover) picks it up; a pending link stays pending for that.
+   */
+  async #attempt(signal: IntakeSignal, step: (ctx: TrackerContext) => Promise<void>): Promise<void> {
+    const kind = this.deps.config.read(signal.workspaceId).tracker?.kind ?? 'tracker';
+    try {
+      await step(await this.deps.trackers.for(signal.workspaceId));
+    } catch (e) {
+      const message = errorMessage(e).replace(/[.\s]+$/, '');
+      this.deps.intake.setStatus(signal.id, 'received', `Couldn't reach ${trackerLabel(kind)}: ${message}. Tandemise will try again.`);
+      this.deps.log.warn('intake.tracker_failed', { signalId: signal.id, workspaceId: signal.workspaceId, error: errorMessage(e) });
+      this.#invalidate();
+    }
+  }
+
+  /** The link done, its item cached and the signal's status, in one transaction. */
+  #complete(
+    signal: IntakeSignal, link: IntakeLink, ref: TrackerRef, item: TrackerItem | null,
+    status: 'linked' | 'created', written: ReturnType<typeof linkWritten> | null,
+  ): void {
+    this.deps.unitOfWork.transaction(() => {
+      this.deps.intake.completeLink(link.id, ref);
+      if (item !== null) this.deps.items.upsert(signal.workspaceId, item);
+      this.deps.intake.setLinkWritten(link.id, written);
+      this.deps.intake.setStatus(signal.id, status, null, { candidateRef: null, score: link.score });
+    });
+    this.deps.log.info('intake.signal_filed', { signalId: signal.id, ref, status, linkedBy: link.linkedBy });
+    this.#invalidate();
+  }
+
+  /**
+   * The new item's text (spec §6.1). Inline attachments are uploaded when the
+   * tracker takes uploads; every other attachment is listed in the description.
+   */
+  async #draft(ctx: TrackerContext, signal: IntakeSignal): Promise<Parameters<PrimaryTracker['create']>[0]> {
+    const source = this.deps.config.read(signal.workspaceId).sources.find((s) => s.id === signal.sourceId) ?? {};
+    const uploads: AttachmentRef[] = [];
+    const listed: { name: string; url: string | null }[] = [];
+    for (const a of this.deps.intake.attachments(signal.id)) {
+      const content = a.blobSha256 !== null && ctx.tracker.capabilities.attachments ? await this.deps.blobs.get(a.blobSha256) : null;
+      if (content !== null) uploads.push({ name: a.name, mediaType: a.mediaType, content });
+      else listed.push({ name: a.name, url: a.url });
+    }
+    const draft = createDraft(signal, source, sourceLabel(signal.kind), listed);
+    return uploads.length === 0 ? draft : { ...draft, attachments: uploads };
+  }
+
+  /** Whether the board cache last saw the item resolved (a mapped done or won't-do state). */
+  #cachedResolved(workspaceId: WorkspaceId, ref: string, config: TrackerConfig): boolean {
+    const item = this.deps.items.byRef(workspaceId, ref);
+    return item !== undefined && isResolved(item.state, config);
+  }
+
+  #requireSignal(signalId: SignalId): IntakeSignal {
+    const signal = this.deps.intake.getSignal(signalId);
+    if (signal === undefined) throw TandemiseError.notFound('Signal', signalId);
+    return signal;
+  }
+
+  #invalidate(): void {
+    this.deps.projections?.invalidate('intake');
   }
 
   // ------------------------------------------------------------------ reading
@@ -275,4 +694,25 @@ function readableSource(raw: unknown): { kind: string; instance: string } | null
 
 function sha256(text: string): string {
   return createHash('sha256').update(text).digest('hex');
+}
+
+/** The items the mapping does not count as resolved (a done or won't-do state). */
+function unresolved(items: readonly TrackerItem[], config: TrackerConfig): readonly TrackerItem[] {
+  return items.filter((i) => !isResolved(i.state, config));
+}
+
+function isResolved(state: string, config: TrackerConfig): boolean {
+  return config.states.done.includes(state) || config.states.wont_do.includes(state);
+}
+
+/**
+ * The oldest of several items, ties to the lower key: the one a duplicate
+ * merge keeps too (plan Task 8), so every daemon converges on the same item.
+ */
+function oldest(items: readonly TrackerItem[]): TrackerItem | null {
+  let best: TrackerItem | null = null;
+  for (const i of items) {
+    if (best === null || i.createdAt < best.createdAt || (i.createdAt === best.createdAt && i.key.localeCompare(best.key, 'en', { numeric: true }) < 0)) best = i;
+  }
+  return best;
 }

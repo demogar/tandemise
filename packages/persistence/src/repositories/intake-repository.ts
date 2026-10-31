@@ -3,7 +3,7 @@ import {
   type WorkspaceId,
 } from '@tandemise/shared';
 import type {
-  ClosureKind, ClosureState, Impact, IntakeAttachment, IntakeClosure, IntakeClosurePatch, IntakeLink, IntakeLinkedBy,
+  ClosureKind, ClosureState, Impact, IntakeAttachment, IntakeClosure, IntakeClosurePatch, IntakeLink, IntakeLinkedBy, IntakeLinkWritten,
   IntakeLinkStatus, IntakeReply, IntakeReporter, IntakeRepositoryPort, IntakeSignal, IntakeSignalInput, IntakeSourcePatch,
   IntakeSourceState, IntakeTokenRow, KindHint, SignalStatus,
 } from '@tandemise/domain';
@@ -69,6 +69,7 @@ interface LinkRow {
   status: string;
   linked_by: string;
   score: number | null;
+  written: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -101,7 +102,7 @@ const SOURCE_COLUMNS = `workspace_id, source_id, kind, enabled, enabled_by, curs
   created_at, updated_at`;
 const SIGNAL_COLUMNS = `id, workspace_id, source_id, fingerprint, kind, instance, key, url, title, description, reporter, impact,
   labels, reply, kind_hint, occurrences, first_seen_at, last_seen_at, status, reason, candidate_ref, score, created_at, updated_at`;
-const LINK_COLUMNS = 'id, workspace_id, signal_id, item_ref, status, linked_by, score, created_at, updated_at';
+const LINK_COLUMNS = 'id, workspace_id, signal_id, item_ref, status, linked_by, score, written, created_at, updated_at';
 const CLOSURE_COLUMNS = `id, signal_id, kind, state, attempts, next_attempt_at, external_id, last_error, closed_at, created_at,
   updated_at`;
 const TOKEN_COLUMNS = 'id, workspace_id, source_id, token_hash, created_by, created_at, revoked_at';
@@ -205,6 +206,7 @@ function linkFromRow(r: LinkRow): IntakeLink {
     status: r.status as IntakeLinkStatus,
     linkedBy: r.linked_by as IntakeLinkedBy,
     score: r.score,
+    written: parseJsonOrNull<IntakeLinkWritten>(r.written),
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -279,6 +281,7 @@ export class SqliteIntakeRepository implements IntakeRepositoryPort {
   readonly #selectLinkForSignal;
   readonly #insertLink;
   readonly #completeLink;
+  readonly #setLinkWritten;
   readonly #repointLinks;
   readonly #linksForItem;
   readonly #pendingLinks;
@@ -357,10 +360,13 @@ export class SqliteIntakeRepository implements IntakeRepositoryPort {
     this.#selectLinkForSignal = h.prepare<{ id: string }, LinkRow>(`SELECT ${LINK_COLUMNS} FROM intake_links WHERE signal_id = :id`);
     this.#insertLink = h.prepare<LinkRow>(
       `INSERT INTO intake_links (${LINK_COLUMNS}) VALUES (:id, :workspace_id, :signal_id, :item_ref, :status, :linked_by, :score,
-         :created_at, :updated_at)`,
+         :written, :created_at, :updated_at)`,
     );
     this.#completeLink = h.prepare<{ id: string; ref: string; now: string }>(
       "UPDATE intake_links SET item_ref = :ref, status = 'done', updated_at = :now WHERE id = :id",
+    );
+    this.#setLinkWritten = h.prepare<{ id: string; written: string | null; now: string }>(
+      'UPDATE intake_links SET written = :written, updated_at = :now WHERE id = :id',
     );
     this.#repointLinks = h.prepare<{ ws: string; from: string; to: string; now: string }>(
       'UPDATE intake_links SET item_ref = :to, updated_at = :now WHERE workspace_id = :ws AND item_ref = :from',
@@ -620,7 +626,7 @@ export class SqliteIntakeRepository implements IntakeRepositoryPort {
     const now = this.#clock.now();
     const row: LinkRow = {
       id: ids.intakeLink(), workspace_id: workspaceId, signal_id: signalId, item_ref: itemRef, status: 'pending',
-      linked_by: linkedBy, score: score ?? null, created_at: now, updated_at: now,
+      linked_by: linkedBy, score: score ?? null, written: null, created_at: now, updated_at: now,
     };
     this.#insertLink.run(row);
     return linkFromRow(row);
@@ -633,6 +639,10 @@ export class SqliteIntakeRepository implements IntakeRepositoryPort {
       if (row === undefined) throw TandemiseError.notFound('Intake link', id);
       return linkFromRow(row);
     });
+  }
+
+  setLinkWritten(id: IntakeLinkId, written: IntakeLinkWritten | null): void {
+    this.#setLinkWritten.run({ id, written: toJsonOrNull(written), now: this.#clock.now() });
   }
 
   repointLinks(workspaceId: WorkspaceId, fromRef: string, toRef: string): number {

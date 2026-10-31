@@ -86,6 +86,8 @@ const TOPIC_KEYS: Readonly<Record<ProjectionTopic, readonly (readonly string[])[
   // A refinement decision changes the mission's readiness and the inbox row that asks for it.
   // The backlog shows each draft's readiness too.
   refinement: [['mission'], ['inbox'], ['home'], ['missions']],
+  // A signal that needs a decision is an Inbox card (intake, plan Task 7).
+  intake: [['inbox'], ['home'], ['intake']],
 };
 
 export function invalidateTopic(

@@ -577,9 +577,368 @@ section('ingest: validate and record, in process');
   } catch (e) {
     check('the ingest section ran', false, String(e?.stack ?? e));
   } finally {
+    // The pipeline runs after each push (Task 7); let it finish before the database closes.
+    await container.resolve((await import('@tandemise/application')).INTAKE_SERVICE).settle?.();
     await container.dispose();
     rmSync(HOME, { recursive: true, force: true });
   }
+}
+
+// ------------------------------------------------------------------ pipeline
+// Task 7: after recording, a signal is filtered, deduped, then created in or
+// linked to the primary tracker, once (spec §4, §5, §6.1). Against the fake
+// YouTrack (and the fake gh for "the source is the tracker"), over the real
+// application module, a hand-moved clock and a check-owned settings store and
+// secret store, so a second container can open the same database as the
+// same daemon after a crash (Review Focus 1).
+const pipeline = await (async () => {
+  const { execFile } = await import('node:child_process');
+  const { mkdirSync, mkdtempSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { Container, compose, defineModule } = await import('@tandemise/kernel');
+  const { createLogger, createPaths } = await import('@tandemise/shared');
+  const P = await import('@tandemise/persistence');
+  const A = await import('@tandemise/artifacts');
+  const app = await import('@tandemise/application');
+  const { policyModule } = await import('@tandemise/policy');
+  const { contextModule } = await import('@tandemise/context');
+  const { createEvaluationModule } = await import('@tandemise/evaluation');
+  const { runtimesCoreModule } = await import('@tandemise/runtimes-core');
+  const { genericRuntimeModule } = await import('@tandemise/runtime-generic');
+  const { executionCoreModule, CLOCK: EXEC_CLOCK, LOGGER: EXEC_LOGGER, PATHS: EXEC_PATHS } = await import('@tandemise/execution-core');
+  const { executionLocalModule } = await import('@tandemise/execution-local');
+  const I = await import('@tandemise/integrations-core');
+  const Y = await import('@tandemise/integration-youtrack');
+  const G = await import('@tandemise/integration-github');
+  const { startFakeYouTrack } = await import('./fake-youtrack.mjs');
+  const fakeGh = await import('./fake-gh.mjs');
+
+  let t = Date.parse('2026-10-30T10:00:00.000Z');
+  const clock = { now: () => new Date(t).toISOString(), epochMs: () => t };
+  const log = createLogger({ level: 'error', base: { component: 'intake-check' } });
+  const memorySecrets = () => {
+    const values = new Map();
+    let n = 0;
+    return {
+      backend: 'memory',
+      store: async (name, value) => { const ref = `memory:${name}:${++n}`; values.set(ref, value); return ref; },
+      resolve: async (ref) => values.get(ref),
+      remove: async (ref) => { values.delete(ref); },
+      list: async () => [...values.keys()],
+    };
+  };
+  const ghRoot = mkdtempSync(join(tmpdir(), 'tdi-pipe-gh-'));
+  const ghBin = fakeGh.installFakeGh(join(ghRoot, 'gh'));
+  const exec = {
+    run: (req) => new Promise((resolve) => {
+      execFile(req.command, req.args ?? [], { cwd: req.cwd, env: { ...process.env, PATH: `${ghBin}:${process.env.PATH}`, ...(req.env ?? {}) }, maxBuffer: 1 << 24 }, (err, stdout, stderr) => {
+        resolve({ exitCode: err ? (typeof err.code === 'number' ? err.code : 127) : 0, stdout, stderr, timedOut: false, durationMs: 0, command: [req.command, ...(req.args ?? [])].join(' ') });
+      });
+    }),
+  };
+
+  /**
+   * One daemon: a container over `home`'s database. `settings` and `secrets`
+   * are handed in, so a second container on the same home is the same daemon
+   * restarted. `providers` are the tracker modules it composes.
+   */
+  async function open({ home, settings, secrets, providers }) {
+    const paths = createPaths(home);
+    mkdirSync(paths.root, { recursive: true });
+    const container = new Container();
+    compose(
+      container,
+      P.persistenceModule({ path: paths.db, logger: log, clock }),
+      A.createArtifactsModule({ paths }),
+      policyModule, contextModule, createEvaluationModule(), runtimesCoreModule, genericRuntimeModule,
+      executionCoreModule, executionLocalModule, I.integrationsCoreModule, ...providers, app.createApplicationModule({ localPersonName: 'Demo' }),
+    );
+    container.bind(EXEC_CLOCK, () => clock, { source: 'check' });
+    container.bind(EXEC_LOGGER, () => log, { source: 'check' });
+    container.bind(EXEC_PATHS, () => paths, { source: 'check' });
+    container.bind(I.CLOCK, () => clock, { source: 'check' });
+    container.bind(I.LOGGER, () => log, { source: 'check' });
+    container.bind(I.COMMAND_EXECUTOR, () => exec, { source: 'check' });
+    container.bind(I.BACKGROUND_PROCESS_LAUNCHER, () => ({ launch: async () => { throw new Error('unused'); } }), { source: 'check' });
+    const isToken = (v) => typeof v === 'object' && v !== null && typeof v.description === 'string';
+    for (const name of Object.keys(app)) {
+      const appToken = app[name]; const provider = P[name];
+      if (!isToken(appToken) || !isToken(provider)) continue;
+      if (!container.has(provider) || container.has(appToken)) continue;
+      container.bind(appToken, (r) => r.resolve(provider), { source: `alias:${name}` });
+    }
+    container.bind(app.ARTIFACT_STORE, (r) => r.resolve(A.ARTIFACT_STORE), { source: 'alias' });
+    container.bind(app.ARTIFACT_TEMPLATES, () => ({ render: A.renderArtifactTemplate }), { source: 'check' });
+    container.bind(app.ARTIFACT_PARSER, () => ({ parse: A.parseArtifact }), { source: 'check' });
+    container.bind(app.ARTIFACT_MEASURE, () => ({ measure: A.measureArtifact, deriveHandoff: A.deriveHandoff, splitAppendix: A.splitAppendix }), { source: 'check' });
+    container.bind(app.EVENT_BUS, () => ({ publish: () => {}, subscribe: () => () => {} }), { source: 'check' });
+    container.bind(app.PROJECTION_BUS, () => ({ invalidate: () => {}, subscribe: () => () => {} }), { source: 'check' });
+    container.bind(app.SECRET_STORE, () => secrets, { source: 'check' });
+    container.bind(app.SETTINGS_STORE, () => settings, { source: 'check' });
+    container.bind(app.SYSTEM_ENVIRONMENT, () => app.describeEnvironment({ home, schemaVersion: 1 }), { source: 'check' });
+    container.bind(app.PROCESS_LIVENESS, () => app.osProcessLiveness, { source: 'check' });
+    const services = app.createServices(container);
+    return {
+      container, services, intake: services.intake,
+      repo: container.resolve(app.INTAKE_REPOSITORY),
+      items: container.resolve(app.TRACKER_ITEM_REPOSITORY),
+      config: container.resolve(app.INTAKE_CONFIG_SOURCE),
+      resolver: container.resolve(app.TRACKER_RESOLVER),
+      caller: { personId: services.identity.localPerson().id },
+    };
+  }
+
+  const ytTracker = (url) => ({
+    kind: 'youtrack', url, project: 'GAR', board: 'project: GAR #Unresolved', onComplete: 'in_review',
+    states: { ready: ['Open'], in_progress: 'In Progress', in_review: 'In Review', done: ['Fixed', 'Done'], wont_do: ["Won't fix", 'Duplicate', 'Obsolete'] },
+  });
+  const SOURCES = [
+    { id: 'sentry-web', kind: 'sentry', instance: 'acme/web', filter: { minLevel: 'error', minEvents: 20, minUsers: 3, window: '24h' }, create: { type: 'Bug' }, closeOnDone: false, closeWontDo: false },
+    { id: 'slack-support', kind: 'slack', instance: 'acme.slack.com#support', closeOnDone: false, closeWontDo: false },
+  ];
+  const intakeConfig = (over = {}) => ({ sources: SOURCES, dailyCap: 20, similarity: { link: 0.85, ask: 0.55 }, ...over });
+  /** A YouTrack project for `d`: the tracker over `fakeUrl`, both sources, and the token saved. */
+  async function configureYouTrack(d, fakeUrl) {
+    const ws = (await d.services.workspaces.create(d.caller, { name: 'Intake pipeline' })).workspace.id;
+    d.config.write(ws, { tracker: ytTracker(fakeUrl), intake: intakeConfig() });
+    await d.resolver.saveCredential(ws, 'perm:test');
+    return ws;
+  }
+  const GAR1_TITLE = "TypeError: cannot read 'id' of undefined";
+  const sentry = (over = {}) => ({
+    schema: 'tandemise.intake/v1', source: { kind: 'sentry', instance: 'acme/web' }, key: '4501234567',
+    url: 'https://acme.sentry.io/issues/4501234567/', title: GAR1_TITLE,
+    description: 'Checkout breaks when the cart is empty. cc @ana', reporter: { name: 'Sam Ortiz' },
+    impact: { level: 'error', events: 132, users: 41, lastSeen: clock.now() }, ...over,
+  });
+  const slack = (key, title, over = {}) => ({
+    schema: 'tandemise.intake/v1', source: { kind: 'slack', instance: 'acme.slack.com#support' }, key,
+    url: `https://acme.slack.com/archives/C1/${key}`, title, reporter: { handle: 'dana' }, ...over,
+  });
+  return {
+    app, clock, open, configureYouTrack, intakeConfig, sentry, slack, GAR1_TITLE, memorySecrets, startFakeYouTrack,
+    Y, G, I, defineModule, fakeGh, ghRoot, mkdtempSync, tmpdir,
+    advance: (ms) => { t += ms; },
+  };
+})();
+
+section('pipeline: filter, dedupe, then create or link (Task 7)');
+const fake = await pipeline.startFakeYouTrack({ project: 'GAR', token: 'perm:test', login: 'tandemise-bot' });
+const { rmSync } = await import('node:fs');
+const homes = [];
+const newHome = () => { const h = pipeline.mkdtempSync(join(pipeline.tmpdir(), 'tdi-pipe-')); homes.push(h); return h; };
+const creates = () => fake.calls.filter((c) => c.method === 'POST' && c.path === '/api/issues').length;
+const withUrl = (url) => [...fake.issues.values()].filter((i) => i.description.includes(url)).length;
+let PA = null;
+try {
+  const { app, sentry, slack } = pipeline;
+  PA = await pipeline.open({ home: newHome(), settings: app.createMemorySettingsStore(), secrets: pipeline.memorySecrets(), providers: [pipeline.Y.youtrackIntegrationModule] });
+  const ws = await pipeline.configureYouTrack(PA, fake.url);
+  const push = async (signal, sourceId = 'sentry-web') => {
+    const r = await PA.intake.ingest({ workspaceId: ws, sourceId, tokenId: null }, signal);
+    await PA.intake.settle();
+    return { ...PA.repo.getSignal(r.signalId), link: PA.repo.linkFor(r.signalId) };
+  };
+
+  // 1. Over the bar: a new item, with the Sources section and the type.
+  const s1 = await push(sentry());
+  const gar1 = fake.issues.get('GAR-1');
+  check('1. a signal over the bar is created as GAR-1', s1.status === 'created' && s1.link?.status === 'done' && s1.link?.itemRef === 'youtrack:GAR-1' && s1.link?.linkedBy === 'created', { status: s1.status, reason: s1.reason, link: s1.link });
+  check('…its description has the Sources line', gar1?.description.includes('## Sources\n- Sentry · acme/web · 132 events, 41 users · https://acme.sentry.io/issues/4501234567/'), gar1?.description);
+  check('…and who recorded it', gar1?.description.includes('Recorded by Tandemise from Sentry, reported by Sam Ortiz.'), gar1?.description);
+  check('…the type comes from the source (command Type Bug)', fake.commands.some((c) => c.query === 'Type Bug' && c.issues[0].idReadable === 'GAR-1'), fake.commands);
+  check('…copied text never pings anyone (@mentions broken)', gar1?.description.includes('cc @​ana') && !gar1?.description.includes('cc @ana'), gar1?.description);
+  check('…and the item is in the board cache', PA.items.byRef(ws, 'youtrack:GAR-1')?.key === 'GAR-1');
+
+  // 2. The same fingerprint again: the local index answers.
+  const s2 = await push(sentry());
+  check('2. the same fingerprint again is linked, with no new item', s2.status === 'linked' && creates() === 1, { status: s2.status, creates: creates() });
+
+  // 3. Under the bar, then over it on its own.
+  const nan = (events) => sentry({ key: '777', url: 'https://acme.sentry.io/issues/777/', title: 'Checkout total shows NaN', impact: { level: 'error', events, users: 5, lastSeen: pipeline.clock.now() } });
+  const s3 = await push(nan(3));
+  check("3. 3 events is held back: '3 events in 24 h; this source needs 20'", s3.status === 'held_back' && s3.reason === '3 events in 24 h; this source needs 20' && creates() === 1, { status: s3.status, reason: s3.reason });
+  const s3b = await push(nan(300));
+  check('…and the same fingerprint at 300 events is created as GAR-2', s3b.status === 'created' && s3b.link?.itemRef === 'youtrack:GAR-2' && creates() === 2, { status: s3b.status, reason: s3b.reason, link: s3b.link });
+
+  // 4. Another daemon, its own database, the same tracker: the exact URL answers.
+  const PB = await pipeline.open({ home: newHome(), settings: app.createMemorySettingsStore(), secrets: pipeline.memorySecrets(), providers: [pipeline.Y.youtrackIntegrationModule] });
+  try {
+    const wsB = await pipeline.configureYouTrack(PB, fake.url);
+    const r = await PB.intake.ingest({ workspaceId: wsB, sourceId: 'sentry-web', tokenId: null }, sentry());
+    await PB.intake.settle();
+    const sb = PB.repo.getSignal(r.signalId);
+    const lb = PB.repo.linkFor(r.signalId);
+    check("4. another daemon's same signal is linked by its exact URL, no new item", sb.status === 'linked' && lb?.linkedBy === 'url' && lb?.itemRef === 'youtrack:GAR-1' && creates() === 2, { status: sb.status, reason: sb.reason, link: lb });
+    const sourcesComment = (fake.comments.get('GAR-1') ?? []).find((c) => c.text.startsWith('<!-- tandemise:sources -->'));
+    check('…and the URL is in its sources comment', sourcesComment?.text.includes('https://acme.sentry.io/issues/4501234567/'), fake.comments.get('GAR-1'));
+  } finally {
+    await PB.intake.settle();
+    await PB.container.dispose();
+  }
+
+  // 5. The source is the tracker: a GitHub issue of the tracker repo is that item.
+  const PG = await pipeline.open({ home: newHome(), settings: app.createMemorySettingsStore(), secrets: pipeline.memorySecrets(), providers: [pipeline.G.githubIntegrationModule] });
+  try {
+    const wsG = (await PG.services.workspaces.create(PG.caller, { name: 'GitHub intake' })).workspace.id;
+    PG.config.write(wsG, {
+      tracker: { kind: 'github-issues', repo: 'acme/web', board: 'is:open', onComplete: 'done', states: { ready: ['open'], in_progress: 'status: in progress', done: ['closed'], wont_do: [] } },
+      intake: { sources: [{ id: 'gh-web', kind: 'github', instance: 'acme/web', closeOnDone: false, closeWontDo: false }], dailyCap: 20, similarity: { link: 0.85, ask: 0.55 } },
+    });
+    const r = await PG.intake.ingest({ workspaceId: wsG, sourceId: 'gh-web', tokenId: null }, {
+      schema: 'tandemise.intake/v1', source: { kind: 'github', instance: 'acme/web' }, key: '9', url: 'https://github.com/acme/web/issues/9', title: 'Checkout button does nothing on Safari',
+    });
+    await PG.intake.settle();
+    const sg = PG.repo.getSignal(r.signalId);
+    const lg = PG.repo.linkFor(r.signalId);
+    const ghCalls = pipeline.fakeGh.calls(join(pipeline.ghRoot, 'gh'));
+    check('5. a GitHub issue of the tracker repo is linked as itself (source_is_item), nothing created', sg.status === 'linked' && lg?.linkedBy === 'source_is_item' && lg?.itemRef === 'github:acme/web#9' && !ghCalls.some((c) => c.args[0] === 'issue' && c.args[1] === 'create'), { status: sg.status, reason: sg.reason, link: lg, ghCalls });
+  } finally {
+    await PG.intake.settle();
+    await PG.container.dispose();
+  }
+
+  // 6. Similarity: the same title from another source links; a close one asks.
+  const s6 = await push(slack('p1', pipeline.GAR1_TITLE), 'slack-support');
+  check('6. the same title from Slack is linked by similarity, score 1', s6.status === 'linked' && s6.link?.linkedBy === 'similarity' && s6.link?.score === 1 && s6.link?.itemRef === 'youtrack:GAR-1' && creates() === 2, { status: s6.status, reason: s6.reason, link: s6.link });
+  const s6b = await push(slack('p2', `${pipeline.GAR1_TITLE} in checkout`), 'slack-support');
+  check("…a close title needs a decision: 'Is this the same as GAR-1?'", s6b.status === 'needs_decision' && s6b.reason === 'Is this the same as GAR-1?' && s6b.candidateRef === 'youtrack:GAR-1' && s6b.score >= 0.55 && s6b.score < 0.85 && creates() === 2, { status: s6b.status, reason: s6b.reason, candidateRef: s6b.candidateRef, score: s6b.score });
+  const inbox = PA.services.projections.inbox(ws).intakeDecisions ?? [];
+  check('…and the Inbox asks it, naming the candidate', inbox.length === 1 && inbox[0].signalId === s6b.id && inbox[0].question === 'Is this the same as GAR-1?' && inbox[0].candidate?.key === 'GAR-1' && inbox[0].sourceLabel === 'Slack', inbox);
+  const decided = await PA.intake.decide(PA.caller, s6b.id, 'same');
+  const s6c = PA.repo.getSignal(s6b.id);
+  check("…'same' links it (person), and the Inbox is empty", decided.status === 'linked' && s6c.status === 'linked' && PA.repo.linkFor(s6b.id)?.linkedBy === 'person' && PA.repo.linkFor(s6b.id)?.itemRef === 'youtrack:GAR-1' && (PA.services.projections.inbox(ws).intakeDecisions ?? []).length === 0, { decided, link: PA.repo.linkFor(s6b.id) });
+
+  // 7. Nothing like it: a new item.
+  const s7 = await push(slack('p3', 'Export to CSV is slow'), 'slack-support');
+  check('7. an unrelated title is created', s7.status === 'created' && s7.link?.itemRef === 'youtrack:GAR-3' && creates() === 3, { status: s7.status, reason: s7.reason, link: s7.link });
+  check('…a reporter with no name reads as their handle', fake.issues.get('GAR-3')?.description.includes('Recorded by Tandemise from Slack, reported by dana.'), fake.issues.get('GAR-3')?.description);
+
+  // 8. The daily cap: sentry-web filed GAR-1 and GAR-2 today.
+  PA.config.write(ws, { intake: pipeline.intakeConfig({ dailyCap: 2 }) });
+  const capped = (key, title) => sentry({ key, url: `https://acme.sentry.io/issues/${key}/`, title });
+  const s8 = await push(capped('cap1', 'Login button misaligned on Firefox'));
+  check("8. past the daily cap: 'This source already filed 2 tasks today; decide on this one.'", s8.status === 'needs_decision' && s8.reason === 'This source already filed 2 tasks today; decide on this one.' && s8.candidateRef === null && creates() === 3, { status: s8.status, reason: s8.reason, candidateRef: s8.candidateRef });
+  const capCard = (PA.services.projections.inbox(ws).intakeDecisions ?? []).find((d) => d.signalId === s8.id);
+  check('…the Inbox card has no candidate', capCard !== undefined && capCard.candidate === null && capCard.question === s8.reason, capCard);
+  const s8b = await PA.intake.decide(PA.caller, s8.id, 'new');
+  check("…'new' creates it, past the cap", s8b.status === 'created' && PA.repo.linkFor(s8.id)?.itemRef === 'youtrack:GAR-4' && creates() === 4, { s8b, link: PA.repo.linkFor(s8.id) });
+
+  // 9. Not work.
+  const s9 = await push(capped('cap2', 'Avatar upload spins forever'));
+  const s9b = await PA.intake.decide(PA.caller, s9.id, 'not_work');
+  check("9. 'not work' dismisses it: 'You marked this as not work.'", s9.status === 'needs_decision' && s9b.status === 'dismissed' && s9b.reason === 'You marked this as not work.' && PA.repo.linkFor(s9.id) === undefined && creates() === 4, { s9: s9.status, s9b });
+  let again = null;
+  try { await PA.intake.decide(PA.caller, s9.id, 'new'); } catch (e) { again = e; }
+  check("…and deciding again is refused: 'This signal was already decided.'", again?.message === 'This signal was already decided.', again?.message);
+
+  // 10. The tracker is down: the signal waits, and a later tick files it.
+  PA.config.write(ws, { intake: pipeline.intakeConfig() });
+  await fake.stop();
+  const s10 = await push(slack('down1', 'Search results ignore the date filter'), 'slack-support');
+  check("10. with YouTrack down the signal stays received: Couldn't reach YouTrack: …", s10.status === 'received' && s10.reason?.startsWith("Couldn't reach YouTrack:") && s10.reason?.endsWith('Tandemise will try again.'), { status: s10.status, reason: s10.reason });
+  await fake.restart();
+  pipeline.advance(10_000);
+  PA.intake.tick();
+  await PA.intake.settle();
+  check('…a tick within the minute does not try again', PA.repo.getSignal(s10.id).status === 'received' && creates() === 4, PA.repo.getSignal(s10.id).status);
+  pipeline.advance(61_000);
+  PA.intake.tick();
+  await PA.intake.settle();
+  const s10b = PA.repo.getSignal(s10.id);
+  check('…a tick past the minute files it once YouTrack is back', s10b.status === 'created' && s10b.reason === null && creates() === 5, { status: s10b.status, reason: s10b.reason });
+
+  // A repeat whose events grew tenfold updates the same sources comment, never a new one.
+  await push(sentry({ impact: { level: 'error', events: 1500, users: 41, lastSeen: pipeline.clock.now() } }));
+  const sourcesComments = (fake.comments.get('GAR-1') ?? []).filter((c) => c.text.startsWith('<!-- tandemise:sources -->'));
+  check('a linked signal whose events grew tenfold updates the one sources comment', sourcesComments.length === 1 && sourcesComments[0].text.includes('1500 events'), fake.comments.get('GAR-1'));
+  const writes = fake.calls.length;
+  await push(sentry({ impact: { level: 'error', events: 1600, users: 41, lastSeen: pipeline.clock.now() } }));
+  check('…and a small change writes nothing', fake.calls.slice(writes).every((c) => c.method === 'GET'), fake.calls.slice(writes).map((c) => `${c.method} ${c.path}`));
+} catch (e) {
+  check('the pipeline section ran', false, String(e?.stack ?? e));
+} finally {
+  await PA?.intake?.settle?.();
+  await PA?.container.dispose();
+}
+
+// ------------------------------------------------------------------ crash safety
+// Review Focus 1: a crash between the pending link and the tracker call. The
+// restarted daemon searches by exact URL before creating, so exactly one item
+// exists whether the crash came before or after `create` returned.
+section('crash safety: a pending create is finished once after a restart');
+try {
+  const { app } = pipeline;
+  class Crash extends Error {}
+  /** A YouTrack factory whose `create` dies before, or right after, the call reaches YouTrack. */
+  const crashing = (when) => pipeline.defineModule('crashing-youtrack', (container) => {
+    container.contribute(pipeline.I.PRIMARY_TRACKER_FACTORIES, () => ({
+      kind: 'youtrack',
+      create(config, credential) {
+        const real = pipeline.Y.youtrackTrackerFactory.create(config, credential);
+        return new Proxy(real, {
+          get(target, prop) {
+            if (prop === 'create') {
+              return async (draft) => {
+                if (when === 'before') throw new Crash('the daemon died before create');
+                await target.create(draft);
+                throw new Crash('the daemon died after create');
+              };
+            }
+            const v = Reflect.get(target, prop, target);
+            return typeof v === 'function' ? v.bind(target) : v;
+          },
+        });
+      },
+    }), { source: 'check' });
+  });
+  for (const when of ['before', 'after']) {
+    const home = newHome();
+    const settings = app.createMemorySettingsStore();
+    const secrets = pipeline.memorySecrets();
+    const url = `https://acme.sentry.io/issues/crash-${when}/`;
+    const first = await pipeline.open({ home, settings, secrets, providers: [crashing(when)] });
+    let signalId;
+    try {
+      const ws = await pipeline.configureYouTrack(first, fake.url);
+      const r = await first.intake.ingest({ workspaceId: ws, sourceId: 'sentry-web', tokenId: null }, pipeline.sentry({ key: `crash-${when}`, url, title: when === 'before' ? 'Payment webhook times out' : 'Invoice PDF renders blank' }));
+      await first.intake.settle();
+      signalId = r.signalId;
+      const link = first.repo.linkFor(signalId);
+      check(`${when} create: the crash leaves a pending link with no item yet`, link?.status === 'pending' && link?.itemRef === null && link?.linkedBy === 'created', link);
+      check(`${when} create: YouTrack holds ${when === 'before' ? 'no' : 'one'} item with the URL`, withUrl(url) === (when === 'before' ? 0 : 1), withUrl(url));
+    } finally {
+      await first.container.dispose();
+    }
+    const createsBefore = creates();
+    const callsBefore = fake.calls.length;
+    const second = await pipeline.open({ home, settings, secrets, providers: [pipeline.Y.youtrackIntegrationModule] });
+    try {
+      second.intake.tick();
+      await second.intake.settle();
+      const s = second.repo.getSignal(signalId);
+      const link = second.repo.linkFor(signalId);
+      check(`${when} create: after the restart exactly one item carries the URL, and the signal is created`, withUrl(url) === 1 && s.status === 'created' && s.reason === null && link?.status === 'done' && link?.itemRef?.startsWith('youtrack:GAR-'), { items: withUrl(url), status: s.status, reason: s.reason, link });
+      check(`${when} create: the restart ${when === 'before' ? 'created it once' : 'adopted it by URL, creating nothing'}`, creates() - createsBefore === (when === 'before' ? 1 : 0) && link?.linkedBy === 'created', { created: creates() - createsBefore, link });
+      const after = fake.calls.slice(callsBefore);
+      const search = after.findIndex((c) => c.method === 'GET' && c.path === '/api/issues' && (c.query.get('query') ?? '').includes(`"${url}"`));
+      const create = after.findIndex((c) => c.method === 'POST' && c.path === '/api/issues');
+      check(`${when} create: the restart searched by exact URL before any create`, search >= 0 && (create < 0 || search < create), { search, create });
+      check(`${when} create: the board cache holds the item`, second.items.byRef(s.workspaceId, link?.itemRef ?? '') !== undefined);
+      second.intake.tick();
+      await second.intake.settle();
+      check(`${when} create: a second tick changes nothing`, withUrl(url) === 1 && second.repo.pendingLinks().length === 0 && creates() - createsBefore === (when === 'before' ? 1 : 0));
+    } finally {
+      await second.intake.settle();
+      await second.container.dispose();
+    }
+  }
+} catch (e) {
+  check('the crash safety section ran', false, String(e?.stack ?? e));
+} finally {
+  await fake.close();
+  for (const h of homes) rmSync(h, { recursive: true, force: true });
+  rmSync(pipeline.ghRoot, { recursive: true, force: true });
 }
 
 console.log(`\n${passed} passed, ${failures.length} failed`);

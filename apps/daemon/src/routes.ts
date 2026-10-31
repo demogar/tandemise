@@ -16,6 +16,7 @@ import {
   parkTaskRequest, handBackRequest, resolveWorkspaceLinkRequest,
   createEvalSuiteRequest, saveEvalCaseRequest, startEvalRunRequest, runScoresQuery,
   ACCEPTED_INTAKE_SCHEMAS, intakeSignalsQuery, mintIntakeTokenRequest,
+  decideIntakeSignalRequest,
 } from '@tandemise/api-contract';
 import type { EvalSuiteView } from '@tandemise/api-contract';
 import { normalizeLimits } from '@tandemise/domain';
@@ -171,6 +172,10 @@ export function buildRouter(services: TandemiseServices, options: { readonly tes
   r.post('/v1/workspaces/:id/intake/tokens', async (ctx) =>
     services.intake.mintToken(ctx.caller, asId(ctx.params.id!), (await ctx.body(mintIntakeTokenRequest)).sourceId));
   r.delete('/v1/intake/tokens/:id', (ctx) => { services.intake.revokeToken(ctx.caller, asId(ctx.params.id!)); });
+  // The Inbox card's answer, and "try now" for a signal the tracker could not take (plan Task 7).
+  r.post('/v1/intake/signals/:id/decide', async (ctx) =>
+    services.intake.decide(ctx.caller, asId(ctx.params.id!), (await ctx.body(decideIntakeSignalRequest)).decision));
+  r.post('/v1/intake/signals/:id/retry', (ctx) => services.intake.retry(ctx.caller, asId(ctx.params.id!)));
 
   // Skills (P13): the project's library, imported by content hash and pinned per run.
   r.get('/v1/workspaces/:id/skills', (ctx) => services.skills.list(asId(ctx.params.id!)));

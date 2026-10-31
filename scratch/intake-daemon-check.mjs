@@ -139,7 +139,9 @@ section('daemon: intake config, tokens, pushes and the CLI');
     const ambiguous = await cli(['intake', 'push', '--source', 'custom-feed', '--title', 'T', '--url', 'https://x.test/1', '--key', 'k1'], env);
     check('with two projects and no --project: exit 2, Name the project with --project.', ambiguous.code === 2 && ambiguous.stderr.includes('Name the project with --project.'), ambiguous);
     const named = await cli(['intake', 'push', '--project', ws, '--source', 'custom-feed', '--title', 'T', '--url', 'https://x.test/1', '--key', 'k1'], env);
-    check('--project names it', named.code === 0 && named.stdout.trim() === 'custom:custom-feed:k1: received', named);
+    // k1 was pushed before: since Task 7 its answer carries why it still waits (this daemon has no YouTrack token).
+    check('--project names it', named.code === 0 && named.stdout.split('\n')[0] === 'custom:custom-feed:k1: received'
+      && /^ {2}Couldn't reach YouTrack: .* Tandemise will try again\.$/.test(named.stdout.split('\n')[1] ?? ''), named);
   } catch (e) {
     check('the daemon section ran', false, String(e?.stack ?? e));
   } finally {

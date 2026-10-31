@@ -10,6 +10,7 @@ import type {
   ActorRef, FeedCard, HomeView, InboxView, MissionDetail, MissionFeedView, MissionLimitsView, MissionSummary, RuntimeView, TaskView,
 } from '@tandemise/api-contract';
 import { humanActionForMember, isApprovalForMember, planStanding } from '@tandemise/api-contract';
+import type { InboxIntakeDecisionView } from '@tandemise/api-contract';
 import type { MissionId, TaskId, WorkspaceId } from '@tandemise/shared';
 import { TandemiseError, asId } from '@tandemise/shared';
 import type { ProjectionService, RuntimeService } from '../services.js';
@@ -80,6 +81,8 @@ export interface ProjectionDeps {
   readonly liveness?: Pick<LivenessService, 'stalled' | 'silentRuns' | 'watchOf'>;
   /** The desk's numbers and banners (P10); optional for harnesses built before it. */
   readonly desk?: Pick<DeskService, 'metrics' | 'banners'>;
+  /** Intake signals waiting on a person (intake plan Task 7); optional for harnesses built before it. */
+  readonly intakeDecisions?: (workspaceId: WorkspaceId) => readonly InboxIntakeDecisionView[];
 }
 
 /**
@@ -202,6 +205,7 @@ export class ProjectionServiceImpl implements ProjectionService {
       // again drops out with no state to clear (P9).
       stalled: this.deps.liveness?.stalled(workspaceId) ?? [],
       silentRuns: this.deps.liveness?.silentRuns(workspaceId) ?? [],
+      ...(this.deps.intakeDecisions === undefined ? {} : { intakeDecisions: this.deps.intakeDecisions(workspaceId) }),
     };
   }
 

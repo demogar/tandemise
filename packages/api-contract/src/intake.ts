@@ -493,6 +493,17 @@ export const mintIntakeTokenRequest = z
   .strict();
 export type MintIntakeTokenRequest = z.infer<typeof mintIntakeTokenRequest>;
 
+/**
+ * `POST /v1/intake/signals/:id/decide`, the Inbox card's three answers (spec
+ * §5 step 4): the same task as the candidate, a new task, or not work.
+ */
+export const INTAKE_DECISIONS = ['same', 'new', 'not_work'] as const;
+export type IntakeDecision = (typeof INTAKE_DECISIONS)[number];
+export const decideIntakeSignalRequest = z
+  .object({ decision: z.enum(INTAKE_DECISIONS) })
+  .strict();
+export type DecideIntakeSignalRequest = z.infer<typeof decideIntakeSignalRequest>;
+
 /** The answer to minting: the token is shown this once, and only its sha256 is kept (spec §2). */
 export interface IntakeTokenMintedView {
   readonly id: string;

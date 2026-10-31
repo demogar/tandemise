@@ -1,6 +1,6 @@
 import type { ClosureId, IntakeLinkId, IntakeTokenId, SignalId, Timestamp, TrackerItemId, WebhookMessageId, WorkspaceId } from '@tandemise/shared';
 import type {
-  ClosureKind, IntakeAttachment, IntakeClosure, IntakeClosurePatch, IntakeConfig, IntakeLink, IntakeLinkedBy, IntakeSignal,
+  ClosureKind, IntakeAttachment, IntakeClosure, IntakeClosurePatch, IntakeConfig, IntakeLink, IntakeLinkedBy, IntakeLinkWritten, IntakeSignal,
   IntakeSignalInput, IntakeSourcePatch, IntakeSourceState, IntakeTokenRow, SignalStatus, TrackerConfig, WebhookMessage,
 } from '../entities/intake.js';
 import type { SourceEntry, TrackedItem, TrackerCommentMarker, TrackerCommentRow, TrackerItem, TrackerRef } from '../entities/tracker.js';
@@ -65,6 +65,8 @@ export interface IntakeRepositoryPort {
   /** Written before the tracker call. UNIQUE on the signal: a second one throws. The ref is null until a create returns. */
   createPendingLink(workspaceId: WorkspaceId, signalId: SignalId, itemRef: string | null, linkedBy: IntakeLinkedBy, score?: number | null): IntakeLink;
   completeLink(id: IntakeLinkId, itemRef: string): IntakeLink;
+  /** Records what was last written to the tracker for the link's signal (plan Task 7). */
+  setLinkWritten(id: IntakeLinkId, written: IntakeLinkWritten | null): void;
   /** Moves every link from a duplicate to the item it duplicates; returns how many moved. */
   repointLinks(workspaceId: WorkspaceId, fromRef: string, toRef: string): number;
   linksForItem(workspaceId: WorkspaceId, itemRef: string): readonly IntakeLink[];
@@ -221,4 +223,18 @@ export interface IntakeSimilarity {
     signal: { readonly title: string; readonly description: string; readonly url: string },
     candidate: TrackerItem,
   ): number;
+}
+
+/**
+ * Who may work on what across daemons (plan Global Constraints). The relay
+ * (#54) supplies an adapter over its leases; the local default always grants,
+ * so without a server Start falls back to re-reading the item (spec §3).
+ */
+export interface IntakeClaimsPort {
+  /** May this daemon run the source's runner now? */
+  source(workspaceId: WorkspaceId, sourceId: string): Promise<boolean>;
+  /** Claims an item for Start; a refusal carries the sentence to show. */
+  item(input: { readonly itemRef: string; readonly itemTitle: string; readonly itemUrl: string; readonly localRef: string }):
+    Promise<{ readonly ok: true } | { readonly ok: false; readonly reason: string }>;
+  releaseItem(itemRef: string, reason: 'done' | 'released'): Promise<void>;
 }

@@ -169,6 +169,11 @@ function sourceBlocks(text: string): { url: string; text: string }[] {
 
 const TRACKER_LABELS: Readonly<Record<string, string>> = { youtrack: 'YouTrack', 'github-issues': 'GitHub' };
 
+/** The words a tracker kind reads as: `YouTrack`, `GitHub`; an unknown kind as itself. */
+export function trackerLabel(kind: string): string {
+  return TRACKER_LABELS[kind] ?? kind;
+}
+
 /**
  * Why a project's state mapping cannot be used with its tracker, in the words
  * the project's settings show, or null when it can (spec §6.2). Every mapped

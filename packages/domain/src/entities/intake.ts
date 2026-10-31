@@ -388,8 +388,45 @@ export interface IntakeLink {
   readonly status: IntakeLinkStatus;
   readonly linkedBy: IntakeLinkedBy;
   readonly score: number | null;
+  /** What Tandemise last wrote to the tracker for this source; null until it wrote. */
+  readonly written: IntakeLinkWritten | null;
   readonly createdAt: Timestamp;
   readonly updatedAt: Timestamp;
+}
+
+/**
+ * The bar a linked signal's next reading is measured against (spec §6.1, plan
+ * Task 7): the level and the event count last written to the tracker, and
+ * whether its item was resolved then.
+ */
+export interface IntakeLinkWritten {
+  readonly level?: ImpactLevel;
+  readonly events?: number;
+  readonly itemResolved?: boolean;
+}
+
+/** What a write for this reading records as the next bar. */
+export function linkWritten(impact: Impact | null, itemResolved: boolean): IntakeLinkWritten {
+  return {
+    ...(impact?.level === undefined ? {} : { level: impact.level }),
+    ...(impact?.events === undefined ? {} : { events: impact.events }),
+    ...(itemResolved ? { itemResolved: true } : {}),
+  };
+}
+
+/**
+ * Spec §6.1: a linked signal's change matters when it reopens (it comes back
+ * while its item is resolved), its level rises, or its events grow tenfold
+ * against what was last written. Then the same sources comment is updated;
+ * anything less writes nothing, so a noisy source never spams the item.
+ */
+export function linkChangeMatters(written: IntakeLinkWritten | null, now: { readonly impact: Impact | null; readonly itemResolved: boolean }): boolean {
+  if (written === null) return false;
+  if (now.itemResolved && written.itemResolved !== true) return true;
+  const level = now.impact?.level;
+  if (level !== undefined && written.level !== undefined && IMPACT_LEVELS.indexOf(level) > IMPACT_LEVELS.indexOf(written.level)) return true;
+  const events = now.impact?.events;
+  return events !== undefined && written.events !== undefined && events >= 10 * Math.max(written.events, 1);
 }
 
 export const CLOSURE_KINDS = ['done', 'not_planned'] as const;
