@@ -110,3 +110,36 @@ was ambiguous or wrong, decided against the spec
     `search({ text })` with no words left after tokenising returns nothing rather than every item.
   - The fake marks an item `Duplicate` (resolved) when it receives `duplicates KEY`, as YouTrack's
     default workflow does.
+- Ruling 9 (YouTrack command values, Task 5): a YouTrack command reads a space as the start of
+  its next word, so every value the adapter puts in a command (state, type, field values,
+  assignee) is braced when it holds a space: `State {In Progress}`, `Subsystem {Web App}`; a
+  single word stays bare (`Type Bug`, `Assignee ana`). The fake parses braced values and refuses
+  an unbraced multi-word value (`State In Progress`), as YouTrack would misread it. The observable
+  result is unchanged: the item's state reads `In Progress`.
+- Ruling 10 (GitHub Issues and the resolver, Task 5): decided from spec §6 and §6.2:
+  - `GhPrimaryTracker` ignores a draft's `type` and `fields` (GitHub has none; `describe()` reports
+    `types: []`, `fields: []`) and its attachments (`capabilities.attachments` is false; the caller
+    links them). `stateLabels` are the mapped states but `open`/`closed`, once each, in the
+    mapping's order (ready, in_progress, in_review, done, wont_do). `transition` to a state that is
+    neither `open`, `closed` nor a mapped label is refused (`VALIDATION`); labels are sent one flag
+    each, since `gh` splits a comma-joined value. `search({ url })` asks `gh search issues` for the
+    same fields as every read (not only `number,url,title,state`) so it returns whole items;
+    `search({ text })` lists `--state open` only with `unresolvedOnly`, `all` otherwise; `board`
+    sends the team's query with `--state all` so the query decides. `assign` is
+    `gh issue edit --add-assignee`. A missing issue (gh's "Could not resolve to an issue") is
+    `NOT_FOUND`. `refFromUrl` matches `https://<host or github.com>/<repo>/issues/<n>`, the repo
+    compared case-insensitively. The factory needs `repo` (`PRECONDITION_FAILED` otherwise) and no
+    credential: `gh`'s sign-in is it, as in P14.
+  - The secret store hands back opaque refs (`<backend>:<name>:<id>` in every daemon backend) and
+    intake keeps no table for one ref per project, so `TrackerResolver` finds the credential by
+    name among `list()`'s refs (`:intake:<ws>:tracker:`), the last one listed winning.
+    `saveCredential(ws, value)` stores a new one, removes the older refs and drops the cached
+    tracker. The cache key is the config's JSON plus the credential's sha256.
+  - An unknown kind is `PRECONDITION_FAILED` "Tandemise can't use '<kind>' as a tracker yet."
+  - `PUT …/intake/config` (now async) checks a tracker it is given with
+    `TrackerResolver.problemWith(ws, tracker)` before saving: a mapping naming a state the tracker
+    lacks, or an unknown kind, is refused as `PRECONDITION_FAILED` with that sentence and nothing is
+    saved. When the tracker cannot be asked yet (no credential saved, unreachable) the config is
+    saved unchecked and the reason is logged (`intake.tracker_unchecked`): the credential is saved
+    on its own, so a person must be able to set the tracker first. `validate(ws)` checks the saved
+    config and throws what the tracker throws.

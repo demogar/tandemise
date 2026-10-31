@@ -12,6 +12,7 @@ import type { Clock, IntakeTokenId, Logger, WorkspaceId } from '@tandemise/share
 import { TandemiseError, asId } from '@tandemise/shared';
 import { requireSeat, type Caller } from '../support/identity.js';
 import { SlidingWindowLimit } from '../intake/rate-limit.js';
+import type { TrackerResolver } from '../intake/tracker-resolver.js';
 
 /**
  * Who a push is for: one project and one of its sources. From an intake token
@@ -28,6 +29,8 @@ export interface IntakeScope {
 export interface IntakeDeps {
   readonly intake: IntakeRepositoryPort;
   readonly config: IntakeConfigSource;
+  /** Checks a tracker's state mapping against the tracker itself before it is saved (plan Task 5). */
+  readonly trackers: Pick<TrackerResolver, 'problemWith'>;
   /** Inline attachments, content-addressed (spec §1 "Attachments"). */
   readonly blobs: EvalBlobPort;
   readonly workspaces: Pick<WorkspaceRepositoryPort, 'get'>;
@@ -198,7 +201,7 @@ export class IntakeService {
    * shape differs from what a client sends, and parsing here keeps the zod
    * types out of the route.
    */
-  configure(caller: Caller, workspaceId: WorkspaceId, body: unknown): IntakeConfigView {
+  async configure(caller: Caller, workspaceId: WorkspaceId, body: unknown): Promise<IntakeConfigView> {
     this.#requireWorkspace(workspaceId);
     requireSeat(this.deps, workspaceId, caller);
     const parsed = updateIntakeConfigRequest.safeParse(body === undefined ? {} : body);
@@ -207,6 +210,12 @@ export class IntakeService {
     const write = this.deps.config.write?.bind(this.deps.config);
     if (write === undefined) {
       throw new TandemiseError('PRECONDITION_FAILED', "This project's intake is set in its brain. Change it there.");
+    }
+    // A mapping naming a state the tracker doesn't have is refused in its own
+    // words before anything is saved (spec §6.2, plan Task 5).
+    if (request.tracker !== undefined && request.tracker !== null) {
+      const problem = await this.deps.trackers.problemWith(workspaceId, request.tracker);
+      if (problem !== null) throw new TandemiseError('PRECONDITION_FAILED', problem);
     }
     write(workspaceId, {
       ...(request.tracker === undefined ? {} : { tracker: request.tracker }),

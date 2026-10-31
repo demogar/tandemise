@@ -20,6 +20,7 @@
 //   GET  /api/issues/<key>
 //   POST /api/issues
 //   POST /api/commands                      State X | Type X | Assignee x | <Field> X … | duplicates KEY
+//                                           (a value with a space is braced: State {In Progress})
 //   GET  /api/issues/<key>/comments
 //   POST /api/issues/<key>/comments
 //   POST /api/issues/<key>/comments/<id>
@@ -37,6 +38,11 @@ import { pathToFileURL } from 'node:url';
 const DEFAULT_STATES = ['Open', 'Submitted', 'In Progress', 'In Review', 'Fixed', 'Done', "Won't fix", 'Duplicate', 'Obsolete'];
 const DEFAULT_RESOLVED = ['Fixed', 'Done', "Won't fix", 'Duplicate', 'Obsolete'];
 const PROJECT_ID = '0-1';
+
+/** A command's words, where `{In Progress}` is one word (braced) and its braces are dropped. */
+function commandTokens(query) {
+  return [...query.trim().matchAll(/\{([^}]*)\}|(\S+)/g)].map((m) => (m[1] !== undefined ? { text: m[1], braced: true } : { text: m[2], braced: false }));
+}
 
 export async function startFakeYouTrack(options = {}) {
   const project = options.project ?? 'GAR';
@@ -160,14 +166,17 @@ export async function startFakeYouTrack(options = {}) {
       }
       return null;
     }
+    // Like YouTrack, a value with a space is braced (`State {In Progress}`):
+    // a field takes exactly one value, a single word or one braced group, so
+    // an unbraced `State In Progress` is refused rather than guessed at.
     const pairs = [];
-    for (const t of tokens) {
-      if (FIELD_NAMES.includes(t)) pairs.push([t, []]);
-      else if (pairs.length === 0) return `Unknown command ${query}`;
-      else pairs.at(-1)[1].push(t);
+    for (const t of commandTokens(query)) {
+      if (!t.braced && FIELD_NAMES.includes(t.text)) pairs.push([t.text, []]);
+      else if (pairs.length === 0 || pairs.at(-1)[1].length > 0) return `Unknown command ${query}`;
+      else pairs.at(-1)[1].push(t.text);
     }
     for (const [field, words] of pairs) {
-      const value = words.join(' ');
+      const value = words[0] ?? '';
       if (value === '') return `No value for ${field}`;
       if (field === 'State') {
         if (!states.includes(value)) return `Unknown state ${value}`;

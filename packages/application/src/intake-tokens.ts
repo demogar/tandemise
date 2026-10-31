@@ -3,6 +3,7 @@ import type {
   EvalBlobPort, IntakeConfigSource, IntakeRepositoryPort, TrackerItemRepositoryPort, WebhookMailboxPort,
 } from '@tandemise/domain';
 import type { IntakeService } from './services/intake-service.js';
+import type { TrackerResolver } from './intake/tracker-resolver.js';
 
 /**
  * Intake's application tokens (spec 2026-10-30-intake-design.md). They live
@@ -22,3 +23,5 @@ export const INTAKE_CONFIG_SOURCE = token<IntakeConfigSource>('port.IntakeConfig
 export const INTAKE_SERVICE = token<IntakeService>('application.IntakeService');
 /** Inline attachments of signals, content-addressed. In memory by default; the daemon rebinds it to disk. */
 export const INTAKE_BLOBS = token<EvalBlobPort>('port.IntakeBlobs');
+/** A project's primary tracker, built from its config and its credential (plan Task 5). */
+export const TRACKER_RESOLVER = token<TrackerResolver>('application.TrackerResolver');

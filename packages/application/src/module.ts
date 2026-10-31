@@ -13,6 +13,7 @@ import {
   TOOL_POLICY_GATE,
   COMMAND_EXECUTOR as INTEGRATION_COMMAND_EXECUTOR,
 } from '@tandemise/integrations-core';
+import { PRIMARY_TRACKER_FACTORIES } from '@tandemise/integrations-core';
 
 import type { TandemiseServices } from './services.js';
 import * as t from './tokens.js';
@@ -75,6 +76,7 @@ import * as it from './intake-tokens.js';
 import { IntakeService } from './services/intake-service.js';
 import { LocalIntakeConfigSource } from './intake/config-source.js';
 import { MemoryBlobs } from './intake/memory-blobs.js';
+import { TrackerResolver } from './intake/tracker-resolver.js';
 
 const SOURCE = 'application';
 
@@ -870,9 +872,18 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       log: log(r).child({ component: 'intake' }),
     }), { source: SOURCE });
     bind(it.INTAKE_BLOBS, () => new MemoryBlobs(), { source: SOURCE });
+    // The tracker per project (plan Task 5): each provider module contributes
+    // its kind's factory; the credential comes from the local secret store.
+    bind(it.TRACKER_RESOLVER, (r) => new TrackerResolver({
+      config: r.resolve(it.INTAKE_CONFIG_SOURCE),
+      secrets: r.resolve(t.SECRET_STORE),
+      factories: () => r.resolveAll(PRIMARY_TRACKER_FACTORIES),
+      log: log(r).child({ component: 'intake' }),
+    }), { source: SOURCE });
     bind(it.INTAKE_SERVICE, (r) => new IntakeService({
       intake: r.resolve(it.INTAKE_REPOSITORY),
       config: r.resolve(it.INTAKE_CONFIG_SOURCE),
+      trackers: r.resolve(it.TRACKER_RESOLVER),
       blobs: r.resolve(it.INTAKE_BLOBS),
       workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
       members: r.resolve(t.MEMBER_REPOSITORY),

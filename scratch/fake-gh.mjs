@@ -15,6 +15,21 @@
 //   gh api [--hostname h] -X POST repos/o/r/issues/N/comments -f body=…
 //   gh api [--hostname h] -X PATCH repos/o/r/issues/comments/ID -f body=…
 //
+// and, for intake's GitHub Issues tracker (intake plan Task 5):
+//
+//   gh issue create --repo o/r --title T --body B [--label L]…   (prints the URL)
+//   gh issue list --repo o/r --search Q --state open|closed|all --limit N --json …
+//   gh issue edit N --repo o/r [--add-label L]… [--remove-label L]… [--add-assignee x]
+//   gh issue reopen N --repo o/r
+//   gh search issues "<text>" --repo o/r [--state open|closed] --limit N --json …
+//   gh label list --repo o/r --limit N --json name
+//
+// A search query keeps `is:open`, `is:closed`, `label:x` / `label:"x y"` and
+// `in:title` as qualifiers; its other words must all appear (case-insensitive)
+// in the title, or in the title and body without `in:title`.
+// `gh search issues` matches its text (quotes dropped) as a substring of the
+// title, the body or a comment, and answers lowercase states, like gh.
+//
 // The state directory is passed by the wrapper script (--fake-state <dir>)
 // because the daemon hands child processes an allow-listed environment only.
 import { appendFileSync, chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -89,6 +104,14 @@ export function calls(dir) {
   return readFileSync(join(dir, 'calls.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
 }
 
+/** Sets the repository's labels, as `gh label list` answers them. */
+export function putLabels(dir, repo, names) {
+  const state = readState(dir);
+  const r = (state.repos[repo] ??= { issues: [], comments: {} });
+  r.labels = [...names];
+  writeState(dir, state);
+}
+
 // ------------------------------------------------------------------ the CLI
 
 function fail(message, code = 1) {
@@ -99,6 +122,28 @@ function fail(message, code = 1) {
 function flag(args, name) {
   const i = args.indexOf(name);
   return i === -1 ? undefined : args[i + 1];
+}
+
+/** Every value of a repeatable flag, in order. */
+function flags(args, name) {
+  return args.flatMap((a, i) => (a === name && i + 1 < args.length ? [args[i + 1]] : []));
+}
+
+/** Does an issue match a `--search` query (qualifiers and words, see the header)? */
+function searchMatches(issue, query) {
+  let rest = query;
+  const labels = [];
+  let wantState = null;
+  let titleOnly = false;
+  rest = rest.replace(/\blabel:(?:"([^"]*)"|(\S+))/g, (_, quoted, bare) => { labels.push(quoted ?? bare); return ' '; });
+  rest = rest.replace(/\bis:(open|closed)\b/gi, (_, s) => { wantState = s.toUpperCase(); return ' '; });
+  rest = rest.replace(/\bis:issue\b/gi, ' ');
+  rest = rest.replace(/\bin:title\b/gi, () => { titleOnly = true; return ' '; });
+  const words = rest.split(/\s+/).filter(Boolean).map((w) => w.toLowerCase());
+  if (wantState !== null && issue.state !== wantState) return false;
+  if (!labels.every((l) => issue.labels.some((x) => x.name === l))) return false;
+  const haystack = (titleOnly ? issue.title : `${issue.title}\n${issue.body}`).toLowerCase();
+  return words.every((w) => haystack.includes(w));
 }
 
 function pick(object, fields) {
@@ -132,12 +177,30 @@ function main(argv) {
       const label = flag(args, '--label');
       const wanted = (flag(args, '--state') ?? 'open').toUpperCase();
       const limit = Number(flag(args, '--limit') ?? 30);
+      const search = flag(args, '--search');
       const rows = r.issues
-        .filter((i) => i.state === wanted && (label === undefined || i.labels.some((l) => l.name === label)))
+        .filter((i) => (wanted === 'ALL' || i.state === wanted) && (label === undefined || i.labels.some((l) => l.name === label)))
+        .filter((i) => search === undefined || searchMatches(i, search))
         .sort((a, b) => b.number - a.number)
         .slice(0, limit)
         .map((i) => pick(i, flag(args, '--json')));
       out(rows);
+      return;
+    }
+    if (verb === 'create') {
+      const title = flag(args, '--title');
+      const body = flag(args, '--body');
+      if (title === undefined || body === undefined) fail('fake gh: issue create needs --title and --body');
+      const stored = (state.repos[repo] ??= { issues: [], comments: {} });
+      const number = Math.max(0, ...stored.issues.map((i) => i.number)) + 1;
+      const at = new Date().toISOString();
+      const url = `https://github.com/${repo}/issues/${number}`;
+      stored.issues.push({
+        number, title, body, url, createdAt: at, updatedAt: at,
+        labels: flags(args, '--label').map((name) => ({ name })), author: { login: state.login }, state: 'OPEN',
+      });
+      writeState(dir, state);
+      process.stdout.write(`${url}\n`);
       return;
     }
     const number = Number(args[2]);
@@ -150,7 +213,50 @@ function main(argv) {
       process.stderr.write(`✓ Closed issue ${repo}#${number}\n`);
       return;
     }
+    if (verb === 'reopen') {
+      issue.state = 'OPEN';
+      issue.updatedAt = new Date().toISOString();
+      writeState(dir, state);
+      process.stderr.write(`✓ Reopened issue ${repo}#${number}\n`);
+      return;
+    }
+    if (verb === 'edit') {
+      const remove = new Set(flags(args, '--remove-label'));
+      const kept = issue.labels.filter((l) => !remove.has(l.name));
+      for (const name of flags(args, '--add-label')) if (!kept.some((l) => l.name === name)) kept.push({ name });
+      issue.labels = kept;
+      const assignees = flags(args, '--add-assignee');
+      if (assignees.length > 0) issue.assignees = [...(issue.assignees ?? []), ...assignees.map((login) => ({ login }))];
+      issue.updatedAt = new Date().toISOString();
+      writeState(dir, state);
+      process.stdout.write(`${issue.url}\n`);
+      return;
+    }
     fail(`fake gh: unknown issue command ${verb}`);
+  }
+  if (group === 'search' && verb === 'issues') {
+    const repo = flag(args, '--repo');
+    if (repo === undefined) fail('fake gh: --repo is required');
+    const r = repoOf(repo);
+    const text = (args[2] ?? '').replace(/"/g, '');
+    const wanted = flag(args, '--state')?.toUpperCase();
+    const limit = Number(flag(args, '--limit') ?? 30);
+    const rows = r.issues
+      .filter((i) => wanted === undefined || i.state === wanted)
+      .filter((i) => [i.title, i.body, ...(r.comments[String(i.number)] ?? []).map((c) => c.body)].some((t) => t.includes(text)))
+      .sort((a, b) => b.number - a.number)
+      .slice(0, limit)
+      .map((i) => pick({ ...i, state: i.state.toLowerCase() }, flag(args, '--json')));
+    out(rows);
+    return;
+  }
+  if (group === 'label' && verb === 'list') {
+    const repo = flag(args, '--repo');
+    if (repo === undefined) fail('fake gh: --repo is required');
+    const r = repoOf(repo);
+    const names = r.labels ?? [...new Set(r.issues.flatMap((i) => i.labels.map((l) => l.name)))];
+    out(names.map((name) => pick({ name }, flag(args, '--json'))));
+    return;
   }
   if (group === 'api') {
     const rest = args.slice(1);

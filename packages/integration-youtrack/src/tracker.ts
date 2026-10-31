@@ -142,8 +142,8 @@ export class YouTrackTracker implements PrimaryTracker {
     );
     const key = created.idReadable;
     const words = [
-      ...(draft.type !== undefined ? [`Type ${draft.type}`] : []),
-      ...Object.entries(draft.fields ?? {}).map(([name, value]) => `${name} ${value}`),
+      ...(draft.type !== undefined ? [`Type ${commandValue(draft.type)}`] : []),
+      ...Object.entries(draft.fields ?? {}).map(([name, value]) => `${name} ${commandValue(value)}`),
     ];
     if (words.length > 0) await this.#command(key, words.join(' '));
     for (const a of draft.attachments ?? []) {
@@ -174,7 +174,7 @@ export class YouTrackTracker implements PrimaryTracker {
   }
 
   async transition(ref: TrackerRef, state: string): Promise<void> {
-    await this.#command(this.#key(ref), `State ${state}`);
+    await this.#command(this.#key(ref), `State ${commandValue(state)}`);
   }
 
   async markDuplicate(dup: TrackerRef, of: TrackerRef): Promise<void> {
@@ -182,7 +182,7 @@ export class YouTrackTracker implements PrimaryTracker {
   }
 
   async assign(ref: TrackerRef, login: string): Promise<void> {
-    await this.#command(this.#key(ref), `Assignee ${login}`);
+    await this.#command(this.#key(ref), `Assignee ${commandValue(login)}`);
   }
 
   viewer(): Promise<string> {
@@ -294,6 +294,15 @@ export class YouTrackTracker implements PrimaryTracker {
       throw e;
     }
   }
+}
+
+/**
+ * A value as a YouTrack command takes it: a value with a space is braced
+ * (`State {In Progress}`, `Subsystem {Web App}`), or YouTrack would read its
+ * second word as the start of another command (RULINGS ruling 9).
+ */
+function commandValue(value: string): string {
+  return /\s/.test(value) ? `{${value}}` : value;
 }
 
 function commentText(marker: string, body: string): string {

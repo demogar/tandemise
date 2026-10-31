@@ -96,6 +96,8 @@ export type { IntakeDeps, IntakeScope } from './services/intake-service.js';
 export { INTAKE_SETTINGS_KEY, LocalIntakeConfigSource } from './intake/config-source.js';
 export { SlidingWindowLimit } from './intake/rate-limit.js';
 export { MemoryBlobs } from './intake/memory-blobs.js';
+export { TrackerResolver, trackerSecretName } from './intake/tracker-resolver.js';
+export type { TrackerResolverDeps } from './intake/tracker-resolver.js';
 export { ContributionError, ContributionServiceImpl, pickGitCredentialEnv } from './services/contribution-service.js';
 export type { ContributionDeps, ContributionErrorCode } from './services/contribution-service.js';
 export { EvalError, EvalService } from './services/eval-service.js';
