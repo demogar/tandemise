@@ -1091,6 +1091,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       members: r.resolve(t.MEMBER_REPOSITORY),
       criteria: r.resolve(t.MISSION_CRITERIA_REPOSITORY),
       artifacts: r.resolve(t.ARTIFACT_REPOSITORY),
+      events: r.resolve(t.EVENT_REPOSITORY),
       createMission: (caller, request, origin) => r.resolve(t.MISSION_SERVICE).create(caller, request, origin),
       setQueued: (missionId, queued) => { r.resolve(t.BACKLOG_SERVICE).update(missionId, { queued }); },
       trace: (missionId) => r.resolve(t.GATE_SERVICE).trace(missionId).trace,

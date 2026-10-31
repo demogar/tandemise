@@ -1,5 +1,5 @@
 import type {
-  ArtifactRepositoryPort, CriteriaTrace, IssueCommentKind, IssueLink, IssueRepositoryPort, IssueSyncSettings, IssueTrackerPort,
+  ArtifactRepositoryPort, CriteriaTrace, EventRepositoryPort, IssueCommentKind, IssueLink, IssueRepositoryPort, IssueSyncSettings, IssueTrackerPort,
   MemberRepositoryPort, Mission, MissionCriteriaRepositoryPort, MissionRepositoryPort, RepoRepositoryPort, Repository, UnitOfWork,
   UpstreamIssue, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
@@ -30,6 +30,8 @@ export interface IssueDeps {
   readonly members: MemberRepositoryPort;
   readonly criteria: MissionCriteriaRepositoryPort;
   readonly artifacts: Pick<ArtifactRepositoryPort, 'listByMission'>;
+  /** The mission's events: the pull request its ship step opened (#53), which is no handoff link. */
+  readonly events?: Pick<EventRepositoryPort, 'listByMission'>;
   /**
    * The one way an issue adds work: `MissionService.create`, queued only when
    * the issue stated its criteria, never planned from here.
@@ -509,7 +511,7 @@ export class IssueService {
       mission: { status: mission.status, queued: mission.queuedAt !== null },
       criteria: this.deps.criteria.listActive(mission.id).filter((c) => c.source === 'user').map((c) => ({ key: c.key, statement: c.statement })),
       trace: complete ? this.deps.trace(mission.id).rows.map((r) => ({ key: r.criterion.key, statement: r.criterion.statement, result: r.result })) : [],
-      links: complete ? deliveryLinks(this.deps.artifacts, mission.id) : [],
+      links: complete ? deliveryLinks(this.deps.artifacts, mission.id, this.deps.events) : [],
       stalled: live ? this.deps.stalled(mission.id) : null,
       posted: Object.fromEntries(this.deps.issues.comments(link.id).map((c) => [c.kind, c.body])),
     });
