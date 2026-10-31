@@ -11,7 +11,7 @@ import { calls, pullRequests } from '../../../fake-gh.mjs';
 import { boardGroups, boardRow, cli, intakeStatus, openBoard, yt } from '../../intake/common.mjs';
 import { holdFromCard, holdsOf, panelButton, panelLabel, panelText, typeLine, worktreeOf } from '../../hold/common.mjs';
 import { execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const c = await context();
@@ -70,6 +70,14 @@ try {
   await page.click('Make a token', { within: '[data-custom-source="web-form"]' });
   const token = await until(() => page.evaluate(`document.querySelector('[data-custom-source="web-form"] [data-intake-token]')?.innerText.trim() ?? ''`), { label: 'the token', timeoutMs: 15_000 });
   ev.check('Settings → Intake: Make a token shows a tdi_ token', token.startsWith('tdi_'), `${token.slice(0, 8)}…`);
+  // The tracker token is this computer's too: a teammate who adopts the brain saves their own here.
+  const savedBefore = readFileSync(`${c.env.scratch}/daemon.log`, 'utf8').split('\n').filter((l) => l.includes('intake.tracker_secret_saved')).length;
+  await page.evaluate(`document.querySelector('section[aria-label="Intake"] input[placeholder="perm:…"]').scrollIntoView({ block: 'center' })`);
+  await page.fill('perm:', 'perm:acceptance');
+  const tokenSave = await page.evaluate(`(() => { const b = [...document.querySelectorAll('section[aria-label="Intake"] button')].find((x) => x.innerText.trim() === 'Save token'); if (!b) return 'no button'; const off = b.disabled || Boolean(b.closest('fieldset:disabled')); b.click(); return off ? 'disabled' : 'clicked'; })()`);
+  const savedAfter = await until(() => { const n = readFileSync(`${c.env.scratch}/daemon.log`, 'utf8').split('\n').filter((l) => l.includes('intake.tracker_secret_saved')).length; return n > savedBefore && n; }, { label: 'the tracker token saved', timeoutMs: 10_000 }).catch(() => savedBefore);
+  ev.check('Settings → Intake, with a brain: Save token saves this computer\'s YouTrack token', tokenSave === 'clicked' && savedAfter > savedBefore, { button: tokenSave, saves: [savedBefore, savedAfter] });
+  await shot('settings-tokens');
   const shell = { TANDEMISE_URL: c.env.url, TANDEMISE_INTAKE_TOKEN: token, TANDEMISE_HOME: `${c.env.scratch}/no-home` };
   const pushed = await cli(['intake', 'push', '--source', 'web-form', '--title', TITLE, '--url', 'https://forms.example.com/replies/7', '--key', 'form-7', '--description', 'The settings page says "Settigns".'], shell);
   ev.check('a shell pushes the signal (tandemise intake push exits 0)', pushed.code === 0, pushed);
