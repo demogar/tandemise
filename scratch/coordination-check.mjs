@@ -251,6 +251,31 @@ section('local');
   check('a second mission on the same item is held by you', second.kind === 'held_by' && second.self === true && second.sentence === "You're already working on this on Dee laptop.", second);
 }
 
+section('parity');
+{
+  // The daemon's boot path: its own migrations, then coordination's, then the daemon-only tables.
+  const P = await import('../packages/persistence/dist/index.js');
+  const daemon = P.openDatabase({ path: join(tmp, 'daemon.db') });
+  P.migrate(daemon);
+  const first = C.migrateCoordination(daemon.handle);
+  const firstDaemon = C.migrateCoordinationDaemon(daemon.handle);
+  const relay = openDb();
+  C.migrateCoordination(relay);
+  const norm = (s) => (s ?? '').replace(/\s+/g, ' ').trim();
+  const schemaOf = (db) => Object.fromEntries(db.prepare(`SELECT name, sql FROM sqlite_master WHERE name LIKE 'coord_%' OR name LIKE 'idx_coord_%'`).all().map((r) => [r.name, norm(r.sql)]));
+  const d = schemaOf(daemon.handle);
+  const r = schemaOf(relay);
+  const shared = Object.keys(r).filter((n) => n !== 'sqlite_autoindex');
+  check('every shared table exists in the daemon database', C.COORD_SHARED_TABLES.every((t) => t in d), Object.keys(d));
+  const diff = shared.filter((n) => d[n] !== r[n]);
+  check('and its SQL (tables and indexes) is identical to the relay\'s', diff.length === 0 && shared.length >= C.COORD_SHARED_TABLES.length, diff);
+  check('the daemon boot migrates coordination once', first.from === 0 && first.to === 1 && firstDaemon.to === 1);
+  check('a second boot is a no-op', JSON.stringify(C.migrateCoordination(daemon.handle)) === '{"from":1,"to":1}' && JSON.stringify(C.migrateCoordinationDaemon(daemon.handle)) === '{"from":1,"to":1}');
+  check('the outbox and the claim sync are daemon-only', 'coord_outbox' in d && 'coord_claim_sync' in d && !('coord_outbox' in r) && !('coord_claim_sync' in r));
+  check('the daemon\'s own migration list is untouched by coordination', !P.MIGRATIONS.some((m) => /coord_/.test(m.up ?? '') || /coord/.test(m.name)));
+  daemon.close();
+}
+
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) {
   console.log(failures.map((f) => `  - ${f}`).join('\n'));

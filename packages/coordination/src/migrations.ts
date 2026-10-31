@@ -1,5 +1,5 @@
 import type { SqlHandle } from './sql.js';
-import { COORD_DDL_V1 } from './schema.js';
+import { COORD_DAEMON_DDL_V1, COORD_DDL_V1 } from './schema.js';
 
 /**
  * Coordination's own migration stream, recorded in `coord_meta.schema_version`
@@ -53,4 +53,17 @@ function apply(db: SqlHandle, list: readonly CoordMigration[], key: string): { f
 /** Brings the shared `coord_*` tables up to date. A second run is a no-op. */
 export function migrateCoordination(db: SqlHandle): { from: number; to: number } {
   return apply(db, COORDINATION_MIGRATIONS, 'schema_version');
+}
+
+/**
+ * The daemon-only tables (`coord_outbox`, `coord_claim_sync`), in their own
+ * stream under `coord_meta.daemon_schema_version`. Only a daemon runs this,
+ * after `migrateCoordination`; the relay's database never has them.
+ */
+export const COORDINATION_DAEMON_MIGRATIONS: readonly CoordMigration[] = [
+  { version: 1, name: 'outbox_and_claim_sync', up: COORD_DAEMON_DDL_V1 },
+];
+
+export function migrateCoordinationDaemon(db: SqlHandle): { from: number; to: number } {
+  return apply(db, COORDINATION_DAEMON_MIGRATIONS, 'daemon_schema_version');
 }

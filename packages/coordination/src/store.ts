@@ -398,7 +398,7 @@ export class CoordinationStore {
   }
 
   activeClaims(projectKeys?: readonly string[]): ClaimView[] {
-    const rows = this.stmt(`${CLAIM_SELECT} WHERE c.state = 'active' ORDER BY c.started_at, c.id`).all() as ClaimRow[];
+    const rows = this.stmt(`${CLAIM_SELECT} WHERE c.state = 'active' ORDER BY c.started_at, c.seq`).all() as ClaimRow[];
     const keep = projectKeys ? new Set(projectKeys) : null;
     return rows.filter((r) => !keep || keep.has(r.project_key)).map(claimFromRow);
   }

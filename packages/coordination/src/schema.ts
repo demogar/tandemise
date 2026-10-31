@@ -111,6 +111,32 @@ CREATE TABLE coord_mailbox (
 CREATE INDEX idx_coord_mailbox_endpoint ON coord_mailbox (endpoint_id, id);
 `;
 
+/**
+ * Tables only a daemon has: the outbox of writes waiting for the relay, and
+ * how each of its own claims stands with the relay. A relay never runs this.
+ */
+export const COORD_DAEMON_DDL_V1 = `
+CREATE TABLE coord_outbox (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  op         TEXT NOT NULL,
+  payload    TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  attempts   INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT,
+  next_at    TEXT,
+  failed_at  TEXT
+);
+
+CREATE TABLE coord_claim_sync (
+  claim_id   TEXT PRIMARY KEY,
+  local_ref  TEXT,
+  sync       TEXT NOT NULL CHECK (sync IN ('confirmed', 'pending', 'conflicted', 'lost')),
+  note       TEXT,
+  decided    TEXT CHECK (decided IN ('keep_going') OR decided IS NULL),
+  updated_at TEXT NOT NULL
+);
+`;
+
 /** The tables a relay and a daemon share, byte for byte. */
 export const COORD_SHARED_TABLES = [
   'coord_meta', 'coord_members', 'coord_devices', 'coord_invites',
