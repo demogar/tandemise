@@ -85,3 +85,28 @@ was ambiguous or wrong, decided against the spec
     lookup by id to find the project's seat.
   - The CLI prints `<fingerprint>: <status>` per result, then the reason, indented, on its
     own line when there is one.
+- Ruling 8 (the tracker port and the YouTrack adapter, Task 4): decided from spec §5, §6 and §6.1:
+  - The port is spec §6's plus the plan's additions: `comment(ref, { marker, body, knownId? })`,
+    `viewer()`, optional `assign?`, and optional `refFromUrl?(url): TrackerRef | null` for
+    Task 7's "the source is the tracker" step (spec §5 step 2). `link` takes a `SourceEntry`
+    `{ url, title, context }`. `AttachmentRef` is `{ name, mediaType, url?, content? }`: an adapter
+    uploads only what has `content`; a URL-only attachment is the caller's to link in the
+    description.
+  - The sources comment's body is built by pure helpers in `entities/tracker.ts`:
+    `sourcesCommentBody(entries)` and `sourcesCommentWith(existing, source)`. Each entry is
+    `- <title> · <url>` with its context (at most 6 lines) indented as `  > …`; title and context
+    are escaped with `escapeForComment`, so @mentions are broken. A URL already listed has its
+    entry replaced in place. `parseSourcesSection` reads the last URL of each `- ` line under
+    `## Sources`, in a description or in that comment alike.
+  - `stateMappingProblem` checks every named state first (in the order ready, in_progress,
+    in_review, done, wont_do), then the in-review rule. The tracker reads as "YouTrack" or
+    "GitHub", the place as the project or the repo.
+  - `titleTokens` lands now in `entities/similarity.ts`, exactly as Task 6 defines it, because
+    the YouTrack text search sends those words; Task 6 adds the scorer to the same file.
+  - The YouTrack module contributes its `PRIMARY_TRACKER_FACTORIES` entry now (the plan lists that
+    under Task 5), so the new package is not an empty module; Task 5 only adds GitHub's. The
+    factory refuses with `PRECONDITION_FAILED` when the URL, project or token is missing.
+  - `board({ updatedSince })` filters on the client: the team's board query is sent as written.
+    `search({ text })` with no words left after tokenising returns nothing rather than every item.
+  - The fake marks an item `Duplicate` (resolved) when it receives `duplicates KEY`, as YouTrack's
+    default workflow does.

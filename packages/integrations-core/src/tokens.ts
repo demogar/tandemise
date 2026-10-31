@@ -1,6 +1,6 @@
 import { multiToken, token } from '@tandemise/kernel';
 import type { Clock, Logger } from '@tandemise/shared';
-import type { Integration } from '@tandemise/domain';
+import type { Integration, PrimaryTrackerFactory } from '@tandemise/domain';
 import type { ToolBroker } from './broker.js';
 import type { ToolCatalog } from './catalog.js';
 import type { IntegrationTool } from './tool.js';
@@ -56,3 +56,10 @@ export const INTEGRATION_SOURCE =
  * naming it - the same seam `INTEGRATION_PROVIDERS` uses.
  */
 export const BUILT_IN_TOOLS = multiToken<IntegrationTool>('integrations/built-in-tool');
+
+/**
+ * How a project's primary tracker is built, one factory per tracker kind
+ * (intake spec §6, plan Task 4). Each provider package contributes its own,
+ * so the core resolves a tracker without naming any.
+ */
+export const PRIMARY_TRACKER_FACTORIES = multiToken<PrimaryTrackerFactory>('intake/primary-tracker-factory');

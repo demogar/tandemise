@@ -53,6 +53,9 @@
       "path": "./packages/integration-github"
     },
     {
+      "path": "./packages/integration-youtrack"
+    },
+    {
       "path": "./packages/integration-mcp"
     },
     {

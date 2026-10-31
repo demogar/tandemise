@@ -30,6 +30,7 @@ import {
 } from '@tandemise/integrations-core';
 import { GhIssueTracker, GhPullRequestSnapshots, githubIntegrationModule } from '@tandemise/integration-github';
 import { mcpIntegrationModule } from '@tandemise/integration-mcp';
+import { youtrackIntegrationModule } from '@tandemise/integration-youtrack';
 import { browserIntegrationModule } from '@tandemise/browser';
 import { createApplicationModule, createServices, EVAL_RUNNER, SCHEDULER, type TandemiseServices,
   WORKFLOW_SOURCE,
@@ -108,6 +109,7 @@ export function bootstrap(config: DaemonConfig, options: { readonly localPersonN
     executionLocalModule,
     integrationsCoreModule,
     githubIntegrationModule,
+    youtrackIntegrationModule,
     mcpIntegrationModule,
     browserIntegrationModule,
     // The name reaches a fresh database's first person; this layer may run git, the application may not.

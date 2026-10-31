@@ -3,7 +3,7 @@ import type {
   ClosureKind, IntakeAttachment, IntakeClosure, IntakeClosurePatch, IntakeConfig, IntakeLink, IntakeLinkedBy, IntakeSignal,
   IntakeSignalInput, IntakeSourcePatch, IntakeSourceState, IntakeTokenRow, SignalStatus, TrackerConfig, WebhookMessage,
 } from '../entities/intake.js';
-import type { TrackedItem, TrackerCommentMarker, TrackerCommentRow, TrackerItem } from '../entities/tracker.js';
+import type { SourceEntry, TrackedItem, TrackerCommentMarker, TrackerCommentRow, TrackerItem, TrackerRef } from '../entities/tracker.js';
 
 /**
  * Where a project's intake configuration comes from (plan Task 1; spec §4.1,
@@ -125,4 +125,87 @@ export interface WebhookMailboxPort {
   ack(id: WebhookMessageId): void;
   /** Not done: pulled again by the next `pull`. A message already acked stays done. */
   release(id: WebhookMessageId): void;
+}
+
+/**
+ * A file to attach to a new item. The adapter uploads it when the tracker
+ * takes uploads and `content` is here; otherwise it is the caller's to link
+ * in the description (GitHub has no upload API, spec §6).
+ */
+export interface AttachmentRef {
+  readonly name: string;
+  readonly mediaType: string;
+  readonly url?: string;
+  readonly content?: Uint8Array;
+}
+
+/** What `PrimaryTracker.describe()` reports: the tracker's real states, types and fields. */
+export interface TrackerDescription {
+  readonly states: readonly string[];
+  readonly types: readonly string[];
+  readonly fields: readonly string[];
+}
+
+/**
+ * The project's primary tracker (spec §6). Intake talks to a tracker only
+ * through this port; the adapters live in layer-4 provider packages
+ * (`integration-youtrack`, `integration-github`).
+ *
+ * Additive to the spec's shape (plan Task 4): `comment` takes the comment id
+ * `TrackerService` last saw as a hint (`knownId`), since the adapter keeps no
+ * state; `viewer()` names the signed-in user, the only one whose comments are
+ * adopted by marker (P14 ruling 8); `assign` is optional; `refFromUrl` lets
+ * dedupe tell that a signal's URL *is* an item of this tracker (spec §5 step 2).
+ */
+export interface PrimaryTracker {
+  readonly kind: 'youtrack' | 'github-issues' | (string & {});
+  readonly capabilities: {
+    /** The activity comment is edited in place. */
+    readonly editComments: boolean;
+    /** Upload, rather than link. */
+    readonly attachments: boolean;
+    /** A native "duplicates" link. */
+    readonly duplicateLinks: boolean;
+  };
+  /** The tracker's real states and fields, to validate the project's mapping (`stateMappingProblem`). */
+  describe(): Promise<TrackerDescription>;
+  /**
+   * `url`: the items whose text (description or comments) holds that exact
+   * URL. `text`: the tracker's own search for candidates by title words.
+   */
+  search(q: { readonly url?: string; readonly text?: string; readonly unresolvedOnly?: boolean; readonly limit: number }): Promise<readonly TrackerItem[]>;
+  board(q: { readonly query: string; readonly updatedSince?: string; readonly limit: number }): Promise<readonly TrackerItem[]>;
+  /** `NOT_FOUND` when the item is gone. */
+  get(ref: TrackerRef): Promise<TrackerItem>;
+  create(draft: {
+    readonly title: string;
+    readonly description: string;
+    readonly type?: string;
+    readonly fields?: Readonly<Record<string, string>>;
+    readonly attachments?: readonly AttachmentRef[];
+  }): Promise<TrackerItem>;
+  /** Adds a source to an existing item: the URL in Tandemise's sources comment, plus the new context. */
+  link(ref: TrackerRef, source: SourceEntry): Promise<void>;
+  /**
+   * Creates or updates the one comment per `(item, marker)`. Lookup order:
+   * `knownId`, then a comment by `viewer()` whose text starts with the marker
+   * line, then a new comment. The text always starts with `markerLine(marker)`.
+   */
+  comment(ref: TrackerRef, c: { readonly marker: string; readonly body: string; readonly knownId?: string }): Promise<{ commentId: string }>;
+  transition(ref: TrackerRef, state: string): Promise<void>;
+  markDuplicate?(dup: TrackerRef, of: TrackerRef): Promise<void>;
+  assign?(ref: TrackerRef, login: string): Promise<void>;
+  /** The signed-in user's login. */
+  viewer(): Promise<string>;
+  /** The ref of this tracker's item at `url`, or null when the URL is not one of its items. */
+  refFromUrl?(url: string): TrackerRef | null;
+}
+
+/**
+ * Builds a project's tracker from its configuration and the credential in the
+ * local secret store. Contributed per kind through `PRIMARY_TRACKER_FACTORIES`.
+ */
+export interface PrimaryTrackerFactory {
+  readonly kind: string;
+  create(config: TrackerConfig, credential: string | undefined): PrimaryTracker;
 }

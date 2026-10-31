@@ -29,6 +29,7 @@
     "@tandemise/runtime-generic": "*",
     "@tandemise/execution-local": "*",
     "@tandemise/integration-github": "*",
+    "@tandemise/integration-youtrack": "*",
     "@tandemise/browser": "*",
     "@tandemise/desktop-control": "*",
     "@tandemise/application": "*",

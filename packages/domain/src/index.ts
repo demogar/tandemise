@@ -39,6 +39,7 @@ export * from './entities/issue.js';
 export * from './entities/eval.js';
 export * from './entities/intake.js';
 export * from './entities/tracker.js';
+export * from './entities/similarity.js';
 
 export * from './ports/repositories.js';
 export * from './ports/artifact-store.js';
