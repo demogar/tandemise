@@ -163,11 +163,11 @@ export async function panelButton(c, label) {
   await c.sleep(400);
 }
 
-/** The Hold-family button on a feed card ("Hold", "Open terminal"), as { text, disabled, title }, or null. */
-export const cardHold = (c, key) => c.page.evaluate(`(() => { const card = document.querySelector('[data-feed-card=${JSON.stringify(key)}]'); const b = card && [...card.querySelectorAll('button')].find((x) => /^(Hold|Holding…|Open terminal)$/.test(x.innerText.trim())); return b ? { text: b.innerText.trim(), disabled: b.disabled, title: b.title } : null; })()`);
+/** The Hold-family button on a feed card ("Hold", "Open terminal"), as { text, disabled, title }, or null; `title` is the reason said beside a disabled Hold. */
+export const cardHold = (c, key) => c.page.evaluate(`(() => { const card = document.querySelector('[data-feed-card=${JSON.stringify(key)}]'); const b = card && [...card.querySelectorAll('button')].find((x) => /^(Hold|Holding…|Open terminal)$/.test(x.innerText.trim())); return b ? { text: b.innerText.trim(), disabled: b.disabled, title: b.parentElement?.querySelector('.hold-reason')?.innerText.trim() ?? '' } : null; })()`);
 
-/** The Hold-family button in the open task drawer's footer, as { text, disabled, title }, or null. */
-export const drawerHold = (c) => c.page.evaluate(`(() => { const d = document.querySelector('.modal'); const b = d && [...d.querySelectorAll('.modal__foot button')].find((x) => /^(Hold|Holding…|Open terminal)$/.test(x.innerText.trim())); return b ? { text: b.innerText.trim(), disabled: b.disabled, title: b.title } : null; })()`);
+/** The Hold-family button in the open task drawer's footer, as { text, disabled, title }, or null; `title` is the reason said beside a disabled Hold. */
+export const drawerHold = (c) => c.page.evaluate(`(() => { const d = document.querySelector('.modal'); const b = d && [...d.querySelectorAll('.modal__foot button')].find((x) => /^(Hold|Holding…|Open terminal)$/.test(x.innerText.trim())); return b ? { text: b.innerText.trim(), disabled: b.disabled, title: b.parentElement?.querySelector('.hold-reason')?.innerText.trim() ?? '' } : null; })()`);
 
 /** Clicks a button in the open task drawer's footer by its text. */
 export async function drawerButton(c, label) {
