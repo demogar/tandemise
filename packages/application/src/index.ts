@@ -52,6 +52,7 @@ export { ShipService } from './engine/ship.js';
 export { OutcomeRecorder } from './engine/outcomes.js';
 export { MergeWatch, MAIN_WATCH_MS, CLEAN_AFTER_MS } from './engine/merge-watch.js';
 export { ShipRevert } from './engine/ship-revert.js';
+export { ProposalService } from './services/proposal-service.js';
 export type { ShipOutcome, ShipDeps } from './engine/ship.js';
 export type { IntegrationOutcome, MergedBranch } from './engine/branch-integration.js';
 export { evaluationFrom } from './engine/evaluations.js';

@@ -55,3 +55,4 @@ export * from './merge/pr-text.js';
 export * from './merge/decide.js';
 export * from './merge/words.js';
 export * from './merge/backtest.js';
+export * from './brain/proposals.js';

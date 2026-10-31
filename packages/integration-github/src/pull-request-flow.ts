@@ -70,6 +70,11 @@ export class GhPullRequestFlow implements PullRequestPort {
     return live[0] ?? null;
   }
 
+  async listByHead(cwd: string, repo: string, head: string): Promise<readonly (PullRequestRef & { body: string })[]> {
+    const rows = await ghJson(this.#ctx(cwd), ['pr', 'list', '--repo', repo, '--head', head, '--state', 'all', '--json', `${PR_FIELDS},body`], z.array(prSchema.extend({ body: z.string().optional() })));
+    return rows.map((r) => ({ ...toRef(repo, r), body: r.body ?? '' }));
+  }
+
   async view(cwd: string, repo: string, number: number): Promise<PullRequestRef> {
     return toRef(repo, await ghJson(this.#ctx(cwd), ['pr', 'view', String(number), '--repo', repo, '--json', PR_FIELDS], prSchema));
   }

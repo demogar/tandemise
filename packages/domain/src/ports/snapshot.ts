@@ -58,6 +58,8 @@ export interface PullRequestPort {
   /** Idempotent by head branch: an open or merged pull request for it is returned, not opened again. */
   open(input: { readonly cwd: string; readonly repo: string; readonly head: string; readonly base: string; readonly title: string; readonly body: string }): Promise<PullRequestRef & { readonly created: boolean }>;
   view(cwd: string, repo: string, number: number): Promise<PullRequestRef>;
+  /** Every pull request for a head branch, closed ones too, with its body: how a proposal's history is read. */
+  listByHead(cwd: string, repo: string, head: string): Promise<readonly (PullRequestRef & { readonly body: string })[]>;
   /** Check runs on one commit: a pull request's head, or a merge commit on the base. */
   checks(cwd: string, repo: string, sha: string): Promise<PullRequestChecks>;
   /** A branch with no protection is `false` everywhere; null is "could not tell". */

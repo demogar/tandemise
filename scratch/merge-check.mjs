@@ -155,7 +155,7 @@ await attempt('ship decides, audit, person merge, closed, crash', async () => {
   const sha2 = 'e'.repeat(40);
   fake.putPullRequest(w.ghDir, REPO, { ...prOf(), headRefOid: sha2 });
   fake.setChecks(w.ghDir, REPO, sha2, [{ name: 'unit', conclusion: 'success' }]);
-  await w.h.until(() => w.h.repo.mergeDecisions.listByMission(m.id).length === 2, 30000);
+  await w.h.until(() => w.h.repo.mergeDecisions.listByMission(m.id).length === 2 && fake.calls(w.ghDir).some((c) => c.args.includes('PATCH')), 30000);
   const two = w.h.repo.mergeDecisions.listByMission(m.id);
   check('a moved head voids the decision and decides again on the new sha', two[0].voidedAt !== null && two[1].headSha === sha2, two.map((r) => [r.headSha.slice(0, 7), r.voidedAt]));
   check('the same comment is edited, not a second one', comments().length === 1 && fake.calls(w.ghDir).some((c) => c.args.includes('PATCH')));
@@ -343,6 +343,67 @@ await attempt('revert and watch', async () => {
   await watch.sweep(Date.now() + 8 * 86_400_000);
   await watch.sweep(Date.now() + 8 * 86_400_000);
   check('after 8 days with no revert and no broken main: merged_clean, once', w.h.repo.outcomes.listByWorkspace(w.ws, '1970').filter((o) => o.mission === m3.id && o.kind === 'merged_clean').length === 1);
+});
+
+await attempt('learning never loosens', async () => {
+  section('learning never loosens');
+  const fake = await import('./fake-gh.mjs');
+  const { readFileSync, readdirSync, statSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const planner = D.parsePlannerConfig(app.SHIPPED_PLANNER).config;
+  const routing = D.parseRoutingConfig({ classes: { implement: { ladder: ['haiku', 'sonnet', 'opus'], default: 'sonnet' } } }).config;
+  const merge = D.parseMergePolicy(app.SHIPPED_MERGE);
+  const ev = (id, mission, kind) => ({ op: 'outcome', id, at: `2026-10-2${id.length % 9}T00:00:00.000Z`, by: 'A', mission, lane: 'quick', profile: { type: 'fix', size: 's', risk: 'low', areas: ['payments-ui'], sensitivity: 'none' }, kind });
+  const events = [ev('out_1', 'm_a', 'reverted'), ev('out_22', 'm_b', 'reverted')];
+  const props = D.draftProposals(D.foldOutcomes(events), events, { planner, routing, merge }, {});
+  const never = props.find((p) => p.id === 'never-area-payments-ui');
+  check('two reverts in an area → one tightening proposal adding it to never', props.length === 1 && never?.kind === 'tighten' && JSON.stringify(never.edit.to.at(-1)) === JSON.stringify({ areas: ['payments-ui'] }), props);
+
+  // Through the service, against a world: a pull request on tandemise/promote/<id> with the evidence and a backtest.
+  const w = await world();
+  for (const e of events) w.h.repo.outcomes.append({ ...e, at: new Date().toISOString(), workspaceId: w.ws });
+  const service = w.h.container.resolve(app.PROPOSAL_SERVICE);
+  const opened = await service.sweep();
+  const create = fake.calls(w.ghDir).find((c) => c.args[1] === 'create' && c.args.includes('tandemise/promote/never-area-payments-ui'));
+  const pr = fake.pullRequests(w.ghDir, REPO).find((p) => p.headRefName === 'tandemise/promote/never-area-payments-ui');
+  check('the sweep opens it as a pull request on its promote branch', opened.length === 1 && create !== undefined, opened.map((p) => p.id));
+  check('…with both missions and a backtest in the body', pr?.body.includes('m_a') && pr.body.includes('m_b') && pr.body.includes('Backtest:'), pr?.body);
+  check('…and the project\'s working tree is untouched', !readdirSync(w.checkout).includes('.tandemise'));
+  const branchFile = git(w.origin, 'show', 'tandemise/promote/never-area-payments-ui:.tandemise/factory/merge.yaml');
+  check('the branch carries the edited merge.yaml', branchFile.includes('payments-ui'), branchFile.slice(0, 200));
+  check('a second sweep opens nothing while it is open', (await service.sweep()).length === 0);
+  fake.putPullRequest(w.ghDir, REPO, { ...pr, state: 'CLOSED' });
+  check('closed with the same evidence, it is not proposed again', D.draftProposals(D.foldOutcomes(events), events, { planner, routing, merge }, { 'never-area-payments-ui': { state: 'closed', evidence: 2 } }).length === 0);
+  const more = [...events, ev('out_333', 'm_c', 'reverted'), ev('out_4444', 'm_d', 'reverted')];
+  check('…and is again once the evidence doubles', D.draftProposals(D.foldOutcomes(more), more, { planner, routing, merge }, { 'never-area-payments-ui': { state: 'closed', evidence: 2 } }).length === 1);
+
+  const mulberry32 = (a) => () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const rnd = mulberry32(18);
+  let loosened = 0;
+  for (let i = 0; i < 300; i++) {
+    const areas = ['auth', 'payments', 'docs', 'ui'];
+    const stats = { buckets: {}, areas: {}, steppedIn: {} };
+    for (const a of areas) stats.areas[a] = { reverts90d: Math.floor(rnd() * 4), lastRevertAt: null, holds: 0, changesRequested: 0, tasks: 5 };
+    for (const a of areas) stats.steppedIn[`implement|${a}`] = Array.from({ length: Math.floor(rnd() * 8) }, () => rnd() < 0.5);
+    for (const m of ['haiku', 'sonnet', 'opus']) { const n = Math.floor(rnd() * 30); stats.buckets[`implement|quick|none`] ??= {}; stats.buckets['implement|quick|none'][m] = { n, firstPass: 0, success: Math.floor(rnd() * (n + 1)), holds: 0, changesRequested: 0, reverts: 0, medianCostUsd: null, medianWallTimeMs: null }; }
+    const evs = Array.from({ length: 10 }, (_, k) => ({ ...ev(`out_${i}_${k}`, `m${k}`, rnd() < 0.5 ? 'held' : 'reverted'), step: { class: 'implement', model: null, attempt: 1, gatePassed: true, costUsd: null, wallTimeMs: null, taskKey: 'implement' }, profile: { type: 'fix', size: 's', risk: 'low', areas: [areas[k % 4]] } }));
+    for (const p of D.draftProposals(stats, evs, { planner, routing, merge }, {})) {
+      const to = p.edit.to;
+      if (p.kind !== 'tighten') loosened++;
+      if (p.file === 'merge' && p.edit.path === 'never' && to.length < p.edit.from.length) loosened++;
+      if (p.file === 'routing' && to.length >= p.edit.from.length) loosened++;
+      if (p.edit.path === 'autoMergeAtMost' || p.edit.path === 'score') loosened++;
+    }
+  }
+  check('300 random stats tables: nothing ever loosens', loosened === 0, loosened);
+
+  // Who writes the factory files: only a person's edit (merge policy, write the defaults) and the promote branch.
+  const dist = join(root, 'packages', 'application', 'dist');
+  const files = [];
+  const walk = (d) => { for (const f of readdirSync(d)) { const p = join(d, f); if (statSync(p).isDirectory()) walk(p); else if (p.endsWith('.js')) files.push(p); } };
+  walk(dist);
+  const writers = files.filter((f) => /factorySource\.write\(|factory\.write\(/.test(readFileSync(f, 'utf8'))).map((f) => f.slice(dist.length + 1)).sort();
+  check('only merge-policy-service and factory-service call the factory source\'s write', JSON.stringify(writers) === JSON.stringify(['services/factory-service.js', 'services/merge-policy-service.js']), writers);
 });
 
 // @sections

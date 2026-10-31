@@ -6,6 +6,7 @@ import { policyRef } from './planning/planner-service.js';
 import { OutcomeRecorder } from './engine/outcomes.js';
 import { MergeWatch } from './engine/merge-watch.js';
 import { ShipRevert } from './engine/ship-revert.js';
+import { ProposalService } from './services/proposal-service.js';
 import { MergePolicyService } from './services/merge-policy-service.js';
 import { actorFor } from './support/identity.js';
 import type { PullRequestPort } from '@tandemise/domain';
@@ -382,6 +383,13 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       outcomes: () => r.tryResolve(t.OUTCOME_RECORDER), recorder: r.resolve(t.EVENT_RECORDER), clock: clock(r),
       wake: () => r.resolve(t.SCHEDULER).wake(), tmpRoot: `${paths(r).root}/ship-reverts`,
     }), { source: SOURCE });
+    bind(t.PROPOSAL_SERVICE, (r) => new ProposalService({
+      workspaces: r.resolve(t.WORKSPACE_REPOSITORY), planner: r.resolve(t.PLANNER_SERVICE), outcomes: r.resolve(t.OUTCOME_REPOSITORY),
+      pullRequests: r.resolve(t.PULL_REQUEST_FLOW), mergePolicy: () => r.resolve(t.MERGE_POLICY_SERVICE),
+      exec: r.tryResolve(INTEGRATION_COMMAND_EXECUTOR) ?? null,
+      ...(r.has(t.GIT_CREDENTIAL_ENV) ? { credentialEnv: r.resolve(t.GIT_CREDENTIAL_ENV) } : {}),
+      clock: clock(r), log: log(r).child({ component: 'proposals' }), tmpRoot: `${paths(r).root}/proposals`,
+    }), { source: SOURCE });
     bind(t.OUTCOME_RECORDER, (r) => new OutcomeRecorder({
       outcomes: r.resolve(t.OUTCOME_REPOSITORY),
       missions: r.resolve(t.MISSION_REPOSITORY),
@@ -448,7 +456,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       outcomes: r.resolve(t.OUTCOME_RECORDER),
       ship: r.resolve(t.SHIP_SERVICE),
       shipPollMs,
-      watchMerges: () => r.resolve(t.MERGE_WATCH).tick(),
+      watchMerges: () => { r.resolve(t.MERGE_WATCH).tick(); r.resolve(t.PROPOSAL_SERVICE).tick(); },
       recorder: r.resolve(t.EVENT_RECORDER),
       staffing: r.resolve(t.STAFFING_RESOLVER),
       members: r.resolve(t.MEMBER_REPOSITORY),

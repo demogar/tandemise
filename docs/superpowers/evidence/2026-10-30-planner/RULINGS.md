@@ -139,3 +139,10 @@ spec (`docs/superpowers/specs/2026-10-30-planner-and-merge-design.md`).
   checked with `MergeWatch.sweep(nowMs)` for the 8-day case. PM3, PM4, PM8 and
   PM9 run after PM10 in the suite, so PM10's file origins hold. The revert-and-watch
   checks were written after the code, so there was no red run for them.
+- Ruling (Task 18): proposals are committed on `tandemise/promote/<id>` through a
+  throwaway git worktree (hash-object plus update-index), and never through
+  `FactoryConfigSourcePort.write`. The only callers of `write` are the merge policy
+  service and Write the defaults, and the check asserts that against the built
+  code. A proposal's history comes from the PRs on its branch
+  (`PullRequestPort.listByHead`, "Evidence: N outcomes" in the body), so no new table
+  is needed. The sweep runs from the scheduler's pass, once a day.
