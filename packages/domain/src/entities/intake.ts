@@ -14,6 +14,9 @@
  * for anything but words, so a signal cannot choose a project, a tracker, a
  * state, a threshold or a source.
  */
+import type {
+  ClosureId, IntakeLinkId, IntakeTokenId, SignalId, Timestamp, WebhookMessageId, WorkspaceId,
+} from '@tandemise/shared';
 
 /** Where a signal is in the pipeline (spec §4, §8). */
 export const SIGNAL_STATUSES = [
@@ -186,4 +189,170 @@ export interface IntakeConfig {
 /** What a project with nothing configured reads as. */
 export function emptyIntakeConfig(): IntakeConfig {
   return { tracker: null, sources: [], dailyCap: DEFAULT_INTAKE_DAILY_CAP, similarity: { ...DEFAULT_INTAKE_SIMILARITY } };
+}
+
+// ------------------------------------------------------------------ stored records (plan Task 2)
+
+/**
+ * A signal as the store reads it: the domain's mirror of `IntakeSignalV1`
+ * (`@tandemise/api-contract`), which this layer cannot import. Inline
+ * attachment content is not part of it: blobs are stored apart and recorded
+ * through `addAttachment`.
+ */
+export interface IntakeSignalInput {
+  readonly source: { readonly kind: string; readonly instance: string };
+  readonly key: string;
+  readonly url: string;
+  readonly title: string;
+  readonly description?: string;
+  readonly reporter?: IntakeReporter;
+  readonly occurredAt?: string;
+  readonly impact?: Impact;
+  readonly labels?: readonly string[];
+  readonly reply?: IntakeReply;
+  readonly kindHint?: KindHint;
+}
+
+/** Spec §1 `reporter`: never an email address. */
+export interface IntakeReporter {
+  readonly name?: string;
+  readonly handle?: string;
+  readonly url?: string;
+}
+
+/** Spec §8: opaque to Tandemise, what the runner needs to close the loop. */
+export interface IntakeReply {
+  readonly address: string;
+}
+
+/** One recorded signal, unique per `(workspace, fingerprint)`. */
+export interface IntakeSignal {
+  readonly id: SignalId;
+  readonly workspaceId: WorkspaceId;
+  /** The configured source (or the push token's source) it arrived through. */
+  readonly sourceId: string;
+  readonly fingerprint: string;
+  /** Empty on a rejected signal whose source or key could not be read. */
+  readonly kind: string;
+  readonly instance: string;
+  readonly key: string;
+  readonly url: string;
+  readonly title: string;
+  readonly description: string;
+  readonly reporter: IntakeReporter | null;
+  readonly impact: Impact | null;
+  readonly labels: readonly string[];
+  readonly reply: IntakeReply | null;
+  readonly kindHint: KindHint | null;
+  /** How many times it was pushed or polled; at least 1. */
+  readonly occurrences: number;
+  readonly firstSeenAt: Timestamp;
+  readonly lastSeenAt: Timestamp;
+  readonly status: SignalStatus;
+  /** Plain words: why it was rejected, held back or needs a decision. */
+  readonly reason: string | null;
+  /** The item a `needs_decision` signal may be the same as. */
+  readonly candidateRef: string | null;
+  readonly score: number | null;
+  readonly createdAt: Timestamp;
+  readonly updatedAt: Timestamp;
+}
+
+/** Exactly one of `blobSha256` and `url` is set. */
+export interface IntakeAttachment {
+  readonly signalId: SignalId;
+  readonly name: string;
+  readonly mediaType: string;
+  readonly blobSha256: string | null;
+  readonly url: string | null;
+}
+
+/** A source's running state in one project. Its configuration lives in `IntakeConfigSource`. */
+export interface IntakeSourceState {
+  readonly workspaceId: WorkspaceId;
+  readonly sourceId: string;
+  readonly kind: string;
+  readonly enabled: boolean;
+  readonly enabledBy: string | null;
+  /** Runner-owned and opaque: where the next poll starts. */
+  readonly cursor: Readonly<Record<string, unknown>> | null;
+  readonly lastCheckedAt: Timestamp | null;
+  readonly lastError: string | null;
+  /** Secret-store refs by name, never the secrets themselves. */
+  readonly secretRefs: Readonly<Record<string, string>>;
+  readonly createdAt: Timestamp;
+  readonly updatedAt: Timestamp;
+}
+
+/** `kind` is required the first time a source is saved. */
+export type IntakeSourcePatch = Partial<Pick<IntakeSourceState,
+  'kind' | 'enabled' | 'enabledBy' | 'cursor' | 'lastCheckedAt' | 'lastError' | 'secretRefs'>>;
+
+export const INTAKE_LINK_STATUSES = ['pending', 'done'] as const;
+export type IntakeLinkStatus = (typeof INTAKE_LINK_STATUSES)[number];
+
+/** How a signal came to point at its item (spec §5). */
+export const INTAKE_LINKED_BY = ['created', 'url', 'source_is_item', 'similarity', 'person', 'merged'] as const;
+export type IntakeLinkedBy = (typeof INTAKE_LINKED_BY)[number];
+
+/**
+ * A signal's one item. Written `pending` before the tracker call and `done`
+ * after it. A pending link for a create has no ref yet (plan Global
+ * Constraints, Review Focus 1).
+ */
+export interface IntakeLink {
+  readonly id: IntakeLinkId;
+  readonly workspaceId: WorkspaceId;
+  readonly signalId: SignalId;
+  readonly itemRef: string | null;
+  readonly status: IntakeLinkStatus;
+  readonly linkedBy: IntakeLinkedBy;
+  readonly score: number | null;
+  readonly createdAt: Timestamp;
+  readonly updatedAt: Timestamp;
+}
+
+export const CLOSURE_KINDS = ['done', 'not_planned'] as const;
+export type ClosureKind = (typeof CLOSURE_KINDS)[number];
+
+export const CLOSURE_STATES = ['pending', 'closed', 'failed'] as const;
+export type ClosureState = (typeof CLOSURE_STATES)[number];
+
+/** Closing the loop at one source, exactly once per `(signal, kind)` (spec §8). */
+export interface IntakeClosure {
+  readonly id: ClosureId;
+  readonly signalId: SignalId;
+  readonly kind: ClosureKind;
+  readonly state: ClosureState;
+  readonly attempts: number;
+  readonly nextAttemptAt: Timestamp | null;
+  /** The source's own id for what it posted (a reply, a comment), once known. */
+  readonly externalId: string | null;
+  readonly lastError: string | null;
+  readonly closedAt: Timestamp | null;
+  readonly createdAt: Timestamp;
+  readonly updatedAt: Timestamp;
+}
+
+export type IntakeClosurePatch = Partial<Pick<IntakeClosure,
+  'state' | 'attempts' | 'nextAttemptAt' | 'externalId' | 'lastError' | 'closedAt'>>;
+
+/** A push token, stored by its sha256 hex only (spec §3). */
+export interface IntakeTokenRow {
+  readonly id: IntakeTokenId;
+  readonly workspaceId: WorkspaceId;
+  readonly sourceId: string;
+  readonly tokenHash: string;
+  readonly createdBy: string | null;
+  readonly createdAt: Timestamp;
+  readonly revokedAt: Timestamp | null;
+}
+
+/** One webhook delivery, as the opt-in listener received it. */
+export interface WebhookMessage {
+  readonly id: WebhookMessageId;
+  readonly sourceId: string;
+  readonly receivedAt: Timestamp;
+  readonly headers: Readonly<Record<string, string>>;
+  readonly body: Uint8Array;
 }

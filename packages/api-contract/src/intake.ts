@@ -13,6 +13,7 @@ import {
   type SignalStatus,
   type TrackerConfig,
 } from '@tandemise/domain';
+import type { IntakeSignalInput } from '@tandemise/domain';
 
 /**
  * The intake contract, `tandemise.intake/v1` (spec 2026-10-30-intake-design.md
@@ -364,6 +365,9 @@ const _trackerIsDomain: TrackerConfig = undefined as unknown as TrackerFile['tra
 const _sourceIsDomain: IntakeSourceConfig = undefined as unknown as IntakeSourceFile;
 void _trackerIsDomain;
 void _sourceIsDomain;
+// A parsed signal is what the store records (plan Task 2).
+const _signalIsDomain: IntakeSignalInput = undefined as unknown as IntakeSignalV1;
+void _signalIsDomain;
 
 // ------------------------------------------------------------------ views
 

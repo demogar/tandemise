@@ -33,6 +33,10 @@ import { SqliteRuntimeProfileRepository } from './repositories/runtime-profile-r
 import { SqliteTaskRepository } from './repositories/task-repository.js';
 import { SqliteWorkspaceRepository } from './repositories/workspace-repository.js';
 import { createUnitOfWork } from './repositories/unit-of-work.js';
+import { SqliteIntakeRepository } from './repositories/intake-repository.js';
+import { SqliteTrackerItemRepository } from './repositories/tracker-item-repository.js';
+import { SqliteWebhookMailbox } from './repositories/webhook-inbox-repository.js';
+import { INTAKE_REPOSITORY, TRACKER_ITEM_REPOSITORY, WEBHOOK_MAILBOX } from './tokens.js';
 import {
   APPROVAL_REPOSITORY, ARTIFACT_REPOSITORY, ASSIGNMENT_REPOSITORY, CHECKPOINT_REPOSITORY,
   DATABASE, DECISION_REPOSITORY, EVAL_REPOSITORY, EVALUATION_REPOSITORY, EVENT_REPOSITORY,
@@ -112,5 +116,8 @@ export function persistenceModule(options: PersistenceOptions): TandemiseModule 
     container.bind(ISSUE_REPOSITORY, (r) => new SqliteIssueRepository(db(r), clock), { source: SOURCE });
     container.bind(RUN_SCORE_REPOSITORY, (r) => new SqliteRunScoreRepository(db(r)), { source: SOURCE });
     container.bind(EVAL_REPOSITORY, (r) => new SqliteEvalRepository(db(r)), { source: SOURCE });
+    container.bind(INTAKE_REPOSITORY, (r) => new SqliteIntakeRepository(db(r), clock), { source: SOURCE });
+    container.bind(TRACKER_ITEM_REPOSITORY, (r) => new SqliteTrackerItemRepository(db(r), clock), { source: SOURCE });
+    container.bind(WEBHOOK_MAILBOX, (r) => new SqliteWebhookMailbox(db(r), clock), { source: SOURCE });
   });
 }

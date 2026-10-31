@@ -219,6 +219,154 @@ section('contract: the JSON Schema for runner authors');
   }
 }
 
+// ------------------------------------------------------------------ store
+// Task 2: migration 022 (Ruling 1) and the intake repositories, on a fresh
+// database with a clock the check moves by hand.
+section('store: migration and repositories');
+{
+  const { mkdtempSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { Container, compose } = await import('@tandemise/kernel');
+  const { ids } = await import('@tandemise/shared');
+  const P = await import('@tandemise/persistence');
+  const app = await import('@tandemise/application');
+  let t = Date.parse('2026-10-30T10:00:00.000Z');
+  const clock = { now: () => new Date(t).toISOString(), epochMs: () => t };
+  const tick = (ms) => { t += ms; };
+  const dir = mkdtempSync(join(tmpdir(), 'tandemise-intake-store-'));
+  const container = new Container();
+  try {
+    compose(container, P.persistenceModule({ path: join(dir, 'tandemise.db'), clock }));
+    const db = container.resolve(P.DATABASE);
+
+    // 1. The schema is at the last migration in the list (022 on this base, Ruling 1).
+    const last = P.MIGRATIONS[P.MIGRATIONS.length - 1];
+    const max = db.handle.prepare('SELECT MAX(version) AS v FROM schema_migrations').get().v;
+    check('schema_migrations reaches the last migration, which is intake', max === last.version && last.name === 'intake' && max === P.SCHEMA_VERSION, { max, last: last?.name });
+    const tables = new Set(db.handle.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((r) => r.name));
+    const want = ['intake_sources', 'intake_tokens', 'intake_signals', 'intake_attachments', 'tracker_items', 'intake_links', 'intake_closures', 'tracker_comments', 'intake_webhook_inbox'];
+    check('the nine intake tables exist', want.every((n) => tables.has(n)), want.filter((n) => !tables.has(n)));
+
+    // The three application tokens carry the persistence tokens' export names,
+    // so the daemon's aliasPorts loop binds them (apps/daemon/src/bootstrap.ts).
+    const names = ['INTAKE_REPOSITORY', 'TRACKER_ITEM_REPOSITORY', 'WEBHOOK_MAILBOX'];
+    check('application and persistence export the three tokens by the same name', names.every((n) => app[n]?.description && P[n]?.description && app[n] !== P[n]));
+    if (!names.every((n) => P[n] && app[n])) throw new Error('intake tokens missing');
+    for (const n of names) container.bind(app[n], (r) => r.resolve(P[n]), { source: `alias:${n}` });
+    const intake = container.resolve(app.INTAKE_REPOSITORY);
+    const items = container.resolve(app.TRACKER_ITEM_REPOSITORY);
+    const mailbox = container.resolve(app.WEBHOOK_MAILBOX);
+    const workspaces = container.resolve(P.WORKSPACE_REPOSITORY);
+    const missions = container.resolve(P.MISSION_REPOSITORY);
+
+    const ws = ids.workspace();
+    workspaces.create({
+      id: ws, name: 'Intake', defaultRepositoryId: null,
+      autonomy: { planApproval: 'ask', localCodeChanges: 'auto', externalWrites: 'policy', productionRelease: 'ask', financialActions: 'deny' },
+      concurrency: { maxTotalWorkers: 1, perRuntime: {} }, routing: {}, defaultAutonomyLevel: 'balanced',
+      knowledge: { productVision: null, architecturePrinciples: null, codingStandards: null, designSystem: null, glossary: null },
+    });
+
+    // 2. One fingerprint, one row: occurrences count, impact merges, latest text wins.
+    const sig = (over = {}) => ({
+      schema: 'tandemise.intake/v1', source: { kind: 'sentry', instance: 'acme/web' }, key: '4501',
+      url: 'https://acme.sentry.io/issues/4501/', title: 'TypeError in checkout',
+      impact: { events: 3, users: 1, level: 'warning', lastSeen: '2026-10-30T09:00:00Z' }, ...over,
+    });
+    const a = intake.upsertSignal(ws, 'sentry-web', sig(), clock.now());
+    tick(60_000);
+    const b = intake.upsertSignal(ws, 'sentry-web', sig({ title: 'TypeError in checkout (cart)', impact: { events: 300, users: 2, level: 'error', lastSeen: '2026-10-30T10:00:00Z' } }), clock.now());
+    const rows = db.handle.prepare('SELECT COUNT(*) AS n FROM intake_signals WHERE workspace_id = ?').get(ws).n;
+    check('a second push of one fingerprint updates the same row', rows === 1 && a.signal.id === b.signal.id, { rows });
+    check('firstTime is true, then false', a.firstTime === true && b.firstTime === false);
+    check('occurrences count the pushes', b.signal.occurrences === 2, b.signal.occurrences);
+    check('impact is merged (3 -> 300 events, error)', b.signal.impact?.events === 300 && b.signal.impact?.users === 2 && b.signal.impact?.level === 'error', b.signal.impact);
+    check('the latest title wins and first/last seen are kept', b.signal.title === 'TypeError in checkout (cart)' && b.signal.firstSeenAt < b.signal.lastSeenAt && b.signal.status === 'received', b.signal);
+    check('findSignal finds it by fingerprint', intake.findSignal(ws, 'sentry:acme/web:4501')?.id === a.signal.id);
+
+    // A rejected push is recorded, and never undoes a signal already in the pipeline (Ruling 6).
+    const rej = intake.recordRejected(ws, 'custom', 'my-feed:x:1', 'Broken', "Unknown field 'priority'.");
+    check('a rejected signal is recorded with its reason', rej.status === 'rejected' && rej.reason === "Unknown field 'priority'." && rej.title === 'Broken', rej);
+    const kept = intake.recordRejected(ws, 'sentry-web', 'sentry:acme/web:4501', 'x', 'bad');
+    check('a bad repeat of a good signal leaves it alone', kept.status === 'received' && kept.title === 'TypeError in checkout (cart)', kept);
+    const revived = intake.upsertSignal(ws, 'custom', sig({ source: { kind: 'my-feed', instance: 'x' }, key: '1' }), clock.now());
+    check('a valid push after a rejected one enters the pipeline as new', revived.firstTime && revived.signal.id === rej.id && revived.signal.status === 'received' && revived.signal.reason === null, revived);
+    check('listSignals filters by status', intake.listSignals(ws, { statuses: ['received'] }).length === 2 && intake.listSignals(ws, { statuses: ['rejected'] }).length === 0);
+    const held = intake.setStatus(a.signal.id, 'needs_decision', 'Is this the same as GAR-12?', { candidateRef: 'youtrack:GAR-12', score: 0.7 });
+    check('setStatus keeps the reason, candidate and score', held.status === 'needs_decision' && held.candidateRef === 'youtrack:GAR-12' && held.score === 0.7, held);
+    intake.addAttachment(a.signal.id, { name: 'trace.txt', mediaType: 'text/plain', url: 'https://acme.sentry.io/t.txt', blobSha256: null });
+    check('attachments round-trip', intake.attachments(a.signal.id).length === 1 && intake.attachments(a.signal.id)[0].url === 'https://acme.sentry.io/t.txt');
+    let badAttachment = null;
+    try { intake.addAttachment(a.signal.id, { name: 'x', mediaType: 'text/plain', url: null, blobSha256: null }); } catch (e) { badAttachment = e; }
+    check('an attachment with neither a blob nor a url is refused', badAttachment !== null);
+
+    // 3. One link per signal.
+    const link = intake.createPendingLink(ws, a.signal.id, null, 'created');
+    let second = null;
+    try { intake.createPendingLink(ws, a.signal.id, 'youtrack:GAR-1', 'url'); } catch (e) { second = e; }
+    check('a second link for the same signal throws', second !== null && link.status === 'pending');
+    check('the pending link is listed for restart', intake.pendingLinks().some((l) => l.id === link.id));
+    const done = intake.completeLink(link.id, 'youtrack:GAR-1');
+    check('completeLink sets the ref and marks it done', done.status === 'done' && done.itemRef === 'youtrack:GAR-1' && intake.linkFor(a.signal.id)?.status === 'done' && !intake.pendingLinks().some((l) => l.id === link.id));
+    intake.createPendingLink(ws, revived.signal.id, 'youtrack:GAR-2', 'similarity', 0.9);
+    check("repointLinks moves a duplicate's links", intake.repointLinks(ws, 'youtrack:GAR-2', 'youtrack:GAR-1') === 1 && intake.linksForItem(ws, 'youtrack:GAR-1').length === 2);
+
+    // 4. The daily cap counts only links that created an item, since the day started.
+    check('createdToday counts only linked_by=created since the day start',
+      intake.createdToday(ws, 'sentry-web', '2026-10-30T00:00:00.000Z') === 1
+      && intake.createdToday(ws, 'custom', '2026-10-30T00:00:00.000Z') === 0
+      && intake.createdToday(ws, 'sentry-web', '2026-10-31T00:00:00.000Z') === 0);
+
+    // 5. A closure per (signal, kind).
+    const c1 = intake.closures.ensure(a.signal.id, 'done');
+    const c2 = intake.closures.ensure(a.signal.id, 'done');
+    check('closures.ensure twice returns the same closure', c1.id === c2.id && c1.state === 'pending');
+    check('a pending closure is due', intake.closures.due(clock.now()).some((c) => c.id === c1.id));
+    const closed = intake.closures.update(c1.id, { state: 'closed', attempts: 1, closedAt: clock.now(), externalId: 'reply-1' });
+    check('a closed closure is no longer due', closed.state === 'closed' && !intake.closures.due(clock.now()).some((c) => c.id === c1.id) && intake.closures.listForSource(ws, 'sentry-web').length === 1);
+
+    // Tokens are stored by hash only.
+    const tok = intake.tokens.create(ws, 'custom', 'a'.repeat(64), 'Demo');
+    check('a token is found by its hash', intake.tokens.byHash('a'.repeat(64))?.id === tok.id && tok.revokedAt === null);
+    intake.tokens.revoke(tok.id);
+    check('a revoked token says so', intake.tokens.byHash('a'.repeat(64))?.revokedAt !== null && intake.tokens.list(ws).length === 1);
+
+    // Sources keep their state per project.
+    intake.saveSource(ws, 'sentry-web', { kind: 'sentry', enabled: true, enabledBy: 'Demo', cursor: { since: 'x' } });
+    check('a source round-trips and is listed as enabled', intake.source(ws, 'sentry-web')?.cursor?.since === 'x' && intake.listEnabledSources().length === 1 && intake.listSources(ws).length === 1);
+
+    // 6. The board cache, and a mission that points at it.
+    const tracked = items.upsert(ws, { ref: 'youtrack:GAR-1', key: 'GAR-1', url: 'https://yt.test/issue/GAR-1', title: 'T', description: 'D', state: 'Open', assignee: null, updatedAt: '2026-10-30T10:00:00Z', createdAt: '2026-10-30T09:00:00Z', type: 'Bug' });
+    const again = items.upsert(ws, { ...tracked, state: 'In Progress' });
+    check('an item upserts by ref, keeping its id', again.id === tracked.id && again.state === 'In Progress' && items.byKey(ws, 'GAR-1')?.id === tracked.id && items.list(ws).length === 1);
+    items.setWrittenState(tracked.id, 'In Progress');
+    check('the written state is kept across a refresh', items.upsert(ws, { ...tracked, state: 'In Progress' }).writtenState === 'In Progress');
+    items.saveComment(ws, 'youtrack:GAR-1', 'tandemise:activity', 'c-1', 'v1');
+    items.saveComment(ws, 'youtrack:GAR-1', 'tandemise:activity', 'c-1', 'v2');
+    check('one comment per (item, marker)', items.comment(ws, 'youtrack:GAR-1', 'tandemise:activity')?.body === 'v2');
+    const mission = missions.create({ id: ids.mission(), workspaceId: ws, repositoryId: null, title: 'From GAR-1', goal: 'g', trackerItemId: tracked.id });
+    check('a mission is written with its tracker item', missions.get(mission.id)?.trackerItemId === tracked.id);
+    items.removeMissing(ws, []);
+    check("removing the tracker item clears the mission's pointer", items.get(tracked.id) === undefined && missions.get(mission.id)?.trackerItemId === null, missions.get(mission.id)?.trackerItemId);
+
+    // 7. The webhook mailbox: claim, release, ack.
+    const id = mailbox.put({ sourceId: 'github', headers: { 'x-github-event': 'issues' }, body: new TextEncoder().encode('{"a":1}') });
+    const first = mailbox.pull(10);
+    check('put then pull(10) returns the message', first.length === 1 && first[0].id === id && new TextDecoder().decode(first[0].body) === '{"a":1}' && first[0].headers['x-github-event'] === 'issues', first);
+    check('a second pull returns nothing (claimed)', mailbox.pull(10).length === 0);
+    mailbox.release(id);
+    check('after release it is pulled again', mailbox.pull(10).length === 1);
+    mailbox.ack(id);
+    mailbox.release(id);
+    check('after ack it is gone for good', mailbox.pull(10).length === 0);
+  } catch (e) {
+    check('the store section ran', false, String(e?.stack ?? e));
+  } finally {
+    await container.dispose();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length > 0) {
   for (const f of failures) console.log(`  - ${f}`);

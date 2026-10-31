@@ -39,3 +39,22 @@ was ambiguous or wrong, decided against the spec
 - Ruling 5 (views, Task 1): `IntakeSignalView` and `IntakeSourceView` have no fields in
   the plan. Task 1 gives them the fields the Intake tab and Settings need (Task 14) from
   the Task 2 table columns; later tasks may add fields, additively.
+- Ruling 6 (the store's edge cases, Task 2): decided from the spec's "idempotent by key"
+  and "a person's change wins":
+  - `upsertSignal` takes `IntakeSignalInput`, a domain mirror of `IntakeSignalV1`
+    (domain and persistence cannot import `api-contract`). `api-contract` asserts at
+    compile time that a parsed signal is assignable to it.
+  - `recordRejected` on a fingerprint already in the pipeline returns that signal
+    unchanged: a bad repeat never undoes a good signal. A later valid push of a
+    `rejected` fingerprint resets it to `received` with `firstTime: true`, keeping its
+    occurrences. A rejected row stores `''` for the instance, key and url it could not
+    read, and the kind from the fingerprint's prefix when that is a valid slug.
+  - `intake_links.item_ref` is nullable: a pending link for a create has no ref until
+    the tracker answers (`completeLink` sets it). `createdToday` counts pending creates
+    too, so the cap holds across a crash.
+  - `TrackerItem`, `TrackedItem`, `TrackerRef` (branded) and the comment markers live in
+    `packages/domain/src/entities/tracker.ts` now, so Task 4 extends that file instead
+    of moving them. `TrackerItem.createdAt` is stored as `upstream_created_at`.
+  - `intake_attachments` also has `created_at`/`updated_at` ("every table unless noted").
+  - The mailbox keeps acked rows (`done_at`) and has no stale-claim sweep yet; a claim
+    left by a crash stays claimed until whoever owns the listener (Task 11) releases it.
