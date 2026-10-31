@@ -144,7 +144,8 @@ export class ArtifactHarvester {
    * Clearing also means a retry is judged on what this attempt produced rather
    * than on what the failed one left behind.
    */
-  async prepare(target: ExecutionTarget, scope: EventScope, task: MissionTask): Promise<void> {
+  /** `keepOwn` leaves this task's folder as it is: a pass continuing from a hold reads what was written there. */
+  async prepare(target: ExecutionTarget, scope: EventScope, task: MissionTask, options: { readonly keepOwn?: boolean } = {}): Promise<void> {
     const fs = target.filesystem();
     const own = outDirFor(task);
     // Only this task's folder is cleared, plus any loose files at the top level
@@ -155,8 +156,8 @@ export class ArtifactHarvester {
         if (entry.kind === 'file') await fs.remove(`${ARTIFACT_OUT_DIR}/${entry.name}`);
       }
     }
-    if (await fs.exists(own)) await fs.remove(own, { recursive: true });
-    await fs.mkdir(own);
+    if (options.keepOwn !== true && await fs.exists(own)) await fs.remove(own, { recursive: true });
+    if (!(await fs.exists(own))) await fs.mkdir(own);
     await ensureTandemiseIgnore(fs);
     await this.#excludeFromGit(target, scope);
   }

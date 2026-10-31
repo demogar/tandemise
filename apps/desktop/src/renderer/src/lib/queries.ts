@@ -552,13 +552,16 @@ export function useDaemonMutation<TArgs, TResult>(
   run: (daemon: DaemonClient, args: TArgs) => Promise<TResult>,
   topics: readonly ProjectionTopic[],
   missionId?: string,
+  /** Runs on success even when the component that started it has unmounted, unlike `mutate`'s own callback. */
+  onSuccess?: (result: TResult) => void,
 ) {
   const daemon = useDaemon();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (args: TArgs) => run(daemon, args),
-    onSuccess: () => {
+    onSuccess: (result) => {
       for (const topic of topics) invalidateTopic(queryClient, topic, missionId);
+      onSuccess?.(result);
     },
   });
 }

@@ -1,0 +1,80 @@
+{
+  "id": "H5",
+  "title": "Restart the daemon mid-hold: still HELD, and reopening resumes the captured session",
+  "ok": true,
+  "checks": [
+    {
+      "label": "the panel is open on the held step",
+      "ok": true
+    },
+    {
+      "label": "the window says the daemon is gone",
+      "ok": true,
+      "observed": "Reconnecting…"
+    },
+    {
+      "label": "proof: a new daemon is up",
+      "ok": true,
+      "observed": {
+        "old": 4094207,
+        "now": 4107106
+      }
+    },
+    {
+      "label": "proof (API): after the restart the step is still HELD",
+      "ok": true,
+      "observed": {
+        "status": "HELD",
+        "reason": "Held by Demostenes Garcia."
+      }
+    },
+    {
+      "label": "proof (API): its terminal is not open",
+      "ok": true,
+      "observed": {
+        "holdId": "hld_01m683mn8m0anj0dx3cm",
+        "heldBy": "mem_01m683jx1kvrs3wj5c7r",
+        "heldByName": "Demostenes Garcia",
+        "startedAt": "2026-10-31T04:31:44.404Z",
+        "terminalOpen": false
+      }
+    },
+    {
+      "label": "back on the mission, the panel says \"The session ended.\" and offers \"Open the terminal again\"",
+      "ok": true,
+      "observed": "designHeld by YouContinueReleaseClose terminalThe session ended.This step has no open terminal. Hold it, or open its terminal again.Open the terminal again"
+    },
+    {
+      "label": "with the daemon's own words for why: there is no terminal open for this step",
+      "ok": true,
+      "observed": "designHeld by YouContinueReleaseClose terminalThe session ended.This step has no open terminal. Hold it, or open its terminal again.Open the terminal again"
+    },
+    {
+      "label": "the terminal opens again on the session the first terminal captured, not the run's",
+      "ok": true,
+      "observed": {
+        "resumed": "Fake session fake-session-1793421104564\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+        "before": "sess-hold-run_01m683k4hn2g22fmd5mc"
+      }
+    },
+    {
+      "label": "proof (API): its terminal is open again, same hold",
+      "ok": true,
+      "observed": {
+        "holdId": "hld_01m683mn8m0anj0dx3cm",
+        "heldBy": "mem_01m683jx1kvrs3wj5c7r",
+        "heldByName": "Demostenes Garcia",
+        "startedAt": "2026-10-31T04:31:44.404Z",
+        "terminalOpen": true
+      }
+    }
+  ],
+  "notes": [
+    "daemon 4094207 stopped"
+  ],
+  "shots": [
+    "/home/demogar/projects/tandemise/tandemise/docs/superpowers/evidence/2026-10-30-hold/H5-daemon-gone.png",
+    "/home/demogar/projects/tandemise/tandemise/docs/superpowers/evidence/2026-10-30-hold/H5-session-ended.png",
+    "/home/demogar/projects/tandemise/tandemise/docs/superpowers/evidence/2026-10-30-hold/H5-reopened.png"
+  ]
+}

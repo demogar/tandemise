@@ -6,6 +6,7 @@ import { useActors, type Actors } from '../../lib/team.js';
 import { Icon } from '../../components/Icon.js';
 import { Empty, IdChip } from '../../components/primitives.js';
 import { TaskDetail } from './TaskDetail.js';
+import { NowLine } from '../../components/TerminalPanel.js';
 import { duration, pluralize, taskBadge, taskTone } from '../../lib/format.js';
 
 interface Edge {
@@ -249,6 +250,9 @@ function TaskCard({
       </div>
 
       <TaskPeople task={task} actors={actors} />
+
+      {/* What a live agent is doing right now, in plain words. */}
+      <NowLine now={task.now} />
 
       <div className="taskcard__meta">
         {/* Only set when the task works somewhere other than the mission's own

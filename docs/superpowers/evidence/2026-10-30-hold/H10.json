@@ -1,0 +1,68 @@
+{
+  "id": "H10",
+  "title": "Hold an output under review: a new round, a new version, reviewed again",
+  "ok": true,
+  "checks": [
+    {
+      "label": "proof (API): its output waits for your review",
+      "ok": true,
+      "observed": {
+        "card": "Approve the output of design?",
+        "briefs": 1,
+        "holdable": {
+          "ok": true
+        }
+      }
+    },
+    {
+      "label": "Hold from its drawer opens the terminal panel",
+      "ok": true
+    },
+    {
+      "label": "the step's last session is resumed",
+      "ok": true,
+      "observed": "Fake session sess-quick-run_01m683y7jqcnzw6xs9rh\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
+    },
+    {
+      "label": "proof (API): HELD, in a new round",
+      "ok": true,
+      "observed": {
+        "status": "HELD",
+        "round": 2
+      }
+    },
+    {
+      "label": "proof (API): the review card is no longer waiting",
+      "ok": true,
+      "observed": "REJECTED"
+    },
+    {
+      "label": "Continue produces a new version of the output, replacing the reviewed one",
+      "ok": true,
+      "observed": [
+        {
+          "id": "art_01m683ycw3a6pzcpj01g",
+          "supersedes": "art_01m683y7kpakrxpn3wqf"
+        }
+      ]
+    },
+    {
+      "label": "which goes through review again: a new review card waits for you",
+      "ok": true,
+      "observed": {
+        "status": "AWAITING_APPROVAL",
+        "card": "Approve the output of design?"
+      }
+    },
+    {
+      "label": "its card reads Round 2, in review",
+      "ok": true,
+      "observed": "PRODUCT DESIGNER\ndesign\nIn review\nRound 2\njust now\nby\nDesign agent\n·\nresponsible\nYou\nFull doc\n\nOnboarding designed\n\nNeeds Approve the output of design?\nApplies immediately.\nReject without changes\nRequ"
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/home/demogar/projects/tandemise/tandemise/docs/superpowers/evidence/2026-10-30-hold/H10-held-for-changes.png",
+    "/home/demogar/projects/tandemise/tandemise/docs/superpowers/evidence/2026-10-30-hold/H10-round-2-review.png"
+  ]
+}

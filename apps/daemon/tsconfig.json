@@ -75,6 +75,9 @@
       "path": "../../packages/desktop-control"
     },
     {
+      "path": "../../packages/terminal"
+    },
+    {
       "path": "../../packages/application"
     }
   ]

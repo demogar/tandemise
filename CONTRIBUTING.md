@@ -28,6 +28,11 @@ as a `postinstall` step, which renames that bundle to Tandemise and gives it the
 Tandemise icon. If the Dock still says "Electron" (for example after
 `npm ci --ignore-scripts`), run `npm run dev:bundle-name` and restart the app.
 
+`@tandemise/terminal` uses `node-pty`, a native module. On Linux `npm ci` needs
+build tools to compile it: `g++`, `make` and `python3` (on Debian or Ubuntu,
+`sudo apt install build-essential python3`). macOS needs the Xcode command line
+tools.
+
 ## Before you open a pull request
 
 Run what CI runs:

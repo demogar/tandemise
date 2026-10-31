@@ -13,8 +13,8 @@ import { HOLD_LONG_MS, REFLECTOR_EVIDENCE_CHARS, reflect, type ReflectorDeps, ty
 
 /**
  * `task.hold_ended` as hold-and-interact (#50) records it. Parsed here by its
- * type, so the brain compiles before #50 lands and the signal is inert until
- * something publishes it.
+ * shape rather than imported, so the brain keeps no compile-time tie to the
+ * hold service that publishes it.
  */
 const holdEndedSchema = z.object({
   type: z.literal('task.hold_ended'),

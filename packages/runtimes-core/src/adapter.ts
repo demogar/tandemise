@@ -1,4 +1,4 @@
-import type { Capability, RuntimeCapability, RuntimeDiscovery, RuntimeHealth, RuntimeProfile, RuntimeSettingField } from '@tandemise/domain';
+import type { Capability, InteractiveInvocation, RuntimeCapability, RuntimeDiscovery, RuntimeHealth, RuntimeProfile, RuntimeSettingField } from '@tandemise/domain';
 import type { AgentEvent } from '@tandemise/domain';
 import type { Logger, RunId } from '@tandemise/shared';
 import { multiToken } from '@tandemise/kernel';
@@ -156,6 +156,17 @@ export interface AgentRuntimeAdapter {
    */
   resume?(sessionRef: string, request: RunRequest): AsyncIterable<AgentEvent>;
   cancel(runId: RunId): Promise<void>;
+  /**
+   * The runtime's own interactive CLI for a hold: the process a person drives
+   * in a terminal, resumed in `sessionRef` or (null) started fresh with
+   * `initialPrompt`. It records its session id to `sessionFile`. Absent means
+   * the runtime cannot be held.
+   */
+  interactive?(
+    sessionRef: string | null,
+    request: RunRequest,
+    opts: { readonly sessionFile: string; readonly initialPrompt: string | null },
+  ): InteractiveInvocation;
 
   /**
    * The OS process this run is using, or null when there is none (an in-process

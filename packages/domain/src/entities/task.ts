@@ -18,6 +18,7 @@ export const TASK_STATUSES = [
   'AWAITING_HUMAN',    // a person has to do this one
   'AWAITING_EXTERNAL', // polling something outside this machine
   'AWAITING_APPROVAL',
+  'HELD',          // a person took the keyboard; the agent is not running
   'BLOCKED',       // needs human intervention or an unmet gate
   'SUCCEEDED',
   'FAILED',
@@ -27,7 +28,7 @@ export const TASK_STATUSES = [
 export type TaskStatus = (typeof TASK_STATUSES)[number];
 
 export const ACTIVE_TASK_STATUSES: readonly TaskStatus[] =
-  ['READY', 'RUNNING', 'AWAITING_INPUT', 'AWAITING_HUMAN', 'AWAITING_EXTERNAL', 'AWAITING_APPROVAL'];
+  ['READY', 'RUNNING', 'AWAITING_INPUT', 'AWAITING_HUMAN', 'AWAITING_EXTERNAL', 'AWAITING_APPROVAL', 'HELD'];
 
 /**
  * Statuses where the task is parked on something that is not this machine's to
@@ -39,7 +40,7 @@ export const ACTIVE_TASK_STATUSES: readonly TaskStatus[] =
  * what asking is for.
  */
 export const PARKED_TASK_STATUSES: readonly TaskStatus[] =
-  ['AWAITING_INPUT', 'AWAITING_HUMAN', 'AWAITING_EXTERNAL', 'AWAITING_APPROVAL'];
+  ['AWAITING_INPUT', 'AWAITING_HUMAN', 'AWAITING_EXTERNAL', 'AWAITING_APPROVAL', 'HELD'];
 
 export function isTaskParked(s: TaskStatus): boolean {
   return PARKED_TASK_STATUSES.includes(s);

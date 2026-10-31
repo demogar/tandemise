@@ -180,8 +180,9 @@ export class SchedulerService implements LifecycleComponent {
     for (const task of this.deps.tasks.listByMission(missionId)) this.cancelTask(task.id);
   }
 
-  cancelTask(taskId: TaskId): void {
-    this.#active.get(taskId)?.abort();
+  /** `reason` tells the run why it stopped: a hold (`TaskHeld`) keeps its session; a plain cancel does not. */
+  cancelTask(taskId: TaskId, reason?: Error): void {
+    this.#active.get(taskId)?.abort(reason);
   }
 
   /**

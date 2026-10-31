@@ -38,6 +38,7 @@ export type EvalSuiteId = Brand<string, 'EvalSuiteId'>;
 export type EvalCaseId = Brand<string, 'EvalCaseId'>;
 export type EvalRunId = Brand<string, 'EvalRunId'>;
 export type EvalTrialId = Brand<string, 'EvalTrialId'>;
+export type TaskHoldId = Brand<string, 'TaskHoldId'>;
 
 const ALPHABET = '0123456789abcdefghjkmnpqrstvwxyz';
 
@@ -136,6 +137,7 @@ export const ids = {
   evalCase: () => newId<'EvalCaseId'>('eca'),
   evalRun: () => newId<'EvalRunId'>('ern'),
   evalTrial: () => newId<'EvalTrialId'>('etr'),
+  taskHold: () => newId<'TaskHoldId'>('hld'),
 } as const;
 
 /** Cast a persisted string back to its branded type at a trust boundary. */

@@ -1,0 +1,8 @@
+name: Hold one
+description: One design step, so holding it is holding the mission.
+steps:
+  - key: design
+    role: design
+    isolation: worktree
+    objective: Design the onboarding.
+    outputs: [DesignBrief]

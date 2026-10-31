@@ -97,6 +97,8 @@ export interface StartRoundInput {
   readonly feedbackIds: readonly string[];
   /** `none` when nothing consumed the output (or the task never finished). */
   readonly downstream: 'redo' | 'keep' | 'none';
+  /** The task's status line for the round; "Round N: changes requested" when omitted. */
+  readonly reason?: string;
   /** Subset of the impact's consumers; all of them when omitted. */
   readonly redoTaskIds?: readonly string[];
   readonly actorId: string;
@@ -234,7 +236,7 @@ export class FeedbackRounds {
     // Read on the card and in the drawer, where naming the one person who uses
     // the app reads as a stranger; who asked is the round's event actor, which
     // the timeline shows as "You".
-    const reason = `Round ${round}: changes requested`;
+    const reason = input.reason ?? `Round ${round}: changes requested`;
     const scope = this.#scope(task, input.actorId);
 
     // One unit, so a failure part-way never leaves a round started with its
@@ -405,8 +407,8 @@ export class FeedbackRounds {
     let moved = 0;
     for (const item of this.deps.feedback.listByStatus(['queued'])) {
       const task = this.deps.tasks.get(item.taskId);
-      // Still running: the pass will read the note when it ends.
-      if (task !== undefined && LIVE_RUN_STATUSES.includes(task.status)) continue;
+      // Still running: the pass will read the note when it ends. Held: the pass that continues from the hold reads it.
+      if (task !== undefined && (LIVE_RUN_STATUSES.includes(task.status) || task.status === 'HELD')) continue;
       this.deps.feedback.update(item.id, { status: 'open', round: null });
       if (task !== undefined) {
         // Otherwise the note would change state with nothing on the timeline to say why.

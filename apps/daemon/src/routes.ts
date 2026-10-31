@@ -305,6 +305,13 @@ export function buildRouter(services: TandemiseServices, options: {
   r.post('/v1/tasks/:id/hand-back', async (ctx) =>
     services.missions.handBack(asId(ctx.params.id!), ctx.caller, await ctx.body(handBackRequest)), CONTRIBUTION_BODY);
 
+  // Hold (hold-and-interact spec): a person takes the keyboard in the step's own
+  // session. The terminal itself is the WebSocket at /v1/tasks/:id/terminal.
+  r.post('/v1/tasks/:id/hold', (ctx) => services.holds.hold(asId(ctx.params.id!), ctx.caller));
+  r.post('/v1/tasks/:id/continue', (ctx) => services.holds.continue(asId(ctx.params.id!), ctx.caller));
+  r.post('/v1/tasks/:id/release', (ctx) => services.holds.release(asId(ctx.params.id!), ctx.caller));
+  r.post('/v1/tasks/:id/terminal/reopen', (ctx) => services.holds.reopen(asId(ctx.params.id!), ctx.caller));
+
   // ------------------------------------------------------- feedback and rounds
   // Attachments (spec A3) are pinned before the note lands, which `give` cannot
   // do synchronously; the route always takes the async path so a note without

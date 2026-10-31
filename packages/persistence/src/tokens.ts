@@ -4,7 +4,7 @@ import type {
   CheckpointRepositoryPort, DecisionRepositoryPort, EvalRepositoryPort, EvaluationRepositoryPort,
   EventRepositoryPort, ExecutionTargetRepositoryPort, FeedbackRepositoryPort, IntegrationRepositoryPort,
   LeaseRepositoryPort, MemberRepositoryPort, MissionCriteriaRepositoryPort, MissionQuestionRepositoryPort, MissionRepositoryPort, LimitRepositoryPort, PersonRepositoryPort, RoutineRepositoryPort, RunScoreRepositoryPort, SkillRepositoryPort, IssueRepositoryPort,
-  PlanProposalRepositoryPort, RepoRepositoryPort, RoleRepositoryPort, RunInputRepositoryPort,
+  PlanProposalRepositoryPort, TaskHoldRepositoryPort, RepoRepositoryPort, RoleRepositoryPort, RunInputRepositoryPort,
   RunRepositoryPort, RuntimeProfileRepositoryPort, TaskRepositoryPort, UnitOfWork,
   WorkspaceRepositoryPort, WorkspaceBrainRepositoryPort, BrainRecordRepositoryPort,
 } from '@tandemise/domain';
@@ -53,5 +53,6 @@ export const SKILL_REPOSITORY = token<SkillRepositoryPort>('persistence.SkillRep
 export const ISSUE_REPOSITORY = token<IssueRepositoryPort>('persistence.IssueRepository');
 export const RUN_SCORE_REPOSITORY = token<RunScoreRepositoryPort>('persistence.RunScoreRepository');
 export const EVAL_REPOSITORY = token<EvalRepositoryPort>('persistence.EvalRepository');
+export const TASK_HOLD_REPOSITORY = token<TaskHoldRepositoryPort>('persistence.TaskHoldRepository');
 export const WORKSPACE_BRAIN_REPOSITORY = token<WorkspaceBrainRepositoryPort>('persistence.WorkspaceBrainRepository');
 export const BRAIN_RECORD_REPOSITORY = token<BrainRecordRepositoryPort>('persistence.BrainRecordRepository');

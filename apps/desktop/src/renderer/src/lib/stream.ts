@@ -133,9 +133,30 @@ function handle(message: ServerMessage, queryClient: QueryClient, sequences: Map
   }
 }
 
+/** The run events a step's "Now" line is built from, in the daemon. */
+const NOW_EVENT_TYPES: ReadonlySet<string> = new Set(['tool.started', 'message', 'thinking_summary', 'file.changed']);
+/** Mission views with a re-read already scheduled: one per second at most, however fast a run talks. */
+const nowRefresh = new Map<string, ReturnType<typeof setTimeout>>();
+const NOW_REFRESH_MS = 1000;
+
+/**
+ * A running agent's events change its "Now" line, which the mission view
+ * carries; nothing else invalidates the view for them, so it is re-read here,
+ * at most once a second per mission.
+ */
+function refreshNow(queryClient: QueryClient, record: RunEventRecord): void {
+  if (record.runId === null || !NOW_EVENT_TYPES.has(record.body.type) || nowRefresh.has(record.missionId)) return;
+  nowRefresh.set(record.missionId, setTimeout(() => {
+    nowRefresh.delete(record.missionId);
+    // A refetch still in flight is left to finish: cancelling it every second would starve a slow mission view.
+    void queryClient.invalidateQueries({ queryKey: keys.mission(record.missionId), exact: true }, { cancelRefetch: false });
+  }, NOW_REFRESH_MS));
+}
+
 function appendEvent(queryClient: QueryClient, record: RunEventRecord, sequences: Map<string, number>): void {
   const missionId = record.missionId;
   sequences.set(missionId, Math.max(sequences.get(missionId) ?? 0, record.sequence));
+  refreshNow(queryClient, record);
 
   queryClient.setQueryData<readonly RunEventRecord[]>(keys.missionEvents(missionId), (existing) => {
     if (!existing) return existing;

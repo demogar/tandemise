@@ -1,0 +1,62 @@
+{
+  "id": "H6",
+  "title": "Hold a step waiting on ask_human: its question leaves the Inbox",
+  "ok": true,
+  "checks": [
+    {
+      "label": "setup: the run's MCP gateway config is on disk",
+      "ok": true
+    },
+    {
+      "label": "proof (API): the step waits on its question, a question card pending",
+      "ok": true,
+      "observed": {
+        "status": "AWAITING_INPUT",
+        "card": "Which layout should onboarding use (mvvwr7cb)?"
+      }
+    },
+    {
+      "label": "the question waits on you in the Inbox",
+      "ok": true,
+      "observed": "Inbox\nWhat is waiting on a person.\nWhich layout should onboarding use (mvvwr7cb)?\nFor you·Ask about onboarding mvvwr2od\nQuestion\njust now"
+    },
+    {
+      "label": "Hold from its drawer opens the terminal panel",
+      "ok": true
+    },
+    {
+      "label": "the session is resumed in the terminal, to answer there",
+      "ok": true,
+      "observed": "Fake session sess-hold-run_01m683vhq55ja5sdnvm8\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
+    },
+    {
+      "label": "proof (API): the step is HELD",
+      "ok": true,
+      "observed": "HELD"
+    },
+    {
+      "label": "proof (API): the question card was withdrawn",
+      "ok": true,
+      "observed": "CANCELLED"
+    },
+    {
+      "label": "the question no longer waits on you in the Inbox",
+      "ok": true,
+      "observed": "Inbox\nWhat is waiting on a person.\nNothing is waiting on you\n\nApprovals, questions, tasks for a person, work to hand back, stalled missions and quiet agents land here, one line each.\n"
+    },
+    {
+      "label": "it is listed as decided: withdrawn because the work moved on",
+      "ok": true,
+      "observed": "r7cb)?\nWithdrawn — the work ended first · “Held by Demostenes Garcia.”\nAsk about onboarding mvvwr2od\nApprove the plan fo"
+    },
+    {
+      "label": "Release in the drawer ends the hold",
+      "ok": true
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/home/demogar/projects/tandemise/tandemise/docs/superpowers/evidence/2026-10-30-hold/H6-inbox-question.png",
+    "/home/demogar/projects/tandemise/tandemise/docs/superpowers/evidence/2026-10-30-hold/H6-inbox-after.png"
+  ]
+}

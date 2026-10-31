@@ -340,6 +340,14 @@ function describe(record: RunEventRecord, roleNames: ReadonlyMap<string, string>
       return { ...base, icon: 'externalLink', tone: 'pending', title: `Continued in ${body.tool}`, detail: null, link: null };
     case 'task.unparked':
       return { ...base, icon: 'refresh', tone: 'running', title: `Taken back from ${body.tool}`, detail: null, link: null };
+    case 'task.held':
+      return { ...base, icon: 'play', tone: 'blocked', title: actor ? `${actor} took the keyboard` : 'A person took the keyboard', detail: null, link: null };
+    case 'task.hold_ended':
+      return {
+        ...base, icon: 'check', tone: 'running',
+        title: body.ending === 'continued' ? 'Hold ended; the agent continues' : 'Hold released',
+        detail: null, link: null,
+      };
     case 'task.handed_back':
       return {
         ...base,

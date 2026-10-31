@@ -37,6 +37,7 @@ export * from './entities/notifications.js';
 export * from './entities/skill.js';
 export * from './entities/issue.js';
 export * from './entities/eval.js';
+export * from './entities/hold.js';
 export * from './entities/brain.js';
 
 export * from './ports/repositories.js';
@@ -45,6 +46,7 @@ export * from './ports/event-bus.js';
 export * from './ports/secrets.js';
 export * from './ports/snapshot.js';
 export * from './ports/eval-blobs.js';
+export * from './ports/interactive-sessions.js';
 
 export * from './brain/writer.js';
 export * from './brain/scrub.js';
