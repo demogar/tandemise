@@ -100,8 +100,101 @@ Releases are automated with [release-please](https://github.com/googleapis/relea
    that bumps the version and writes `CHANGELOG.md` from the commit history.
 2. Merging that PR tags `vx.y.z` and publishes a GitHub Release.
 
+3. The same workflow then runs **Desktop packages** (`.github/workflows/desktop-packages.yml`),
+   which builds the installers on Linux, macOS and Windows runners and attaches
+   them to that release.
+
 The whole monorepo shares one version. All `@tandemise/*` packages, the daemon
 and the desktop app move together. Never edit versions or `CHANGELOG.md` by hand.
+
+## Packaging the desktop app
+
+The installers are built with [electron-builder](https://www.electron.build/)
+(`apps/desktop/electron-builder.config.mjs`):
+
+| Platform | Targets | Built on |
+| --- | --- | --- |
+| Linux | AppImage, .deb (x64) | `ubuntu-latest` |
+| macOS | .dmg, arm64 and x64 | `macos-latest` |
+| Windows | NSIS installer (x64) | `windows-latest` |
+
+To build this platform's installers locally:
+
+```bash
+npm ci
+npm run build
+npm run -w @tandemise/desktop package                     # every target for this OS
+npm run -w @tandemise/desktop package -- --linux AppImage # just one
+```
+
+They land in `apps/desktop/release/` (git-ignored). Each platform is built on
+its own OS: the daemon's native modules are picked per platform, so there is no
+cross-building (macOS builds both arches on one Mac).
+
+How it fits together:
+
+- **The app carries its daemon.** electron-builder's `afterPack` hook runs
+  `apps/desktop/scripts/stage-daemon.mjs`, which copies `apps/daemon/dist`, the
+  `dist/` of every `@tandemise/*` package it reaches and the exact third-party
+  modules the lockfile installed into `resources/daemon/`, keeps only the target's
+  native binaries, and (on the target's own OS and arch) loads them under
+  Electron's Node as a check. `node apps/desktop/scripts/stage-daemon.mjs` runs it
+  on its own.
+- **No system Node.** A packaged app starts that daemon with its own Electron
+  binary in Node mode (`ELECTRON_RUN_AS_NODE=1`; Electron 44 embeds Node 24),
+  never a `node` from `PATH` (`bundledDaemonNode` in
+  `apps/desktop/src/main/node-runtime.ts`). Electron's `runAsNode` fuse must
+  therefore stay enabled. A checkout still runs `apps/daemon/dist/main.js` on
+  your own Node 22+, as before.
+- **Native modules need no rebuild.** `better-sqlite3` (13+) and `node-pty` (1.x)
+  are N-API addons, so the same binary loads under Node 22 and Electron 44. What
+  must match is the platform and CPU: better-sqlite3 ships prebuilt binaries for
+  all of them; node-pty ships them for macOS and Windows and is compiled by
+  `npm ci` on Linux.
+- **The daemon's children do not inherit Node mode.** The daemon drops
+  `ELECTRON_RUN_AS_NODE` from its environment at startup and sets it only where it
+  runs its own binary again (`ownNodeEnv` in `@tandemise/shared`): the MCP server
+  it gives an agent, the fake runtime's session.
+- **The desktop bundle has no `node_modules`.** electron-vite bundles everything
+  the main process, preload and renderer use, which is why the desktop's packages
+  are all `devDependencies`.
+
+The real-app check for a packaged build is `scratch/packaged-live-check.mjs`:
+it starts the build with no `node` on `PATH` and a fresh `TANDEMISE_HOME`, and
+drives the window over CDP through connecting, creating a project and typing
+into a hold terminal:
+
+```bash
+node scratch/packaged-live-check.mjs --packaged apps/desktop/release/Tandemise-<version>-linux-x86_64.AppImage
+```
+
+### Signing and notarization
+
+Unsigned builds work, so every signing input is optional and the build skips
+signing when it is absent. macOS builds are then ad-hoc signed (Gatekeeper warns
+on first open) and Windows builds are unsigned (SmartScreen warns). To sign,
+the repository owner adds these **Actions secrets** (Settings → Secrets and
+variables → Actions). They are never committed.
+
+| Secret | What it is |
+| --- | --- |
+| `MAC_CSC_LINK` | Developer ID Application certificate with its private key, exported as `.p12`, base64-encoded (`base64 -i cert.p12`) |
+| `MAC_CSC_KEY_PASSWORD` | The `.p12` export password |
+| `APPLE_ID` | Apple ID of an Apple Developer Program member, for notarization |
+| `APPLE_APP_SPECIFIC_PASSWORD` | An app-specific password for that Apple ID (appleid.apple.com) |
+| `APPLE_TEAM_ID` | The 10-character Team ID |
+| `WIN_CSC_LINK` | Windows Authenticode code-signing certificate, `.pfx`, base64-encoded |
+| `WIN_CSC_KEY_PASSWORD` | The `.pfx` password |
+
+Notarization runs only when all three `APPLE_*` secrets are present. The macOS
+hardened-runtime entitlements are in `apps/desktop/build/entitlements.mac.plist`
+(JIT, and loading the daemon's native addons). A Windows certificate kept in a
+cloud HSM (Azure Trusted Signing and the like) needs electron-builder's
+`win.azureSignOptions` instead of `WIN_CSC_LINK`.
+
+To rebuild the installers of an existing release by hand, run **Actions →
+Desktop packages → Run workflow** with its tag (e.g. `v0.10.0`); with no tag the
+installers are only kept as workflow artifacts.
 
 ## License
 
