@@ -28,13 +28,13 @@ and that code. **Bring my local data** moves your active claims, webhook
 addresses and unread webhooks up to the new relay.
 
 `RELAY_PUBLIC_URL` must be `https://` unless the relay only listens on
-loopback. For automatic certificates, set `RELAY_PUBLIC_HOST`, and
-`RELAY_BIND=127.0.0.1` with `RELAY_TRUST_PROXY=1` (the relay is then reached
-only through Caddy, and its rate limits read Caddy's `X-Forwarded-For`), and
-add the `tls` profile (Caddy, ports 80 and 443):
+loopback. For automatic certificates, set `RELAY_PUBLIC_HOST` and add the
+TLS override, which adds Caddy (ports 80 and 443), publishes the relay on
+`127.0.0.1` only and has it trust Caddy's `X-Forwarded-For` — by
+construction, nothing to remember:
 
 ```sh
-docker compose -f apps/relay/compose.yaml --profile tls up -d --build
+docker compose -f apps/relay/compose.yaml -f apps/relay/compose.tls.yaml up -d --build
 ```
 
 A LAN-only setup over plain `http://` needs `RELAY_INSECURE_HTTP=1`; the relay

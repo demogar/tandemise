@@ -38,4 +38,17 @@ RELAY_PUBLIC_URL=http://127.0.0.1:18787 RELAY_INSECURE_HTTP=1 RELAY_PORT=18787 \
    352 MB, most of it the `node:22-bookworm-slim` base (see RULINGS.md). RSS at
    idle, `docker stats` after the round-trip: **30.8 MiB**, under 60 MB.
 
+**TLS override, by construction** (`compose.tls.yaml`, controller ruling on #69):
+
+```sh
+RELAY_PUBLIC_URL=https://relay.example.com RELAY_PUBLIC_HOST=relay.example.com \
+  docker compose -f apps/relay/compose.yaml -f apps/relay/compose.tls.yaml config
+```
+
+The relay's only published port is `host_ip: 127.0.0.1`, `target: 8787`,
+`published: "8787"`. Its environment has `RELAY_TRUST_PROXY: "1"` and
+`RELAY_BIND: 127.0.0.1`. Caddy publishes 80 and 443. Without the override,
+`compose.yaml config` publishes 8787 on all addresses and sets no
+trust-proxy.
+
 Torn down with `docker compose -p relayproof -f apps/relay/compose.yaml down -v`.

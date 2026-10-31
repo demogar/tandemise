@@ -1,4 +1,4 @@
-# The `tls` profile: Caddy terminates TLS with an automatic certificate for RELAY_PUBLIC_HOST
+# compose.tls.yaml: Caddy terminates TLS with an automatic certificate for RELAY_PUBLIC_HOST
 # (the host part of RELAY_PUBLIC_URL) and forwards to the relay. Teams with their own reverse
 # proxy skip this file and point their proxy at the relay's port 8787.
 {$RELAY_PUBLIC_HOST} {

@@ -13,7 +13,7 @@ export interface RelayConfig {
   readonly retention: RetentionPolicy;
   readonly logLevel: LogLevel;
   readonly insecureHttp: boolean;
-  /** Read the client address from X-Forwarded-For: only behind a proxy you run (the `tls` profile). */
+  /** Read the client address from X-Forwarded-For: only behind a proxy you run (compose.tls.yaml sets it). */
   readonly trustProxy: boolean;
   /** `POST /relay/v1/test/advance-clock` exists only with this on. Never in production. */
   readonly testClock: boolean;
