@@ -113,6 +113,29 @@ export class MergePolicyService {
     return this.get(workspaceId);
   }
 
+  /**
+   * Whether auto-merge stands for this project now: the policy comes from the brain, says on, and a person turned it
+   * on in the app. A brain whose merge.yaml reads off (a teammate's edit, a merged brain pull request) ends that
+   * decision, so turning it back on through the brain needs a fresh one in the app.
+   */
+  reconcile(workspaceId: WorkspaceId, config: { readonly origins: { readonly merge: string }; readonly merge: unknown }): boolean {
+    const decisions = this.deps.decisions.listByWorkspace(workspaceId);
+    const fromBrain = config.origins.merge === 'brain' && !isPolicyError(config.merge as never);
+    const off = fromBrain && (config.merge as { autoMerge?: string }).autoMerge === 'off';
+    if (off) {
+      let ended = false;
+      for (const d of decisions) {
+        if (d.status === 'accepted' && d.title.startsWith(AUTO_MERGE_DECISION_PREFIX)) {
+          this.deps.decisions.update(d.id, { status: 'superseded' });
+          ended = true;
+        }
+      }
+      if (ended) this.deps.recorder.invalidate('decisions');
+      return false;
+    }
+    return fromBrain && autoMergeAuthorized(decisions);
+  }
+
   /** The kill switch: auto-merge off, and every waiting pull request decided again (so it asks). */
   async stop(workspaceId: WorkspaceId, caller: Caller & { readonly runtime?: boolean }): Promise<MergePolicyView> {
     const current = (await this.get(workspaceId)).policy;

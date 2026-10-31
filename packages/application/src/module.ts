@@ -456,8 +456,8 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
         outcomes: () => r.tryResolve(t.OUTCOME_RECORDER),
         factory: async (workspaceId) => {
           const config = await r.resolve(t.PLANNER_SERVICE).config(asId(workspaceId));
-          const decisions = r.resolve(t.DECISION_REPOSITORY).listByWorkspace(asId(workspaceId));
-          return { planner: config.planner, merge: config.merge, policyRef: policyRef(config), autoMergeAuthorized: config.origins.merge === 'brain' && autoMergeAuthorized(decisions) };
+          const authorized = r.resolve(t.MERGE_POLICY_SERVICE).reconcile(asId(workspaceId), config);
+          return { planner: config.planner, merge: config.merge, policyRef: policyRef(config), autoMergeAuthorized: authorized };
         },
         pollMs: shipPollMs,
         timeoutMs: SHIP_CI_TIMEOUT_MS,

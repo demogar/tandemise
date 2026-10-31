@@ -309,8 +309,8 @@ await attempt('revert and watch', async () => {
   await w.h.until(() => w.h.repo.missions.get(m.id).status === 'COMPLETE', 60000);
   const decision = w.h.repo.mergeDecisions.listByMission(m.id).at(-1);
   check('the fake merge made a real commit on main', git(w.origin, 'rev-parse', 'main') === decision.mergeSha, [decision.mergeSha]);
-  // Auto-merge off now: the revert of an auto-merge may still merge on its own (revertAutoMerge).
-  w.files.files.merge = { ...app.SHIPPED_MERGE, autoMerge: 'off' };
+  // The revert of an auto-merge may merge on its own (revertAutoMerge). Auto-merge turned off in the brain would end your
+  // decision (see 'off in the brain ends your decision'), so it stays on here.
   const revert = await w.h.services.shipActions.revert(decision.id, w.caller);
   check('Revert opens a revert mission', revert.title === 'revert: fix: typo in the settings title' && revert.workflowInputs.revertOfAuto === 'true', revert.title);
   let twice = null;
@@ -326,7 +326,8 @@ await attempt('revert and watch', async () => {
   const migration = D.decideMerge({ ...w.h.repo.mergeDecisions.listByMission(revert.id).at(-1).facts, changedPaths: ['db/migrations/1.sql'] }, D.parseMergePolicy({ ...app.SHIPPED_MERGE, autoMerge: 'off' }));
   check('a revert that touches a migration still asks', migration.verdict === 'ask', migration.reasons);
 
-  // Watching main on a second merge.
+  // Watching main on a second merge, which you merge yourself: auto-merge off now.
+  w.files.files.merge = { ...app.SHIPPED_MERGE, autoMerge: 'off' };
   const m2 = await w.mission('fix: typo in the footer');
   const ship2 = () => w.h.repo.tasks.listByMission(m2.id).find((t) => t.key === 'ship');
   await w.h.until(() => ship2()?.status === 'AWAITING_APPROVAL', 60000);
@@ -350,7 +351,9 @@ await attempt('revert and watch', async () => {
   await watch.sweep();
   check('a Revert "…" commit on main records reverted once', w.h.repo.outcomes.listByWorkspace(w.ws, '1970').filter((o) => o.mission === m2.id && o.kind === 'reverted').length === 1);
   // Eight days on, the first merge (never broken, its revert aside) — a third merge is clean.
+  // Back on: in the brain, and decided again in the app (off in the brain ended the earlier decision).
   w.files.files.merge = { ...app.SHIPPED_MERGE, autoMerge: 'on' };
+  await w.authorize();
   const m3 = await w.mission('fix: typo in the header');
   await w.h.until(() => w.h.repo.missions.get(m3.id).status === 'COMPLETE', 60000);
   await watch.sweep(Date.now() + 8 * 86_400_000);
@@ -657,6 +660,28 @@ await attempt('review: GitHub down while a pull request waits', async () => {
   const ok = fake.readState(w.ghDir); delete ok.failAll; fake.writeState(w.ghDir, ok);
   await w.h.until(() => !/GitHub didn't answer/.test(ship().statusReason ?? ''), 20000);
   check('once GitHub answers, the step says what it was waiting for again', ship().status === 'AWAITING_APPROVAL' && ship().statusReason?.startsWith('Waiting for your review'), ship().statusReason);
+});
+
+await attempt('review: off in the brain ends your decision', async () => {
+  section('review: off in the brain ends your decision');
+  const fake = await import('./fake-gh.mjs');
+  const on = { ...app.SHIPPED_MERGE, autoMerge: 'on' };
+  const w = await world({ factory: { merge: on }, brain: true });
+  fake.setRepo(w.ghDir, REPO, { defaultChecks: [{ name: 'unit', conclusion: 'success' }] });
+  await w.authorize();
+  // A teammate's brain change turns it off (not the app's switch): the next decision sees off.
+  w.files.files.merge = { ...on, autoMerge: 'off' };
+  const m1 = await w.mission('fix: typo in the settings title');
+  await w.h.until(() => w.h.repo.mergeDecisions.listByMission(m1.id).length > 0, 60000);
+  const decisionRepo = w.h.container.resolve(app.DECISION_REPOSITORY);
+  const accepted = () => decisionRepo.listByWorkspace(w.ws).filter((d) => d.status === 'accepted' && d.title.startsWith('Auto-merge low-risk pull requests in'));
+  check('the brain reading autoMerge: off supersedes the auto-merge Decision', accepted().length === 0, decisionRepo.listByWorkspace(w.ws).map((d) => [d.title, d.status]));
+  // A brain pull request later turns it back on: that is not your decision in the app, so it asks.
+  w.files.files.merge = on;
+  const m2 = await w.mission('fix: typo in the footer');
+  await w.h.until(() => w.h.repo.mergeDecisions.listByMission(m2.id).length > 0, 60000);
+  const d2 = w.h.repo.mergeDecisions.listByMission(m2.id).at(-1);
+  check('…so turning it back on through the brain needs a fresh decision in the app', d2.verdict === 'ask' && d2.reasons[0] === D.AUTO_MERGE_OFF, d2.reasons);
 });
 
 // @sections
