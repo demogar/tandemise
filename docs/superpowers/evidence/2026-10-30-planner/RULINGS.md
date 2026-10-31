@@ -89,3 +89,9 @@ spec (`docs/superpowers/specs/2026-10-30-planner-and-merge-design.md`).
   alone don't say it. `p3-evals-check` built a mission repository on a
   database migrated only to 020; it now migrates the rest first, since the
   repository reads the current schema (the new `lane_request` column).
+- Ruling (Task 10): routing and plan-time approvals run inside the factory's
+  shaping pass (after modules and skills, before validation), so the careful
+  lane's tailored plan is routed too. A class's `independentOf` from
+  `routing.yaml` also adds `review.independent` to that step's gate, as a
+  workflow's `independentOf` does. The "continued hold doesn't escalate" check
+  waits for #50's hold service. Routing stats look back 180 days.

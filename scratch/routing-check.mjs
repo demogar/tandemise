@@ -70,6 +70,43 @@ await attempt('engine outcomes', async () => {
   clearInterval(keepAlive);
 });
 
+await attempt('rung choice, bounds, escalation', async () => {
+  section('rung choice');
+  const config = D.parseRoutingConfig({ target: 0.8, minSamples: 8, probeEvery: 10, classes: { implement: { ladder: ['haiku', 'sonnet', 'opus'], default: 'sonnet' } } }).config;
+  const stats = (rows) => ({ buckets: { 'implement|quick|none': rows } });
+  const s = (success, n) => ({ n, firstPass: success, success, holds: 0, changesRequested: 0, reverts: 0, medianCostUsd: null, medianWallTimeMs: null });
+  const choose = (rows, extra = {}) => D.chooseRung({ cls: 'implement', bucket: 'implement|quick|none', risk: 'medium', config, stats: stats(rows), taskOrdinal: 1, ...extra });
+  check('under minSamples → the default', choose({ sonnet: s(7, 7) }).model === 'sonnet' && choose({ sonnet: s(7, 7) }).reason.startsWith('default:'));
+  check('Wilson LB of 24/25 clears 0.8', D.wilsonLowerBound(24, 25) > 0.8 && D.wilsonLowerBound(24, 25) < 0.81, D.wilsonLowerBound(24, 25));
+  const cheap = choose({ haiku: s(24, 25), sonnet: s(25, 25) });
+  check('the cheapest rung that clears the target', cheap.model === 'haiku' && eq(cheap.escalate, ['sonnet', 'opus']) && cheap.reason === 'routed: haiku passed 24 of 25 similar implement steps first time', cheap);
+  check('a rung below the target is passed over', choose({ haiku: s(18, 25), sonnet: s(25, 25) }).model === 'sonnet');
+  const probe = choose({ haiku: s(18, 25), sonnet: s(25, 25) }, { risk: 'low', taskOrdinal: 10 });
+  check('a low-risk tenth task probes one rung cheaper', probe.model === 'haiku' && probe.probe === true, probe);
+  check('never on high risk', choose({ haiku: s(18, 25), sonnet: s(25, 25) }, { risk: 'high', taskOrdinal: 10 }).probe === false);
+  check('no ladder → null (the role\'s model)', D.chooseRung({ cls: 'review', bucket: 'x', risk: 'low', config, stats: stats({}), taskOrdinal: 1 }) === null);
+
+  section('bounds');
+  const rnd = mulberry32(10);
+  let off = 0;
+  for (let i = 0; i < 500; i++) {
+    const rows = {};
+    for (const m of ['haiku', 'sonnet', 'opus', 'gpt-x']) { const n = Math.floor(rnd() * 40); rows[m] = s(Math.floor(rnd() * (n + 1)), n); }
+    const c = D.chooseRung({ cls: 'implement', bucket: 'implement|quick|none', risk: rnd() < 0.5 ? 'low' : 'high', config, stats: stats(rows), taskOrdinal: Math.floor(rnd() * 30) });
+    if (!['haiku', 'sonnet', 'opus'].includes(c.model) || c.escalate.some((e) => !['haiku', 'sonnet', 'opus'].includes(e))) off++;
+  }
+  check('500 random tables never route off the ladder', off === 0, off);
+
+  section('escalation');
+  const r2 = D.resolveModel({ step: { model: cheap.model, escalate: cheap.escalate, reason: cheap.reason }, role: null, profileModel: null, attempt: 2, pressure: null, runtimeTakesModel: true });
+  check('attempt 2 takes the next rung', r2.model === 'sonnet' && r2.source === 'escalation', r2);
+  const eco = D.resolveModel({ step: { model: 'haiku', reason: 'routed: x' }, role: { model: null, escalate: [], economyModel: 'mini' }, profileModel: null, attempt: 1, pressure: { percent: 85, scope: 'mission' }, runtimeTakesModel: true });
+  check('economy mode still wins under limit pressure', eco.source === 'economy', eco);
+  check('a request-changes round moves a routed model up', eq(app.moveUpAfterChanges({ model: 'haiku', escalate: ['sonnet', 'opus'], reason: 'routed: haiku passed' }), { model: 'sonnet', escalate: ['opus'], reason: 'moved up after changes were requested' }));
+  check('a model the person pinned stays', eq(app.moveUpAfterChanges({ model: 'opus' }), { model: 'opus' }));
+  check('with nothing above, it stays', eq(app.moveUpAfterChanges({ model: 'opus', escalate: [], reason: 'routed: x' }), { model: 'opus', escalate: [], reason: 'routed: x' }));
+});
+
 // @sections
 
 console.log(`\n${passed} passed, ${failures.length} failed`);

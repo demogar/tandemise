@@ -12,6 +12,8 @@ import type { ApprovalFactory } from '@tandemise/policy';
 import { DEFAULT_ESCALATE_AFTER_MS, indexTeam, laneStricter, type Approval, type ApprovalRepositoryPort, type MemberRepositoryPort, type MissionTask, type PlanProposalRepositoryPort, type TaskRepositoryPort } from '@tandemise/domain';
 import type { Caller } from '../support/identity.js';
 import { materializePlan } from './materialize.js';
+import { routePlan } from './routing.js';
+import { foldOutcomes, type OutcomeRepositoryPort, type OutcomeStats } from '@tandemise/domain';
 import type { FactoryConfigSourcePort, WorkflowSourcePort } from '../ports.js';
 import type { EventRecorder, EventScope } from '../support/event-recorder.js';
 import type { WorkflowPreset } from './presets.js';
@@ -60,7 +62,12 @@ export interface PlannerDeps {
   readonly approvalFactory?: ApprovalFactory;
   readonly proposals?: PlanProposalRepositoryPort;
   readonly members?: MemberRepositoryPort;
+  /** The outcome fold routes models and adds approvals (#53 §6.2, §5.3). Optional for older harnesses. */
+  readonly outcomes?: OutcomeRepositoryPort;
 }
+
+/** How far back routing stats look. */
+const ROUTING_WINDOW_MS = 180 * 86_400_000;
 
 /** The evidence label that marks a plan card as "make it quick"; read when the card is approved. */
 export const LANE_CARD_LABEL = 'Lane';
@@ -179,7 +186,7 @@ export class PlannerService {
     if (lane === 'quick') skipped.push('No separate review or QA: the tests carry it, and the merge decision will take that into account.');
     if (lane !== 'careful' && userCriteria === 0) skipped.push('No Done-when lines: "The task as written is done" stands in, and reads "Not independently verified".');
 
-    const shaped = this.#shape(plan, profile, config.planner, ctx);
+    const shaped = this.#shape(plan, profile, config, ctx, lane, this.#stats(mission.workspaceId));
     if (shaped === null) return null;
 
     const decision: PlanDecision = {
@@ -220,7 +227,7 @@ export class PlannerService {
    */
   finish(factory: FactoryPlan, tailored: MissionPlan, ctx: PlanContext, config: FactoryConfig): FactoryPlan {
     const withShip = tailored.tasks.some((t) => t.executor === 'ship') ? tailored : appendShip(tailored, factory.plan);
-    const shaped = this.#shape(withShip, factory.decision.profile, config.planner, ctx);
+    const shaped = this.#shape(withShip, factory.decision.profile, config, ctx, factory.lane, this.#stats(ctx.workspace.id));
     if (shaped === null) return factory;
     return {
       ...factory,
@@ -444,9 +451,15 @@ export class PlannerService {
   // ------------------------------------------------------------------ helpers
 
   /** Modules, area skills, validation; dropping modules (last first) until it validates. */
-  #shape(plan: MissionPlan, profile: TaskProfile, planner: PlannerConfig, ctx: PlanContext): {
+  #stats(workspaceId: WorkspaceId): OutcomeStats {
+    const since = new Date(this.deps.clock.epochMs() - ROUTING_WINDOW_MS).toISOString();
+    return foldOutcomes(this.deps.outcomes?.listByWorkspace(workspaceId, since) ?? []);
+  }
+
+  #shape(plan: MissionPlan, profile: TaskProfile, config: FactoryConfig, ctx: PlanContext, lane: Lane, stats: OutcomeStats): {
     plan: MissionPlan; applied: string[]; dropped: { name: string; why: string }[];
   } | null {
+    const planner = config.planner;
     const { facts, predicates } = profileRuleContext(profile);
     const dropped: { name: string; why: string }[] = [];
     let modules = [...planner.modules];
@@ -454,8 +467,9 @@ export class PlannerService {
       const applied = applyModules(plan, modules, facts, predicates);
       dropped.push(...applied.dropped.filter((d) => !dropped.some((x) => x.name === d.name)));
       const withSkills = this.#areaSkills(applied.plan, profile, planner, ctx, dropped);
-      const issues = this.#validate(withSkills, ctx);
-      if (issues === null) return { plan: withSkills, applied: [...applied.applied], dropped };
+      const routed = routePlan(withSkills, { profile, lane, routing: config.routing, stats, holdApproval: planner.holdApproval });
+      const issues = this.#validate(routed, ctx);
+      if (issues === null) return { plan: routed, applied: [...applied.applied], dropped };
       const last = applied.applied.at(-1);
       if (last === undefined) {
         this.deps.log.warn('planner.lane_invalid', { issues });

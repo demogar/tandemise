@@ -463,6 +463,39 @@ await attempt('mid-mission escalation', async () => {
   clearInterval(keepAlive);
 });
 
+await attempt('plan-time approvals from holds', async () => {
+  section('plan-time approvals from holds');
+  const { mkdtempSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { execFileSync } = await import('node:child_process');
+  const { engineHarness, memoryFactory } = await import('./planner-harness.mjs');
+  const keepAlive = setInterval(() => {}, 1000);
+  const h = await engineHarness(mkdtempSync(join(tmpdir(), 'tdm-holds-')), { factory: await memoryFactory({ planner: SPEC_PLANNER }) });
+  execFileSync('git', ['init', '-q', '-b', 'main', h.paths.root]);
+  execFileSync('git', ['-C', h.paths.root, '-c', 'user.name=c', '-c', 'user.email=c@e.com', 'commit', '-q', '--allow-empty', '-m', 'init']);
+  const caller = { personId: h.services.identity.localPerson().id };
+  const ws = (await h.services.workspaces.create(caller, { name: 'Holds' })).workspace.id;
+  const base = Date.UTC(2026, 9, 1);
+  for (let i = 0; i < 5; i++) {
+    const common = { op: 'outcome', by: 'A', mission: `old${i}`, lane: 'quick', profile: { type: 'fix', size: 's', risk: 'low', areas: ['desktop-ui'], sensitivity: 'none' }, workspaceId: ws };
+    const step = { class: 'implement', model: null, attempt: 1, gatePassed: true, costUsd: null, wallTimeMs: null, taskKey: 'implement' };
+    h.repo.outcomes.append({ ...common, id: `out_a${i}`, at: new Date(base + i * 1000).toISOString(), kind: 'step_result', step });
+    if (i < 3) h.repo.outcomes.append({ ...common, id: `out_b${i}`, at: new Date(base + i * 1000 + 500).toISOString(), kind: 'held', step });
+  }
+  const make = async (title) => {
+    const m = await h.services.missions.create(caller, { workspaceId: ws, goal: title, title, workflowPreset: 'auto' });
+    await h.services.planning.plan(m.id);
+    return h.repo.tasks.listByMission(m.id).find((t) => t.key === 'implement');
+  };
+  const ui = await make('fix: panel spacing in apps/desktop/src/renderer/x.tsx');
+  check('a desktop-ui implement step people kept stepping into gets an after approval', ui.approvalPolicy.onCompletion === true
+    && ui.approvalPolicy.reason === "People stepped in on 3 of the last 5 desktop-ui implement steps, so you'll look at this one before it moves on.", ui.approvalPolicy);
+  const docs = await make('docs: fix the install steps in docs/install.md');
+  check('a docs task gets none', docs.approvalPolicy.onCompletion === false, docs.approvalPolicy);
+  clearInterval(keepAlive);
+});
+
 // @sections
 
 console.log(`\n${passed} passed, ${failures.length} failed`);

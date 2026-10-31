@@ -3,6 +3,8 @@ import type {
   FeedbackRepositoryPort, Finding, LoadedArtifact, MemberRepositoryPort, Mission, MissionRepositoryPort, MissionTask, RunInputRepositoryPort,
   RunRepositoryPort, TaskRepositoryPort, TaskStatus, UnitOfWork,
 } from '@tandemise/domain';
+import { stepClassFor } from '@tandemise/domain';
+import { moveUpAfterChanges } from '../planning/routing.js';
 import {
   DEFAULT_RETRY_POLICY, FEEDBACK_TEXT_MAX, REQUEST_CHANGES_OPTION, RUNTIME_ACTOR, SYSTEM_ACTOR, blockingFindings, canTransition,
   citedFeedbackIds, isDeclinedChange,
@@ -266,6 +268,11 @@ export class FeedbackRounds {
     deps.recorder.invalidate('tasks', mission.id);
     deps.recorder.invalidate('approvals', mission.id);
     deps.outcomes?.()?.changesRequested(task);
+    // A routed implement step's next run starts one rung up (#53 §6.3).
+    if (stepClassFor(task) === 'implement' && task.modelPolicy != null) {
+      const moved = moveUpAfterChanges(task.modelPolicy);
+      if (moved !== task.modelPolicy) deps.tasks.update(task.id, { modelPolicy: moved });
+    }
     return { task: deps.tasks.get(task.id)!, stop: stop.map((dependent) => dependent.id) };
   }
 

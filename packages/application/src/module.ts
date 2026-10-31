@@ -631,6 +631,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       approvalFactory: r.resolve(APPROVAL_FACTORY),
       proposals: r.resolve(t.PLAN_PROPOSAL_REPOSITORY),
       members: r.resolve(t.MEMBER_REPOSITORY),
+      outcomes: r.resolve(t.OUTCOME_REPOSITORY),
     }), { source: SOURCE });
 
     bind(t.WORKFLOW_SERVICE, (r) => new WorkflowServiceImpl(
