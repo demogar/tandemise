@@ -92,6 +92,7 @@ or to `docs/superpowers/evidence/`. Run `npm run build` first.
 | `scratch/acceptance/intake/run-all.mjs` | intake into the tracker and closing the loop (`--real-youtrack` is opt-in) |
 | `scratch/acceptance/planner/run-all.mjs` | lanes, "Why these steps", the ship step and its merge decision |
 | `scratch/acceptance/relay/run-all.mjs` | two windows and one relay |
+| `scratch/acceptance/a11y/run-all.mjs` | WCAG 2.1 AA: every screen and state in light and dark under axe, structure, names, a keyboard pass, reflow and text spacing (CI: "Accessibility (desktop)") |
 | `p3`, `p3-evals`, `p5` … `p16`, `about`, `daemon-retry`, `plan-fit`, `replan` | the earlier features, one suite each |
 
 Most suites take `--keep-going` and `--only=<ids>`. `p0`, `integrated`, `hold`,
