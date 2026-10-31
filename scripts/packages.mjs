@@ -62,6 +62,13 @@ export const PACKAGES = {
 };
 
 export const APPS = {
+  // The optional team relay (docs/superpowers/specs/2026-10-30-relay-design.md). check-boundaries holds
+  // apps/relay/src to the two internal modules below plus ws, better-sqlite3, zod and node:*.
+  relay: {
+    deps: ['api-contract', 'coordination'],
+    ext: { ws: '^8.18.0', 'better-sqlite3': '^11.7.0', zod: '^3.24.1' },
+    dev: { '@types/ws': '^8.5.13', '@types/better-sqlite3': '^7.6.12' },
+  },
   daemon: {
     deps: Object.keys(PACKAGES),
     ext: { zod: '^3.24.1', ws: '^8.18.0' },

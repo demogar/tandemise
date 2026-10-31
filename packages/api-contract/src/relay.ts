@@ -141,6 +141,9 @@ export interface RelaySnapshot {
   readonly claims: readonly ClaimView[];
   /** Admins only; `[]` for members. */
   readonly endpoints: readonly EndpointView[];
+  /** The relay's clock, so a daemon judges "stale" by the relay's time, not its own. */
+  readonly serverTime: string;
+  readonly staleAfterMs: number;
 }
 
 export interface ImportReport {

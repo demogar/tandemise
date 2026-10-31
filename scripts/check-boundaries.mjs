@@ -117,6 +117,28 @@ for (const [name, spec] of Object.entries(PACKAGES)) {
   }
 }
 
+// The relay (apps/relay/src) imports exactly two internal modules, and two
+// external ones, so splitting it into its own repository stays mechanical
+// (relay spec, §Monorepo or separate repo). The bare `@tandemise/api-contract`
+// is refused too: it reaches `domain` and `shared` at runtime.
+{
+  const RELAY_ALLOWED = new Set(['@tandemise/api-contract/relay', '@tandemise/coordination', 'ws', 'better-sqlite3', 'zod']);
+  let files = [];
+  try { files = walk('apps/relay/src'); } catch { /* no relay in this checkout */ }
+  for (const file of files) {
+    const src = readFileSync(file, 'utf8');
+    const specifiers = [
+      ...[...src.matchAll(IMPORT_RE)].map((m) => m[1]),
+      ...[...src.matchAll(SIDE_EFFECT_IMPORT_RE)].map((m) => m[1]),
+      ...[...src.matchAll(/\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g)].map((m) => m[1]),
+    ];
+    for (const mod of specifiers) {
+      if (!mod || mod.startsWith('.') || mod.startsWith('node:')) continue;
+      if (!RELAY_ALLOWED.has(mod)) errors.push(`${file}: the relay may import only @tandemise/api-contract/relay, @tandemise/coordination, ws, better-sqlite3, zod and node:* (found '${mod}')`);
+    }
+  }
+}
+
 // Sources the relay server loads on their own: type-only imports plus
 // `import { z } from 'zod'`, and nothing else, so the relay stays splittable
 // (docs/superpowers/specs/2026-10-30-relay-design.md, §Monorepo or separate repo).
