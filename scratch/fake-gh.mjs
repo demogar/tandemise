@@ -301,6 +301,8 @@ function prCommand(dir, state, args, out) {
     return;
   }
   if (verb === 'merge') {
+    // A push that lands between a decision and its merge (`moveHeadOnMerge`), once.
+    if (r.moveHeadOnMerge) { pr.headRefOid = r.moveHeadOnMerge; delete r.moveHeadOnMerge; save(); }
     const match = flag(args, '--match-head-commit');
     if (match !== pr.headRefOid) fail(`GraphQL: Head branch was modified. Review and try the merge again. (mergePullRequest)`);
     if (pr.state !== 'OPEN') fail(`GraphQL: Pull request is not open (mergePullRequest)`);

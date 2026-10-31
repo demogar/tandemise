@@ -256,6 +256,42 @@ await attempt('backtest and switch', async () => {
   check('…and a waiting ship step is decided again, as ask, auto-merge off', last.verdict === 'ask' && last.reasons[0] === D.AUTO_MERGE_OFF, last.reasons);
 });
 
+await attempt('reviewed commit', async () => {
+  section('reviewed commit');
+  const fake = await import('./fake-gh.mjs');
+  const w = await world({ factory: { merge: { ...app.SHIPPED_MERGE, autoMerge: 'on' } } });
+  fake.setRepo(w.ghDir, REPO, { defaultChecks: [{ name: 'unit', conclusion: 'success' }] });
+  const m = await w.mission('fix: typo in the settings title');
+  const ship = () => w.h.repo.tasks.listByMission(m.id).find((t) => t.key === 'ship');
+  await w.h.until(() => w.h.repo.missions.get(m.id).status === 'COMPLETE' || ship()?.status === 'BLOCKED', 60000);
+  const merges = () => fake.calls(w.ghDir).filter((c) => c.args[0] === 'pr' && c.args[1] === 'merge');
+  const decision = w.h.repo.mergeDecisions.listByMission(m.id).at(-1);
+  const call = merges()[0]?.args ?? [];
+  check('it merged the decided head, squash', decision?.verdict === 'merge' && call.includes('--squash') && call[call.indexOf('--match-head-commit') + 1] === decision.headSha, { call, decision: decision && [decision.verdict, decision.reasons] });
+  check('…with the trailers', (call[call.indexOf('--body') + 1] ?? '').includes(`Tandemise-Merge: auto; score ${decision?.score}/2`) && (call[call.indexOf('--body') + 1] ?? '').includes('Tandemise-Mission:'), call);
+  check('the audit row has the merge commit, the step and the mission are done', decision?.mergeSha !== null && decision?.mergedBy === 'tandemise' && ship().status === 'SUCCEEDED' && w.h.repo.missions.get(m.id).status === 'COMPLETE', [decision?.mergeSha, ship().status, ship().statusReason]);
+  check('the PR comment says it merged on its own', (fake.readState(w.ghDir).repos[REPO].comments[String(fake.pullRequests(w.ghDir, REPO).at(-1).number)] ?? []).some((c) => c.body.startsWith('Tandemise merged this on its own: risk score')));
+  check('a merged outcome is recorded', w.h.repo.outcomes.listByWorkspace(w.ws, '1970').some((o) => o.mission === m.id && o.kind === 'merged'));
+
+  // A push between the decision and the merge: GitHub refuses, the decision is void, a new one merges the new head.
+  const moved = 'd'.repeat(40);
+  fake.setRepo(w.ghDir, REPO, { moveHeadOnMerge: moved });
+  const m2 = await w.mission('fix: typo in the footer');
+  await w.h.until(() => w.h.repo.mergeDecisions.listByMission(m2.id).length === 2 && w.h.repo.tasks.listByMission(m2.id).find((t) => t.key === 'ship')?.status === 'AWAITING_APPROVAL', 60000);
+  const rows = w.h.repo.mergeDecisions.listByMission(m2.id);
+  check('the first decision was voided, the second is on the new sha', rows.length === 2 && rows[0].voidedAt !== null && rows[1].headSha === moved, rows.map((r) => [r.headSha.slice(0, 7), r.voidedAt, r.mergeSha]));
+  // The new head is a commit Tandemise didn't push: someone else's, so it asks.
+  check('…and asks, because someone else committed to it', rows[1].verdict === 'ask' && rows[1].reasons.includes('A person committed to this pull request, so they should look at the result.'), rows[1].reasons);
+  const m2calls = merges().slice(1);
+  check('only the refused merge call was made, on the decided sha', m2calls.length === 1 && m2calls[0].args[m2calls[0].args.indexOf('--match-head-commit') + 1] === rows[0].headSha, m2calls.map((c) => c.args.join(' ')));
+
+  fake.setRepo(w.ghDir, REPO, { autoMergeAllowed: true });
+  const m3 = await w.mission('fix: typo in the header');
+  await w.h.until(() => w.h.repo.missions.get(m3.id).status === 'COMPLETE', 60000);
+  check('with auto-merge allowed on the repository, the merge is queued with --auto', merges().at(-1).args.includes('--auto'), merges().at(-1).args);
+  check('every pr merge call carried --match-head-commit', merges().length >= 3 && merges().every((c) => c.args.includes('--match-head-commit')), merges().length);
+});
+
 // @sections
 
 clearInterval(keepAlive);

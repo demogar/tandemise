@@ -6,7 +6,7 @@ import type {
 } from '@tandemise/domain';
 import {
   APPROVE_OPTION, DEFAULT_ESCALATE_AFTER_MS, REJECT_OPTION, RUNTIME_ACTOR, decideMerge, decisionComment, foldOutcomes,
-  githubRepoFromRemote, isTrialMission, prBody, prTitle, profileLine, stepClassFor,
+  githubRepoFromRemote, isTrialMission, prBody, prTitle, profileLine, squashTrailers, stepClassFor,
 } from '@tandemise/domain';
 import type { ApprovalFactory } from '@tandemise/policy';
 import type { CommandExecutor } from '@tandemise/integrations-core';
@@ -304,6 +304,8 @@ export class ShipService {
   #closedOrMerged(mission: Mission, task: MissionTask, pr: PullRequestRef, decision: MergeDecisionRecord | null): ShipOutcome {
     const d = this.deps.decide!;
     if (pr.state === 'MERGED') {
+      // A merge Tandemise queued (`--auto`) that GitHub has now done.
+      if (decision !== null && decision.mergedAt === null && decision.mergedBy === 'tandemise') return this.#recordMerged(mission, task, decision, pr.mergeSha, 'tandemise');
       if (decision !== null && decision.mergedAt === null) {
         d.mergeDecisions.update(decision.id, { mergedAt: this.deps.clock.now() as Timestamp, mergedBy: pr.mergedBy ?? 'a person', mergeSha: pr.mergeSha });
         this.deps.recorder.record({ workspaceId: mission.workspaceId, missionId: mission.id, taskId: task.id }, { type: 'merge.merged', decisionId: decision.id, mergeSha: pr.mergeSha ?? '', by: pr.mergedBy ?? 'a person' });
@@ -363,14 +365,67 @@ export class ShipService {
   }
 
   /**
-   * Merges the decided head (§8.5). Until auto-merge ships (Task 16) a
-   * person's Merge is recorded and the merge is left to GitHub.
+   * Merges exactly the decided head (§8.5): `--match-head-commit`, so GitHub
+   * refuses anything pushed after the decision. A refusal voids the decision
+   * and the step checks again; a base that must be up to date is updated
+   * first, which moves the head and so means a new decision.
    */
-  protected async mergeDecided(mission: Mission, task: MissionTask, _repository: Repository, decision: MergeDecisionRecord, by: 'auto' | 'person', _member?: string): Promise<ShipOutcome> {
-    void by;
-    this.#status(mission, task, 'AWAITING_EXTERNAL', WAITING_FOR_GITHUB_MERGE);
-    void decision;
-    return { kind: 'waiting' };
+  protected async mergeDecided(mission: Mission, task: MissionTask, repository: Repository, decision: MergeDecisionRecord, by: 'auto' | 'person', member?: string): Promise<ShipOutcome> {
+    const d = this.deps.decide!;
+    const scope: EventScope = { workspaceId: mission.workspaceId, missionId: mission.id, taskId: task.id };
+    const factory = await d.factory(mission.workspaceId);
+    const pr = await this.deps.pullRequests.view(repository.path, decision.repo, decision.prNumber);
+    if (pr.state !== 'OPEN') return this.#closedOrMerged(mission, task, pr, decision);
+    if (pr.headSha !== decision.headSha) {
+      this.#void(mission, task, decision);
+      return this.#afterOpen(mission, task, repository, pr, new AbortController().signal);
+    }
+    const protection = await this.deps.pullRequests.protection(repository.path, pr.repo, pr.baseBranch);
+    if (protection.upToDate === true) {
+      await this.#git(repository, ['fetch', '--quiet', 'origin', pr.baseBranch], true);
+      const behind = await this.#git(repository, ['merge-base', '--is-ancestor', `origin/${pr.baseBranch}`, pr.headSha], false);
+      if (behind.exitCode !== 0) {
+        await this.deps.pullRequests.updateBranch(repository.path, pr.repo, pr.number);
+        this.deps.recorder.note(scope, 'The base branch moved on, so the pull request was brought up to date; checking it again.');
+        this.#status(mission, task, 'AWAITING_EXTERNAL', 'Waiting for CI after bringing the pull request up to date.');
+        return { kind: 'waiting' };
+      }
+    }
+    const settings = await this.deps.pullRequests.repoSettings(repository.path, pr.repo);
+    const method = 'error' in factory.merge ? 'squash' : factory.merge.method;
+    const result = await this.deps.pullRequests.merge(repository.path, pr.repo, pr.number, {
+      method, matchHeadCommit: decision.headSha, auto: settings.allowAutoMerge,
+      subject: `${pr.title} (#${pr.number})`,
+      body: squashTrailers(decision, { policyRef: decision.policyRef, mission: mission.issueLinkId ?? mission.id, by }),
+    });
+    if (result.refused !== null) {
+      if (/head branch was modified|head commit/i.test(result.refused)) {
+        this.#void(mission, task, decision);
+        const now = await this.deps.pullRequests.view(repository.path, pr.repo, pr.number);
+        return this.#afterOpen(mission, task, repository, now, new AbortController().signal);
+      }
+      return { kind: 'blocked', reason: `GitHub refused the merge: ${result.refused}` };
+    }
+    const mergedBy = by === 'auto' ? 'tandemise' : (member ?? 'a person');
+    if (result.queued) {
+      d.mergeDecisions.update(decision.id, { mergedBy });
+      this.#status(mission, task, 'AWAITING_EXTERNAL', 'GitHub merges it once its required checks pass.');
+      const after = await this.deps.pullRequests.view(repository.path, pr.repo, pr.number);
+      if (after.state === 'MERGED') return this.#closedOrMerged(mission, task, after, d.mergeDecisions.get(decision.id) ?? decision);
+      return { kind: 'waiting' };
+    }
+    const after = await this.deps.pullRequests.view(repository.path, pr.repo, pr.number);
+    return this.#recordMerged(mission, task, decision, after.mergeSha, mergedBy);
+  }
+
+  #recordMerged(mission: Mission, task: MissionTask, decision: MergeDecisionRecord, mergeSha: string | null, mergedBy: string): ShipOutcome {
+    const d = this.deps.decide!;
+    d.mergeDecisions.update(decision.id, { mergedAt: this.deps.clock.now() as Timestamp, mergedBy, mergeSha });
+    this.deps.recorder.record({ workspaceId: mission.workspaceId, missionId: mission.id, taskId: task.id }, { type: 'merge.merged', decisionId: decision.id, mergeSha: mergeSha ?? '', by: mergedBy });
+    d.outcomes()?.merged(decision, mergedBy === 'tandemise' ? 'tandemise' : 'person');
+    this.#cancelCards(mission, task);
+    this.deps.recorder.invalidate('ship', mission.id);
+    return { kind: 'merged', reason: mergedBy === 'tandemise' ? `Merged on its own: risk score ${decision.score} of ${decision.allowed ?? 0} allowed.` : `Merged by you: risk score ${decision.score} of ${decision.allowed ?? 0}.` };
   }
 
   #pushedSha(mission: Mission, pr: PullRequestRef): string | null {

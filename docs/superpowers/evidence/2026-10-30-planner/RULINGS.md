@@ -125,3 +125,8 @@ spec (`docs/superpowers/specs/2026-10-30-planner-and-merge-design.md`).
   `defaultChecks` per repository so an acceptance run can make CI green on every
   commit. The PM2 and PM5 scenarios were written after the code they test, so
   there was no red run for them.
+- Ruling (Task 16): a head that moves between decision and merge is a commit
+  Tandemise didn't push, so the new decision on that sha asks (`process.person_commits`)
+  rather than merging. The spec's PM8 only requires that the decision be voided and
+  remade on the new sha. The squash trailers carry the decision's own score (1/2 for
+  a quick change with no review), not the spec example's 0/2.
