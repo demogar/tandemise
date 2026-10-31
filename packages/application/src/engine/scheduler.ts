@@ -15,6 +15,7 @@ import { errorMessage } from '@tandemise/shared';
 import type { LifecycleComponent } from '@tandemise/kernel';
 import type { Waiter } from './waiter.js';
 import type { ShipService } from './ship.js';
+import type { OutcomeRecorder } from './outcomes.js';
 import type { EventRecorder, EventScope } from '../support/event-recorder.js';
 import type { BranchIntegrationService } from './branch-integration.js';
 import type { RemediationPlanner } from './remediation.js';
@@ -38,6 +39,8 @@ export interface SchedulerDeps {
   readonly waiter: Waiter;
   /** The daemon-owned ship step (#53 §8). Optional so harnesses built before it still compose. */
   readonly ship?: ShipService;
+  /** Records each settled attempt for routing (#53 §9.1). Optional for older harnesses. */
+  readonly outcomes?: Pick<OutcomeRecorder, 'stepSettled'>;
   readonly remediation: RemediationPlanner;
   readonly integration: BranchIntegrationService;
   readonly recorder: EventRecorder;
@@ -541,6 +544,9 @@ export class SchedulerService implements LifecycleComponent {
     }
     if (outcome.retryAfterMs !== undefined) {
       this.#retryAfter.set(task.id, this.deps.clock.epochMs() + outcome.retryAfterMs);
+    }
+    if (outcome.status === 'SUCCEEDED' || outcome.status === 'FAILED' || outcome.status === 'BLOCKED') {
+      this.deps.outcomes?.stepSettled(mission, this.deps.tasks.get(task.id) ?? task);
     }
     if (outcome.status !== 'SUCCEEDED') return;
 

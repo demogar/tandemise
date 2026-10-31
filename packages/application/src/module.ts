@@ -2,6 +2,7 @@ import { defineModule, type Container, type Resolver, type TandemiseModule } fro
 import { SHIPPED_FACTORY_SOURCE } from './planning/factory-config.js';
 import { PlannerService } from './planning/planner-service.js';
 import { ShipService } from './engine/ship.js';
+import { OutcomeRecorder } from './engine/outcomes.js';
 import type { PullRequestPort } from '@tandemise/domain';
 
 /** Until the daemon binds the `gh` flow: every pull request call says there is no GitHub here. */
@@ -349,6 +350,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
     ), { source: SOURCE });
 
     bind(t.FEEDBACK_ROUNDS, (r) => new FeedbackRounds({
+      outcomes: () => r.tryResolve(t.OUTCOME_RECORDER),
       missions: r.resolve(t.MISSION_REPOSITORY), tasks: r.resolve(t.TASK_REPOSITORY), runs: r.resolve(t.RUN_REPOSITORY),
       artifacts: r.resolve(t.ARTIFACT_REPOSITORY), artifactStore: r.resolve(t.ARTIFACT_STORE), approvals: r.resolve(t.APPROVAL_REPOSITORY),
       evaluations: r.resolve(t.EVALUATION_REPOSITORY), feedback: r.resolve(t.FEEDBACK_REPOSITORY), runInputs: r.resolve(t.RUN_INPUT_REPOSITORY),
@@ -358,6 +360,15 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
     }), { source: SOURCE });
 
     bind(t.PULL_REQUEST_FLOW, () => NO_PULL_REQUESTS, { source: SOURCE });
+    bind(t.OUTCOME_RECORDER, (r) => new OutcomeRecorder({
+      outcomes: r.resolve(t.OUTCOME_REPOSITORY),
+      missions: r.resolve(t.MISSION_REPOSITORY),
+      planDecisions: r.resolve(t.PLAN_DECISION_REPOSITORY),
+      runScores: r.resolve(t.RUN_SCORE_REPOSITORY),
+      recorder: r.resolve(t.EVENT_RECORDER),
+      clock: clock(r),
+      log: log(r).child({ component: 'outcomes' }),
+    }), { source: SOURCE });
     bind(t.SHIP_SERVICE, (r) => new ShipService({
       tasks: r.resolve(t.TASK_REPOSITORY),
       repositories: r.resolve(t.REPO_REPOSITORY),
@@ -387,6 +398,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       }),
       remediation: r.resolve(t.REMEDIATION_PLANNER),
       integration: r.resolve(t.BRANCH_INTEGRATION_SERVICE),
+      outcomes: r.resolve(t.OUTCOME_RECORDER),
       ship: r.resolve(t.SHIP_SERVICE),
       recorder: r.resolve(t.EVENT_RECORDER),
       staffing: r.resolve(t.STAFFING_RESOLVER),

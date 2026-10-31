@@ -82,3 +82,10 @@ spec (`docs/superpowers/specs/2026-10-30-planner-and-merge-design.md`).
   "It touched …" sentence is asserted on the Timeline/events, since the Feed tab
   shows cards only. A lane the measured change raised reads "… lane now: the
   change turned out riskier than planned …", never "a plan you approve".
+- Ruling (Task 9): #50's hold service isn't on this base, so `OutcomeRecorder.held`
+  exists but nothing calls it yet; wiring it is part of integrating with #50.
+  Outcome events carry the profile's highest `sensitivity` (an optional field
+  beyond the spec's op) because the routing bucket needs it and area names
+  alone don't say it. `p3-evals-check` built a mission repository on a
+  database migrated only to 020; it now migrates the rest first, since the
+  repository reads the current schema (the new `lane_request` column).

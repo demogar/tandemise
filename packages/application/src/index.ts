@@ -47,6 +47,7 @@ export { LIVE_RUN_STATUSES, downstreamConsumers, reviewedTaskOf } from './suppor
 export type { Consumer, ConsumerFacts } from './support/downstream.js';
 export { BranchIntegrationService } from './engine/branch-integration.js';
 export { ShipService } from './engine/ship.js';
+export { OutcomeRecorder } from './engine/outcomes.js';
 export type { ShipOutcome, ShipDeps } from './engine/ship.js';
 export type { IntegrationOutcome, MergedBranch } from './engine/branch-integration.js';
 export { evaluationFrom } from './engine/evaluations.js';

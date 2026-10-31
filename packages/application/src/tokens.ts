@@ -117,6 +117,8 @@ export const PLANNER_SERVICE = token<import('./planning/planner-service.js').Pla
 export const PULL_REQUEST_FLOW = token<import('@tandemise/domain').PullRequestPort>('port.PullRequestFlow');
 /** The daemon-owned ship step (#53 §8.1). */
 export const SHIP_SERVICE = token<import('./engine/ship.js').ShipService>('application.ShipService');
+/** Outcomes for routing and learning (#53 §9.1). */
+export const OUTCOME_RECORDER = token<import('./engine/outcomes.js').OutcomeRecorder>('application.OutcomeRecorder');
 /** The `.tandemise` setup folder on disk (P15). The daemon binds the real one. */
 export const SETUP_FOLDER = token<import('./ports.js').SetupFolderPort>('port.SetupFolder');
 export const WORKFLOW_SERVICE = token<WorkflowService>('service.Workflow');

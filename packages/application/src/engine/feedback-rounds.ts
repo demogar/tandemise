@@ -30,6 +30,8 @@ export const ROUND_START_STATUSES: readonly TaskStatus[] = ['SUCCEEDED', 'AWAITI
 export const ROUND_ATTEMPTS = DEFAULT_RETRY_POLICY.maxAttempts;
 
 export interface FeedbackRoundsDeps {
+  /** Records a request-changes round for routing (#53 §9.1); optional. */
+  readonly outcomes?: () => { changesRequested(task: MissionTask): void } | undefined;
   readonly missions: MissionRepositoryPort;
   readonly tasks: TaskRepositoryPort;
   readonly runs: RunRepositoryPort;
@@ -263,6 +265,7 @@ export class FeedbackRounds {
     }));
     deps.recorder.invalidate('tasks', mission.id);
     deps.recorder.invalidate('approvals', mission.id);
+    deps.outcomes?.()?.changesRequested(task);
     return { task: deps.tasks.get(task.id)!, stop: stop.map((dependent) => dependent.id) };
   }
 
