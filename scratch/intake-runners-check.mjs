@@ -266,6 +266,94 @@ try {
     await d2?.dispose();
   }
 
+  // Ruling 22: a source the brain configures is off on a machine until its
+  // person switches it on there; a local one is on.
+  section('sources from the brain: off on this machine until switched on');
+  let dBrain = null;
+  try {
+    dBrain = await open();
+    const ws = (await dBrain.services.workspaces.create(dBrain.caller, { name: 'Brain project' })).workspace.id;
+    const source = { ...GITHUB_SOURCE, id: 'github-acme-brain', instance: 'acme/brain' };
+    dBrain.config.write(ws, { tracker: ytTracker(fake.url), intake: { sources: [source], dailyCap: 20, similarity: { link: 0.85, ask: 0.55 } } });
+    await dBrain.resolver.saveCredential(ws, 'perm:test');
+    // The same configuration, read as the brain's (as a project linked to a brain reads it).
+    dBrain.config.originFor = () => 'brain';
+    putIssue(GH, 'acme/brain', { number: 1, title: 'Configured by the team, run by whoever switches it on' });
+    const before = listCalls('acme/brain');
+    await dBrain.host.checkNow(dBrain.caller, ws);
+    dBrain.host.tick();
+    await dBrain.settle();
+    check('a brain source is not polled before this machine switches it on', listCalls('acme/brain') === before, listCalls('acme/brain') - before);
+    const view = dBrain.services.intake.config(ws);
+    check('…and the config view says it is off here', view.enabled?.[source.id] === false, view.enabled);
+    const on = await refusal(() => dBrain.services.intake.setSourceEnabled(dBrain.caller, ws, source.id, true));
+    check('setSourceEnabled switches it on', on === null && dBrain.services.intake.config(ws).enabled?.[source.id] === true, on?.message ?? dBrain.services.intake.config(ws).enabled);
+    await dBrain.host.checkNow(dBrain.caller, ws);
+    await dBrain.settle();
+    check('…then it is polled', listCalls('acme/brain') === before + 1, listCalls('acme/brain') - before);
+    const unknown = await refusal(() => dBrain.services.intake.setSourceEnabled(dBrain.caller, ws, 'nope', true));
+    check('switching an unknown source is NOT_FOUND', unknown?.code === 'NOT_FOUND', unknown?.message);
+    dBrain.config.originFor = () => 'local';
+    const local = { ...GITHUB_SOURCE, id: 'github-acme-local', instance: 'acme/local' };
+    dBrain.config.write(ws, { intake: { sources: [source, local], dailyCap: 20, similarity: { link: 0.85, ask: 0.55 } } });
+    check('a local source is on by default', dBrain.services.intake.config(ws).enabled?.[local.id] === true, dBrain.services.intake.config(ws).enabled);
+  } catch (e) {
+    check('the brain source section ran', false, String(e?.stack ?? e));
+  } finally {
+    await dBrain?.dispose();
+  }
+
+  // Ruling 22: with the relay, one daemon runs a source at a time, under a
+  // lease ('source', id) that lapses 2 minutes after its last renewal.
+  section('source leases: two daemons, one team; the second is refused until the lease lapses');
+  let leaseTeam = null;
+  const leasePair = [];
+  try {
+    const { sharedTeam } = await import('./shared-coordination.mjs');
+    leaseTeam = sharedTeam(clock);
+    const source = { ...GITHUB_SOURCE, id: 'github-acme-team', instance: 'acme/team' };
+    const host = async (name) => {
+      const port = leaseTeam.join(name, `${name}'s laptop`);
+      const d = await open({ bindings: (c) => c.bind(app.COORDINATION, () => port, { source: 'check' }) });
+      leasePair.push(d);
+      const ws = (await d.services.workspaces.create(d.caller, { name: `${name}'s copy` })).workspace.id;
+      d.config.write(ws, { tracker: ytTracker(fake.url), intake: { sources: [source], dailyCap: 20, similarity: { link: 0.85, ask: 0.55 } } });
+      await d.resolver.saveCredential(ws, 'perm:test');
+      d.container.resolve(app.SETTINGS_STORE).write({ coordination: { projectKeys: { [ws]: 'github.com/acme/brain' } } });
+      return { d, ws };
+    };
+    const ana = await host('Ana');
+    const bruno = await host('Bruno');
+    putIssue(GH, 'acme/team', { number: 1, title: 'One daemon reads this source' });
+    const base = listCalls('acme/team');
+    await ana.d.host.checkNow(ana.d.caller, ana.ws);
+    await ana.d.settle();
+    check("Ana's daemon takes the source's lease and polls", listCalls('acme/team') === base + 1, listCalls('acme/team') - base);
+    await bruno.d.host.checkNow(bruno.d.caller, bruno.ws);
+    await bruno.d.settle();
+    check("…Bruno's is refused while Ana's lease is live: no poll", listCalls('acme/team') === base + 1, listCalls('acme/team') - base);
+    advance(60_000);
+    await ana.d.host.checkNow(ana.d.caller, ana.ws);
+    await ana.d.settle();
+    check('…Ana renews it a minute later', listCalls('acme/team') === base + 2, listCalls('acme/team') - base);
+    advance(90_000);
+    await bruno.d.host.checkNow(bruno.d.caller, bruno.ws);
+    await bruno.d.settle();
+    check('…so 2.5 minutes after the first, Bruno is still refused', listCalls('acme/team') === base + 2, listCalls('acme/team') - base);
+    advance(3 * 60_000);
+    await bruno.d.host.checkNow(bruno.d.caller, bruno.ws);
+    await bruno.d.settle();
+    check('once the lease lapses (Ana stopped renewing), Bruno takes it and polls', listCalls('acme/team') === base + 3, listCalls('acme/team') - base);
+    await ana.d.host.checkNow(ana.d.caller, ana.ws);
+    await ana.d.settle();
+    check('…and now Ana is the one refused', listCalls('acme/team') === base + 3, listCalls('acme/team') - base);
+  } catch (e) {
+    check('the source lease section ran', false, String(e?.stack ?? e));
+  } finally {
+    for (const d of leasePair) await d.dispose();
+    leaseTeam?.close();
+  }
+
   section('github runner: P14 moves onto GitHub Issues as the tracker');
   let d3 = null;
   try {

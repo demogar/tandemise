@@ -59,6 +59,16 @@ interface Running {
 const keyOf = (workspaceId: WorkspaceId, sourceId: string): string => `${workspaceId}\u0000${sourceId}`;
 
 /**
+ * A source with no `intake_sources` row yet runs on this machine when the
+ * project's configuration is local, and not when it comes from the brain
+ * (Ruling 22): the brain is shared, the credentials and the choice to run
+ * a source are each person's.
+ */
+export function sourceOnByDefault(config: Pick<IntakeConfigSource, 'origin' | 'originFor'>, workspaceId: WorkspaceId): boolean {
+  return (config.originFor?.(workspaceId) ?? config.origin) !== 'brain';
+}
+
+/**
  * Drives the shipped intake runners (spec §2, plan Task 10).
  *
  * The scheduler's tick calls `tick()`, which returns at once: due polls
@@ -85,6 +95,8 @@ export class IntakeRunnerHost {
   /** Polls in flight per source, so a tick never starts a second one and `checkNow` waits for it. */
   readonly #polls = new Map<string, Promise<void>>();
   readonly #refusedAtMs = new Map<string, number>();
+  /** When this host last got each source's lease, so a poll source's lease is renewed between polls (spec §3). */
+  readonly #heldAtMs = new Map<string, number>();
   /** When each socket runner's claim was last asked. */
   readonly #keptAtMs = new Map<string, number>();
   /** Everything started in the background, for `settle()`. */
@@ -144,7 +156,7 @@ export class IntakeRunnerHost {
     if (source === undefined) return { ok: false, error: SOURCE_NOT_CONFIGURED, retryable: false };
     const runner = this.deps.runners().find((r) => r.kind === source.kind);
     if (runner?.close === undefined) return null;
-    if (this.deps.intake.source(workspaceId, source.id)?.enabled === false) return null;
+    if (!this.#on(workspaceId, source.id)) return null;
     if (!(await this.#claimed(workspaceId, source.id))) return null;
     return runner.close(closure, this.#context(workspaceId, source, new AbortController().signal));
   }
@@ -189,6 +201,10 @@ export class IntakeRunnerHost {
             }
           } else if (runner.mode === 'poll' && this.#due(workspace.id, source, nowMs)) {
             this.#track(this.#poll(workspace.id, source, runner, { force: false }));
+          } else if (runner.mode === 'poll' && this.#renewDue(key, nowMs)) {
+            // The lease's heartbeat between polls (spec §3): kept every 30 s while this daemon reads the source.
+            this.#heldAtMs.set(key, nowMs);
+            this.#track(this.#claimed(workspace.id, source.id));
           }
         }
       }
@@ -209,17 +225,34 @@ export class IntakeRunnerHost {
     return nowMs - Date.parse(last) >= everyMinutes(source) * 60_000;
   }
 
-  /** The project's configured sources a shipped runner reads, minus those this machine switched off. */
+  /** Whether this host holds a poll source's lease and its 30 s renewal is due. */
+  #renewDue(key: string, nowMs: number): boolean {
+    const held = this.#heldAtMs.get(key);
+    return held !== undefined && !this.#polls.has(key) && nowMs - held >= CLAIM_RETRY_MS;
+  }
+
+  /** The project's configured sources a shipped runner reads, minus those off on this machine. */
   #runnable(workspaceId: WorkspaceId, sources: readonly IntakeSourceConfig[]): { source: IntakeSourceConfig; runner: IntakeRunner }[] {
     const runners = this.deps.runners();
     const out: { source: IntakeSourceConfig; runner: IntakeRunner }[] = [];
     for (const source of sources) {
       const runner = runners.find((r) => r.kind === source.kind);
       if (runner === undefined) continue;
-      if (this.deps.intake.source(workspaceId, source.id)?.enabled === false) continue;
+      if (!this.#on(workspaceId, source.id)) continue;
       out.push({ source, runner });
     }
     return out;
+  }
+
+  /**
+   * Whether the source runs on this machine (Ruling 22): its `intake_sources`
+   * row says so once there is one; before that, a source of the project's own
+   * local configuration is on, and one from the brain is off until this
+   * machine's person switches it on, so a team's brain never makes every
+   * teammate's daemon read every source with their credentials.
+   */
+  #on(workspaceId: WorkspaceId, sourceId: string): boolean {
+    return this.deps.intake.source(workspaceId, sourceId)?.enabled ?? sourceOnByDefault(this.deps.config, workspaceId);
   }
 
   // ------------------------------------------------------------------ polls and sockets
@@ -273,8 +306,13 @@ export class IntakeRunnerHost {
     } catch (e) {
       this.deps.log.warn('intake.source_claim_failed', { workspaceId, sourceId, error: errorMessage(e) });
     }
-    if (ok) this.#refusedAtMs.delete(key);
-    else this.#refusedAtMs.set(key, this.deps.clock.epochMs());
+    if (ok) {
+      this.#refusedAtMs.delete(key);
+      this.#heldAtMs.set(key, this.deps.clock.epochMs());
+    } else {
+      this.#refusedAtMs.set(key, this.deps.clock.epochMs());
+      this.#heldAtMs.delete(key);
+    }
     return ok;
   }
 
@@ -368,7 +406,7 @@ export class IntakeRunnerHost {
       this.#save(workspaceId, source, { lastError: NO_RUNNER_FOR_SOURCE });
       return;
     }
-    if (this.deps.intake.source(workspaceId, source.id)?.enabled === false) {
+    if (!this.#on(workspaceId, source.id)) {
       this.deps.mailbox.ack(message.id);
       this.deps.log.info('intake.webhook_source_off', { workspaceId, sourceId: source.id });
       return;
@@ -404,13 +442,14 @@ export class IntakeRunnerHost {
   // ------------------------------------------------------------------ support
 
   /**
-   * Writes the source's running state. The row's first save switches it on:
-   * a configured source runs until this machine switches it off.
+   * Writes the source's running state. The row's first save records the
+   * machine's default (Ruling 22): on for the project's local configuration,
+   * off for a source from the brain until this machine switches it on.
    */
   #save(workspaceId: WorkspaceId, source: IntakeSourceConfig, patch: IntakeSourcePatch): void {
     try {
       const first = this.deps.intake.source(workspaceId, source.id) === undefined;
-      this.deps.intake.saveSource(workspaceId, source.id, { ...(first ? { kind: source.kind, enabled: true } : {}), ...patch });
+      this.deps.intake.saveSource(workspaceId, source.id, { ...(first ? { kind: source.kind, enabled: sourceOnByDefault(this.deps.config, workspaceId) } : {}), ...patch });
     } catch (e) {
       this.deps.log.warn('intake.source_save_failed', { workspaceId, sourceId: source.id, error: errorMessage(e) });
     }

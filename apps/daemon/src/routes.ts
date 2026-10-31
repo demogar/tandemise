@@ -18,7 +18,7 @@ import {
   ACCEPTED_INTAKE_SCHEMAS, intakeSignalsQuery, mintIntakeTokenRequest,
   decideIntakeSignalRequest,
   startBoardItemRequest,
-  saveIntakeSourceSecretRequest, saveTrackerSecretRequest,
+  saveIntakeSourceSecretRequest, saveTrackerSecretRequest, setIntakeSourceEnabledRequest,
   ackIntakeClosureRequest,
   connectRelayRequest, coordinationEndpointRequest, coordinationPullRequest, projectKeyRequest, takeOverClaimRequest,
 } from '@tandemise/api-contract';
@@ -194,6 +194,9 @@ export function buildRouter(services: TandemiseServices, options: {
   r.put('/v1/workspaces/:id/intake/tracker/secret', async (ctx) => {
     await services.intake.saveTrackerSecret(ctx.caller, asId(ctx.params.id!), (await ctx.body(saveTrackerSecretRequest)).value);
   });
+  // A source runs on this machine, or not (Ruling 22): a brain's source is off here until switched on.
+  r.put('/v1/workspaces/:id/intake/sources/:sourceId/enabled', async (ctx) =>
+    services.intake.setSourceEnabled(ctx.caller, asId(ctx.params.id!), ctx.params.sourceId!, (await ctx.body(setIntakeSourceEnabledRequest)).enabled));
   // The Inbox card's answer, and "try now" for a signal the tracker could not take (plan Task 7).
   r.post('/v1/intake/signals/:id/decide', async (ctx) =>
     services.intake.decide(ctx.caller, asId(ctx.params.id!), (await ctx.body(decideIntakeSignalRequest)).decision));

@@ -18,6 +18,7 @@ import { requireSeat, type Caller } from '../support/identity.js';
 import { SlidingWindowLimit } from '../intake/rate-limit.js';
 import type { TrackerResolver } from '../intake/tracker-resolver.js';
 import { createDraft, sourceEntry } from '../intake/item-text.js';
+import { sourceOnByDefault } from '../intake/runner-host.js';
 
 /**
  * Who a push is for: one project and one of its sources. From an intake token
@@ -619,7 +620,31 @@ export class IntakeService {
     this.#requireWorkspace(workspaceId);
     const read = this.deps.config.read(workspaceId);
     const origin = this.deps.config.originFor?.(workspaceId) ?? this.deps.config.origin;
-    return { origin, editable: this.deps.config.write !== undefined && origin === 'local', ...read };
+    // Whether each source runs on this machine (Ruling 22): its row, else the origin's default.
+    const enabled = Object.fromEntries(read.sources.map((s) => [s.id, this.deps.intake.source(workspaceId, s.id)?.enabled ?? origin !== 'brain']));
+    return { origin, editable: this.deps.config.write !== undefined && origin === 'local', ...read, enabled };
+  }
+
+  /**
+   * Switches a configured source on or off on this machine only (Ruling 22):
+   * `intake_sources.enabled`, never the configuration, so a source from the
+   * brain can be run by the one person who switches it on.
+   */
+  setSourceEnabled(caller: Caller, workspaceId: WorkspaceId, sourceId: string, enabled: boolean): IntakeConfigView {
+    this.#requireWorkspace(workspaceId);
+    requireSeat(this.deps, workspaceId, caller);
+    const source = this.deps.config.read(workspaceId).sources.find((s) => s.id === sourceId);
+    if (source === undefined) {
+      throw new TandemiseError('NOT_FOUND', `This project has no intake source '${sourceId}'.`, { details: { sourceId } });
+    }
+    const row = this.deps.intake.source(workspaceId, sourceId);
+    this.deps.intake.saveSource(workspaceId, sourceId, {
+      ...(row === undefined ? { kind: source.kind } : {}),
+      enabled,
+      ...(enabled ? { enabledBy: caller.personId } : {}),
+    });
+    this.deps.log.info('intake.source_switched', { workspaceId, sourceId, enabled });
+    return this.config(workspaceId);
   }
 
   /**
@@ -658,7 +683,8 @@ export class IntakeService {
    * replacing, and removing from the store, the one saved before under that
    * name. An empty value only removes it. The secret never reaches a config
    * file or the brain. The source's row is created here when it has none yet,
-   * switched on, as the runner host would (RULINGS ruling 15).
+   * with the machine's default, as the runner host would (RULINGS rulings 15
+   * and 22): on for local configuration, off for a source from the brain.
    */
   async saveSourceSecret(caller: Caller, workspaceId: WorkspaceId, sourceId: string, secret: { readonly name: string; readonly value: string }): Promise<void> {
     this.#requireWorkspace(workspaceId);
@@ -673,7 +699,7 @@ export class IntakeService {
     if (secret.value === '') delete refs[secret.name];
     else refs[secret.name] = await this.deps.secrets.store(`intake:${workspaceId}:source:${sourceId}:${secret.name}`, secret.value);
     this.deps.intake.saveSource(workspaceId, sourceId, {
-      ...(row === undefined ? { kind: source.kind, enabled: true, enabledBy: caller.personId } : {}),
+      ...(row === undefined ? { kind: source.kind, enabled: sourceOnByDefault(this.deps.config, workspaceId), enabledBy: caller.personId } : {}),
       secretRefs: refs,
     });
     // After the new ref is recorded, so a failure here leaves a stray secret, never a source without one.

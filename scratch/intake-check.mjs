@@ -1195,6 +1195,80 @@ try {
   for (const h of boardHomes) rmSync(h, { recursive: true, force: true });
 }
 
+// ------------------------------------------------------------------ claims (spec §3, acceptance "Claims"; Ruling 22)
+// Two daemons, two databases, one team: Start takes the relay's
+// ('tracker_item', ref) claim before the mission exists. While Ana holds
+// GAR-1, Bruno's Start is refused in her words, even when the tracker still
+// shows the item Open; once her mission ends, the claim is released and his
+// Start goes through. Solo (no relay) the other Start sections show it is
+// always granted.
+section('claims: two daemons share the relay\'s claims; Start refuses with the holder\'s words');
+{
+  const { sharedTeam, eventBus } = await import('./shared-coordination.mjs');
+  const team = sharedTeam(pipeline.clock);
+  const fakeC = await pipeline.startFakeYouTrack({ project: 'GAR', token: 'perm:test', login: 'tandemise-bot' });
+  const claimHomes = [];
+  const opened = [];
+  try {
+    const daemon = async (name) => {
+      const home = pipeline.mkdtempSync(join(pipeline.tmpdir(), 'tdi-claims-'));
+      claimHomes.push(home);
+      const settings = pipeline.app.createMemorySettingsStore();
+      const port = team.join(name, `${name}'s laptop`);
+      const d = await pipeline.open({
+        home, settings, secrets: pipeline.memorySecrets(), providers: [pipeline.Y.youtrackIntegrationModule],
+        bindings: (c) => {
+          c.bind(pipeline.app.COORDINATION, () => port, { source: 'check' });
+          c.rebind(pipeline.app.EVENT_BUS, () => eventBus(), { source: 'check' });
+        },
+      });
+      opened.push(d);
+      const ws = await pipeline.configureYouTrack(d, fakeC.url);
+      // One project on both machines: the brain's identity would name it (relay spec §Data model).
+      settings.write({ coordination: { projectKeys: { [ws]: 'github.com/acme/brain' } } });
+      d.container.resolve(pipeline.app.PERSON_REPOSITORY).update(d.caller.personId, { displayName: name });
+      return { d, ws, name };
+    };
+    const ana = await daemon('Ana');
+    const bruno = await daemon('Bruno');
+    fakeC.putIssue({ summary: 'Checkout fails on Safari', description: DONE_WHEN, state: 'Open' });
+    const missionsOf = (x) => x.d.container.resolve(pipeline.app.MISSION_REPOSITORY).list({ workspaceId: x.ws }).filter((m) => m.trackerItemId != null);
+    const startOf = async (x) => { try { return { mission: await x.d.services.tracker.start(x.d.caller, x.ws, 'GAR-1') }; } catch (e) { return { error: e }; } };
+
+    const a = await startOf(ana);
+    check('Ana starts GAR-1', a.mission !== undefined, a.error?.message);
+    const held = team.store.activeClaims().filter((c) => c.itemRef === 'youtrack:GAR-1');
+    check("…the team holds one claim on youtrack:GAR-1, Ana's, tied to her mission",
+      held.length === 1 && held[0].memberName === 'Ana' && held[0].projectKey === 'github.com/acme/brain' && held[0].localRef === a.mission?.id, held);
+    // The tracker alone would not stop Bruno: someone moved GAR-1 back to Open.
+    fakeC.setState('GAR-1', 'Open');
+    const b = await startOf(bruno);
+    check('Bruno\'s Start is refused with Ana\'s words: "Ana is working on GAR-1 since HH:MM."',
+      b.error?.code === 'CONFLICT' && /^Ana is working on GAR-1 since \d\d:\d\d\.$/.test(b.error?.message ?? ''), { code: b.error?.code, message: b.error?.message });
+    check('…before any mission exists on Bruno\'s machine', missionsOf(bruno).length === 0, missionsOf(bruno).map((m) => m.id));
+    check('…and GAR-1 is not moved by Bruno', fakeC.issues.get('GAR-1')?.state === 'Open', fakeC.issues.get('GAR-1')?.state);
+    const rows = ana.d.services.coordination?.rows?.(ana.ws) ?? [];
+    check("Ana's Home lists GAR-1 as hers, with her mission", rows.some((r) => r.itemKey === 'GAR-1' && r.mine && r.missionId === a.mission?.id), rows);
+
+    if (a.mission !== undefined) await ana.d.services.missions.cancel(a.mission.id, 'Not today.');
+    await ana.d.services.tracker.settle();
+    const after = team.store.activeClaims().filter((c) => c.itemRef === 'youtrack:GAR-1');
+    check('cancelling Ana\'s mission releases the claim', after.length === 0, after);
+    fakeC.setState('GAR-1', 'Open');
+    const b2 = await startOf(bruno);
+    check('…then Bruno\'s Start is granted and makes his mission', b2.mission !== undefined && missionsOf(bruno).length === 1, b2.error?.message);
+    const bHeld = team.store.activeClaims().filter((c) => c.itemRef === 'youtrack:GAR-1');
+    check('…and the team now sees Bruno on GAR-1', bHeld.length === 1 && bHeld[0].memberName === 'Bruno' && bHeld[0].localRef === b2.mission?.id, bHeld);
+  } catch (e) {
+    check('the shared claims section ran', false, String(e?.stack ?? e));
+  } finally {
+    for (const d of opened) { await d.intake.settle(); await d.services.tracker.settle(); await d.container.dispose(); }
+    await fakeC.close();
+    team.close();
+    for (const h of claimHomes) rmSync(h, { recursive: true, force: true });
+  }
+}
+
 // ------------------------------------------------------------------ write-back (Task 9)
 // The tracker follows a started mission: one activity comment, edited at most
 // once a minute and always ending on the latest state, and the mapped state

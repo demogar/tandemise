@@ -10,3 +10,4 @@ export * from './handshake.js';
 export * from './retention.js';
 export * from './transfer.js';
 export * from './local.js';
+export * from './leases.js';

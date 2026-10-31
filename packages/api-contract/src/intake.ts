@@ -551,7 +551,22 @@ export interface IntakeConfigView {
   readonly sources: readonly IntakeSourceConfig[];
   readonly dailyCap: number;
   readonly similarity: { readonly link: number; readonly ask: number };
+  /**
+   * Per source id, whether it runs on this machine (Ruling 22): local
+   * configuration is on by default, a source from the brain off until
+   * switched on here. Not part of the configuration, so it is never saved back.
+   */
+  readonly enabled: Readonly<Record<string, boolean>>;
 }
+
+/**
+ * `PUT /v1/workspaces/:id/intake/sources/:sourceId/enabled` (Ruling 22):
+ * runs the source on this machine, or stops it here. Answers the config view.
+ */
+export const setIntakeSourceEnabledRequest = z
+  .object({ enabled: z.boolean() })
+  .strict();
+export type SetIntakeSourceEnabledRequest = z.infer<typeof setIntakeSourceEnabledRequest>;
 
 /** `POST /v1/intake/signals`'s answer (spec §2). */
 export interface IntakePushView {

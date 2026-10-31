@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type {
-  ClaimView, CoordDeviceView, CoordMemberView, CreateEndpointRequest, CreateInviteRequest, EndpointView, ImportReport, MailboxMessage,
-  PresenceView, RelayServerFrame, RelaySnapshot,
+  ClaimView, CoordDeviceView, CoordMemberView, CreateEndpointRequest, CreateInviteRequest, EndpointView, ImportReport, LeaseRequest, LeaseView,
+  MailboxMessage, PresenceView, RelayServerFrame, RelaySnapshot,
 } from '@tandemise/api-contract/relay';
 import {
   ChangeEmitter, CoordError, clockTime, heldBySentence, itemKey, readClaimSync, writeClaimSync,
@@ -321,6 +321,20 @@ export class RelayCoordination {
       this.#wentOffline(e);
     }
     this.#emitter.emit('claims');
+  }
+
+  /**
+   * A source's lease (intake spec §3, Ruling 22). Offline, it is granted:
+   * the network never blocks local work, and the pipeline's dedupe keeps a
+   * second daemon reading the same source from filing anything twice.
+   */
+  async lease(input: LeaseRequest): Promise<LeaseView> {
+    try {
+      return await this.client.lease(input);
+    } catch (e) {
+      if (!isOffline(e)) throw e;
+      return { granted: true, expiresAt: new Date(this.store.clock().getTime() + input.ttlSeconds * 1000).toISOString(), holderName: null, deviceLabel: null };
+    }
   }
 
   async takeOver(claimId: string, localRef: string): Promise<ClaimResult> {

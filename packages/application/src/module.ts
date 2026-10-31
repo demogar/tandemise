@@ -740,6 +740,8 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
         control: r.tryResolve(t.COORDINATION_CONTROL) ?? null,
         missions: r.resolve(t.MISSION_REPOSITORY),
         issues: r.resolve(t.ISSUE_REPOSITORY),
+        // A mission Start made from a board item claims that item (intake spec §3, Ruling 22).
+        trackerItems: { get: (id) => r.tryResolve(it.TRACKER_ITEM_REPOSITORY)?.get(id) },
         repositories: r.resolve(t.REPO_REPOSITORY),
         settings: r.resolve(t.SETTINGS_STORE),
         recorder: r.resolve(t.EVENT_RECORDER),
@@ -948,11 +950,13 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
     }), { source: SOURCE });
     // Dedupe's scorer (plan Task 7): lexical, deterministic.
     bind(it.INTAKE_SIMILARITY, () => ({ score: (signal, candidate) => lexicalSimilarity(signal, candidate) }), { source: SOURCE });
-    // Without the relay (#54) every claim is granted: Start re-reads the item instead (spec §3).
-    bind(it.INTAKE_CLAIMS, () => ({
-      source: async () => true,
-      item: async () => ({ ok: true as const }),
-      releaseItem: async () => {},
+    // The relay's claims (spec §3, Ruling 22): Start claims ('tracker_item', ref)
+    // and a runner runs only under its source's lease. Without the relay
+    // every claim is granted: Start re-reads the item instead.
+    bind(it.INTAKE_CLAIMS, (r) => ({
+      source: (workspaceId, sourceId) => r.resolve(t.COORDINATION_SERVICE).sourceClaim(workspaceId, sourceId),
+      item: (input) => r.resolve(t.COORDINATION_SERVICE).claimItem(input),
+      releaseItem: (itemRef, reason) => r.resolve(t.COORDINATION_SERVICE).releaseItem(itemRef, reason),
     }), { source: SOURCE });
     bind(it.INTAKE_SERVICE, (r) => new IntakeService({
       intake: r.resolve(it.INTAKE_REPOSITORY),

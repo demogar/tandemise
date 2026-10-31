@@ -454,3 +454,36 @@ was ambiguous or wrong, decided against the spec
     project's settings read as set in the brain and cannot be edited there: a write is refused with
     `CONFLICT "Set in this project's brain."`.
   - The brain is resolved per call, because the brain's service depends on intake through P14's `IssueService`.
+- Ruling 22 (relay claims and per-machine sources, review fix on PR #73): decided from spec §3, §7 and §9 and the
+  relay spec:
+  - **Item claims are the relay's claims.** `INTAKE_CLAIMS.item`/`releaseItem` are `CoordinationService.claimItem`/
+    `releaseItem`: a claim in the workspace's project (`projectKey`) on the tracker item's ref, already
+    `<tracker>:<key>` (`youtrack:GAR-12`, `github:acme/web#7`) and normalised by `normalizeItemRef`. Start claims
+    before the mission exists, under the id the mission will have: `MissionService.create` takes an optional
+    `origin.missionId`, so the mission's own start (`assertMayStart`) finds the claim already its own, and
+    `itemFor` maps a mission's `trackerItemId` to its `tracker_items` row. Release follows the relay's rules:
+    `done` on COMPLETE, `released` on CANCELLED/FAILED or a Start that failed after claiming. A refusal is the
+    holder's sentence ("Ana is working on GAR-12 since 10:42."). Solo (coordination `local`, or none bound) Start
+    is always granted, as spec §3 says; your own leftover claim on this computer whose mission is gone or over
+    is released and claimed again. A coordination fault never blocks Start.
+  - **Source claims are short leases, not item claims.** Relay claims never expire, so the spec's
+    `('source', sourceId)` "lease with a heartbeat (TTL 2 minutes, renewed every 30 seconds)" is a new primitive:
+    `LeaseTable` in `@tandemise/coordination`, held in memory by the relay (`POST /relay/v1/leases`
+    `{ projectKey, scope: 'source', key: sourceId, ttlSeconds }` → `{ granted, expiresAt, holderName,
+    deviceLabel }`), so no coordination migration. A relay restart loses leases; the next renewal takes them again.
+    The key is the source id within the project key, not the workspace id: each machine has its own workspace
+    ids, the project key is what the team shares. `CoordinationPort.lease` is optional; `LocalCoordination`
+    always grants, and so does `RelayCoordination` when the relay can't be reached (the network never blocks
+    local work; dedupe catches a double read). The runner host renews a poll source's lease every 30 s between
+    polls (socket runners already re-ask every 30 s), and a refused source still skips silently.
+  - **Sources from the brain are off per machine.** Ruling 15's "the first write creates the row switched on"
+    becomes: on for a project whose configuration is local, off when `originFor(ws) === 'brain'`, until that
+    machine's person switches it on (`PUT /v1/workspaces/:id/intake/sources/:sourceId/enabled { enabled }`,
+    which answers the config view). The same default applies with no row yet, and when saving a source's secret
+    creates the row. `IntakeConfigView.enabled` maps each source id to whether it runs here; it is not part of
+    the configuration and is never saved back. Settings → Intake shows it as "On this computer", outside the
+    brain's read-only form, with the source's secrets there too when the brain sets the rest.
+  - **Proof.** intake-check "claims" (two containers on separate databases sharing one team store,
+    `scratch/shared-coordination.mjs`: refused with Ana's words before any mission exists, granted after her
+    mission ends); intake-runners-check "sources from the brain" and "source leases" (refused while live, granted
+    after it lapses); relay-check "source leases" (the HTTP route); intake-daemon-check (the enabled route).

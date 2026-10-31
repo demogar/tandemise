@@ -403,6 +403,11 @@ export class DaemonClient {
     return this.#request('PUT', `/workspaces/${workspaceId}/intake/sources/${encodeURIComponent(sourceId)}/secret`, { name, value });
   }
 
+  /** Runs a source on this computer, or stops it here (Ruling 22); the configuration is not touched. */
+  setIntakeSourceEnabled(workspaceId: string, sourceId: string, enabled: boolean): Promise<IntakeConfigView> {
+    return this.#request('PUT', `/workspaces/${workspaceId}/intake/sources/${encodeURIComponent(sourceId)}/enabled`, { enabled });
+  }
+
   /** The tracker's token, kept only in the local secret store. */
   saveTrackerSecret(workspaceId: string, value: string): Promise<void> {
     return this.#request('PUT', `/workspaces/${workspaceId}/intake/tracker/secret`, { value });

@@ -86,6 +86,13 @@ section('daemon: intake config, tokens, pushes and the CLI');
     check('GET intake/config reads it back', got.status === 200 && got.body?.sources?.[1]?.id === 'other-feed', got);
     const badPut = await call('PUT', `/v1/workspaces/${ws}/intake/config`, { tracker: { ...config.tracker, url: undefined } });
     check('PUT intake/config refuses a youtrack tracker with no url (400)', badPut.status === 400, badPut);
+    // Ruling 22: whether each source runs on this machine, and the switch.
+    check('GET intake/config says each local source is on here', got.body?.enabled?.['custom-feed'] === true && got.body?.enabled?.['other-feed'] === true, got.body?.enabled);
+    const off = await call('PUT', `/v1/workspaces/${ws}/intake/sources/other-feed/enabled`, { enabled: false });
+    check('PUT intake/sources/:sourceId/enabled switches it off here, answering the config view', off.status === 200 && off.body?.enabled?.['other-feed'] === false && off.body?.enabled?.['custom-feed'] === true, off);
+    const offUnknown = await call('PUT', `/v1/workspaces/${ws}/intake/sources/nope/enabled`, { enabled: true });
+    check('…an unknown source is a 404, and a bad body a 400', offUnknown.status === 404 && (await call('PUT', `/v1/workspaces/${ws}/intake/sources/other-feed/enabled`, { enabled: 'yes' })).status === 400, offUnknown);
+    await call('PUT', `/v1/workspaces/${ws}/intake/sources/other-feed/enabled`, { enabled: true });
 
     // 2. A token for one source, shown once.
     const minted = await call('POST', `/v1/workspaces/${ws}/intake/tokens`, { sourceId: 'custom-feed' });

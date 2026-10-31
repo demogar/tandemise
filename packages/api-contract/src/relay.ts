@@ -199,6 +199,27 @@ export type ReleaseClaimRequest = z.infer<typeof releaseClaimRequest>;
 export const takeOverRequest = z.object({ localRef: z.string().max(200).default('') });
 export type TakeOverRequest = z.infer<typeof takeOverRequest>;
 
+/**
+ * `POST /relay/v1/leases` (intake spec §3, Ruling 22): take or renew a short
+ * lease, so one daemon of the team runs a source at a time. `scope` is the
+ * kind of thing leased (`source`, keyed by the source's id in the project).
+ */
+export const leaseRequest = z.object({
+  projectKey: trimmed(400),
+  scope: z.enum(['source']),
+  key: trimmed(200),
+  ttlSeconds: z.number().int().min(10).max(600),
+});
+export type LeaseRequest = z.infer<typeof leaseRequest>;
+
+/** A lease's answer: granted until `expiresAt`, or held by someone else until then. */
+export interface LeaseView {
+  readonly granted: boolean;
+  readonly expiresAt: string;
+  readonly holderName: string | null;
+  readonly deviceLabel: string | null;
+}
+
 export const createEndpointRequest = z.object({
   projectKey: trimmed(400),
   name: trimmed(120),

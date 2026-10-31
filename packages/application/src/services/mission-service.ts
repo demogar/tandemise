@@ -124,7 +124,7 @@ export class MissionServiceImpl implements MissionService {
   }
 
   async create(
-    caller: Caller, request: CreateMissionRequest, origin: { routineId?: RoutineId; issueLinkId?: IssueLinkId; trackerItemId?: TrackerItemId } = {},
+    caller: Caller, request: CreateMissionRequest, origin: { routineId?: RoutineId; issueLinkId?: IssueLinkId; trackerItemId?: TrackerItemId; missionId?: MissionId } = {},
   ): Promise<Mission> {
     const workspaceId = asId<'WorkspaceId'>(request.workspaceId);
     const workspace = this.deps.workspaces.get(workspaceId);
@@ -150,7 +150,8 @@ export class MissionServiceImpl implements MissionService {
       assertReadiness(null, evaluateReadiness({ criteria: lines, openQuestions: 0, proposedPending: 0 }));
     }
 
-    const id = ids.mission();
+    // Start names the id first: it claims the tracker item under it before the mission exists (intake, Ruling 22).
+    const id = origin.missionId ?? ids.mission();
     const title = request.title?.trim() || titleFromGoal(request.goal);
     // Queued only while it is a draft: a mission planned now is not waiting for anything.
     const queued = request.queued === true && request.planNow !== true;

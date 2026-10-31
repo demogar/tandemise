@@ -241,15 +241,19 @@ export interface IntakeSimilarity {
 }
 
 /**
- * Who may work on what across daemons (plan Global Constraints). The relay
- * (#54) supplies an adapter over its leases; the local default always grants,
- * so without a server Start falls back to re-reading the item (spec §3).
+ * Who may work on what across daemons (plan Global Constraints). Bound to the
+ * relay's coordination (Ruling 22): an item claim and a source lease, both in
+ * the workspace's project. Without the relay it always grants, so Start falls
+ * back to re-reading the item (spec §3).
  */
 export interface IntakeClaimsPort {
   /** May this daemon run the source's runner now? */
   source(workspaceId: WorkspaceId, sourceId: string): Promise<boolean>;
-  /** Claims an item for Start; a refusal carries the sentence to show. */
-  item(input: { readonly itemRef: string; readonly itemTitle: string; readonly itemUrl: string; readonly localRef: string }):
+  /**
+   * Claims an item for Start; a refusal carries the sentence to show.
+   * `localRef` is the id the mission will have, so its start finds the claim its own.
+   */
+  item(input: { readonly workspaceId: WorkspaceId; readonly itemRef: string; readonly itemTitle: string; readonly itemUrl: string; readonly localRef: string }):
     Promise<{ readonly ok: true } | { readonly ok: false; readonly reason: string }>;
   releaseItem(itemRef: string, reason: 'done' | 'released'): Promise<void>;
 }

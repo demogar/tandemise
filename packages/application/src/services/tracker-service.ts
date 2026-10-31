@@ -10,7 +10,7 @@ import {
 } from '@tandemise/domain';
 import type { BoardItemView, BoardView, CreateMissionRequest } from '@tandemise/api-contract';
 import type { Clock, Logger, MissionId, TrackerItemId, WorkspaceId } from '@tandemise/shared';
-import { TandemiseError, asId, errorMessage } from '@tandemise/shared';
+import { TandemiseError, asId, errorMessage, ids } from '@tandemise/shared';
 import type { SettingsStorePort } from '../ports.js';
 import { deliveryLinks, type DeliveryLink } from '../support/delivery-links.js';
 import type { EventRecorder } from '../support/event-recorder.js';
@@ -27,7 +27,7 @@ export interface TrackerServiceDeps {
   readonly intake: IntakeRepositoryPort;
   readonly missions: Pick<MissionRepositoryPort, 'list' | 'get'>;
   /** `MissionService.create`, the only way a mission is made (spec §7 step 3). Resolved per call. */
-  readonly createMission: (caller: Caller, request: CreateMissionRequest, origin: { trackerItemId: TrackerItemId }) => Promise<Mission>;
+  readonly createMission: (caller: Caller, request: CreateMissionRequest, origin: { trackerItemId: TrackerItemId; missionId?: MissionId }) => Promise<Mission>;
   /** Who works on what across daemons; always granted without the relay (#54). */
   readonly claims: IntakeClaimsPort;
   /** Personal settings: `trackerLogins[<workspace>]`, the person's login in the tracker. */
@@ -389,7 +389,10 @@ export class TrackerService {
         ? `${fresh.key} is already in progress.`
         : `${fresh.key} is already in progress (${fresh.assignee}).`);
     }
-    const claim = await this.deps.claims.item({ itemRef: item.ref, itemTitle: item.title, itemUrl: item.url, localRef: '' });
+    // Claimed before the mission exists (spec §7 step 1), under the id it will
+    // have, so the mission's own start finds the claim already its own (Ruling 22).
+    const missionId = ids.mission();
+    const claim = await this.deps.claims.item({ workspaceId, itemRef: item.ref, itemTitle: item.title, itemUrl: item.url, localRef: missionId });
     if (!claim.ok) throw new TandemiseError('CONFLICT', claim.reason);
 
     const label = trackerLabel(config.kind);
@@ -411,7 +414,7 @@ export class TrackerService {
     };
     let mission: Mission;
     try {
-      mission = await this.deps.createMission(caller, request, { trackerItemId: item.id });
+      mission = await this.deps.createMission(caller, request, { trackerItemId: item.id, missionId });
     } catch (e) {
       await this.deps.claims.releaseItem(item.ref, 'released').catch(() => {});
       throw e;

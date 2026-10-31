@@ -185,7 +185,7 @@ export interface WorkspaceService {
 export interface MissionService {
   list(filter: { workspaceId?: string; status?: string; limit?: number }): readonly MissionSummary[];
   /** `origin.routineId` marks a mission a routine created (P11). */
-  create(caller: Caller, request: CreateMissionRequest, origin?: { routineId?: RoutineId; issueLinkId?: IssueLinkId; trackerItemId?: TrackerItemId }): Promise<Mission>;
+  create(caller: Caller, request: CreateMissionRequest, origin?: { routineId?: RoutineId; issueLinkId?: IssueLinkId; trackerItemId?: TrackerItemId; missionId?: MissionId }): Promise<Mission>;
   start(id: MissionId): Promise<Mission>;
   pause(id: MissionId): Promise<Mission>;
   resume(id: MissionId): Promise<Mission>;

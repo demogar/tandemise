@@ -1,7 +1,7 @@
 import {
   RELAY_API_HEADER, RELAY_API_VERSION,
   type ClaimRequest, type ClaimView, type CreateEndpointRequest, type CreateInviteRequest, type CreateInviteResponse, type EndpointView,
-  type ImportReport, type MailboxAckResponse, type MailboxMessage, type RedeemInviteRequest, type RedeemInviteResponse,
+  type ImportReport, type LeaseRequest, type LeaseView, type MailboxAckResponse, type MailboxMessage, type RedeemInviteRequest, type RedeemInviteResponse,
   type RelayErrorBody, type RelaySnapshot,
 } from '@tandemise/api-contract/relay';
 
@@ -87,6 +87,7 @@ export class RelayClient {
   claim(req: ClaimRequest): Promise<ClaimView> { return this.#call('POST', '/relay/v1/claims', req); }
   release(id: string, reason: 'done' | 'released'): Promise<ClaimView> { return this.#call('POST', `/relay/v1/claims/${encodeURIComponent(id)}/release`, { reason }); }
   takeOver(id: string, localRef: string): Promise<ClaimView> { return this.#call('POST', `/relay/v1/claims/${encodeURIComponent(id)}/take-over`, { localRef }); }
+  lease(req: LeaseRequest): Promise<LeaseView> { return this.#call('POST', '/relay/v1/leases', req); }
   history(project: string, item: string): Promise<ClaimView[]> {
     return this.#call('GET', `/relay/v1/claims?project=${encodeURIComponent(project)}&item=${encodeURIComponent(item)}`);
   }

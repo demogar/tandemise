@@ -1,10 +1,10 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { z } from 'zod';
 import {
-  RELAY_API_VERSION, claimRequest, createInviteRequest, redeemInviteRequest, releaseClaimRequest, takeOverRequest,
+  RELAY_API_VERSION, claimRequest, createInviteRequest, leaseRequest, redeemInviteRequest, releaseClaimRequest, takeOverRequest,
   type ClaimView, type RelaySnapshot,
 } from '@tandemise/api-contract/relay';
-import { CoordError, claimForViewer, heldBy, type CoordinationStore } from '@tandemise/coordination';
+import { CoordError, LeaseTable, claimForViewer, heldBy, leaseView, type CoordinationStore } from '@tandemise/coordination';
 import type { Principal } from './auth.js';
 import { RelayError, readJson } from './http.js';
 import type { RelayStreamHub } from './stream.js';
@@ -87,6 +87,8 @@ const me = (ctx: RouteContext): Principal => {
 export function coreRoutes(d: RouteDeps): Route[] {
   const { store, hub } = d;
   const view = (c: ClaimView, p: Principal) => claimForViewer(c, p.memberId);
+  // Source leases (intake spec §3, Ruling 22): in memory, on the relay's clock. A restart loses them; the next renewal takes them again.
+  const leases = new LeaseTable(store.clock);
   return [
     route('GET', '/relay/v1/health', 'none', () => ({ status: 200, body: { ok: true, apiVersion: RELAY_API_VERSION } })),
 
@@ -152,6 +154,13 @@ export function coreRoutes(d: RouteDeps): Route[] {
       if (old) hub.broadcastClaim(old);
       hub.broadcastClaim(claim);
       return { status: 200, body: view(claim, p) };
+    }),
+
+    route('POST', '/relay/v1/leases', 'device', async (ctx) => {
+      const p = me(ctx);
+      const body = await ctx.body(leaseRequest);
+      const holder = { memberId: p.memberId, memberName: store.memberRow(p.memberId)?.display_name ?? '', deviceId: p.device.id, deviceLabel: p.device.label };
+      return { status: 200, body: leaseView(leases.take({ projectKey: body.projectKey, scope: body.scope, key: body.key, ttlMs: body.ttlSeconds * 1000, holder })) };
     }),
 
     route('GET', '/relay/v1/claims', 'device', (ctx) => {

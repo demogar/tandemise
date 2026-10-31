@@ -40,9 +40,46 @@ export function IntakeSettings({ focus = false }: { focus?: boolean }): JSX.Elem
             <SourcesCard view={view} />
             <CustomSources view={view} />
           </fieldset>
+          {/* Outside the read-only fieldset: running a source here is this computer's choice, even when the brain sets it. */}
+          <ThisComputerCard view={view} readOnly={readOnly} />
         </>
       )}
     </section>
+  );
+}
+
+/**
+ * Which of the project's sources run on this computer (Ruling 22). A source
+ * the brain sets is off here until switched on, so a teammate's daemon never
+ * reads it with their credentials by surprise. With the brain setting the
+ * rest, its secrets are saved here too.
+ */
+function ThisComputerCard({ view, readOnly }: { view: IntakeConfigView; readOnly: boolean }): JSX.Element | null {
+  const workspaceId = useWorkspaceId() ?? '';
+  const toggle = useDaemonMutation((d, next: { sourceId: string; enabled: boolean }) => d.setIntakeSourceEnabled(workspaceId, next.sourceId, next.enabled), ['intake']);
+  const shipped = view.sources.filter((s) => isShippedIntakeKind(s.kind));
+  if (shipped.length === 0) return null;
+  return (
+    <div className="card intake-settings__card" aria-label="On this computer">
+      <h3 className="intake-settings__subhead">On this computer</h3>
+      <p className="muted intake-settings__lead">Sources this computer reads, with your credentials. {view.origin === 'brain' ? "A source from the project's brain stays off here until you switch it on." : ''}</p>
+      <ul className="intake-settings__sources">
+        {shipped.map((source) => (
+          <li key={source.id} className="intake-settings__source" data-intake-machine-source={source.id}>
+            <div className="row intake-settings__switch">
+              <Switch
+                checked={view.enabled[source.id] === true}
+                label={`Run ${source.id} on this computer`}
+                onChange={(enabled) => toggle.mutate({ sourceId: source.id, enabled })}
+              />
+              <span>Run <span className="mono">{source.id}</span> ({intakeSourceLabel(source.kind)}) on this computer</span>
+            </div>
+            {readOnly ? (INTAKE_SOURCE_SECRETS[source.kind] ?? []).map((secret) => <SecretField key={secret.name} sourceId={source.id} name={secret.name} label={secret.label} />) : null}
+          </li>
+        ))}
+      </ul>
+      {toggle.isError ? <Refusal error={toggle.error} /> : null}
+    </div>
   );
 }
 
