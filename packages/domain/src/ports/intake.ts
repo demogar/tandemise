@@ -129,6 +129,12 @@ export interface WebhookMailboxPort {
   ack(id: WebhookMessageId): void;
   /** Not done: pulled again by the next `pull`. A message already acked stays done. */
   release(id: WebhookMessageId): void;
+  /**
+   * Hands back every message claimed before `claimedBefore` and not done: a
+   * consumer that died holding them (a crash between `pull` and `ack`).
+   * Returns how many. Plan Task 11, RULINGS ruling 17.
+   */
+  releaseStale(claimedBefore: string): number;
 }
 
 /**

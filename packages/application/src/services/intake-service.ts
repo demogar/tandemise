@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import type {
   AttachmentRef, EvalBlobPort, IntakeAttachment, IntakeConfig, IntakeConfigSource, IntakeLink, IntakeLinkedBy, IntakeRepositoryPort,
-  IntakeSignal, IntakeSimilarity, IntakeSourceConfig, MemberRepositoryPort, PrimaryTracker, ProjectionBusPort, SignalStatus, TrackerConfig,
+  IntakeSignal, IntakeSimilarity, IntakeSourceConfig, MemberRepositoryPort, PrimaryTracker, ProjectionBusPort, SecretStorePort, SignalStatus, TrackerConfig,
   TrackerItem, TrackerItemRepositoryPort, TrackerRef, UnitOfWork, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
 import {
@@ -38,7 +38,9 @@ export interface IntakeDeps {
    * The project's tracker for the pipeline (plan Task 7), and the check of a
    * tracker's state mapping before it is saved (plan Task 5).
    */
-  readonly trackers: Pick<TrackerResolver, 'problemWith' | 'for'>;
+  readonly trackers: Pick<TrackerResolver, 'problemWith' | 'for' | 'saveCredential'>;
+  /** Where a source's secrets are kept (plan Task 11): only their refs are in `intake_sources`. */
+  readonly secrets: Pick<SecretStorePort, 'store' | 'remove'>;
   /** The board cache: every item the pipeline creates, links or asks about (plan Task 7). */
   readonly items: TrackerItemRepositoryPort;
   /** Ranks the tracker's candidates (spec §5 step 4); lexical by default. */
@@ -645,6 +647,53 @@ export class IntakeService {
       ...(request.intake === undefined ? {} : { intake: request.intake }),
     });
     return this.config(workspaceId);
+  }
+
+  // ------------------------------------------------------------------ secrets
+
+  /**
+   * Saves one of a source's named secrets in the local secret store (spec §2,
+   * plan Task 11) and records its ref in `intake_sources.secret_refs`,
+   * replacing, and removing from the store, the one saved before under that
+   * name. An empty value only removes it. The secret never reaches a config
+   * file or the brain. The source's row is created here when it has none yet,
+   * switched on, as the runner host would (RULINGS ruling 15).
+   */
+  async saveSourceSecret(caller: Caller, workspaceId: WorkspaceId, sourceId: string, secret: { readonly name: string; readonly value: string }): Promise<void> {
+    this.#requireWorkspace(workspaceId);
+    requireSeat(this.deps, workspaceId, caller);
+    const source = this.deps.config.read(workspaceId).sources.find((s) => s.id === sourceId);
+    if (source === undefined) {
+      throw new TandemiseError('NOT_FOUND', `This project has no intake source '${sourceId}'.`, { details: { sourceId } });
+    }
+    const row = this.deps.intake.source(workspaceId, sourceId);
+    const old = row?.secretRefs[secret.name];
+    const refs: Record<string, string> = { ...(row?.secretRefs ?? {}) };
+    if (secret.value === '') delete refs[secret.name];
+    else refs[secret.name] = await this.deps.secrets.store(`intake:${workspaceId}:source:${sourceId}:${secret.name}`, secret.value);
+    this.deps.intake.saveSource(workspaceId, sourceId, {
+      ...(row === undefined ? { kind: source.kind, enabled: true, enabledBy: caller.personId } : {}),
+      secretRefs: refs,
+    });
+    // After the new ref is recorded, so a failure here leaves a stray secret, never a source without one.
+    if (old !== undefined) {
+      await this.deps.secrets.remove(old).catch((e: unknown) => {
+        this.deps.log.warn('intake.secret_remove_failed', { workspaceId, sourceId, name: secret.name, error: errorMessage(e) });
+      });
+    }
+    this.deps.log.info('intake.source_secret_saved', { workspaceId, sourceId, name: secret.name, removed: secret.value === '' });
+  }
+
+  /**
+   * Saves the project's tracker token (RULINGS ruling 17): Task 10 left
+   * `TrackerResolver.saveCredential` with no route, so Settings → Intake
+   * (plan Task 14) saves it here.
+   */
+  async saveTrackerSecret(caller: Caller, workspaceId: WorkspaceId, value: string): Promise<void> {
+    this.#requireWorkspace(workspaceId);
+    requireSeat(this.deps, workspaceId, caller);
+    await this.deps.trackers.saveCredential(workspaceId, value);
+    this.deps.log.info('intake.tracker_secret_saved', { workspaceId });
   }
 
   // ------------------------------------------------------------------ tokens

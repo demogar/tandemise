@@ -493,6 +493,29 @@ export const mintIntakeTokenRequest = z
   .strict();
 export type MintIntakeTokenRequest = z.infer<typeof mintIntakeTokenRequest>;
 
+/** A secret's value, kept only in the local secret store (spec §2); empty removes it. */
+const secretValue = z.string().max(8192);
+
+/**
+ * `PUT /v1/workspaces/:id/intake/sources/:sourceId/secret` (plan Task 11): one
+ * of the source's named secrets (`token`, `clientSecret`, `apiKey`,
+ * `webhookSecret`, …), replacing the one saved before under that name. An
+ * empty value removes it.
+ */
+export const saveIntakeSourceSecretRequest = z
+  .object({
+    name: z.string().regex(/^[A-Za-z][A-Za-z0-9_]{0,63}$/, { message: 'Name a secret with a letter, then letters, digits or _.' }),
+    value: secretValue,
+  })
+  .strict();
+export type SaveIntakeSourceSecretRequest = z.infer<typeof saveIntakeSourceSecretRequest>;
+
+/** `PUT /v1/workspaces/:id/intake/tracker/secret` (plan Task 11, RULINGS ruling 17): the tracker's token. */
+export const saveTrackerSecretRequest = z
+  .object({ value: secretValue.min(1, { message: 'Paste the token to save.' }) })
+  .strict();
+export type SaveTrackerSecretRequest = z.infer<typeof saveTrackerSecretRequest>;
+
 /**
  * `POST /v1/intake/signals/:id/decide`, the Inbox card's three answers (spec
  * §5 step 4): the same task as the candidate, a new task, or not work.

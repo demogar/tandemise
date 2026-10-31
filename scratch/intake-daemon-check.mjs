@@ -2,15 +2,19 @@
 // a real daemon from `dist`, a fresh TANDEMISE_HOME and TANDEMISE_OFFLINE=1.
 // Custom runners push with an intake token that opens exactly one source's
 // push route and nothing else, and the `tandemise` CLI pushes with the
-// daemon's own connection file.
+// daemon's own connection file. Task 11: a source's secrets and the tracker's
+// token saved over the API, and the opt-in webhook listener the local
+// settings switch on.
 //
 //   npm run build && node scratch/intake-daemon-check.mjs
 import { execFile } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { startFakeYouTrack } from './fake-youtrack.mjs';
+import { startFakeSentry } from './fake-sentry.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = join(here, '..');
@@ -168,6 +172,83 @@ section('daemon: intake config, tokens, pushes and the CLI');
   } finally {
     await daemon?.stop();
     await fake?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
+section('daemon: secrets over the API and the opt-in webhook listener (plan Task 11)');
+{
+  const root = mkdtempSync(join(tmpdir(), 'tdi-hooks-'));
+  const home = join(root, 'h');
+  const { startDaemon } = await import('../apps/daemon/dist/main.js');
+  let daemon;
+  let fake;
+  let sentry;
+  try {
+    // A free port for the listener, named in the local settings before the daemon starts.
+    const probe = createServer();
+    await new Promise((resolve) => probe.listen(0, '127.0.0.1', resolve));
+    const hookPort = probe.address().port;
+    await new Promise((resolve) => probe.close(resolve));
+    mkdirSync(home, { recursive: true });
+    writeFileSync(join(home, 'settings.json'), JSON.stringify({ intakeWebhookPort: hookPort }));
+
+    fake = await startFakeYouTrack({ project: 'GAR', token: 'perm:test', login: 'tandemise-bot' });
+    sentry = await startFakeSentry({ token: 'sntrys_test', org: 'acme', project: 'web' });
+    sentry.putIssue({ id: '501', title: 'TypeError: basket is null', culprit: 'basket.ts', count: '132', userCount: 41 });
+    daemon = await startDaemon({ home, logLevel: 'error', tickIntervalMs: 200 });
+    const token = JSON.parse(readFileSync(join(home, 'daemon.json'), 'utf8')).token;
+    const call = async (method, path, body) => {
+      const res = await fetch(`${daemon.url}${path}`, {
+        method,
+        headers: { authorization: `Bearer ${token}`, 'x-tandemise-api-version': 'v1', ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      });
+      const text = await res.text();
+      return { status: res.status, body: text ? JSON.parse(text) : undefined };
+    };
+    const ws = (await call('POST', '/v1/workspaces', { name: 'Hooks' })).body?.workspace?.id;
+    const put = await call('PUT', `/v1/workspaces/${ws}/intake/config`, {
+      tracker: {
+        kind: 'youtrack', url: fake.url, project: 'GAR', board: 'project: GAR #Unresolved',
+        states: { ready: ['Open'], in_progress: 'In Progress', done: ['Done'], wont_do: ["Won't fix"] }, onComplete: 'done',
+      },
+      intake: { sources: [{ id: 'sentry-web', kind: 'sentry', instance: 'acme/web', api: sentry.url }] },
+    });
+    check('a project with a fake YouTrack and a fake Sentry source', put.status === 200, put);
+
+    const trackerSecret = await call('PUT', `/v1/workspaces/${ws}/intake/tracker/secret`, { value: 'perm:test' });
+    check('PUT intake/tracker/secret saves the tracker token (204)', trackerSecret.status === 204, trackerSecret);
+    const emptyTracker = await call('PUT', `/v1/workspaces/${ws}/intake/tracker/secret`, { value: '' });
+    check('…an empty tracker token is a 400', emptyTracker.status === 400, emptyTracker);
+    const sourceSecret = await call('PUT', `/v1/workspaces/${ws}/intake/sources/sentry-web/secret`, { name: 'token', value: 'sntrys_test' });
+    check('PUT intake/sources/:sourceId/secret saves the Sentry token (204)', sourceSecret.status === 204, sourceSecret);
+    const unknownSource = await call('PUT', `/v1/workspaces/${ws}/intake/sources/nope/secret`, { name: 'token', value: 'x' });
+    check("…for a source the project doesn't have it is 404", unknownSource.status === 404, unknownSource);
+    const badName = await call('PUT', `/v1/workspaces/${ws}/intake/sources/sentry-web/secret`, { name: '../x', value: 'x' });
+    check('…a secret name that is not a word is 400', badName.status === 400, badName);
+    const config = await call('GET', `/v1/workspaces/${ws}/intake/config`);
+    check('…and no secret is in the config', config.status === 200 && !JSON.stringify(config.body).includes('sntrys_test') && !JSON.stringify(config.body).includes('perm:test'), config);
+    const settingsText = readFileSync(join(home, 'settings.json'), 'utf8');
+    check('…nor in settings.json', !settingsText.includes('sntrys_test') && !settingsText.includes('perm:test'));
+
+    const checked = await call('POST', `/v1/workspaces/${ws}/intake/check`);
+    check('Check sources now reads Sentry with the saved token and files GAR-1 in YouTrack with the saved one',
+      checked.status === 200 && sentry.calls.some((c) => c.authorization === 'Bearer sntrys_test')
+      && fake.issues.get('GAR-1')?.summary === 'TypeError: basket is null', { status: checked.status, board: checked.body, issue: fake.issues.get('GAR-1')?.summary });
+
+    const hookUrl = `http://127.0.0.1:${hookPort}`;
+    const delivered = await fetch(`${hookUrl}/hooks/sentry-web`, { method: 'POST', body: '{"data":{}}' });
+    check('with intakeWebhookPort set, the listener answers POST /hooks/sentry-web with 202', delivered.status === 202, delivered.status);
+    const apiOnHook = await fetch(`${hookUrl}/v1/health`);
+    check('…and serves nothing of the API (GET /v1/health is 404)', apiOnHook.status === 404, apiOnHook.status);
+    check('…on its own port, not the API\'s', new URL(daemon.url).port !== String(hookPort));
+  } catch (e) {
+    check('the webhook listener section ran', false, String(e?.stack ?? e));
+  } finally {
+    await daemon?.stop();
+    await fake?.close();
+    await sentry?.close();
     rmSync(root, { recursive: true, force: true });
   }
 }

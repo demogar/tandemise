@@ -904,6 +904,8 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       intake: r.resolve(it.INTAKE_REPOSITORY),
       config: r.resolve(it.INTAKE_CONFIG_SOURCE),
       trackers: r.resolve(it.TRACKER_RESOLVER),
+      // A source's secrets (plan Task 11).
+      secrets: r.resolve(t.SECRET_STORE),
       items: r.resolve(it.TRACKER_ITEM_REPOSITORY),
       similarity: r.resolve(it.INTAKE_SIMILARITY),
       unitOfWork: r.resolve(t.UNIT_OF_WORK),

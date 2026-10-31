@@ -24,6 +24,7 @@ export class SqliteWebhookMailbox implements WebhookMailboxPort {
   readonly #claim;
   readonly #ack;
   readonly #release;
+  readonly #releaseStale;
 
   constructor(db: TandemiseDatabase, clock: Clock) {
     this.#db = db;
@@ -43,6 +44,9 @@ export class SqliteWebhookMailbox implements WebhookMailboxPort {
     );
     this.#release = h.prepare<{ id: string }>(
       'UPDATE intake_webhook_inbox SET claimed_at = NULL WHERE id = :id AND done_at IS NULL',
+    );
+    this.#releaseStale = h.prepare<{ before: string }>(
+      'UPDATE intake_webhook_inbox SET claimed_at = NULL WHERE claimed_at IS NOT NULL AND claimed_at < :before AND done_at IS NULL',
     );
   }
 
@@ -77,5 +81,9 @@ export class SqliteWebhookMailbox implements WebhookMailboxPort {
 
   release(id: WebhookMessageId): void {
     this.#release.run({ id });
+  }
+
+  releaseStale(claimedBefore: string): number {
+    return this.#releaseStale.run({ before: claimedBefore }).changes;
   }
 }

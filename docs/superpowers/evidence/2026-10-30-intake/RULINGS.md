@@ -315,3 +315,39 @@ was ambiguous or wrong, decided against the spec
   through Settings that names a missing label is refused as spec §6.2 says. The adopted mapping is not
   validated (Ruling 15), and its labels appear on first use. The fake `gh` gained `label create` and, like
   gh, refuses `--add-label` for an unknown label once the repository's labels are known.
+- Ruling 17 (Sentry, PostHog, the listener, secrets and stale claims, Task 11): decided from spec §1, §2 and §8:
+  - **The package.** `intake-runners` takes no zod (the plan's deps list has none): `http.ts` answers JSON
+    unparsed and each runner reads only the fields it maps, leaving out what it can't read. A runner's
+    secret is read by name through `ctx.secrets` (`token`/`clientSecret` for Sentry, `apiKey`/`webhookSecret`
+    for PostHog); a missing one fails the poll with "Save the <Label> <what> for this source in Settings →
+    Intake first.". Both runners set `kindHint: 'bug'`, cut long text with `…` like the GitHub runner, and
+    keep only Sentry levels the contract knows (`debug` and `sample` are left out). A 401 is the plan's
+    sentence; a 404 is `NOT_FOUND`; 429 and 5xx are retryable.
+  - **Closures.** `not_planned` writes nothing at Sentry or PostHog (spec §8 names only `done` for both).
+    A closure fails without retry on `NOT_FOUND`, a missing secret or a refused token, and with retry on a
+    network failure, timeout, 429 or 5xx. `externalId` is the issue id that was resolved. A PostHog key that
+    is not a UUID is "not an error issue" and closes with nothing written.
+  - **PostHog's wire format** could not be confirmed against its live reference from here (no reachable
+    docs). The runner uses the plan's paths and reads `occurrences`/`users` from the issue or from its
+    `aggregations`, whichever is there; the fake answers the plan's shape (`{ results: [...] }`). The check
+    pins the mapping. The issue's link is `<base>/project/<id>/error_tracking/<issueId>` on the API's base;
+    a signal's link must be https (spec §1) and an http base is only ever loopback (the source's `api` allows
+    nothing else), so such a link is written as https.
+  - **Webhooks.** A Sentry delivery without `data.issue` (another resource) answers no signal. PostHog
+    deliveries are one issue, or `{ issue }`. Both compare the signature or secret in constant time.
+  - **The listener** answers 404 with no body for anything but `POST /hooks/<source id>` (the id spelled as
+    `INTAKE_SOURCE_ID_PATTERN`), reads a body over 1 MiB to its end before answering 413 (so the sender sees
+    the status, not a reset) and cuts the socket past 16 MiB. It stores the headers lowercased, repeats
+    joined. `intakeWebhookPort` must be a whole number 0–65535; anything else means no listener. It is
+    added to `LifecycleHost` last, so shutdown closes it first.
+  - **Stale claims (Ruling 6's open point).** `WebhookMailboxPort` gains `releaseStale(claimedBefore)`. The
+    host's first drain frees every claim made before it (the local mailbox has one consumer, this host, so
+    such a claim is a crashed process's); later drains free only claims older than ten minutes (an ack that
+    failed), so a second consumer the relay adds is never raced for a live delivery.
+  - **Secrets over the API.** `PUT /v1/workspaces/:id/intake/sources/:sourceId/secret` `{ name, value }`
+    (`IntakeService.saveSourceSecret`) stores the value as `intake:<ws>:source:<id>:<name>`, records the
+    ref in `secret_refs[name]`, then removes the ref saved before under that name; an empty value only
+    removes it. A source the project's configuration doesn't name is 404. The source's row is created
+    enabled when it has none, as the host would. Task 10 left `TrackerResolver.saveCredential` without a
+    route, so `PUT /v1/workspaces/:id/intake/tracker/secret` `{ value }` (`saveTrackerSecret`) saves it for
+    Settings → Intake (Task 14). Both answer 204 and need a seat in the project.

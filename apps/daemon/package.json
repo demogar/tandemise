@@ -30,6 +30,7 @@
     "@tandemise/execution-local": "*",
     "@tandemise/integration-github": "*",
     "@tandemise/integration-youtrack": "*",
+    "@tandemise/intake-runners": "*",
     "@tandemise/browser": "*",
     "@tandemise/desktop-control": "*",
     "@tandemise/application": "*",

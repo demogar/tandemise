@@ -8,12 +8,16 @@
 // fake `gh` (scratch/fake-gh.mjs, first on PATH) with the fake YouTrack
 // (scratch/fake-youtrack.mjs) as the project's tracker, plus P14's migration
 // onto GitHub Issues as the tracker and the webhook mailbox's unknown source.
+// Task 11: "sentry", "posthog" and "webhook listener", over
+// scratch/fake-sentry.mjs and scratch/fake-posthog.mjs (never a real service).
 import { execFile } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { calls, commentsOf, installFakeGh, putIssue, readState } from './fake-gh.mjs';
 import { startFakeYouTrack } from './fake-youtrack.mjs';
+import { sentrySignature, startFakeSentry } from './fake-sentry.mjs';
+import { startFakePostHog } from './fake-posthog.mjs';
 
 let passed = 0;
 const failures = [];
@@ -30,6 +34,8 @@ const app = await import('@tandemise/application');
 const I = await import('@tandemise/integrations-core');
 const Y = await import('@tandemise/integration-youtrack');
 const G = await import('@tandemise/integration-github');
+// Task 11: absent until the package exists, so the check fails rather than crashes.
+const R = await import('@tandemise/intake-runners').catch(() => null);
 const P = await import('@tandemise/persistence');
 const A = await import('@tandemise/artifacts');
 const { Container, compose } = await import('@tandemise/kernel');
@@ -84,7 +90,7 @@ async function open({ bindings } = {}) {
     P.persistenceModule({ path: paths.db, logger: log, clock }),
     A.createArtifactsModule({ paths }),
     policyModule, contextModule, createEvaluationModule(), runtimesCoreModule, genericRuntimeModule,
-    executionCoreModule, executionLocalModule, I.integrationsCoreModule, Y.youtrackIntegrationModule, G.githubIntegrationModule,
+    executionCoreModule, executionLocalModule, I.integrationsCoreModule, Y.youtrackIntegrationModule, G.githubIntegrationModule, ...(R === null ? [] : [R.intakeRunnersModule]),
     app.createApplicationModule({ localPersonName: 'Demo' }),
   );
   container.bind(EXEC_CLOCK, () => clock, { source: 'check' });
@@ -311,6 +317,181 @@ try {
     check('the P14 migration section ran', false, String(e?.stack ?? e));
   } finally {
     await d3?.dispose();
+  }
+  // ------------------------------------------------------------------ Task 11: Sentry, PostHog and the webhook listener
+  // A fresh fake YouTrack, so the items these sections file are GAR-1 and on.
+  const yt2 = await startFakeYouTrack({ project: 'GAR', token: 'perm:test', login: 'tandemise-bot' });
+  const sentry = await startFakeSentry({ token: 'sntrys_test', org: 'acme', project: 'web', repos: ['acme/web'] });
+  const posthog = await startFakePostHog({ key: 'phx_test', project: '4242' });
+  const yt2Creates = () => yt2.calls.filter((c) => c.method === 'POST' && c.path === '/api/issues').length;
+  const SENTRY_SOURCE = {
+    id: 'sentry-web', kind: 'sentry', instance: 'acme/web', api: sentry.url, every: '10m',
+    filter: { minEvents: 20, window: '24h' }, closeOnDone: true, closeWontDo: false,
+  };
+  const POSTHOG_SOURCE = { id: 'posthog-app', kind: 'posthog', instance: '4242', api: posthog.url, every: '10m', closeOnDone: true, closeWontDo: false };
+  const hoursAgo = (h) => new Date(t - h * 3_600_000).toISOString();
+  const runnerCtx = (ws, source, secrets) => ({
+    workspaceId: ws, source, clock, log, signal: new AbortController().signal,
+    push: async () => { throw new Error('unused'); }, secrets: { get: async (name) => secrets[name] }, cursor: { get: () => null, set: () => {} },
+  });
+  let d4 = null;
+  try {
+    section('intake-runners: the package contributes the sentry and posthog runners');
+    check('@tandemise/intake-runners exports intakeRunnersModule', R?.intakeRunnersModule !== undefined);
+    const probe = R === null ? null : compose(new Container(), R.intakeRunnersModule);
+    const kinds = probe === null ? [] : probe.resolveAll(I.INTAKE_RUNNERS).map((r) => `${r.kind}:${r.mode}`).sort();
+    check('…sentry and posthog, both polling', eq(kinds, ['posthog:poll', 'sentry:poll']), kinds);
+
+    d4 = await open();
+    const ws = (await d4.services.workspaces.create(d4.caller, { name: 'Errors' })).workspace.id;
+    d4.config.write(ws, { tracker: ytTracker(yt2.url), intake: { sources: [SENTRY_SOURCE, POSTHOG_SOURCE], dailyCap: 20, similarity: { link: 0.85, ask: 0.55 } } });
+    await d4.resolver.saveCredential(ws, 'perm:test');
+    const sentryRunner = d4.container.resolveAll(I.INTAKE_RUNNERS).find((r) => r.kind === 'sentry');
+    const posthogRunner = d4.container.resolveAll(I.INTAKE_RUNNERS).find((r) => r.kind === 'posthog');
+
+    section('sentry: poll');
+    // A wrong token first: the source says so in the plan's words.
+    await d4.services.intake.saveSourceSecret(d4.caller, ws, 'sentry-web', { name: 'token', value: 'sntrys_wrong' });
+    sentry.putIssue({ id: '101', title: 'TypeError: cart is undefined', culprit: 'checkout/pay.ts in submit', metadata: { value: 'cart is undefined' }, level: 'error', count: '132', userCount: 41, firstSeen: hoursAgo(30), lastSeen: hoursAgo(1) });
+    sentry.putIssue({ id: '102', title: 'Warning: slow image', culprit: 'gallery.ts', level: 'warning', count: '3', userCount: 2, firstSeen: hoursAgo(5), lastSeen: hoursAgo(1) });
+    await d4.host.checkNow(d4.caller, ws);
+    await d4.settle();
+    check('a refused token reads "Sentry refused the token. Save a new one in Settings → Intake."',
+      d4.repo.source(ws, 'sentry-web')?.lastError === 'Sentry refused the token. Save a new one in Settings → Intake.' && yt2Creates() === 0, d4.repo.source(ws, 'sentry-web'));
+    const refsBefore = d4.repo.source(ws, 'sentry-web')?.secretRefs ?? {};
+    await d4.services.intake.saveSourceSecret(d4.caller, ws, 'sentry-web', { name: 'token', value: 'sntrys_test' });
+    const refsAfter = d4.repo.source(ws, 'sentry-web')?.secretRefs ?? {};
+    const secretStore = d4.container.resolve(app.SECRET_STORE);
+    check('saving the token again replaces its ref and removes the old secret',
+      typeof refsAfter.token === 'string' && refsAfter.token !== refsBefore.token && !(await secretStore.list()).includes(refsBefore.token), { refsBefore, refsAfter });
+    await d4.host.checkNow(d4.caller, ws);
+    await d4.settle();
+    const s101 = d4.repo.findSignal(ws, 'sentry:acme/web:101');
+    const s102 = d4.repo.findSignal(ws, 'sentry:acme/web:102');
+    const listCall = sentry.calls.find((c) => c.method === 'GET' && c.path === '/api/0/projects/acme/web/issues/' && c.authorization === 'Bearer sntrys_test');
+    check('the poll asks for the unresolved issues of the last 24 h, with the token as a bearer',
+      listCall?.query.get('query') === 'is:unresolved' && listCall?.query.get('statsPeriod') === '24h', listCall && { q: listCall.query.toString() });
+    const created = yt2.issues.get('GAR-1');
+    check('132 events, 41 users → GAR-1 created, with "132 events, 41 users" in its Sources',
+      yt2Creates() === 1 && s101?.status === 'created' && d4.repo.linkFor(s101.id)?.itemRef === 'youtrack:GAR-1' && created?.description?.includes('132 events, 41 users'),
+      { creates: yt2Creates(), s101: s101?.status, reason: s101?.reason, description: created?.description });
+    check('…the signal maps the issue: key, permalink, title, culprit + value, impact',
+      s101?.key === '101' && s101?.url === 'https://acme.sentry.io/issues/101/' && s101?.title === 'TypeError: cart is undefined'
+      && s101?.description?.includes('checkout/pay.ts in submit') && s101?.description?.includes('cart is undefined')
+      && eq(s101?.impact, { level: 'error', events: 132, users: 41, firstSeen: hoursAgo(30), lastSeen: hoursAgo(1) }), s101);
+    check("3 events → held back: '3 events in 24 h; this source needs 20'",
+      s102?.status === 'held_back' && s102?.reason === '3 events in 24 h; this source needs 20', { status: s102?.status, reason: s102?.reason });
+    sentry.putIssue({ ...sentry.issues.get('102'), count: '300' });
+    await d4.host.checkNow(d4.caller, ws);
+    await d4.settle();
+    const s102b = d4.repo.findSignal(ws, 'sentry:acme/web:102');
+    check('a second poll with 300 events → created', s102b?.status === 'created' && yt2Creates() === 2, { status: s102b?.status, reason: s102b?.reason, creates: yt2Creates() });
+
+    section('sentry: close');
+    const secrets = { token: 'sntrys_test', clientSecret: 'whsec_sentry', apiKey: 'phx_test', webhookSecret: 'whsec_posthog' };
+    const sentryClosure = (id, commit) => ({
+      kind: 'done', signal: { fingerprint: `sentry:acme/web:${id}`, key: id, url: `https://acme.sentry.io/issues/${id}/`, instance: 'acme/web', title: 't', reply: null },
+      item: { key: 'GAR-1', url: `${yt2.url}/issue/GAR-1` }, prUrl: 'https://github.com/acme/web/pull/7', commit,
+    });
+    const lastPut = (id) => sentry.calls.filter((c) => c.method === 'PUT' && c.path === `/api/0/issues/${id}/`).at(-1)?.body;
+    const inCommit = await sentryRunner?.close(sentryClosure('101', { sha: 'abc123', repo: 'acme/web' }), runnerCtx(ws, SENTRY_SOURCE, secrets));
+    check('with a commit in a repository Sentry lists → resolved inCommit abc123',
+      inCommit?.ok === true && lastPut('101')?.status === 'resolved' && lastPut('101')?.statusDetails?.inCommit?.commit === 'abc123'
+      && lastPut('101')?.statusDetails?.inCommit?.repository === 'acme/web' && sentry.issues.get('101').status === 'resolved', { inCommit, put: lastPut('101') });
+    const unlisted = await sentryRunner?.close(sentryClosure('102', { sha: 'def456', repo: 'acme/other' }), runnerCtx(ws, SENTRY_SOURCE, secrets));
+    check('with the repository not listed → inNextRelease', unlisted?.ok === true && eq(lastPut('102'), { status: 'resolved', statusDetails: { inNextRelease: true } }), { unlisted, put: lastPut('102') });
+    sentry.putIssue({ id: '103', title: 'Third', count: '50' });
+    const reposAsked = sentry.calls.filter((c) => c.path === '/api/0/organizations/acme/repos/').length;
+    const noCommit = await sentryRunner?.close(sentryClosure('103', null), runnerCtx(ws, SENTRY_SOURCE, secrets));
+    check('with commit null → inNextRelease, without asking for the repositories',
+      noCommit?.ok === true && eq(lastPut('103'), { status: 'resolved', statusDetails: { inNextRelease: true } })
+      && sentry.calls.filter((c) => c.path === '/api/0/organizations/acme/repos/').length === reposAsked, { noCommit, put: lastPut('103') });
+    const gone = await sentryRunner?.close(sentryClosure('999', null), runnerCtx(ws, SENTRY_SOURCE, secrets));
+    check('an issue Sentry no longer has fails without retry', gone?.ok === false && gone?.retryable === false, gone);
+
+    section('sentry: webhook');
+    const hook = { action: 'created', data: { issue: { id: '201', title: 'RangeError: too deep', culprit: 'tree.ts', level: 'fatal', count: '40', userCount: 9, firstSeen: hoursAgo(2), lastSeen: hoursAgo(1), web_url: 'https://acme.sentry.io/issues/201/', metadata: { value: 'Maximum call stack' } } } };
+    const hookBody = new TextEncoder().encode(JSON.stringify(hook));
+    const good = await sentryRunner?.fromWebhook({ headers: { 'sentry-hook-signature': sentrySignature(hookBody, 'whsec_sentry'), 'sentry-hook-resource': 'issue' }, body: hookBody }, runnerCtx(ws, SENTRY_SOURCE, secrets));
+    check('a valid signature maps to one signal', good?.length === 1 && good[0].key === '201' && good[0].url === 'https://acme.sentry.io/issues/201/' && good[0].impact?.events === 40 && good[0].source.kind === 'sentry', good);
+    const bad = await refusal(() => sentryRunner.fromWebhook({ headers: { 'sentry-hook-signature': sentrySignature(hookBody, 'not-the-secret') }, body: hookBody }, runnerCtx(ws, SENTRY_SOURCE, secrets)));
+    check("a bad one throws \"The Sentry signature doesn't match.\"", bad?.message === "The Sentry signature doesn't match.", bad?.message);
+
+    section('posthog');
+    await d4.services.intake.saveSourceSecret(d4.caller, ws, 'posthog-app', { name: 'apiKey', value: 'phx_test' });
+    const ph = posthog.putIssue({ name: 'TypeError: map is not a function', description: 'in Dashboard.tsx', occurrences: 88, users: 23, first_seen: hoursAgo(10), last_seen: hoursAgo(1) });
+    await d4.host.checkNow(d4.caller, ws);
+    await d4.settle();
+    const sph = d4.repo.findSignal(ws, `posthog:4242:${ph.id}`);
+    const phList = posthog.calls.find((c) => c.method === 'GET' && c.path === '/api/projects/4242/error_tracking/issues/');
+    check('poll asks for active error-tracking issues with the key as a bearer', phList?.query.get('status') === 'active' && phList?.authorization === 'Bearer phx_test', phList && { q: phList.query.toString(), a: phList.authorization });
+    check('poll → created', sph?.status === 'created' && yt2Creates() === 3, { status: sph?.status, reason: sph?.reason });
+    check('…mapped: name, description, a link to the issue, impact',
+      sph?.title === 'TypeError: map is not a function' && sph?.description === 'in Dashboard.tsx'
+      && sph?.url === `${posthog.url.replace('http:', 'https:')}/project/4242/error_tracking/${ph.id}`
+      && eq(sph?.impact, { level: 'error', events: 88, users: 23, firstSeen: hoursAgo(10), lastSeen: hoursAgo(1) }), sph);
+    const phClosure = (key) => ({
+      kind: 'done', signal: { fingerprint: `posthog:4242:${key}`, key, url: 'https://us.posthog.com/x', instance: '4242', title: 't', reply: null },
+      item: { key: 'GAR-3', url: `${yt2.url}/issue/GAR-3` }, prUrl: null, commit: null,
+    });
+    const phDone = await posthogRunner?.close(phClosure(ph.id), runnerCtx(ws, POSTHOG_SOURCE, secrets));
+    const patch = posthog.calls.filter((c) => c.method === 'PATCH').at(-1);
+    check("close → PATCH { status: 'resolved' }", phDone?.ok === true && patch?.path === `/api/projects/4242/error_tracking/issues/${ph.id}/` && eq(patch?.body, { status: 'resolved' }) && posthog.issues.get(ph.id).status === 'resolved', { phDone, patch });
+    const patches = posthog.calls.filter((c) => c.method === 'PATCH').length;
+    const notIssue = await posthogRunner?.close(phClosure('insight-77'), runnerCtx(ws, POSTHOG_SOURCE, secrets));
+    check('a signal that is not an error issue closes with nothing to write', notIssue?.ok === true && notIssue?.externalId === null && posthog.calls.filter((c) => c.method === 'PATCH').length === patches, notIssue);
+    const phHook = new TextEncoder().encode(JSON.stringify({ issue: { id: '0b4e1f0a-1111-4222-8333-444455556666', name: 'Hooked', occurrences: 5, users: 1 } }));
+    const phGood = await posthogRunner?.fromWebhook({ headers: { 'x-tandemise-secret': 'whsec_posthog' }, body: phHook }, runnerCtx(ws, POSTHOG_SOURCE, secrets));
+    const phBad = await refusal(() => posthogRunner.fromWebhook({ headers: { 'x-tandemise-secret': 'nope' }, body: phHook }, runnerCtx(ws, POSTHOG_SOURCE, secrets)));
+    check('a PostHog webhook with the secret maps to one signal; a wrong secret is refused',
+      phGood?.length === 1 && phGood[0].key === '0b4e1f0a-1111-4222-8333-444455556666' && phBad?.message === "The PostHog secret doesn't match.", { phGood, bad: phBad?.message });
+
+    section('webhook listener');
+    const L = await import('../apps/daemon/dist/http/webhook-listener.js').catch(() => null);
+    check('the daemon has startWebhookListener', typeof L?.startWebhookListener === 'function');
+    await d4.services.intake.saveSourceSecret(d4.caller, ws, 'sentry-web', { name: 'clientSecret', value: 'whsec_sentry' });
+    const listener = await L.startWebhookListener({ port: 0, mailbox: d4.mailbox, log });
+    try {
+      const base = `http://127.0.0.1:${listener.port}`;
+      const delivered = { action: 'created', data: { issue: { id: '301', title: 'Webhook-borne error', culprit: 'hook.ts', level: 'error', count: '64', userCount: 12, firstSeen: hoursAgo(3), lastSeen: hoursAgo(1), web_url: 'https://acme.sentry.io/issues/301/' } } };
+      const bytes = new TextEncoder().encode(JSON.stringify(delivered));
+      const posted = await fetch(`${base}/hooks/sentry-web`, { method: 'POST', headers: { 'content-type': 'application/json', 'sentry-hook-signature': sentrySignature(bytes, 'whsec_sentry') }, body: bytes });
+      check('POST /hooks/sentry-web → 202 {}', posted.status === 202 && (await posted.text()) === '{}', posted.status);
+      const pulled = d4.mailbox.pull(10);
+      check('…the mailbox holds 1 message, its body bytes intact',
+        pulled.length === 1 && pulled[0].sourceId === 'sentry-web' && Buffer.from(pulled[0].body).equals(Buffer.from(bytes)) && pulled[0].headers['sentry-hook-signature'] === sentrySignature(bytes, 'whsec_sentry'),
+        pulled.map((m) => ({ s: m.sourceId, n: m.body.length })));
+      const health = await fetch(`${base}/v1/health`);
+      check('GET /v1/health on the listener → 404 with no body', health.status === 404 && (await health.text()) === '', health.status);
+      const getHook = await fetch(`${base}/hooks/sentry-web`);
+      check('GET /hooks/sentry-web → 404', getHook.status === 404, getHook.status);
+      const big = await fetch(`${base}/hooks/x`, { method: 'POST', body: new Uint8Array(2 * 1024 * 1024) }).catch((e) => ({ status: `error ${e?.cause?.code ?? e}` }));
+      check('POST /hooks/x with 2 MiB → 413', big.status === 413, big.status);
+      check('…and nothing was put for it', d4.mailbox.pull(10).length === 0);
+
+      // The message pulled above is still claimed, as if the daemon died holding it (Ruling 17).
+      advance(1_000);
+      d4.host.tick();
+      await d4.settle();
+      const s301 = d4.repo.findSignal(ws, 'sentry:acme/web:301');
+      check('IntakeRunnerHost.tick() releases the crashed claim and drains the message into a signal', s301 !== undefined && s301.impact?.events === 64, s301);
+      check('…and acks it', d4.mailbox.pull(10).length === 0);
+      const forged = new TextEncoder().encode(JSON.stringify({ data: { issue: { ...delivered.data.issue, id: '302' } } }));
+      await fetch(`${base}/hooks/sentry-web`, { method: 'POST', headers: { 'sentry-hook-signature': 'deadbeef' }, body: forged });
+      d4.host.tick();
+      await d4.settle();
+      check("a forged delivery files nothing, and the source says \"The Sentry signature doesn't match.\"",
+        d4.repo.findSignal(ws, 'sentry:acme/web:302') === undefined && d4.repo.source(ws, 'sentry-web')?.lastError === "The Sentry signature doesn't match.", d4.repo.source(ws, 'sentry-web'));
+    } finally {
+      await listener.close();
+    }
+  } catch (e) {
+    check('the sentry/posthog/listener sections ran', false, String(e?.stack ?? e));
+  } finally {
+    await d4?.dispose();
+    await yt2.close();
+    await sentry.close();
+    await posthog.close();
   }
 } finally {
   await fake.close();

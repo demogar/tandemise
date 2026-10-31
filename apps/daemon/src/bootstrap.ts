@@ -31,6 +31,7 @@ import {
 import { GhIssueTracker, GhPullRequestSnapshots, githubIntegrationModule } from '@tandemise/integration-github';
 import { mcpIntegrationModule } from '@tandemise/integration-mcp';
 import { youtrackIntegrationModule } from '@tandemise/integration-youtrack';
+import { intakeRunnersModule } from '@tandemise/intake-runners';
 import { browserIntegrationModule } from '@tandemise/browser';
 import { createApplicationModule, createServices, EVAL_RUNNER, SCHEDULER, type TandemiseServices,
   WORKFLOW_SOURCE,
@@ -53,6 +54,7 @@ import { oauthCallbacks } from './oauth-callback.js';
 import { FileSetupFolder } from './setup-folder.js';
 import { FileWorkflowSource } from './workflow-source.js';
 import { DaemonSkillFiles } from './skill-files.js';
+import { startWebhookListener, type WebhookListener } from './http/webhook-listener.js';
 
 export const CLOCK = token<Clock>('Clock');
 export const LOGGER = token<Logger>('Logger');
@@ -110,6 +112,7 @@ export function bootstrap(config: DaemonConfig, options: { readonly localPersonN
     integrationsCoreModule,
     githubIntegrationModule,
     youtrackIntegrationModule,
+    intakeRunnersModule,
     mcpIntegrationModule,
     browserIntegrationModule,
     // The name reaches a fresh database's first person; this layer may run git, the application may not.
@@ -187,6 +190,23 @@ export function bootstrap(config: DaemonConfig, options: { readonly localPersonN
   lifecycle.add(container.resolve(EVAL_RUNNER));
   // The intake runners (plan Task 10): shutdown stops every poll and socket runner.
   lifecycle.add(container.resolve(applicationTokens.INTAKE_RUNNER_HOST));
+  // The opt-in webhook listener (intake plan Task 11): only when the local
+  // settings name its port. Added last, so shutdown closes it first.
+  const webhookPort = intakeWebhookPort(container.resolve(applicationTokens.SETTINGS_STORE).read());
+  if (webhookPort !== null) {
+    let listener: WebhookListener | null = null;
+    lifecycle.add({
+      name: 'webhook-listener',
+      start: async () => {
+        listener = await startWebhookListener({
+          port: webhookPort,
+          mailbox: container.resolve(applicationTokens.WEBHOOK_MAILBOX),
+          log: log.child({ component: 'webhook-listener' }),
+        });
+      },
+      stop: async () => { await listener?.close(); },
+    });
+  }
 
   return { container, services, lifecycle, events, projections, log, testClock };
 }
@@ -251,6 +271,12 @@ function aliasPorts(container: Container, log: Logger): void {
   bindDirect('OAUTH_CALLBACK', () => oauthCallbacks);
 
   log.debug('bootstrap.ports_bound', { aliased, missing });
+}
+
+/** `intakeWebhookPort` from the local settings: a port number, or null (no listener). */
+function intakeWebhookPort(settings: Record<string, unknown>): number | null {
+  const port = settings['intakeWebhookPort'];
+  return typeof port === 'number' && Number.isInteger(port) && port >= 0 && port <= 65_535 ? port : null;
 }
 
 function isToken(value: unknown): value is Token<unknown> {

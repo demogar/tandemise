@@ -37,6 +37,11 @@ const DEFAULT_EVERY_MINUTES = 10;
 const MAILBOX_BATCH = 20;
 /** A refused source claim is asked again no sooner than this, so a busy relay is not asked every tick. */
 const CLAIM_RETRY_MS = 30_000;
+/**
+ * A delivery claimed this long ago and never acked is handed back (RULINGS
+ * ruling 17): its consumer died between pull and ack, or its ack failed.
+ */
+const STALE_CLAIM_MS = 10 * 60_000;
 /** What a webhook delivery for a source no runner reads says on that source (plan Task 10). */
 export const NO_RUNNER_FOR_SOURCE = 'No runner for this source.';
 
@@ -84,6 +89,8 @@ export class IntakeRunnerHost {
   readonly #background = new Set<Promise<unknown>>();
   #passing = false;
   #draining = false;
+  /** Whether this host has drained the mailbox yet: the first drain frees every claim a crash left. */
+  #drainedOnce = false;
   #stopped = false;
 
   constructor(private readonly deps: IntakeRunnerHostDeps) {}
@@ -303,11 +310,27 @@ export class IntakeRunnerHost {
 
   async #drain(): Promise<void> {
     try {
+      this.#releaseStale();
       const messages = this.deps.mailbox.pull(MAILBOX_BATCH);
       for (const message of messages) await this.#deliver(message);
     } catch (e) {
       this.deps.log.warn('intake.mailbox_drain_failed', { error: errorMessage(e) });
     }
+  }
+
+  /**
+   * Hands back deliveries a crash left claimed (RULINGS ruling 17). The local
+   * mailbox has one consumer, this host, and drains one batch at a time, so
+   * at its first drain any claim is a previous process's: all are freed. After
+   * that, only a claim older than ten minutes is (an ack that failed), so a
+   * second consumer the relay (#54) adds is never raced for a live one.
+   */
+  #releaseStale(): void {
+    const nowMs = this.deps.clock.epochMs();
+    const before = this.#drainedOnce ? new Date(nowMs - STALE_CLAIM_MS).toISOString() : new Date(nowMs).toISOString();
+    this.#drainedOnce = true;
+    const freed = this.deps.mailbox.releaseStale(before);
+    if (freed > 0) this.deps.log.info('intake.webhook_claims_released', { count: freed });
   }
 
   async #deliver(message: WebhookMessage): Promise<void> {
