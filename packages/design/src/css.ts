@@ -4,13 +4,40 @@
  *
  * Naming is the stable public API of the stylesheet: the palette keeps its own
  * names (`--brand-mint`, `--ink-900`), roles keep theirs (`--canvas`,
- * `--status-failed`), and the scales use the short names the desktop has always
- * read (`--s4`, `--fs-base`, `--radius-md`, `--duration`, `--ease`).
+ * `--status-failed`), and the scales use short names (`--s4`, `--fs-base`,
+ * `--duration`, `--z-overlay`).
+ *
+ * No name here may be one Tailwind v4 declares in its own theme (`--font-*`,
+ * `--radius-*`, `--shadow-*`, `--ease-*`, `--color-*`, ...): a site that loads
+ * Tailwind and tokens.css would otherwise have one silently override the
+ * other. The scales that share a Tailwind namespace take the `--tds-` prefix
+ * (`--tds-radius-md`, `--tds-shadow-lg`, `--tds-font-sans`, `--tds-ease`), and
+ * `tailwind.css` maps Tailwind's names onto them. `TAILWIND_THEME_NAMESPACES`
+ * lists the namespaces; `npm run check:design` enforces it.
  */
 import {
   colorRoles, controlHeight, duration, easing, focusRing, fontFamily, fontSize, lineHeight, palette, radius, shadows, space, zIndex,
   type ColorRole, type Paint, type Wash,
 } from './tokens.js';
+
+/**
+ * The custom-property namespaces Tailwind v4 owns in its theme. tokens.css
+ * declares nothing that starts with one of these, nor any of Tailwind's own
+ * `--text-<size>` names (`--text-sm`, ...); the `--text`, `--text-secondary`
+ * colour roles are not Tailwind names and stay as they are.
+ */
+export const TAILWIND_THEME_NAMESPACES = [
+  '--color-', '--font-', '--radius-', '--shadow-', '--inset-shadow-', '--drop-shadow-', '--text-shadow-', '--blur-', '--ease-',
+  '--animate-', '--breakpoint-', '--container-', '--spacing', '--perspective-', '--aspect-', '--tracking-', '--leading-', '--default-',
+] as const;
+
+/** Tailwind v4's font-size names, which share the `--text-` prefix with the text colour roles. */
+export const TAILWIND_TEXT_SIZES = ['xs', 'sm', 'base', 'lg', 'xl', '2xl', '3xl', '4xl', '5xl', '6xl', '7xl', '8xl', '9xl'].map((size) => `--text-${size}`);
+
+/** Whether a custom property name would collide with a Tailwind v4 theme variable. */
+export function isTailwindThemeName(name: string): boolean {
+  return TAILWIND_THEME_NAMESPACES.some((prefix) => name.startsWith(prefix)) || TAILWIND_TEXT_SIZES.includes(name) || name === '--ease';
+}
 
 const v = (name: string): string => `var(--${name})`;
 const washCss = (of: string, percent: number): string => `color-mix(in srgb, ${v(of)} ${percent}%, transparent)`;
@@ -39,15 +66,15 @@ export function cssVariables(): {
       ...Object.entries(colorRoles).map(([name, role]): [string, string] => [`--${name}`, roleCss(role as ColorRole)]),
       // light-dark() takes colours only, so a shadow mixes inside each branch.
       ...Object.entries(shadows).map(([name, s]): [string, string] => [
-        `--shadow-${name}`,
+        `--tds-shadow-${name}`,
         `0 ${px(s.offsetY)} ${px(s.blur)} light-dark(${paintCss(s.light)}, ${paintCss(s.dark)})`,
       ]),
     ],
     scales: [
-      ...Object.entries(radius).map(([name, n]): [string, string] => [`--radius-${name}`, px(n)]),
+      ...Object.entries(radius).map(([name, n]): [string, string] => [`--tds-radius-${name}`, px(n)]),
       ...Object.entries(space).map(([step, n]): [string, string] => [`--s${step}`, px(n)]),
-      ['--font-sans', fontFamily.sans.join(', ')],
-      ['--font-mono', fontFamily.mono.join(', ')],
+      ['--tds-font-sans', fontFamily.sans.join(', ')],
+      ['--tds-font-mono', fontFamily.mono.join(', ')],
       ...Object.entries(fontSize).map(([name, n]): [string, string] => [`--fs-${name}`, px(n)]),
       ['--lh-base', String(lineHeight.base)],
       ['--duration-fast', `${duration.fast}ms`],
@@ -55,9 +82,9 @@ export function cssVariables(): {
       ['--duration-slow', `${duration.slow}ms`],
       ['--duration-shimmer', `${duration.shimmer}ms`],
       ['--duration-pulse', `${duration.pulse}ms`],
-      ['--ease', easing.standard],
-      ['--ease-out', easing.enter],
-      ['--ease-in', easing.exit],
+      ['--tds-ease', easing.standard],
+      ['--tds-ease-out', easing.enter],
+      ['--tds-ease-in', easing.exit],
       ['--focus-ring-width', px(focusRing.width)],
       ['--focus-ring-offset', px(focusRing.offset)],
       ...Object.entries(zIndex).map(([name, n]): [string, string] => [`--z-${name}`, String(n)]),
