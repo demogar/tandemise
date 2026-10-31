@@ -30,7 +30,7 @@
 //
 //   POST /_fake/issues          { idReadable?, summary, description, state, type, … }  puts an issue
 //   POST /_fake/issues/<key>    { state?, description?, … }                             a person edits it
-//   GET  /_fake/state                                                                   issues, comments, commands, calls
+//   GET  /_fake/state                                                                   issues, comments, commands, calls (with their authorization)
 //
 // Search: `project: P` scopes, `#Unresolved` drops resolved items, a quoted
 // string is a substring match on summary, description and comments, and the
@@ -232,7 +232,7 @@ export async function startFakeYouTrack(options = {}) {
       if (req.method === 'GET' && path === '/_fake/state') {
         return reply(200, {
           issues: [...issues.values()], comments: Object.fromEntries(comments), commands,
-          calls: calls.map((c) => ({ method: c.method, path: c.path, query: c.query.toString() })),
+          calls: calls.map((c) => ({ method: c.method, path: c.path, query: c.query.toString(), authorization: c.authorization })),
         });
       }
       return reply(404, { error: `no fake route ${req.method} ${path}` });

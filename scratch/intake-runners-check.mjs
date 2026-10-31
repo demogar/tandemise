@@ -1303,6 +1303,65 @@ try {
     }
   }
 
+  // ------------------------------------------------------------------ Ruling 26: Discord without reactions
+  // `trigger.react: false`: the message is filed and closed as usual, and the
+  // runner sends no 👀 (no reaction PUT at intake, none at closure). The same
+  // channel read by a source without the flag is acknowledged with 👀.
+  {
+    const discord11 = await startFakeDiscord({ token: 'bot-test', heartbeatMs: 100 });
+    const CH11 = '900000000000000011';
+    const QUIET = { id: 'discord-quiet', kind: 'discord', instance: `${discord11.guildId}#${CH11}`, api: discord11.url, trigger: { react: false }, closeOnDone: true, closeWontDo: false };
+    const LOUD = { ...QUIET, id: 'discord-loud', trigger: undefined };
+    const reactionPuts = () => discord11.calls.filter((c) => c.method === 'PUT' && c.path.includes('/reactions/'));
+    const fp11 = (source, id) => `discord:${source.instance}:${CH11}:${id}`;
+    let d11 = null;
+    try {
+      section('discord: trigger.react false files and closes without a reaction (Ruling 26)');
+      d11 = await open();
+      const ws = (await d11.services.workspaces.create(d11.caller, { name: 'Quiet Discord' })).workspace.id;
+      const sources = (s) => ({ intake: { sources: [s], dailyCap: 20, similarity: { link: 0.85, ask: 0.55 } } });
+      d11.config.write(ws, { tracker: ytTracker(fake.url), ...sources(QUIET) });
+      await d11.resolver.saveCredential(ws, 'perm:test');
+      await d11.services.intake.saveSourceSecret(d11.caller, ws, 'discord-quiet', { name: 'botToken', value: 'bot-test' });
+      d11.host.tick();
+      await d11.settle();
+      check('the gateway session opens', await until(() => discord11.sessions === 1), discord11.sessions);
+      const quietMsg = discord11.postMessage({ channel_id: CH11, content: 'Exports time out on large boards', author: { id: '900000000000000042', username: 'sam' } });
+      discord11.emit('MESSAGE_REACTION_ADD', { user_id: '900000000000000043', channel_id: CH11, message_id: quietMsg.id, guild_id: discord11.guildId, emoji: { id: '1', name: 'tandemise' } });
+      await until(() => ['created', 'linked'].includes(d11.repo.findSignal(ws, fp11(QUIET, quietMsg.id))?.status));
+      await d11.settle();
+      const s11 = d11.repo.findSignal(ws, fp11(QUIET, quietMsg.id));
+      check('a :tandemise: reaction still files the message', ['created', 'linked'].includes(s11?.status), s11 && { status: s11.status, reason: s11.reason });
+      await new Promise((r) => setTimeout(r, 300));
+      check('…with no 👀 reaction PUT at intake', reactionPuts().length === 0, reactionPuts().map((c) => c.path));
+      const closed11 = await new R.DiscordRunner().close({
+        kind: 'done', signal: { fingerprint: s11?.fingerprint, key: s11?.key, url: s11?.url, instance: s11?.instance, title: s11?.title, reply: s11?.reply },
+        item: { key: 'GAR-11', url: `${fake.url}/issue/GAR-11` }, prUrl: null, commit: null,
+      }, runnerCtx(ws, QUIET, { botToken: 'bot-test' }));
+      check('…closing still replies to the message', closed11?.ok === true && discord11.calls.filter((c) => c.method === 'POST' && c.path === `/channels/${CH11}/messages`).length === 1, closed11);
+      check('…and no reaction PUT at closure either', reactionPuts().length === 0, reactionPuts().map((c) => c.path));
+
+      // The default, on the same channel: the source without the flag acknowledges with 👀.
+      d11.config.write(ws, sources(LOUD));
+      await d11.services.intake.saveSourceSecret(d11.caller, ws, 'discord-loud', { name: 'botToken', value: 'bot-test' });
+      d11.host.tick();
+      await d11.settle();
+      const loudMsg = discord11.postMessage({ channel_id: CH11, content: 'Search forgets the last filter', author: { id: '900000000000000042', username: 'sam' } });
+      // The quiet source's session closes and the loud one identifies (a second Identify) before the reaction.
+      check('the loud source identifies on the gateway', await until(() => discord11.sessions === 1 && discord11.frames.filter((f) => f.op === 2).length === 2), { sessions: discord11.sessions, identifies: discord11.frames.filter((f) => f.op === 2).length });
+      discord11.emit('MESSAGE_REACTION_ADD', { user_id: '900000000000000043', channel_id: CH11, message_id: loudMsg.id, guild_id: discord11.guildId, emoji: { id: '1', name: 'tandemise' } });
+      check('a source without trigger.react is read on the same channel', await until(() => ['created', 'linked'].includes(d11.repo.findSignal(ws, fp11(LOUD, loudMsg.id))?.status)), d11.repo.findSignal(ws, fp11(LOUD, loudMsg.id))?.status);
+      check('…and by default it is acknowledged with 👀 (one reaction PUT, on that message)',
+        await until(() => reactionPuts().length === 1) && reactionPuts()[0].path === `/channels/${CH11}/messages/${loudMsg.id}/reactions/${encodeURIComponent('👀')}/@me`
+        && discord11.reactions.get(`${CH11}:${loudMsg.id}`)?.has('👀') === true, reactionPuts().map((c) => c.path));
+    } catch (e) {
+      check('the discord react: false section ran', false, String(e?.stack ?? e));
+    } finally {
+      await d11?.dispose();
+      await discord11.close();
+    }
+  }
+
   // ------------------------------------------------------------------ Ruling 26: a delivery waits for its secret
   // A webhook delivery whose runner fails only because a secret was never
   // saved is left in the mailbox, not acked, and the source says which one.

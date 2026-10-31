@@ -1,7 +1,7 @@
 # Intake acceptance report
 
-Run: 2026-10-31T05:29:10.084Z · build 66e79ee · fresh install at /tmp/tdm-intake-run-mvvyh653 · fake YouTrack, Sentry and Slack
-Result: **ALL PASS** (9/9 scenarios)
+Run: 2026-10-31T06:05:08.330Z · build 807b911 · fresh install at /tmp/tdm-intake-run-mvvzq9kr · fake YouTrack, Sentry and Slack
+Result: **ALL PASS** (10/10 scenarios)
 
 | Scenario | Result | Checks |
 |---|---|---|
@@ -14,6 +14,7 @@ Result: **ALL PASS** (9/9 scenarios)
 | I7 — The mission completes: the item moves to In Review and the comment shows the criteria | PASS | 5/5 |
 | I8 — The item is done: the loop closes at Sentry and in Slack | PASS | 5/5 |
 | I9 — A custom runner pushes with its own token, and reads its closure back | PASS | 7/7 |
+| I10 — A brain's source runs here only when switched on; a moved tracker gets no token until confirmed | PASS | 22/22 |
 
 ## I1 — The Board lists the tracker's items, grouped by mapped state
 
@@ -71,7 +72,7 @@ Result: **ALL PASS** (9/9 scenarios)
 ## I6 — Start opens a mission with the item's criteria and the tracker follows
 
 - ✅ GAR-5 is Ready with Start enabled — `"GAR-5\nTypeError: basket is null\nSentry · 132 events\nSlack · thread\nStart"`
-- ✅ Start opens the mission — `"msn_01m686rz8nzg40q9z8bq"`
+- ✅ Start opens the mission — `"msn_01m688s5dkasw2vremm0"`
 - ✅ the mission's Done when is the item's criterion — `"Done when\n0 of 1 verified\nU1\nCheckout no longer throws when the basket is empty\nThe spec will cover this\nNot verified"`
 - ✅ the mission was planned, never queued — `{"status":"AWAITING_PLAN_APPROVAL"}`
 - ✅ proof (fake YouTrack): GAR-5 is In Progress — `"In Progress"`
@@ -92,7 +93,7 @@ Result: **ALL PASS** (9/9 scenarios)
 
 ## I8 — The item is done: the loop closes at Sentry and in Slack
 
-- ✅ proof (fake Sentry): issue 501 resolved inCommit, in acme/web — `{"status":"resolved","statusDetails":{"inCommit":{"commit":"8516d1effcc2424fbc0ae8087c31bfc9a45a208f","repository":"acme/web"}}}`
+- ✅ proof (fake Sentry): issue 501 resolved inCommit, in acme/web — `{"status":"resolved","statusDetails":{"inCommit":{"commit":"cd3dd80711031c8b0aadc3b7aac9310fa6d7afc9","repository":"acme/web"}}}`
 - ✅ proof (fake Slack): one thread reply naming GAR-5 — `["Done: TypeError: basket is null · GAR-5"]`
 - ✅ Intake: the Sentry signal reads "Closed" — `{"fingerprint":"sentry:acme/web:501","title":"TypeError: basket is null","source":"Sentry · 3 times","status":"Closed","text":"TypeError: basket is null\nSentry · 3 times\nClosed\njust now"}`
 - ✅ Intake: the Slack signal reads "Closed" — `{"fingerprint":"slack:acme.slack.com#support:C0SUPPORT:1730000001.000100","title":"TypeError: basket is null","source":"Slack","status":"Closed","text":"TypeError: basket is null\nSlack\nClosed\n3m ago"}`
@@ -101,12 +102,43 @@ Result: **ALL PASS** (9/9 scenarios)
 
 ## I9 — A custom runner pushes with its own token, and reads its closure back
 
-- ✅ Make a token shows a tdi_ token once, with Copy — `"tdi_tqrr…"`
+- ✅ Make a token shows a tdi_ token once, with Copy — `"tdi_ej2x…"`
 - ✅ tandemise intake push exits 0 and prints the fingerprint and status — `{"code":0,"stdout":"custom:web-form:form-18: received\n","stderr":""}`
 - ✅ the token pushes to its source only: refused in the daemon's words — `{"code":1,"stdout":"","stderr":"This token can only push to 'web-form'.\n"}`
 - ✅ the signal appears in the Intake tab, filed — `{"fingerprint":"custom:web-form:form-18","title":"Export to CSV drops accents","source":"custom","status":"Filed as GAR-6","text":"Export to CSV drops accents\ncustom\nFiled as GAR-6\njust now"}`
-- ✅ tandemise intake closures lists its closure, pending — `"clo_01m686wy3hy1c8zzz3w8 custom:web-form:form-18 pending\n"`
-- ✅ --ack closes it — `{"code":0,"stdout":"clo_01m686wy3hy1c8zzz3w8 custom:web-form:form-18 closed\n","stderr":""}`
+- ✅ tandemise intake closures lists its closure, pending — `"clo_01m688x4zsay69frmxc7 custom:web-form:form-18 pending\n"`
+- ✅ --ack closes it — `{"code":0,"stdout":"clo_01m688x4zsay69frmxc7 custom:web-form:form-18 closed\n","stderr":""}`
 - ✅ Intake: "Closed" — `{"fingerprint":"custom:web-form:form-18","title":"Export to CSV drops accents","source":"custom","status":"Closed","text":"Export to CSV drops accents\ncustom\nClosed\njust now"}`
 - screenshot: `I9-settings-token.png`
 - screenshot: `I9-intake-custom.png`
+
+## I10 — A brain's source runs here only when switched on; a moved tracker gets no token until confirmed
+
+- note: brain clone: /tmp/tdm-intake/home/brains/ws_01m688m1k80pzxtqhy65 (no remote; a commit there and Sync is how a teammate's change arrives)
+- ✅ before: the configuration is local, with the tracker at fake YouTrack A — `{"origin":"local","url":"http://127.0.0.1:38619"}`
+- ✅ the project is linked to a brain on this machine (local_only) — `{"status":"local_only","clone":"/tmp/tdm-intake/home/brains/ws_01m688m1k80pzxtqhy65"}`
+- ✅ after Sync (210d273): origin brain, one source sentry-team, the tracker at A — `{"origin":"brain","sources":["sentry-team"],"tracker":"http://127.0.0.1:38619"}`
+- ✅ API: the brain source is off on this computer (enabled false) — `{"sentry-team":false}`
+- ✅ Settings → Intake says it is set in the project's brain — `"Intake\nFor Acceptance\nSet in this project's brain.\nTracker\n\nWork is filed in YouTrack GAR, and you start it from the Board.\n\nTracker\nYouTrack\nGitHub Issues\nYouTrack address\nhttps, or http on this computer onl`
+- ✅ the window shows "Run sentry-team on this computer" OFF — `"false"`
+- ✅ saving its token here leaves it off (API enabled false)
+- ✅ OFF: Check sources now → the fake Sentry records no poll — `{"before":5,"after":5}`
+- ✅ click ON in the window → API enabled true — `{"sentry-team":true}`
+- ✅ ON: the runner reads the source → the fake Sentry records a poll with this computer's token — `{"before":5,"after":7}`
+- ✅ click OFF in the window → API enabled false — `{"sentry-team":false}`
+- ✅ OFF again: Check sources now (and the ticks since) → no further polls — `{"before":7,"after":7}`
+- ✅ after Sync (cc5505f): API originMismatch.tracker names B now and A as saved, with the daemon's sentence — `{"tracker":{"current":"http://127.0.0.1:39029","saved":"http://127.0.0.1:38619","message":"This project's tracker now points at http://127.0.0.1:39029. Confirm the new address in Settings → Intake before Tandemise sends `
+- ✅ the Board shows the daemon's sentence, word for word — `{"shown":"This project's tracker now points at http://127.0.0.1:39029. Confirm the new address in Settings → Intake before Tandemise sends your token there.","daemonProblem":"This project's tracker now points at http://1`
+- ✅ Check sources now: the Board still answers with the same sentence (no read of B) — `{"afterCheck":"This project's tracker now points at http://127.0.0.1:39029. Confirm the new address in Settings → Intake before Tandemise sends your token there.","checkError":""}`
+- ✅ proof (fake YouTrack B): no request carrying the token reached B — `{"tokenCalls":0,"anyCalls":0}`
+- ✅ nothing from B is on the Board yet
+- ✅ Settings → Intake shows the prompt: the sentence, "Saved for http://127.0.0.1:38619." and Use the new address — `"This project's tracker now points at http://127.0.0.1:39029. Confirm the new address in Settings → Intake before Tandemise sends your token there.\n\nSaved for http://127.0.0.1:38619.\n\nUse the new address"`
+- ✅ click Use the new address → the prompt disappears and API originMismatch.tracker is null — `{"tracker":null,"sources":{}}`
+- ✅ the Board refreshes against B: GAR-101 Ready, GAR-102 In progress, and every row is B's item — `{"keys":{"ready":["GAR-101"],"inProgress":["GAR-102"],"inReview":[]},"notB":[]}`
+- ✅ …with no problem line — `""`
+- ✅ proof (fake YouTrack B): B now receives requests carrying the token (the board read) — `{"count":4,"paths":["GET /api/issues","GET /api/issues/GAR-1"]}`
+- screenshot: `I10-on-this-computer-off.png`
+- screenshot: `I10-on-this-computer-on.png`
+- screenshot: `I10-board-tracker-moved.png`
+- screenshot: `I10-settings-confirm-new-address.png`
+- screenshot: `I10-board-new-address.png`

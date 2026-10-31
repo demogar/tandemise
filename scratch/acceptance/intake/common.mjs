@@ -39,6 +39,12 @@ export const yt = {
   async comments(key) { return (await yt.state()).comments[key] ?? []; },
   async creates() { return (await yt.state()).calls.filter((x) => x.method === 'POST' && x.path === '/api/issues'); },
 };
+/** I10's second YouTrack, the address the tracker moves to (Ruling 23). */
+export const ytB = {
+  url: () => urlOf('youtrack-b'),
+  state: () => fake('youtrack-b', 'GET', '/_fake/state'),
+  put: (issue) => fake('youtrack-b', 'POST', '/_fake/issues', issue),
+};
 export const sentry = {
   state: () => fake('sentry', 'GET', '/_fake/state'),
   put: (issue) => fake('sentry', 'POST', '/_fake/issues', issue),

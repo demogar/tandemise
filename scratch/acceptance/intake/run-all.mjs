@@ -15,7 +15,8 @@
 // secrets set through the daemon's own routes (the brain, #51, is not on main:
 // the local IntakeConfigSource is what a person's Settings → Intake writes),
 // the real desktop window with its own user-data-dir and CDP on 9352, then
-// I1–I9 in order. Writes intake/evidence/REPORT.md and copies it, with the
+// I1–I10 in order. I10 links the project to a brain on this machine (#70) and
+// moves the tracker to a second fake YouTrack (youtrack-b), so it runs last. Writes intake/evidence/REPORT.md and copies it, with the
 // screenshots, to docs/superpowers/evidence/2026-10-30-intake/acceptance/.
 //
 // --real-youtrack: with TANDEMISE_YOUTRACK_URL, TANDEMISE_YOUTRACK_TOKEN and
@@ -76,6 +77,8 @@ async function startFake(name, script, args = []) {
 const ytUrl = REAL ? process.env.TANDEMISE_YOUTRACK_URL : await startFake('youtrack', 'fake-youtrack.mjs', ['--project', 'GAR', '--token', 'perm:acceptance', '--login', 'tandemise-bot']);
 const sentryUrl = await startFake('sentry', 'fake-sentry.mjs', ['--token', 'sntrys_acceptance', '--org', 'acme', '--project', 'web', '--repos', 'acme/web']);
 const slackUrl = await startFake('slack', 'fake-slack.mjs', ['--workspace', 'acme', '--app-token', 'xapp-acceptance', '--bot-token', 'xoxb-acceptance']);
+// I10's second address for the tracker (Ruling 23): it would take the same token, so a request carrying it shows.
+if (!REAL) await startFake('youtrack-b', 'fake-youtrack.mjs', ['--project', 'GAR', '--token', 'perm:acceptance', '--login', 'tandemise-bot']);
 writeFileSync(`${LINK}/fakes.json`, JSON.stringify({ pids: children.map((c) => c.pid) }));
 const stopFakes = () => { for (const c of children) { try { c.kill('SIGTERM'); } catch { /* gone */ } } };
 
@@ -193,7 +196,7 @@ desktop.unref();
 
 const keepGoing = process.argv.includes('--keep-going');
 const only = process.argv.find((a) => a.startsWith('--only='))?.slice('--only='.length).split(',');
-const all = ['i01-board.mjs', 'i02-sentry.mjs', 'i03-slack-same-error.mjs', 'i04-held-back.mjs', 'i05-unsure.mjs', 'i06-start.mjs', 'i07-complete.mjs', 'i08-close-the-loop.mjs', 'i09-cli.mjs'];
+const all = ['i01-board.mjs', 'i02-sentry.mjs', 'i03-slack-same-error.mjs', 'i04-held-back.mjs', 'i05-unsure.mjs', 'i06-start.mjs', 'i07-complete.mjs', 'i08-close-the-loop.mjs', 'i09-cli.mjs', 'i10-brain-sources-and-moved-tracker.mjs'];
 const scenarios = all
   .filter((file) => !REAL || ['i01', 'i02', 'i06'].some((id) => file.startsWith(id)))
   .filter((file) => !only || only.some((o) => file.includes(o)));
@@ -224,7 +227,7 @@ if (!process.argv.includes('--hold')) {
 
 // ---------------------------------------------------------------- report
 const results = readdirSync(EVIDENCE).filter((f) => f.endsWith('.json')).map((f) => JSON.parse(readFileSync(join(EVIDENCE, f), 'utf8')));
-const order = ['I1', 'I2', 'I3', 'I4', 'I5', 'I6', 'I7', 'I8', 'I9'];
+const order = ['I1', 'I2', 'I3', 'I4', 'I5', 'I6', 'I7', 'I8', 'I9', 'I10'];
 results.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
 const missing = scenarios.map((f) => `I${Number(f.slice(1, 3))}`).filter((id) => !results.some((r) => r.id === id));
 const lines = [
