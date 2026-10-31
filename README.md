@@ -1,207 +1,42 @@
 # Tandemise
 
 [![CI](https://github.com/tandemise/tandemise/actions/workflows/ci.yml/badge.svg)](https://github.com/tandemise/tandemise/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/tandemise/tandemise)](https://github.com/tandemise/tandemise/releases/latest)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Storybook](https://img.shields.io/badge/storybook-design%20system-ff4785)](https://tandemise.github.io/tandemise/)
 
-*A local-first operating system for running a software company with
-interchangeable AI workers, tools, and machines.*
+*An open-source, self-hosted AI software factory that runs on your machine.*
 
-Tandemise is not a model, a coding agent, or a chat client. It is the
-organization layer above them. It owns the missions, roles, state, permissions,
-artifacts, approvals, evaluation, and recovery — and delegates the actual work to
-whichever agent runtimes, integrations, and machines you choose.
-
-> **The architectural maxim.** Tandemise owns the organization. Agents are
-> replaceable workers. Tools are replaceable capabilities. Machines are
-> replaceable execution targets.
-
-The test this codebase is built to pass: *if Claude Code disappeared tomorrow,
-the organization should survive.* Missions, roles, decisions, artifacts,
-permissions and history stay intact. Only an adapter changes.
-
----
-
-## How it works
-
-You give Tandemise an outcome in one sentence and say what "done" means. It
-plans a DAG of tasks across specialized roles, runs each one in an isolated Git
-worktree through whichever runtime you've routed that role to, collects typed
-artifacts at every stage, measures deterministic gates, escalates to you only
-for decisions that deserve human judgement, and ends at a verified release
-candidate.
-
-```
-Intent → Plan → Approve → Execute → Review → QA → Release candidate → Your call
-```
+Work comes in from your trackers and sources (YouTrack, GitHub Issues, Sentry,
+PostHog, Slack, Discord, or a runner of your own) and is filed once in your
+project's primary tracker. Nothing runs until you press **Start**; then the
+task runs on its own, with as much process as its risk needs, up to a pull
+request, and you can **Hold** any step and work with the agent in the real
+Claude Code terminal before handing it back. The project learns from your
+corrections through a shared brain repository, merges by measured risk (auto-merge
+is off until you turn it on), and can share "who is working on what" with a
+team through an optional relay you host yourself. The agents run on your
+machine, under your own subscriptions and logins, and Tandemise's state lives
+in `~/.tandemise`; there is no Tandemise cloud service.
 
 ![Home: what needs you, what is in progress, criteria verified, this month's spend, what is stuck](apps/desktop/screenshots/01-home.png)
 
-Around that engine sits the loop a product owner runs every day, with you as
-the owner and your agents as the team:
+## Contents
 
-```
-Request → Refine → Done when → Backlog + WIP limit → Run within limits
-        → Verify per criterion → Inbox for anything stuck → Desk + status report
-        → Routines bring the next request
-```
-
-1. **Request.** One sentence on **New mission**.
-2. **Refine.** If you have not said what done means, a product agent proposes
-   criteria and asks only the questions that change the plan. You accept,
-   edit or reject each one. → [Refine a rough request](docs/guides/refine.md)
-3. **Done when.** Every line becomes a numbered criterion (`U1`, `U2`, …). A
-   mission cannot be planned without one. → [Done when](docs/guides/done-when.md)
-4. **Backlog and WIP.** Rank requests by priority, queue them, and set how many
-   missions run at once. When a slot frees up, the next ready one is planned.
-   → [Backlog and work in progress](docs/guides/backlog.md)
-5. **Run within limits.** Agent minutes, tokens or dollars per mission and per
-   month. At the limit work stops and one card asks you to raise it or keep it
-   paused. → [Limits](docs/guides/limits.md)
-6. **Verify per criterion.** The spec must cover every line, QA must verify
-   every criterion by id, and the release gate will not pass while one is
-   unverified. The mission shows it as a checklist.
-7. **Inbox for anything stuck.** A mission nothing moves and nothing asks
-   about gets one **Stalled** row with the one action that moves it; an agent
-   that goes quiet gets a **Quiet** row. A step can say the plan no longer
-   fits; **Plan the rest again** gets new steps for what is left, keeping what
-   is done. → [The Inbox](docs/guides/inbox.md),
-   [Plan the rest again](docs/guides/replan.md)
-8. **Desk and status report.** Home counts what needs you, what is in
-   progress, what is verified, what it cost and what is stuck. **Status
-   report** writes the same picture from stored facts, no model involved.
-   → [The desk](docs/guides/desk-and-status-report.md)
-9. **Routines.** Standing work (weekly dependency updates, nightly check
-   fixes, a Friday report) is added to the backlog on schedule, ready to plan.
-   → [Routines](docs/guides/routines.md)
-
-Every step is decided by the daemon from stored facts and fixed rules; no model
-output decides whether work is done, planned, stopped or stuck. Nothing gets
-copy-pasted between tools. Everything is attributable and recoverable.
-
-<table>
-  <tr>
-    <td><img src="apps/desktop/screenshots/22-mission-done-when.png" alt="A mission's Done-when checklist"></td>
-    <td><img src="apps/desktop/screenshots/24-backlog.png" alt="The backlog with a work-in-progress limit"></td>
-  </tr>
-  <tr>
-    <td><img src="apps/desktop/screenshots/27-inbox-stalled-quiet.png" alt="The Inbox with a stalled mission and a quiet agent"></td>
-    <td><img src="apps/desktop/screenshots/25-limit-card.png" alt="A mission paused at its limit"></td>
-  </tr>
-</table>
-
-Each step can run on the model that fits it, retry on a stronger one and drop to a
-cheaper one near a limit — see [Choosing models](docs/guides/models.md).
-
-When something needs you and the window is in the background, a native
-notification says so once, never a flood, and opens the decision when clicked.
-See [Notifications](docs/guides/notifications.md) for the switches and quiet
-hours.
-
-Bring the skills you already use (`~/.claude/skills`, a folder, a git repository)
-and pin them to the roles that need them; every run gets exactly the version it
-was pinned to — see [Giving your agents your skills](docs/guides/skills.md).
-Your roles, workflows, routines, limits, skill pins and GitHub issue settings can
-live in your repository as `.tandemise/` files: export them, commit them, import
-them on another machine with a preview of every change — see
-[Your setup as code](docs/guides/setup-as-code.md).
-
-How much process a task gets is decided per task: with **Let the factory
-decide** (the default), a tiny fix plans at once into one step and a pull
-request, while a change to migrations, auth or payments gets a spec, review,
-verification and a plan you approve — every choice shown with its reasons.
-The ship step opens the pull request itself, waits for CI, and then either asks
-for your review or, once you turn auto-merge on for the project, merges low-risk
-changes on its own from measured facts, never from what an agent says — see
-[The factory](docs/FACTORY.md).
-
-Each project can have a **brain**: one git repository (say `garipass/brain`)
-that holds how its factory works and what it has learned. Link it in Project
-settings in one of three ways: create one on GitHub, use one a teammate made, or
-keep it on this machine. When you hold a step or ask for changes, the brain keeps
-a short lesson; the next run on that step loads it and the task shows what it
-knew; a lesson that keeps helping is proposed as a rule through a pull request.
-Sharing is `git pull` and `git push`; secrets and your own settings never go in it.
-
-Label a GitHub issue `tandemise` and it becomes a draft mission (queued when it
-says what "done" means); when the work ships, the issue gets the criteria table
-and, if you want, is closed — see [GitHub issues in and out](docs/guides/github-issues.md).
-
-**Intake.** Give a project a primary tracker (YouTrack or GitHub Issues) in
-**Settings → Intake**, and anything that might be work, from Sentry, PostHog,
-a Slack or Discord thread, labelled GitHub issues or a runner of your own,
-lands there once: a new item, or a link to the item that already tracks it.
-Noise is held back with the reason, and an unsure match becomes one Inbox
-question ("Is this the same as GAR-7?"). The **Board** lists your tracker's
-ready, in-progress and in-review items; **Start** makes one a mission (never
-queued behind your back), the tracker follows it in one activity comment and
-its state, and when the item is done the loop closes at every source. Your
-own runner pushes with a per-source token through the `tandemise` CLI
-(`tandemise intake push`, `tandemise intake closures`, `tandemise start
-GAR-12`) — see [Writing an intake runner](docs/intake/README.md).
-
-## Architecture
-
-```
-┌──────────────────────────────────────────────────────────────┐
-│  apps/desktop        Electron + React. Control surface only.  │
-│                      No filesystem, shell, or DB access.      │
-└───────────────────────────┬──────────────────────────────────┘
-                            │  HTTP + WebSocket on 127.0.0.1,
-                            │  bearer-authenticated
-┌───────────────────────────▼──────────────────────────────────┐
-│  apps/daemon (tandemd)    The authoritative process.          │
-│                           Composition root — the ONLY place   │
-│                           that names a concrete provider.     │
-└───────────────────────────┬──────────────────────────────────┘
-                            │
-┌───────────────────────────▼──────────────────────────────────┐
-│  packages/application     Mission engine: planning, DAG       │
-│                           scheduling, gates, recovery.        │
-│                           Depends on ports, never providers.  │
-├──────────────────────────────────────────────────────────────┤
-│  packages/domain          Entities, the canonical agent event │
-│  packages/kernel          vocabulary, the gate language, DAG  │
-│  packages/shared          validation, and every port.         │
-├──────────────────────────────────────────────────────────────┤
-│  Providers (outward)                                          │
-│    runtime-claude · runtime-generic · runtime-codex           │
-│    execution-local · persistence · artifacts                  │
-│    integration-github · browser · desktop-control             │
-└──────────────────────────────────────────────────────────────┘
-```
-
-**The dependency rule is enforced mechanically.** `npm run check:boundaries`
-fails the build if a package imports something it hasn't declared, imports from
-an equal-or-higher layer, or — if it's a core package — imports a provider
-module like `electron`, `playwright`, `better-sqlite3`, or `child_process`.
-
-### Why it's shaped this way
-
-- **Adapters, not integrations.** Every runtime implements one contract and
-  contributes itself to a registry. Routing is by *capability* — the scheduler
-  asks "who can do `shell` + `git`, is healthy, and isn't saturated?", never
-  "is Claude available?". Adding a new worker is: write the adapter, export a
-  module, append it to the composition list.
-- **Artifacts, not chat.** Roles hand off typed documents with schemas —
-  ProductSpec, ArchitecturePlan, ChangeSet, ReviewReport, QAReport — written to
-  `.tandemise/out/` and validated on collection. A reviewer reads the diff and
-  the spec, never the implementer's transcript, because independence is the
-  whole point of a review.
-- **Gates, not assurances.** Progression depends on measured facts:
-  `checks.typecheck == PASS && review.blocking_findings == 0`. "The developer
-  says it's done" is never a gate condition. When a gate blocks, it tells you
-  exactly which conjunct failed and what the measured value was.
-- **Default deny.** No tool, path, domain, or app is reachable without an
-  explicit grant scoped to one worker assignment. A QA worker cannot even
-  *discover* a production-write tool.
-- **Crash recovery is a feature.** The daemon outlives the window. Runs are
-  checkpointed with resumable session handles; a restart reconciles interrupted
-  runs, releases only leases whose holder is genuinely dead, and tells you in the
-  mission timeline that it happened.
+- [Install](#install)
+- [Quick start](#quick-start)
+- [A normal day](#a-normal-day)
+- [How it works](#how-it-works)
+- [Architecture](#architecture)
+- [Documentation](#documentation)
+- [Repository layout](#repository-layout)
+- [Contributing](#contributing)
 
 ## Install
 
-Download the installer for your platform from the
+Installers are attached to each GitHub Release, built by the
+[Desktop packages](.github/workflows/desktop-packages.yml) workflow on Linux,
+macOS and Windows runners. Download the one for your platform from the
 [latest release](https://github.com/tandemise/tandemise/releases/latest):
 
 | Platform | File |
@@ -211,9 +46,14 @@ Download the installer for your platform from the
 | Linux | `Tandemise-<version>-linux-x86_64.AppImage`, or `Tandemise-<version>-linux-amd64.deb` for Debian and Ubuntu |
 | Windows | `Tandemise-<version>-win-x64-setup.exe` |
 
+v0.9.0 was published before the packaging workflow existed and has no
+installers; releases after it carry them. To use v0.9.0, run it
+[from source](#from-source).
+
 The app carries its own daemon and runs it on its own built-in Node, so you do
 not need Node.js installed. You still need `git`, and the agent CLIs you want to
-use (Claude Code, Codex, …) on your `PATH`.
+use (Claude Code, Codex, …) on your `PATH`. `gh`, signed in, is needed for pull
+requests, GitHub Issues and a brain on GitHub.
 
 - **Linux AppImage:** `chmod +x Tandemise-*.AppImage` and run it. It needs FUSE
   (`sudo apt install libfuse2` on Ubuntu). Without FUSE, run it as
@@ -223,103 +63,265 @@ use (Claude Code, Codex, …) on your `PATH`.
   window closes, or when a second launch exits).
 - **Linux .deb:** `sudo apt install ./Tandemise-*-linux-amd64.deb`, then start
   Tandemise from your applications menu (or `tandemise`).
-- **macOS and Windows:** until a release is signed, the system warns that the
-  developer cannot be verified. On macOS, right-click the app and choose
+- **macOS and Windows:** the builds are not signed yet, so the system warns that
+  the developer cannot be verified. On macOS, right-click the app and choose
   **Open** the first time; on Windows, choose **More info → Run anyway**.
 
 The daemon keeps running when you close the window, so missions carry on, and
-the next window you open reconnects to it. Everything it stores lives in
-`~/.tandemise`.
+the next window you open reconnects to it. After an update, the new app stops
+the old daemon and starts its own. Everything it stores lives in
+`~/.tandemise`. Tokens you give it (a YouTrack token, a source's secret) go
+in the macOS Keychain; on Linux and Windows there is no OS credential store
+support yet, and they are kept in a plain file, `~/.tandemise/secrets.json`
+(mode `0600`).
 
-## Getting started
+### From source
 
-To run from a source checkout instead, Tandemise needs **Node 22** (see `.nvmrc`).
+Tandemise needs **Node 22** (see `.nvmrc`). On Linux, `npm install` compiles
+`node-pty` and needs `g++`, `make` and `python3`.
 
 ```bash
+git clone https://github.com/tandemise/tandemise.git
+cd tandemise
 nvm use                 # 22.23.1, per .nvmrc
 npm install
 npm run build
-npm run check:boundaries
 
-npm run daemon          # starts tandemd
-npm run desktop         # starts the Electron app
+npm run dev             # starts tandemd, then the desktop app
+# or, as two processes:
+npm run daemon          # tandemd on 127.0.0.1
+npm run desktop         # the Electron app
 ```
 
-Point it at a Git repository, connect a runtime (Claude Code is detected
-automatically; any other CLI can be wired through the generic adapter without
-writing code), and create a mission. [docs/QUICKSTART.md](docs/QUICKSTART.md)
-walks through the first one.
+## Quick start
 
-### Working as a team (optional relay)
+1. **Add a repository.** Point Tandemise at a Git repository. Claude Code is
+   detected on **Runtimes**; any other CLI can be added there as a generic
+   runtime without code.
+2. **Give the project a tracker.** In **Settings → Intake**, choose YouTrack
+   (address, project, a permanent token) or a repository's GitHub Issues, and
+   map its states (ready, in progress, in review, done, won't do). Add sources
+   there too: GitHub issues, Sentry, PostHog, Slack, Discord, or a custom runner.
+3. **Link a brain (optional).** In the project's **Brain** section: create a
+   private repository on GitHub with your `gh`, use one a teammate made, or
+   keep it on this machine.
+4. **Start something.** Open **Board**, press **Start** on a ready item (or
+   write a one-sentence request in **New mission**), and follow it from the
+   Plan tab.
 
-Solo needs nothing more. A team can run its own slim relay with
-`docker compose up`: one container, one SQLite file. It tells every
-connected Tandemise who is working on which tracker item, keeps the team's
-members and per-computer tokens, and holds webhooks for a daemon to pick up.
-It runs no agents and stores no work; losing it never stops local work. See
-[apps/relay/README.md](apps/relay/README.md).
+[docs/QUICKSTART.md](docs/QUICKSTART.md) has the details, including the
+`tandemise` CLI for custom runners.
+
+## A normal day
+
+This is the path `scratch/acceptance/integrated/run-all.mjs` drives in the real
+window, on one install, with fakes for YouTrack, GitHub and the agent
+([report](docs/superpowers/evidence/2026-10-31-integrated/REPORT.md)).
+
+1. **Work arrives.** A form reply is pushed with `tandemise intake push`. It is
+   filed in YouTrack as `GAR-2` and shows on the **Board** under Ready. A
+   signal that matches an existing item is linked instead; noise is held back
+   with the reason; an unsure match becomes one Inbox question ("Is this the
+   same as GAR-7?").
+2. **You start it.** **Start** opens a mission. The factory profiles the item
+   as a tiny, low-risk fix and puts it in the quick lane: one step, then a pull
+   request, with no plan approval. **Why these steps** on the Plan tab says
+   so. YouTrack moves the item to In Progress and gets one activity comment that
+   Tandemise keeps up to date.
+3. **It runs.** The step runs on the agent staffed for it, in its own Git
+   worktree on its own branch, not in your checkout.
+4. **You hold it.** **Hold** stops the run and opens the agent's own session in
+   a terminal in the task panel, in the same worktree. You type to it; it edits
+   files. **Continue** hands the step back and it finishes from the work as it
+   now stands, without spending another attempt.
+5. **A pull request.** The ship step opens one pull request with the agent's
+   change and yours, waits for CI, and decides. Auto-merge is off, so the
+   Inbox gets **Review and merge** and YouTrack moves to In Review.
+6. **The team sees it.** Home's **Who's working on what** shows `GAR-2` as
+   yours; with a relay, every teammate sees the same.
+
+With a brain linked, what you corrected during the hold becomes a short lesson
+that the next run on that kind of step loads.
+
+## How it works
+
+### Intake into one tracker
+
+Each project has one primary tracker: YouTrack or GitHub Issues. Sources
+(GitHub issues labelled for it, Sentry, PostHog, Slack and Discord threads, or a
+runner of your own) send signals that are filed there once. Everything that
+comes in is recorded, but nothing starts until a person starts it. When the
+item is done, the loop closes at every source it came from. Custom runners push
+with a per-source token through the `tandemise` CLI (`tandemise intake push`,
+`tandemise intake closures`, `tandemise start GAR-12`) or over HTTP. See
+[Writing an intake runner](docs/intake/README.md).
+
+### The planner: lanes, steps and models
+
+With **Let the factory decide** (the default workflow), a task is planned by
+rules, not by a model. It is profiled (type, size, risk) from the tracker item
+and the areas of code it names; a lane follows: *quick* (one step, then a pull
+request), *standard* (adds an independent review, and verification when the
+task has Done-when lines) or *careful* (spec, architecture, implement, review,
+verify, a plan you approve, and a pull request that always asks). Modules add
+steps for sensitive areas, such as a security review for auth. Each step class
+can have a ladder of models: a step starts on the cheapest model with a good
+enough record for similar work and climbs on retry. Every choice is shown with
+its reasons. See [The factory](docs/FACTORY.md).
+
+### Merge by risk
+
+The ship step opens the pull request, waits for CI, and either asks you or
+merges it. It decides from facts it measured at the pull request's head commit
+(CI state, lines changed, the areas touched, whether a person committed, the
+repository's branch protection), never from what an agent wrote. **Auto-merge
+is off by default.** It can only be turned on by a person, in the app, for a
+project with a brain, after a backtest of past decisions. Even then, anything
+on `merge.yaml`'s `never` list always asks; the built-in list covers
+migrations, CI and infrastructure files, secrets, auth and payments code, the
+careful lane, and a branch with a person's commit on it. Every merge is bound to the decided commit and
+can be reverted from its card.
 
 ### Hold and interact
 
-When you want to steer an agent's step yourself, **Hold** it in the task
-panel. Tandemise stops the run cleanly and opens the agent's own session in an
-in-app terminal, in the same checkout, so you can work with it directly. When
-you hand it back, the pipeline continues from the work as it now stands; a
-**Release** ends the hold and keeps what you did. See the
-[evidence](docs/superpowers/evidence/2026-10-30-hold/).
+**Hold** any running or waiting agent step. Tandemise stops the run cleanly
+and opens the agent's own session in an in-app terminal, in the same checkout.
+**Continue** resumes the pipeline from the work as it now stands; **Release**
+ends the hold and keeps what you did without resuming the session. Hold needs
+a runtime that can resume a session interactively: today, Claude Code.
 
-## Guides
+### The brain
 
-Task-oriented, one per concept:
+Each project can link one git repository as its brain. It holds the factory
+definition (`factory/planner.yaml`, `routing.yaml`, `merge.yaml`, the tracker
+and intake settings) and what the project has learned: a ledger of lessons
+from holds and requested changes, with a link to the run each came from. A run
+loads only the lessons relevant to its step, and the task shows what it knew. A
+lesson that keeps helping is proposed as a rule through a pull request to the
+brain. Sharing is `git pull` and `git push`; secrets and personal settings
+never go in it.
 
-| Guide | How do I… |
-|---|---|
-| [Done when](docs/guides/done-when.md) | say what finished means and see each criterion verified |
-| [Refine a rough request](docs/guides/refine.md) | turn a one-liner into something ready to plan |
-| [Backlog and work in progress](docs/guides/backlog.md) | rank requests and limit how many run at once |
-| [Limits](docs/guides/limits.md) | cap agent minutes, tokens or dollars per mission and per month |
-| [The Inbox](docs/guides/inbox.md) | find stalled missions and quiet agents, and unstick them |
-| [Plan the rest again](docs/guides/replan.md) | change course partway through without losing what is done |
-| [The desk and the status report](docs/guides/desk-and-status-report.md) | read Home at a glance and write a report from facts |
-| [Routines](docs/guides/routines.md) | put standing work on a schedule |
-| [Notifications](docs/guides/notifications.md) | hear about new Inbox items while the window is in the background |
-| [About and diagnostics](docs/guides/about-and-diagnostics.md) | see which app and daemon build is running, and copy diagnostics for a bug report |
-| [Giving your agents your skills](docs/guides/skills.md) | import the skills I already use and pin them to roles and steps |
-| [Score a change before it goes live](docs/guides/evals.md) | save a finished step as a case and try a different model, skill or setup against it |
-| [GitHub issues in and out](docs/guides/github-issues.md) | turn labelled issues into missions and report back on them |
-| [Writing an intake runner](docs/intake/README.md) | push work from a source of my own into the tracker, with the `tandemise` CLI or over HTTP, and close the loop |
-| [Hand work in and back](docs/guides/outside-contributions.md) | start a mission from a file or link I already have, and take a step to another tool and bring it back |
-| [Your setup as code](docs/guides/setup-as-code.md) | keep roles, workflows, routines, limits, skill pins and issue settings in my repository, and import them |
-| [Workflows](docs/WORKFLOWS.md) | write my own process as a file, and see which gate facts exist |
-| [The factory](docs/FACTORY.md) | see why a task got its steps, models and gates, and decide when Tandemise may merge on its own |
+### Optional relay for teams
+
+Solo needs no server. A team can run a slim relay with Docker Compose: one
+container, one SQLite file. It tells every connected Tandemise who is working
+on which tracker item, keeps the team's members and per-computer tokens, and
+holds webhooks for a daemon to pick up. It runs no agents and stores no work;
+losing it never stops local work. See [apps/relay/README.md](apps/relay/README.md).
+
+### The engine underneath
+
+Every mission is a plan of tasks across roles (product, architecture,
+development, review, QA, release), each in an isolated Git worktree, handing
+off typed artifacts (`ProductSpec`, `ChangeSet`, `ReviewReport`, …) and passing
+gates measured from facts (`checks.typecheck == PASS && review.blocking_findings
+== 0`). Around it sit Done-when criteria verified one by one, a backlog with a
+work-in-progress limit, spend and time limits, an Inbox for anything stuck,
+routines, skills pinned to roles, and your setup kept as files in the
+repository. Each has a guide in [docs/guides/](docs/guides/).
+
+The daemon decides from stored facts and fixed rules; no model output decides
+whether work is done, planned, stopped or stuck.
+
+## Architecture
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  apps/desktop        Electron + React. Control surface only.  │
+│                      State lives in the daemon.               │
+└───────────────────────────┬──────────────────────────────────┘
+                            │  HTTP + WebSocket on 127.0.0.1,
+                            │  bearer-authenticated
+┌───────────────────────────▼──────────────────────────────────┐
+│  apps/daemon (tandemd)    The authoritative process.          │
+│                           Composition root: the only place    │
+│                           that names a concrete provider.     │
+└───────────┬───────────────────────────────────┬──────────────┘
+            │                                   │ optional, HTTPS + WebSocket
+┌───────────▼──────────────────────────────┐  ┌─▼──────────────────────┐
+│  packages/application  Mission engine,   │  │  apps/relay            │
+│  planner, merge policy, intake, brain,   │  │  who works on what,    │
+│  hold. Depends on ports, not providers.  │  │  members, webhooks     │
+├──────────────────────────────────────────┤  └────────────────────────┘
+│  packages/domain, kernel, shared         │
+│  Entities, events, gate language, ports. │
+├──────────────────────────────────────────┤
+│  Providers (outward)                     │
+│    runtime-claude · runtime-codex · runtime-generic                  │
+│    execution-local · persistence · artifacts · terminal             │
+│    integration-github · integration-youtrack · integration-mcp      │
+│    intake-runners · coordination · coordination-relay · browser     │
+└──────────────────────────────────────────┘
+```
+
+`npm run check:boundaries` fails the build when a package under `packages/`
+imports something it has not declared or from an equal or higher layer, when a
+core package imports a provider module (`electron`, `playwright`,
+`better-sqlite3`, `child_process`, …), when the desktop renderer value-imports
+a `@tandemise/*` package that pulls in Node built-ins, or when `apps/relay`
+imports anything beyond its short allowlist. It does not check the desktop's
+main process or the daemon: that the desktop holds no state is kept by design
+and review.
+
+Why it is shaped this way, in short: runtimes are adapters routed by
+capability, so replacing an agent CLI changes one adapter; roles hand off typed
+artifacts, so a reviewer reads the diff and the spec, never the implementer's
+transcript; gates are measured facts; permissions are default-deny per worker
+assignment; and the daemon outlives the window and recovers interrupted runs.
+The decisions are recorded in [docs/adr/](docs/adr/).
+
+## Documentation
+
+- [docs/README.md](docs/README.md) is the map of every document.
+- [docs/QUICKSTART.md](docs/QUICKSTART.md): run it and do the first task.
+- [docs/guides/](docs/guides/): one guide per feature.
+- [docs/FACTORY.md](docs/FACTORY.md): lanes, model routing and merge rules.
+- [docs/intake/README.md](docs/intake/README.md): write an intake runner.
+- [apps/relay/README.md](apps/relay/README.md): run the team relay.
+- [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md): what is not done yet.
+- [Storybook](https://tandemise.github.io/tandemise/): the design system
+  (`@tandemise/design`) with every component and its states, in light and dark.
+  WCAG 2.1 AA is the minimum: CI runs axe on every story in both themes. See
+  [docs/DESIGN_SYSTEM.md](docs/DESIGN_SYSTEM.md).
 
 ## Repository layout
 
 | Path | What lives there |
 |---|---|
-| `packages/shared` | Branded ids, errors, `Result`, clock, structured logging, secret redaction, path scoping |
-| `packages/design` | `@tandemise/design`, the design system as a publishable package: tokens (CSS, TypeScript, Tailwind), theme, logo and icons ([README](packages/design/README.md)) |
-| `packages/kernel` | Typed service tokens, the IoC container, composable modules, the capability registry |
-| `packages/domain` | Entities, event vocabulary, gate language, plan validation, **all ports** |
-| `packages/application` | Mission engine — planning, scheduling, execution, gates, remediation, recovery |
-| `packages/policy` | Risk classification, permission decisions, grant derivation, trust boundaries |
-| `packages/persistence` | SQLite (WAL) implementations of the repository ports, plus migrations |
-| `packages/artifacts` | Content-addressed artifact store and the artifact schemas |
-| `packages/context` | The context compiler — smallest task-relevant prompt bundle |
-| `packages/evaluation` | Deterministic checks and the gate fact vocabulary |
-| `packages/runtimes-core` | The `AgentRuntimeAdapter` contract, registry, and capability router |
-| `packages/execution-core` | Execution target contract, process supervisor, scoped filesystem |
-| `packages/integrations-core` | Tool broker, run-scoped tool gateway, MCP gateway |
-| `packages/coordination` | Who works on which tracker item: the `coord_*` schema, claim and take-over rules, the webhook mailbox, local (solo) mode |
-| `packages/coordination-relay` | The daemon's client for an optional team relay: mirror, outbox, stream |
-| `apps/daemon` | `tandemd` — HTTP/WS API, composition root, lifecycle |
+| `apps/daemon` | `tandemd`: HTTP/WS API, composition root, lifecycle |
+| `apps/desktop` | Electron main/preload + React renderer, and the installer build |
 | `apps/relay` | The optional, self-hosted team relay (`node:http` + `ws` + SQLite), its CLI, Dockerfile and compose file |
-| `apps/desktop` | Electron main/preload + React renderer |
-| `native/macos-helper` | Swift helper for Accessibility, screen capture, and input |
-| `docs/` | `guides/` (how to use each feature), `QUICKSTART.md`, `WORKFLOWS.md` (workflow files and gate facts), `BUILD_BRIEF.md` (engineering contract), `APPLICATION_DESIGN.md` (mission engine), `DESIGN_SYSTEM.md` (palette, tokens, logo) |
-| `apps/desktop/screenshots/` | Screenshots of the desktop app, used by this README and the guides |
+| `packages/shared` | Branded ids, errors, `Result`, clock, logging, secret redaction, path scoping |
+| `packages/kernel` | Typed service tokens, the IoC container, modules, the capability registry |
+| `packages/domain` | Entities, event vocabulary, gate language, plan validation, all ports |
+| `packages/api-contract` | The daemon's HTTP/WS request and view schemas, the intake signal schema, the relay's wire schema |
+| `packages/application` | Mission engine, planner, merge policy, intake, brain, hold, routines and the other services |
+| `packages/policy` | Risk classification, permission decisions, grants, trust boundaries |
+| `packages/persistence` | SQLite (WAL) repositories and migrations |
+| `packages/artifacts` | Content-addressed artifact store and artifact schemas |
+| `packages/context` | The context compiler: the smallest task-relevant prompt |
+| `packages/evaluation` | Deterministic checks and the gate fact vocabulary |
+| `packages/runtimes-core` | The runtime adapter contract, registry and capability router |
+| `packages/runtime-claude`, `runtime-codex`, `runtime-generic` | Claude Code, Codex, and any CLI by configuration (plus the scripted fake runtime) |
+| `packages/execution-core`, `execution-local` | Execution target contract, process supervisor, scoped filesystem; local worktrees |
+| `packages/terminal` | The pty (`node-pty`) behind a hold, and its scrollback |
+| `packages/integrations-core` | Tool broker, run-scoped tool gateway, MCP gateway |
+| `packages/integration-github` | `gh`: pull requests, issues, GitHub Issues as a primary tracker |
+| `packages/integration-youtrack` | YouTrack as a primary tracker |
+| `packages/integration-mcp` | MCP servers (stdio and HTTP, with OAuth) as integrations |
+| `packages/intake-runners` | Built-in intake runners: Sentry, PostHog, Slack, Discord |
+| `packages/coordination` | Who works on which tracker item: claims, take-over rules, the webhook mailbox, local (solo) mode |
+| `packages/coordination-relay` | The daemon's client for a team relay: mirror, outbox, stream |
+| `packages/design` | `@tandemise/design`: tokens (CSS, TypeScript, Tailwind), theme, logo, icons and React components ([README](packages/design/README.md)) |
+| `packages/browser`, `desktop-control` | Browser automation for QA; macOS app control through `native/macos-helper` |
+| `native/macos-helper` | Swift helper for Accessibility, screen capture and input |
+| `docs/` | Guides, quickstart, factory and workflow references, design system, ADRs, specs, plans and evidence ([map](docs/README.md)) |
+| `scratch/` | Offline checks (`*-check.mjs`), real-app acceptance suites (`acceptance/`), screenshot scripts |
 
-`MVP.md` is the full product and architecture specification this implements.
+`MVP.md` is the original product and architecture specification. The pivot to
+the software factory is described in
+[docs/superpowers/specs/2026-10-30-tandemise-pivot-notes.md](docs/superpowers/specs/2026-10-30-tandemise-pivot-notes.md)
+and the specs next to it.
 
 ## Origins
 
@@ -332,49 +334,32 @@ agents, tools, and machines.
 
 ## Inspiration
 
-Tandemise is heavily inspired by a handful of projects that are working out how
-people and agents get real work done together, and most of its shape is
-borrowed from them rather than invented here:
-
-- **The phases.** The names and order of the stages a mission moves through
-  (Intent → Plan → Approve → Execute → Review → QA → Release candidate → Your
-  call) and of the owner's loop around it (request, refine, done when, backlog,
-  limits, verify, inbox, desk, routines).
-- **The distribution of work.** How work is split across specialized roles
-  (product, design, architecture, developer, reviewer, QA, release), how it is
-  shared between people and agents, and who is responsible for what.
-- **The operating model.** Budgets and limits, approvals that only ask for real
-  decisions, standing work on a schedule, and agents as members of a team
-  rather than tools you chat with.
-
-What Tandemise adds is mostly the assembly: putting these ideas together in one
-local-first place, with typed artifacts and gates measured from facts.
+Tandemise borrows most of its shape from projects working out how people and
+agents get real work done together:
 
 - **[Grok Bot](https://x.ai/bot)** treats agents as persistent teammates that
   keep working on their own and come back only when something needs your
-  approval. Tandemise's approvals, its inbox, and its routines that queue
-  standing work on a schedule follow that model.
+  approval. Tandemise's approvals, its Inbox, and its routines follow that model.
 - **[Paperclip](https://github.com/paperclipai/paperclip)** showed that the
   interesting layer sits above the agents: an organization with roles, goals,
-  budgets, and governance that runs whatever agents you already have. The
-  organization layer, the roles, and the spend and time limits come from there.
+  budgets and governance that runs whatever agents you already have. The roles
+  and the spend and time limits come from there.
 - **[Buzz](https://buzz.xyz)** puts people and agents in the same workspace as
-  equals, next to the code, without locking you into one vendor's models.
-  Tandemise borrows its owned-agent model (every agent has a person who owns it
-  and answers for its work) and owner-reviewed drafts, along with human steps in
-  workflows and runtimes as replaceable adapters.
-- **[Hermes Agent](https://github.com/NousResearch/hermes-agent)** is an agent
-  that grows with you: it builds skills from experience and remembers what it
-  has done. The idea that missions, decisions, and history should outlive any
-  single agent or session comes from there.
+  equals, without locking you into one vendor's models. Tandemise borrows its
+  owned-agent model (every agent has a person who answers for its work),
+  owner-reviewed drafts, human steps in workflows, and runtimes as replaceable
+  adapters.
+- **[Hermes Agent](https://github.com/NousResearch/hermes-agent)** builds
+  skills from experience and remembers what it has done. The idea that what a
+  project learns should outlive any single agent or session comes from there.
 
 Thank you to the people behind each of them.
 
 ## Contributing
 
 Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) for the
-workflow (Conventional Commit PR titles, squash merges, automated releases) and
-[SECURITY.md](SECURITY.md) for reporting vulnerabilities.
+workflow (Conventional Commit PR titles, squash merges, automated releases, the
+checks to run) and [SECURITY.md](SECURITY.md) for reporting vulnerabilities.
 
 ## License
 

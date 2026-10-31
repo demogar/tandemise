@@ -5,6 +5,13 @@ Every "met" claim names the script that proves it. Anything not demonstrated is
 marked plainly as not demonstrated — a checked box with no evidence behind it
 would be worse than an unchecked one.
 
+This page covers the original MVP criteria only. Features built since then
+(P0–P16, and the software-factory pivot: hold, brain, intake, planner and
+merge, relay, packaging) are proven by the real-app suites in
+`scratch/acceptance/` (listed in CONTRIBUTING.md) and their reports in
+`docs/superpowers/evidence/`; the pivot end to end is
+`docs/superpowers/evidence/2026-10-31-integrated/REPORT.md`.
+
 Run any of these with `export PATH="$HOME/.nvm/versions/node/v22.23.1/bin:$PATH"`.
 
 | # | Criterion | Status | Evidence |

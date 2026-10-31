@@ -9,7 +9,17 @@ The tokens, the theme, the logo and the icon set live in their own package,
 website and any other Tandemise surface can share them. The desktop app is its
 first consumer.
 
+The [Storybook](https://tandemise.github.io/tandemise/), published from
+`main`, shows every component and its states in light and dark.
+
 ## Principles
+
+- **WCAG 2.1 AA is the minimum.** Text contrast of 4.5:1 (3:1 for focus rings
+  and other non-text UI), keyboard reachability, visible focus, names for every
+  control, and hints a keyboard user can reach. `check:design` holds the token
+  contrast pairs; `storybook:a11y` runs axe (its default rules, which include
+  WCAG 2.0 and 2.1 A and AA) on every story in both themes and fails on any
+  violation, with no known exceptions listed today.
 
 - **Colour is a role, never a hue at the call site.** A screen asks for
   `--status-failed` or `--accent`, never for "red" or `#f47c6b`. That is what
@@ -355,9 +365,11 @@ because it carries product logic or is used in one place.
 - **Storybook** is the visual reference: every component, its states, the
   components in context and the foundations, in both themes and densities.
   `npm run -w @tandemise/design storybook` runs it locally; `main` publishes it
-  to GitHub Pages. `npm run -w @tandemise/design storybook:a11y` (after
-  `storybook:build`) runs axe on every story in both themes and fails on a new
-  violation or a failing play function; CI runs it.
+  to GitHub Pages at https://tandemise.github.io/tandemise/.
+  `npm run -w @tandemise/design storybook:a11y` (after `storybook:build`) runs
+  axe on every story and docs page in both themes and fails on a violation not
+  listed in its `KNOWN` array (empty today) or on a failing play function; CI
+  runs it.
 - **Verify in the real app.** Walk every screen in both themes with a real
   mission, not only the mock, and regenerate `apps/desktop/screenshots/` from
   the real app with the scripts in `scratch/docs-screenshots/` (its README has

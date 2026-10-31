@@ -9,6 +9,14 @@ architecture_posture: "Local-first, runtime-agnostic, integration-agnostic, huma
 
 ## MVP Product & Architecture Specification
 
+> **Status (2026-10-31).** This is the original MVP specification. Its
+> architecture (daemon, ports and adapters, artifacts, gates, policy, recovery)
+> still holds. The product has since become a software factory: intake into a
+> primary tracker, hold and interact, a brain repository, a rule-based planner
+> with risk-based merge, and an optional relay. Those are specified in
+> `docs/superpowers/specs/2026-10-30-*.md`, and installers are built for Linux,
+> macOS and Windows. The README describes current behaviour.
+
 *Local-first operating system for running a software company with interchangeable AI workers, tools, and machines.*
 
 > **Product thesis.** Tandemise is not an AI model, a coding agent, or a chat client. It is the organization layer above them: a desktop application that owns missions, roles, state, permissions, artifacts, approvals, evaluation, and recovery while delegating work to whichever agent runtimes, integrations, and execution targets the user chooses.
