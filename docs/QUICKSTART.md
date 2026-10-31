@@ -97,6 +97,15 @@ npx tandemise start GAR-12                        # Start from a shell (daemon t
 [Writing an intake runner](intake/README.md) has the contract, auth, the
 closures feed and the JSON Schema.
 
+## The brain
+A project can link to a brain: one git repository with its roles, workflows,
+rules and the lessons it has learned. In **Project → Brain**, choose **Create a
+brain** (a private GitHub repository made with your `gh`), **Use an existing
+brain** (a teammate's, with a preview of every change before you link), or
+**Keep it on this machine** (share it later). Corrections you make become
+lessons, the next run loads the relevant ones, and **Brain** in the sidebar shows
+them, the rules they are becoming, and how the brain syncs. Sharing is
+`git pull` and `git push`: no server, and no secret ever enters the brain.
 ## Working as a team (optional relay)
 
 Nothing here needs a server. When a team wants to see who is working on
@@ -115,6 +124,7 @@ and be picked up by one daemon.
 | Per-mission worktrees | `~/.tandemise/workspaces/<ws>/missions/<mission>/worktrees/` |
 | Artifacts an agent produced | `.tandemise/out/` inside each worktree |
 | Logs | `~/.tandemise/logs/` |
+| The daemon's copy of each brain | `~/.tandemise/brains/<project>/` |
 
 Your own checkout is never modified: every code-writing task runs in its own
 Git worktree on its own branch, and the branch survives after the worktree is

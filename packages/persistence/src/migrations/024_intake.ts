@@ -2,8 +2,8 @@ import type { Migration } from './types.js';
 
 /**
  * Intake into the primary tracker (spec 2026-10-30-intake-design.md, plan
- * Task 2). Numbered 022, the next free number on its base (RULINGS.md
- * Ruling 1); it depends on nothing from hold-and-interact or the brain.
+ * Task 2). Numbered 024, after hold-and-interact (022) and the brain (023)
+ * (RULINGS.md Ruling 1); it depends on nothing from either.
  *
  * Additive only. Everything is keyed so a repeat, a second daemon tick or a
  * restart finds what is already there:
@@ -31,8 +31,8 @@ import type { Migration } from './types.js';
  * rebuild cascade-deletes under foreign keys. Forgetting a cached item leaves
  * its mission running, unlinked.
  */
-export const migration022: Migration = {
-  version: 22,
+export const migration024: Migration = {
+  version: 24,
   name: 'intake',
   up: `
 CREATE TABLE intake_sources (

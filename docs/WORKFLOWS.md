@@ -157,6 +157,11 @@ silently vanishes sends you looking anywhere except at the file you just broke.
 Your file wins over a built-in preset of the same name. The built-ins stay
 underneath as a starting position, not a ceiling.
 
+When the project has a brain, its `factory/workflows/` come first, then your
+code repositories' `.tandemise/workflows/`, then the built-in presets, by
+workflow id. A code-repository workflow that a brain workflow of the same id
+hides is listed on the Brain screen's Factory tab, with **Move into the brain**.
+
 ## Gate facts
 
 A `gate` is an expression over measured facts, for example

@@ -37,12 +37,13 @@ import { SqliteIntakeRepository } from './repositories/intake-repository.js';
 import { SqliteTrackerItemRepository } from './repositories/tracker-item-repository.js';
 import { SqliteWebhookMailbox } from './repositories/webhook-inbox-repository.js';
 import { INTAKE_REPOSITORY, TRACKER_ITEM_REPOSITORY, WEBHOOK_MAILBOX } from './tokens.js';
+import { SqliteBrainRecordRepository, SqliteWorkspaceBrainRepository } from './repositories/brain-repository.js';
 import {
   APPROVAL_REPOSITORY, ARTIFACT_REPOSITORY, ASSIGNMENT_REPOSITORY, CHECKPOINT_REPOSITORY,
   DATABASE, DECISION_REPOSITORY, EVAL_REPOSITORY, EVALUATION_REPOSITORY, EVENT_REPOSITORY,
   EXECUTION_TARGET_REPOSITORY, FEEDBACK_REPOSITORY, INTEGRATION_REPOSITORY, LEASE_REPOSITORY, MEMBER_REPOSITORY, MISSION_CRITERIA_REPOSITORY, MISSION_QUESTION_REPOSITORY, MISSION_REPOSITORY, LIMIT_REPOSITORY, ROUTINE_REPOSITORY, RUN_SCORE_REPOSITORY, SKILL_REPOSITORY, ISSUE_REPOSITORY,
   PERSON_REPOSITORY, PLAN_PROPOSAL_REPOSITORY, REPO_REPOSITORY, ROLE_REPOSITORY, RUN_INPUT_REPOSITORY, RUN_REPOSITORY, RUNTIME_PROFILE_REPOSITORY,
-  TASK_REPOSITORY, UNIT_OF_WORK, WORKSPACE_REPOSITORY,
+  TASK_REPOSITORY, UNIT_OF_WORK, WORKSPACE_REPOSITORY, WORKSPACE_BRAIN_REPOSITORY, BRAIN_RECORD_REPOSITORY,
 } from './tokens.js';
 
 export interface PersistenceOptions {
@@ -119,5 +120,7 @@ export function persistenceModule(options: PersistenceOptions): TandemiseModule 
     container.bind(INTAKE_REPOSITORY, (r) => new SqliteIntakeRepository(db(r), clock), { source: SOURCE });
     container.bind(TRACKER_ITEM_REPOSITORY, (r) => new SqliteTrackerItemRepository(db(r), clock), { source: SOURCE });
     container.bind(WEBHOOK_MAILBOX, (r) => new SqliteWebhookMailbox(db(r), clock), { source: SOURCE });
+    container.bind(WORKSPACE_BRAIN_REPOSITORY, (r) => new SqliteWorkspaceBrainRepository(db(r)), { source: SOURCE });
+    container.bind(BRAIN_RECORD_REPOSITORY, (r) => new SqliteBrainRecordRepository(db(r)), { source: SOURCE });
   });
 }

@@ -440,3 +440,17 @@ was ambiguous or wrong, decided against the spec
     answer arrives (a run caught it: the mission was made and the window stayed on the Board).
   - **Real YouTrack (opt-in).** `run-all --real-youtrack` runs I1, I2 and I6 against `TANDEMISE_YOUTRACK_URL`/
     `_TOKEN`/`_PROJECT` with nothing seeded; it was implemented and not run (no credentials may be used here).
+- Ruling 21 (integration with hold-and-interact and the brain): merging `main` brought migrations 022
+  (holds) and 023 (brain), so intake's migration is renumbered to **024** (`024_intake.ts`, version 24),
+  as Ruling 1 foresaw. `brain-check` now asserts that the schema includes 023, not that it equals it.
+  - `INTAKE_CONFIG_SOURCE` is bound to `LinkedIntakeConfigSource`. A project linked to a brain reads
+    `factory/tracker.yaml` and `factory/intake.yaml` through the brain's `BrainIntakeConfigSource`
+    (`BRAIN_INTAKE_CONFIG`). Every other project reads the local settings.
+  - The brain parses its files loosely, so intake checks them again:
+    - a tracker that fails `trackerFileV1` reads as no tracker;
+    - a source that fails its schema, or repeats an id, is dropped and logged, and the others are kept;
+    - an invalid `dailyCap` or `similarity` falls back to its default.
+  - The port gains an optional `originFor(ws)`, used by the config view and by `PUT …/intake/config`. A linked
+    project's settings read as set in the brain and cannot be edited there: a write is refused with
+    `CONFLICT "Set in this project's brain."`.
+  - The brain is resolved per call, because the brain's service depends on intake through P14's `IssueService`.

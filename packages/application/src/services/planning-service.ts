@@ -26,6 +26,7 @@ import { parsePlanResponse } from '../planning/parse.js';
 import { clip, materializePlan, planTitle, renameAgainst, renderPlanDocument } from '../planning/materialize.js';
 import { ensureTandemiseIgnore } from '../support/ignore.js';
 import { reopenCard, sentence } from '../support/replan.js';
+import { listProjectWorkflows, type BrainWorkflowReader } from '../brain/workflows.js';
 import { checkSpecLedger, readHandoff, readTitle } from '../engine/harvester.js';
 import {
   buildIntakePrompt, hasAcceptanceCriteria, intakeArtifactFor, intakeTargetFor, missionUploads, uploadFilename,
@@ -54,6 +55,8 @@ export interface PlanningDeps {
   readonly workspaces: WorkspaceRepositoryPort;
   readonly repositories: RepoRepositoryPort;
   readonly workflows: WorkflowSourcePort;
+  /** The project's brain, whose workflows come first (#51). */
+  readonly brain?: BrainWorkflowReader;
   readonly missions: MissionRepositoryPort;
   readonly tasks: TaskRepositoryPort;
   /** Which steps have run, for what a replan keeps (replan spec). */
@@ -502,7 +505,7 @@ export class PlanningServiceImpl implements PlanningService {
     const name = mission.workflowPreset.trim();
     if (name === '') return null;
 
-    const available = await this.deps.workflows.list(repositories.map((r: Repository) => r.path));
+    const available = (await listProjectWorkflows({ workflows: this.deps.workflows, brain: this.deps.brain }, mission.workspaceId, repositories.map((r: Repository) => r.path))).workflows;
     const found = available.find((w) => w.id === name);
     if (found === undefined) return null;
 

@@ -17,6 +17,11 @@ import type { SourceEntry, TrackedItem, TrackerCommentMarker, TrackerCommentRow,
 export interface IntakeConfigSource {
   readonly origin: 'local' | 'brain';
   /**
+   * Per project, when it differs (a project linked to a brain reads from it,
+   * the others locally). Callers prefer it over `origin` (Ruling 21).
+   */
+  originFor?(workspaceId: WorkspaceId): 'local' | 'brain';
+  /**
    * Never throws. A project with nothing set reads as
    * `{ tracker: null, sources: [], dailyCap: 20, similarity: { link: 0.85, ask: 0.55 } }`.
    */

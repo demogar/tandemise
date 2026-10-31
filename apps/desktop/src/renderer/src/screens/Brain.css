@@ -1,0 +1,66 @@
+/* The Brain screen (#51): lessons and proposals as quiet rows, facts as a short list. */
+
+.brain__facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--s1) var(--s4);
+  margin: 0;
+  font-size: var(--fs-sm);
+}
+
+.brain__facts dt {
+  color: var(--text-secondary);
+}
+
+.brain__facts dd {
+  margin: 0;
+}
+
+.brain__list {
+  list-style: none;
+  margin: var(--s3) 0 0;
+  padding: 0;
+  border-top: 1px solid var(--border);
+}
+
+.brain__row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  padding: var(--s3) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.brain__row[data-state='candidate'] .brain__text {
+  color: var(--text-secondary);
+}
+
+.brain__text {
+  font-size: var(--fs-base);
+}
+
+.brain__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+
+.brain__actions {
+  gap: var(--s1);
+  flex-wrap: wrap;
+}
+
+.brain__files {
+  margin: var(--s2) 0 0;
+  padding-left: var(--s4);
+  font-size: var(--fs-xs);
+}
+
+.brain-knew {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}

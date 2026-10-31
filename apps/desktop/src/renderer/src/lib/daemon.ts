@@ -1,5 +1,6 @@
 import type { CoordDeviceView, CoordMemberView, EndpointView, ImportReport } from '@tandemise/api-contract/relay';
 import type {
+  BrainAdoptPreview, BrainEntryView, BrainFactoryView, BrainProposalView, BrainView, LinkBrainRequest, RememberView, RunBrainView,
   CoordinationClaimRowView, CoordinationStatusView,
   BoardView, IntakeClosureView, IntakeClosuresView, IntakeConfigView, IntakeDecision, IntakeSignalView,
   IntakeTokenMintedView, UpdateIntakeConfigRequest,
@@ -438,6 +439,93 @@ export class DaemonClient {
 
   applySetup(workspaceId: string, body: ApplySetupRequest): Promise<SetupApplyView> {
     return this.#request('POST', `/workspaces/${workspaceId}/setup/apply`, body);
+  }
+
+  // ------------------------------------------------------------ the brain (#51)
+
+  brain(workspaceId: string): Promise<BrainView> {
+    return this.#get(`/workspaces/${workspaceId}/brain`);
+  }
+
+  linkBrain(workspaceId: string, body: LinkBrainRequest): Promise<BrainView | BrainAdoptPreview> {
+    return this.#request('POST', `/workspaces/${workspaceId}/brain`, body, undefined, { timeoutMs: CONTRIBUTION_TIMEOUT_MS });
+  }
+
+  applyBrain(workspaceId: string, body: { hash: string; choices: Record<string, 'mine' | 'theirs'> }): Promise<BrainView> {
+    return this.#request('POST', `/workspaces/${workspaceId}/brain/link`, body, undefined, { timeoutMs: CONTRIBUTION_TIMEOUT_MS });
+  }
+
+  shareBrain(workspaceId: string, body: { owner: string; name: string }): Promise<BrainView> {
+    return this.#request('POST', `/workspaces/${workspaceId}/brain/share`, body, undefined, { timeoutMs: CONTRIBUTION_TIMEOUT_MS });
+  }
+
+  unlinkBrain(workspaceId: string): Promise<BrainView> {
+    return this.#request('DELETE', `/workspaces/${workspaceId}/brain`);
+  }
+
+  syncBrain(workspaceId: string): Promise<BrainView> {
+    return this.#request('POST', `/workspaces/${workspaceId}/brain/sync`, {}, undefined, { timeoutMs: CONTRIBUTION_TIMEOUT_MS });
+  }
+
+  brainFactory(workspaceId: string): Promise<BrainFactoryView> {
+    return this.#get(`/workspaces/${workspaceId}/brain/factory`);
+  }
+
+  moveWorkflowIntoBrain(workspaceId: string, id: string): Promise<BrainFactoryView> {
+    return this.#request('POST', `/workspaces/${workspaceId}/brain/factory/workflows`, { id });
+  }
+
+  brainEntries(workspaceId: string, q: { scope?: string; state?: string; history?: boolean } = {}): Promise<readonly BrainEntryView[]> {
+    const params = new URLSearchParams();
+    if (q.scope) params.set('scope', q.scope);
+    if (q.state) params.set('state', q.state);
+    if (q.history) params.set('history', 'true');
+    const query = params.toString();
+    return this.#get(`/workspaces/${workspaceId}/brain/entries${query === '' ? '' : `?${query}`}`);
+  }
+
+  remember(workspaceId: string, body: { text: string; scope?: { role?: string; step?: string; repo?: string }; taskId?: string }): Promise<RememberView> {
+    return this.#request('POST', `/workspaces/${workspaceId}/brain/entries`, body);
+  }
+
+  voteEntry(id: string, body: { vote: 'helpful' | 'harmful'; taskId?: string }): Promise<BrainEntryView> {
+    return this.#request('POST', `/brain/entries/${encodeURIComponent(id)}/vote`, body);
+  }
+
+  acceptEntry(id: string): Promise<BrainEntryView> {
+    return this.#request('POST', `/brain/entries/${encodeURIComponent(id)}/accept`, {});
+  }
+
+  rejectEntry(id: string): Promise<BrainEntryView> {
+    return this.#request('POST', `/brain/entries/${encodeURIComponent(id)}/reject`, {});
+  }
+
+  retireEntry(id: string, reason?: string): Promise<BrainEntryView> {
+    return this.#request('POST', `/brain/entries/${encodeURIComponent(id)}/retire`, reason === undefined ? {} : { reason });
+  }
+
+  promoteEntry(id: string, target?: 'rules' | 'role'): Promise<unknown> {
+    return this.#request('POST', `/brain/entries/${encodeURIComponent(id)}/promote`, target === undefined ? {} : { target }, undefined, { timeoutMs: CONTRIBUTION_TIMEOUT_MS });
+  }
+
+  brainProposals(workspaceId: string): Promise<readonly BrainProposalView[]> {
+    return this.#get(`/workspaces/${workspaceId}/brain/proposals`);
+  }
+
+  acceptProposal(id: string): Promise<unknown> {
+    return this.#request('POST', `/brain/proposals/${encodeURIComponent(id)}/accept`, {});
+  }
+
+  declineProposal(id: string): Promise<unknown> {
+    return this.#request('POST', `/brain/proposals/${encodeURIComponent(id)}/decline`, {});
+  }
+
+  revertProposal(id: string): Promise<unknown> {
+    return this.#request('POST', `/brain/proposals/${encodeURIComponent(id)}/revert`, {});
+  }
+
+  runBrain(runId: string): Promise<RunBrainView> {
+    return this.#get(`/runs/${runId}/brain`);
   }
 
   workspaceUsage(workspaceId: string, month?: string): Promise<WorkspaceUsageView> {

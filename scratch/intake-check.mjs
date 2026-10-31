@@ -335,7 +335,7 @@ section('write-back: decideTrackerWriteBack and activityCommentBody (Task 9)');
 }
 
 // ------------------------------------------------------------------ store
-// Task 2: migration 022 (Ruling 1) and the intake repositories, on a fresh
+// Task 2: migration 024 (Ruling 1) and the intake repositories, on a fresh
 // database with a clock the check moves by hand.
 section('store: migration and repositories');
 {
@@ -1408,6 +1408,42 @@ try {
   await fakeW.close();
   await fakeN.close();
   for (const h of wbHomes) rmSync(h, { recursive: true, force: true });
+}
+
+// ------------------------------------------------------------------ brain config
+// The brain (#51) holds a linked project's tracker and sources in
+// factory/tracker.yaml and factory/intake.yaml; intake reads them through the
+// same IntakeConfigSource, re-validated with its own file schemas (Ruling 21).
+section('config: a project linked to a brain reads its intake from the brain');
+try {
+  const APP = await import('@tandemise/application');
+  check('the application exports the brain-aware intake source', typeof APP.LinkedIntakeConfigSource === 'function');
+  const store = { data: {}, read() { return this.data; }, write(patch) { this.data = { ...this.data, ...patch }; return this.data; } };
+  const quiet = { info() {}, warn() {}, error() {}, debug() {}, child() { return quiet; } };
+  const local = new APP.LocalIntakeConfigSource({ settings: store, log: quiet });
+  const linked = new Set(['ws_brain']);
+  const brainTracker = { kind: 'youtrack', url: 'https://acme.youtrack.cloud', project: 'GAR', board: 'project: GAR #Unresolved',
+    states: { ready: ['Open'], in_progress: 'In Progress', in_review: 'In Review', done: ['Fixed'], wont_do: [] }, onComplete: 'in_review' };
+  const brain = {
+    originFor: (ws) => (linked.has(ws) ? 'brain' : 'local'),
+    read: (ws) => ws === 'ws_brain'
+      ? { tracker: brainTracker, sources: [{ id: 'sentry-web', kind: 'sentry', instance: 'acme/web', every: '10m' }, { id: 'BAD ID', kind: 'sentry', instance: 'x' }], dailyCap: 5, similarity: { link: 0.9, ask: 0.6 } }
+      : { tracker: null, sources: [], dailyCap: 20, similarity: { link: 0.85, ask: 0.55 } },
+  };
+  const src = new APP.LinkedIntakeConfigSource({ local, brain, log: quiet });
+  local.write('ws_local', { tracker: { ...brainTracker, project: 'LOC' } });
+  check('an unlinked project reads the local settings', src.read('ws_local').tracker?.project === 'LOC' && src.originFor('ws_local') === 'local');
+  const fromBrain = src.read('ws_brain');
+  check("a linked project reads the brain's tracker", src.originFor('ws_brain') === 'brain' && fromBrain.tracker?.project === 'GAR' && fromBrain.dailyCap === 5 && fromBrain.similarity.link === 0.9, fromBrain);
+  check("a brain source that fails intake's schema is dropped, the valid one kept", eq(fromBrain.sources.map((s) => s.id), ['sentry-web']), fromBrain.sources);
+  let refused = null;
+  try { src.write('ws_brain', { tracker: null }); } catch (e) { refused = e; }
+  check("writing a linked project's intake is refused: Set in this project's brain.", refused?.code === 'CONFLICT' && refused?.message === "Set in this project's brain.", refused?.message);
+  check('writing an unlinked project still saves locally', src.write('ws_local', { tracker: null }).tracker === null);
+  const noBrain = new APP.LinkedIntakeConfigSource({ local, brain: null, log: quiet });
+  check('with no brain module, every project is local', noBrain.originFor('ws_brain') === 'local' && noBrain.read('ws_brain').tracker === null);
+} catch (e) {
+  check('the brain config section ran', false, String(e?.stack ?? e));
 }
 
 console.log(`\n${passed} passed, ${failures.length} failed`);

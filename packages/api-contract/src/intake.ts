@@ -306,7 +306,7 @@ const noiseRules = z
   })
   .strict();
 
-const intakeSourceFile = z
+export const intakeSourceFile = z
   .object({
     id: z.string().regex(INTAKE_SOURCE_ID_PATTERN, {
       message: 'Use a lowercase id: letters, digits and dashes, at most 63.',

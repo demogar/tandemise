@@ -164,6 +164,8 @@ export interface TaskExecutorDeps {
    * absent (or null for a trial) outside the eval runner.
    */
   readonly trialContext?: (mission: Mission) => TrialContext | null;
+  /** The project's brain (#51): rules and lessons for the prompt, recorded on the run. Optional. */
+  readonly brain?: Pick<import('../brain/context-supply.js').BrainContextSupply, 'forAttempt'>;
   readonly log: Logger;
 }
 
@@ -173,6 +175,8 @@ export interface TrialContext {
   readonly knowledge: Workspace['knowledge'];
   readonly decisions: readonly Decision[];
   readonly answers: readonly { readonly key: string; readonly text: string; readonly answer: string }[];
+  /** A `brain` candidate's rules (#51): the trial reads these, and no lessons. */
+  readonly brainRules?: readonly { readonly path: string; readonly text: string }[];
 }
 
 /** What the executor asks of the skills library (P13). */
@@ -497,7 +501,7 @@ export class TaskExecutor {
         runId, mcpConfigPath: toolSurface.mcpConfigPath, reservation, retainSlot: retained,
         prompt: session !== null && brief !== null ? roundRequest(brief, destinations) : compiled.prompt,
         ...(session === null ? {} : { continueSession: session, freshPrompt: compiled.prompt }),
-        purpose, round, inputs: compiled.includedArtifactIds, skills: installed.received,
+        purpose, round, inputs: compiled.includedArtifactIds, skills: installed.received, brain: compiled.brain ?? null,
       });
 
       const stopped = this.#stopped(outcome, running, scope);
@@ -690,6 +694,7 @@ export class TaskExecutor {
       model: chosen.model,
       modelReason: chosen.reason,
       skills: input.skills ?? null,
+      brain: input.brain ?? null,
     });
     // Recorded before the run starts, so a round started while it runs already sees it as a consumer.
     deps.runInputs.record(runId, input.inputs);
@@ -1658,9 +1663,14 @@ export class TaskExecutor {
 
   // ------------------------------------------------------------------- context
 
-  async #compilePrompt(input: PromptInput): Promise<{ readonly prompt: string; readonly includedArtifactIds: readonly ArtifactId[] }> {
+  async #compilePrompt(input: PromptInput): Promise<{ readonly prompt: string; readonly includedArtifactIds: readonly ArtifactId[]; readonly brain?: import('@tandemise/domain').RunBrain }> {
     const { task, mission, workspace, role, trial, grants, target, scope } = input;
     const dependencies = await this.#loadDependencies(task, scope);
+    // #51: what this attempt reads from the brain, at one commit.
+    const brain = await this.deps.brain?.forAttempt({
+      task, mission, role, trial, dependencies, round: task.round ?? 1,
+      repositories: this.deps.repositories.listByWorkspace(workspace.id), previousRuns: this.deps.runs.listByTask(task.id),
+    });
 
     const expected: readonly ExpectedArtifact[] = task.expectedOutputs.map((type) => ({
       type,
@@ -1685,12 +1695,14 @@ export class TaskExecutor {
       decisions: trial?.decisions ?? this.deps.decisions.listByMission(mission.id).filter((d) => d.status === 'accepted'),
       evidence: [],
       grants,
+      ...(brain === undefined ? {} : { brain: brain.request }),
       outputContract: {
         artifacts: expected,
         workingDirectory: target.workingDirectory,
         completionGate: task.completionGate,
         notes: [
-          ...this.#contractNotes(task, target, input.tools, input.feedback, input.tighten, input.round ?? null),
+          // #51: a project with no brain is not told about the brain's tools.
+          ...this.#contractNotes(task, target, brain === undefined ? input.tools.filter((name) => !name.startsWith('brain.')) : input.tools, input.feedback, input.tighten, input.round ?? null),
           ...ledgerNotes(task, ledger),
         ],
       },
@@ -1711,7 +1723,7 @@ export class TaskExecutor {
     // brief, not by the compiler, so they are added to what the run records it
     // read (spec A3); a continued session gets the same brief and records the same.
     const attached = (input.round?.attachments ?? []).map((a) => a.manifest.id).filter((id) => !compiled.includedArtifactIds.includes(id));
-    return { prompt, includedArtifactIds: [...compiled.includedArtifactIds, ...attached] };
+    return { prompt, includedArtifactIds: [...compiled.includedArtifactIds, ...attached], ...(brain === undefined ? {} : { brain: brain.record }) };
   }
 
   #contractNotes(
@@ -1750,6 +1762,8 @@ export class TaskExecutor {
         + 'Every call is checked against this task\'s grants; one that needs a human is paused, not refused.',
       );
     }
+    // #51: the "propose additions after" half of the brain.
+    if (tools.includes('brain.propose')) notes.push('If you learned something the next person doing this step should know, call brain.propose with one short sentence.');
     // The retry feedback loop: the previous attempt's failure, stated verbatim.
     // Quoted rather than paraphrased on purpose - the worker needs the exact
     // condition Tandemise measured, not this system's opinion about it.
@@ -2403,6 +2417,8 @@ interface DriveInput {
   readonly inputs: readonly ArtifactId[];
   /** The skills the run was given (P13), recorded on its row; null when there is no library. */
   readonly skills?: readonly RunSkill[] | null;
+  /** What the run knew from the brain (#51); null without one. */
+  readonly brain?: import('@tandemise/domain').RunBrain | null;
 }
 
 interface RunFailure {

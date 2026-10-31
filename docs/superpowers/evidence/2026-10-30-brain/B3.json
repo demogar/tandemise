@@ -1,0 +1,23 @@
+{
+  "id": "B3",
+  "title": "An edit pushed to the brain reaches the app on Sync, with no prompt to choose",
+  "ok": true,
+  "checks": [
+    {
+      "label": "no preview dialog is shown",
+      "ok": true
+    },
+    {
+      "label": "Team → Roles → Developer shows edited-model",
+      "ok": true,
+      "observed": "edited-model"
+    }
+  ],
+  "notes": [
+    "pushed by hand: factory/roles/development.md model brain-model → edited-model"
+  ],
+  "shots": [
+    "/home/demogar/projects/tandemise/tandemise/.claude/worktrees/agent-a4b7a8777ac07d5f4/docs/superpowers/evidence/2026-10-30-brain/B3-synced.png",
+    "/home/demogar/projects/tandemise/tandemise/.claude/worktrees/agent-a4b7a8777ac07d5f4/docs/superpowers/evidence/2026-10-30-brain/B3-team-roles.png"
+  ]
+}

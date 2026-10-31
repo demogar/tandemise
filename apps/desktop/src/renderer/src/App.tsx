@@ -20,6 +20,7 @@ import { Integrations } from './screens/Integrations.js';
 import { Settings } from './screens/Settings.js';
 import { Project } from './screens/Project.js';
 import { BOARD_TABS, Board, type BoardTab } from './screens/Board.js';
+import { Brain, normalizeBrainTab } from './screens/Brain.js';
 import { useConnection } from './lib/connection.js';
 import { useDaemonStream } from './lib/stream.js';
 import { useWorkspaces } from './lib/queries.js';
@@ -138,6 +139,7 @@ function ProjectShell(): JSX.Element {
             <Route path="/project" component={Project} />
             <Route path="/settings">{() => <Settings />}</Route>
             <Route path="/settings/:section">{(params) => <Settings section={params.section ?? null} />}</Route>
+            <Route path="/brain/:tab?">{(params) => <Brain tab={normalizeBrainTab(params.tab)} />}</Route>
             <Route component={Home} />
           </Switch>
         </ErrorBoundary>

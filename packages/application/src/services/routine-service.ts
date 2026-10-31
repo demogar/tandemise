@@ -16,6 +16,8 @@ import { requireSeat, type Caller } from '../support/identity.js';
 import { IMPORTED_ROUTINE_NOTE } from '../setup/codec.js';
 
 export interface RoutineDeps {
+  /** A linked brain hears of each edit so it can write it through (#51). */
+  readonly factoryEdits?: { edited(workspaceId: WorkspaceId, what: string): void };
   readonly routines: RoutineRepositoryPort;
   readonly workspaces: Pick<WorkspaceRepositoryPort, 'get'>;
   readonly missions: Pick<MissionRepositoryPort, 'list' | 'get'>;
@@ -85,6 +87,7 @@ export class RoutineService {
     });
     this.deps.log.info('routine.created', { routineId: routine.id, workspaceId, schedule: scheduleLabel(routine.schedule) });
     this.#changed();
+    this.deps.factoryEdits?.edited(workspaceId, `add the routine ${routine.name}`);
     return this.#view(routine);
   }
 
@@ -114,14 +117,16 @@ export class RoutineService {
       nextRunAt,
     });
     this.#changed();
+    this.deps.factoryEdits?.edited(updated.workspaceId, `change the routine ${updated.name}`);
     return this.#view(updated);
   }
 
   remove(id: RoutineId): void {
-    this.#require(id);
+    const removed = this.#require(id);
     // Its missions stay: they are ordinary missions now, and the column pointing here is cleared.
     this.deps.routines.remove(id);
     this.#changed();
+    this.deps.factoryEdits?.edited(removed.workspaceId, `remove the routine ${removed.name}`);
   }
 
   /** Runs once now, through the same checks as a scheduled run; the schedule is unchanged. */

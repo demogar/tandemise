@@ -79,6 +79,8 @@ export interface TandemiseServices {
   readonly intakeRunners: import('./intake/runner-host.js').IntakeRunnerHost;
   /** Closing the loop at every source when the tracker item is done (intake spec §8, plan Task 13). */
   readonly closures: import('./services/closure-service.js').ClosureService;
+  /** The project's brain repository: link, sync, memory and promotions (#51). */
+  readonly brain: import('./brain/brain-service.js').BrainService;
   /** Who works on which tracker item, alone or with a team relay (relay spec). */
   readonly coordination: import('./services/coordination-service.js').CoordinationService;
 }

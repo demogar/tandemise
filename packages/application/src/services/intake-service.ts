@@ -618,7 +618,8 @@ export class IntakeService {
   config(workspaceId: WorkspaceId): IntakeConfigView {
     this.#requireWorkspace(workspaceId);
     const read = this.deps.config.read(workspaceId);
-    return { origin: this.deps.config.origin, editable: this.deps.config.write !== undefined, ...read };
+    const origin = this.deps.config.originFor?.(workspaceId) ?? this.deps.config.origin;
+    return { origin, editable: this.deps.config.write !== undefined && origin === 'local', ...read };
   }
 
   /**
@@ -633,7 +634,7 @@ export class IntakeService {
     if (!parsed.success) throw TandemiseError.validation(formatIntakeIssues(parsed.error));
     const request = parsed.data;
     const write = this.deps.config.write?.bind(this.deps.config);
-    if (write === undefined) {
+    if (write === undefined || (this.deps.config.originFor?.(workspaceId) ?? this.deps.config.origin) === 'brain') {
       throw new TandemiseError('PRECONDITION_FAILED', "This project's intake is set in its brain. Change it there.");
     }
     // A mapping naming a state the tracker doesn't have is refused in its own

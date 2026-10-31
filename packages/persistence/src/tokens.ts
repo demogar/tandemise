@@ -6,7 +6,7 @@ import type {
   LeaseRepositoryPort, MemberRepositoryPort, MissionCriteriaRepositoryPort, MissionQuestionRepositoryPort, MissionRepositoryPort, LimitRepositoryPort, PersonRepositoryPort, RoutineRepositoryPort, RunScoreRepositoryPort, SkillRepositoryPort, IssueRepositoryPort,
   PlanProposalRepositoryPort, RepoRepositoryPort, RoleRepositoryPort, RunInputRepositoryPort,
   RunRepositoryPort, RuntimeProfileRepositoryPort, TaskRepositoryPort, UnitOfWork,
-  WorkspaceRepositoryPort,
+  WorkspaceRepositoryPort, WorkspaceBrainRepositoryPort, BrainRecordRepositoryPort,
 } from '@tandemise/domain';
 import type { IntakeRepositoryPort, TrackerItemRepositoryPort, WebhookMailboxPort } from '@tandemise/domain';
 import type { TandemiseDatabase } from './database.js';
@@ -59,3 +59,5 @@ export const EVAL_REPOSITORY = token<EvalRepositoryPort>('persistence.EvalReposi
 export const INTAKE_REPOSITORY = token<IntakeRepositoryPort>('persistence.IntakeRepository');
 export const TRACKER_ITEM_REPOSITORY = token<TrackerItemRepositoryPort>('persistence.TrackerItemRepository');
 export const WEBHOOK_MAILBOX = token<WebhookMailboxPort>('persistence.WebhookMailbox');
+export const WORKSPACE_BRAIN_REPOSITORY = token<WorkspaceBrainRepositoryPort>('persistence.WorkspaceBrainRepository');
+export const BRAIN_RECORD_REPOSITORY = token<BrainRecordRepositoryPort>('persistence.BrainRecordRepository');

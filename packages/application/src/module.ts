@@ -35,6 +35,8 @@ import { RepositoryProber } from './support/repository-prober.js';
 import { RuntimeOverrides } from './support/runtime-overrides.js';
 import { ApprovalWaiter, createApprovalGate, createPolicyEngineToolGate } from './support/tool-policy.js';
 import { createAskHumanTool } from './tools/ask-human.js';
+import { bindBrain, brainEdits, brainWorkflows } from './brain/module.js';
+import { BRAIN_CONTEXT_SUPPLY, BRAIN_INTAKE_CONFIG, BRAIN_SERVICE } from './brain/tokens.js';
 import { RunDeadlines } from './engine/run-deadline.js';
 import { ConnectFlow } from './services/connect-flow.js';
 import { IntegrationCredentials } from './support/integration-credentials.js';
@@ -78,6 +80,7 @@ import * as it from './intake-tokens.js';
 import { IntakeService } from './services/intake-service.js';
 import { TrackerService } from './services/tracker-service.js';
 import { LocalIntakeConfigSource } from './intake/config-source.js';
+import { LinkedIntakeConfigSource } from './intake/linked-config-source.js';
 import { MemoryBlobs } from './intake/memory-blobs.js';
 import { TrackerResolver } from './intake/tracker-resolver.js';
 import { IntakeRunnerHost } from './intake/runner-host.js';
@@ -300,6 +303,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       runScores: r.resolve(t.RUN_SCORE_REPOSITORY),
       // Resolved per call: the eval runner is composed from this executor.
       trialContext: (mission) => r.resolve(t.EVAL_RUNNER).contextFor(mission),
+      brain: r.resolve(BRAIN_CONTEXT_SUPPLY),
       paths: paths(r),
       clock: clock(r),
       log: log(r).child({ component: 'executor' }),
@@ -442,6 +446,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
         people: r.resolve(t.PERSON_REPOSITORY),
         members: r.resolve(t.MEMBER_REPOSITORY),
         unitOfWork: r.resolve(t.UNIT_OF_WORK),
+        factoryEdits: brainEdits(r),
       },
     ), { source: SOURCE });
 
@@ -468,6 +473,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
     bind(t.ROLE_SERVICE, (r) => new RoleServiceImpl(
       r.resolve(t.ROLE_REPOSITORY), clock(r),
       (workspaceId, skills) => r.resolve(t.SKILL_SERVICE).validateRoleSkills(workspaceId, skills),
+      brainEdits(r),
     ), { source: SOURCE });
 
     // P13: the daemon rebinds the files port (it reads folders and runs git); this one finds nothing.
@@ -482,6 +488,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
     }), { source: SOURCE });
 
     bind(t.SKILL_SERVICE, (r) => new SkillService({
+      factoryEdits: brainEdits(r),
       skills: r.resolve(t.SKILL_REPOSITORY),
       roles: r.resolve(t.ROLE_REPOSITORY),
       files: r.resolve(t.SKILL_FILES),
@@ -590,6 +597,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
     bind(t.WORKFLOW_SERVICE, (r) => new WorkflowServiceImpl(
       r.resolve(t.WORKFLOW_SOURCE),
       r.resolve(t.REPO_REPOSITORY),
+      brainWorkflows(r),
     ), { source: SOURCE });
 
     bind(t.READINESS_SERVICE, (r) => new ReadinessService({
@@ -604,6 +612,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
       repositories: r.resolve(t.REPO_REPOSITORY),
       workflows: r.resolve(t.WORKFLOW_SOURCE),
+      brain: brainWorkflows(r),
       missions: r.resolve(t.MISSION_REPOSITORY),
       tasks: r.resolve(t.TASK_REPOSITORY),
       runs: r.resolve(t.RUN_REPOSITORY),
@@ -837,6 +846,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
     }), { source: SOURCE });
 
     bind(t.ROUTINE_SERVICE, (r) => new RoutineService({
+      factoryEdits: brainEdits(r),
       routines: r.resolve(t.ROUTINE_REPOSITORY),
       workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
       missions: r.resolve(t.MISSION_REPOSITORY),
@@ -913,8 +923,18 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
     // Intake (spec 2026-10-30-intake-design.md, plan Task 3). The config comes
     // from the local settings until the brain (#51) rebinds the source; inline
     // attachments stay in memory unless the daemon gives them a disk.
-    bind(it.INTAKE_CONFIG_SOURCE, (r) => new LocalIntakeConfigSource({
-      settings: r.resolve(t.SETTINGS_STORE),
+    bind(it.INTAKE_CONFIG_SOURCE, (r) => new LinkedIntakeConfigSource({
+      local: new LocalIntakeConfigSource({
+        settings: r.resolve(t.SETTINGS_STORE),
+        log: log(r).child({ component: 'intake' }),
+      }),
+      // A project linked to a brain (#51) reads factory/tracker.yaml and
+      // factory/intake.yaml from it (Ruling 21); the others stay local.
+      // Resolved per call: the brain's service depends on intake through P14.
+      brain: {
+        originFor: (ws) => r.tryResolve(BRAIN_INTAKE_CONFIG)?.originFor(ws) ?? 'local',
+        read: (ws) => r.resolve(BRAIN_INTAKE_CONFIG).read(ws),
+      },
       log: log(r).child({ component: 'intake' }),
     }), { source: SOURCE });
     bind(it.INTAKE_BLOBS, () => new MemoryBlobs(), { source: SOURCE });
@@ -1028,7 +1048,9 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       skills: r.resolve(t.SKILL_SERVICE),
       issueSettings: r.resolve(t.ISSUE_REPOSITORY),
       issues: r.resolve(t.ISSUE_SERVICE),
+      integrations: r.resolve(t.INTEGRATION_REPOSITORY),
       workflows: r.resolve(t.WORKFLOW_SOURCE),
+      brain: brainWorkflows(r),
       folder: r.resolve(t.SETUP_FOLDER),
       settings: r.resolve(t.SETTINGS_STORE),
       unitOfWork: r.resolve(t.UNIT_OF_WORK),
@@ -1077,6 +1099,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       roles: r.resolve(t.ROLE_REPOSITORY),
       skills: r.resolve(t.SKILL_SERVICE),
       readSetupFolder: (path) => r.resolve(t.SETUP_SERVICE).readFolder(path),
+      readBrainCandidate: (workspaceId, ref) => r.resolve(BRAIN_SERVICE).candidateAt(workspaceId, ref),
       // Lazily: the runner is composed from the executor, which nothing here needs until a run starts.
       runner: () => r.resolve(t.EVAL_RUNNER),
     }), { source: SOURCE });
@@ -1114,8 +1137,11 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       tracker: r.resolve(it.TRACKER_SERVICE),
       intakeRunners: r.resolve(it.INTAKE_RUNNER_HOST),
       closures: r.resolve(it.CLOSURE_SERVICE),
+      brain: r.resolve(BRAIN_SERVICE),
       coordination: r.resolve(t.COORDINATION_SERVICE),
     }), { source: SOURCE });
+
+    bindBrain(container);
   });
 }
 
