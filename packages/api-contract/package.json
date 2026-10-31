@@ -18,6 +18,10 @@
     "./about": {
       "types": "./dist/about.d.ts",
       "default": "./dist/about.js"
+    },
+    "./relay": {
+      "types": "./dist/relay.d.ts",
+      "default": "./dist/relay.js"
     }
   },
   "scripts": {

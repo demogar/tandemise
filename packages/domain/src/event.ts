@@ -80,6 +80,8 @@ export type OrchestrationEvent =
   | { readonly type: 'feedback.addressed'; readonly feedbackId: string; readonly round: number; readonly declined: boolean }
   /** A note was withdrawn or superseded without a round addressing it. */
   | { readonly type: 'feedback.dismissed'; readonly feedbackId: string }
+  /** The brain learned a lesson from a person's correction (#51 spec §11): one line on the mission feed. */
+  | { readonly type: 'brain.learned'; readonly entryId: string; readonly text: string; readonly signal: 'hold' | 'rejection' | 'gate' | 'person' | 'agent' }
   /** The task's next round began, carrying the feedback it is meant to address. */
   | { readonly type: 'task.round_started'; readonly round: number; readonly feedbackIds: readonly string[]; readonly downstream: 'redo' | 'keep' | 'none'; readonly redone: readonly string[] }
   /**
@@ -145,6 +147,7 @@ export const SEMANTIC_EVENT_TYPES: ReadonlySet<string> = new Set([
   'feedback.given', 'feedback.addressed', 'feedback.dismissed', 'task.round_started', 'mission.pulled',
   'task.parked_external', 'task.unparked', 'task.handed_back', 'mission.intake_completed',
   'task.held', 'task.hold_ended',
+  'brain.learned',
 ]);
 
 export function isSemanticEvent(body: TandemiseEventBody): boolean {

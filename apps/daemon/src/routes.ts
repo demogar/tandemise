@@ -15,13 +15,18 @@ import {
   applySetupRequest, exportSetupRequest, previewSetupRequest,
   parkTaskRequest, handBackRequest, resolveWorkspaceLinkRequest,
   createEvalSuiteRequest, saveEvalCaseRequest, startEvalRunRequest, runScoresQuery,
+  connectRelayRequest, coordinationEndpointRequest, coordinationPullRequest, projectKeyRequest, takeOverClaimRequest,
 } from '@tandemise/api-contract';
 import type { EvalSuiteView } from '@tandemise/api-contract';
 import { normalizeLimits } from '@tandemise/domain';
 import { ContributionError, EvalError } from '@tandemise/application';
 import type { TandemiseServices } from '@tandemise/application';
 import type { AdjustableClock } from '@tandemise/shared';
-import { CONTRIBUTION_BODY, Router, formatZodIssues, type RequestContext } from './http/router.js';
+import { CONTRIBUTION_BODY, HANDLED, Router, formatZodIssues, type RequestContext } from './http/router.js';
+import { createInviteRequest, mailboxAckRequest } from '@tandemise/api-contract/relay';
+import { MAX_BODY_BYTES } from '@tandemise/coordination';
+import type { SwitchableCoordination } from './coordination.js';
+import { brainRoutes } from './brain-routes.js';
 
 /**
  * The daemon's HTTP surface.
@@ -31,7 +36,12 @@ import { CONTRIBUTION_BODY, Router, formatZodIssues, type RequestContext } from 
  * way means the API is a projection of the application layer rather than a
  * second place where mission rules live.
  */
-export function buildRouter(services: TandemiseServices, options: { readonly testClock?: AdjustableClock | null } = {}): Router {
+export function buildRouter(services: TandemiseServices, options: {
+  readonly testClock?: AdjustableClock | null;
+  readonly coordination?: SwitchableCoordination;
+  /** Test-only event recording (TANDEMISE_TEST_ROUTES=1); null in every real daemon. */
+  readonly testEvents?: ((missionId: string, taskId: string | null, body: Record<string, unknown>) => unknown) | null;
+} = {}): Router {
   const r = new Router();
 
   /**
@@ -173,6 +183,7 @@ export function buildRouter(services: TandemiseServices, options: { readonly tes
     services.setup.preview(asId(ctx.params.id!), (await ctx.body(previewSetupRequest)).path));
   r.post('/v1/workspaces/:id/setup/apply', async (ctx) =>
     services.setup.apply(ctx.caller, asId(ctx.params.id!), await ctx.body(applySetupRequest)));
+  brainRoutes(r, services);
 
   // -------------------------------------------------------------- evals (P3b)
   // Suites of frozen cases, saving a finished gated step as one, and trying a
@@ -233,6 +244,14 @@ export function buildRouter(services: TandemiseServices, options: { readonly tes
       const { advanceMs } = await ctx.body(advanceClockRequest);
       const offsetMs = testClock.advance(advanceMs);
       return { now: testClock.now(), offsetMs };
+    });
+  }
+  const testEvents = options.testEvents ?? null;
+  if (testEvents !== null) {
+    // Test-only (#51 acceptance): records an event body on a mission, as another feature would.
+    r.post('/v1/test/events', async (ctx) => {
+      const body = (await ctx.body(z.object({ missionId: z.string().min(1), taskId: z.string().min(1).optional(), body: z.record(z.string(), z.unknown()) })));
+      return testEvents(body.missionId, body.taskId ?? null, body.body);
     });
   }
 
@@ -418,6 +437,82 @@ export function buildRouter(services: TandemiseServices, options: { readonly tes
 
   // --------------------------------------------------------------- machines
   r.get('/v1/targets', (ctx) => services.projections.targets(ctx.query.get('missionId') ?? undefined));
+
+  // ----------------------------------------------------------- coordination
+  // Who works on which tracker item, alone or with a team relay (relay spec).
+  // The desktop never talks to a relay: every relay interaction is the daemon's.
+  const c = services.coordination;
+  const projectOf = (input: { workspaceId?: string | undefined; projectKey?: string | undefined }): string => {
+    if (input.projectKey) return input.projectKey;
+    if (input.workspaceId) return c.projectKey(input.workspaceId);
+    throw TandemiseError.validation('Say which workspace or project.');
+  };
+  r.get('/v1/coordination/status', () => c.status());
+  r.get('/v1/coordination/project-key', (ctx) => ({ projectKey: c.projectKey(required(ctx, 'workspaceId')) }));
+  r.put('/v1/coordination/project-key', async (ctx) => {
+    const body = await ctx.body(projectKeyRequest);
+    if (!body.workspaceId) throw TandemiseError.validation('Say which workspace.');
+    return { projectKey: c.setProjectKey(body.workspaceId, body.projectKey ?? null) };
+  });
+  r.get('/v1/coordination/claims', (ctx) => c.rows(required(ctx, 'workspaceId')));
+  r.get('/v1/coordination/members', () => ({ members: c.members(), devices: c.devices() }));
+  r.get('/v1/coordination/presence', () => c.presence());
+  r.get('/v1/coordination/failures', () => c.failures());
+  r.post('/v1/coordination/claims/:id/take-over', async (ctx) =>
+    c.takeOver(ctx.params.id!, (await ctx.body(takeOverClaimRequest)).missionId ?? null));
+  r.post('/v1/missions/:id/claim/take-back', (ctx) => c.takeBack(ctx.params.id!));
+  r.post('/v1/missions/:id/claim/keep-going', (ctx) => { c.keepGoing(ctx.params.id!); });
+  r.post('/v1/missions/:id/claim/stop', (ctx) => c.stopWorking(ctx.params.id!));
+  r.post('/v1/coordination/connect', async (ctx) => {
+    const body = await ctx.body(connectRelayRequest);
+    await c.connect({ ...body, allowInsecure: body.allowInsecure ?? false });
+    return c.status();
+  });
+  r.post('/v1/coordination/import', () => c.importLocal());
+  r.post('/v1/coordination/disconnect', async () => {
+    await c.disconnect();
+    return c.status();
+  });
+  r.post('/v1/coordination/invites', async (ctx) => c.createInvite(await ctx.body(createInviteRequest)));
+  r.delete('/v1/coordination/devices/:id', (ctx) => c.revokeDevice(ctx.params.id!));
+  r.delete('/v1/coordination/members/:id', (ctx) => c.removeMember(ctx.params.id!));
+  r.get('/v1/coordination/endpoints', () => c.endpoints());
+  r.post('/v1/coordination/endpoints', async (ctx) => {
+    const { workspaceId, projectKey, ...rest } = await ctx.body(coordinationEndpointRequest);
+    return c.createEndpoint({ ...rest, projectKey: projectOf({ workspaceId, projectKey }) });
+  });
+  r.post('/v1/coordination/endpoints/:id/disable', (ctx) => c.disableEndpoint(ctx.params.id!));
+  r.get('/v1/coordination/messages/parked', () => c.parked());
+  r.post('/v1/coordination/messages/:id/retry', (ctx) => c.retryParked(ctx.params.id!));
+  r.post('/v1/coordination/messages/:id/drop', (ctx) => c.dropParked(ctx.params.id!));
+  r.post('/v1/coordination/mailbox/pull', async (ctx) => {
+    const body = await ctx.body(coordinationPullRequest);
+    return c.pull(projectOf(body), body.max ?? 10, body.leaseSeconds ?? 60);
+  });
+  r.post('/v1/coordination/mailbox/ack', async (ctx) => c.ack((await ctx.body(mailboxAckRequest)).ids));
+  r.get('/v1/coordination/export', (ctx) => {
+    const text = `${c.exportLines().join('\n')}\n`;
+    ctx.res.writeHead(200, { 'content-type': 'application/x-ndjson; charset=utf-8', 'content-length': Buffer.byteLength(text), 'x-content-type-options': 'nosniff' });
+    ctx.res.end(text);
+    return HANDLED;
+  });
+  // The local mailbox's ingress, behind the daemon's bearer token unless the
+  // person explicitly allowed unauthenticated loopback hooks (server.ts).
+  r.post('/v1/hooks/:slug', async (ctx) => {
+    const chunks: Buffer[] = [];
+    let total = 0;
+    for await (const chunk of ctx.raw) {
+      total += (chunk as Buffer).length;
+      if (total > MAX_BODY_BYTES) throw TandemiseError.validation('That webhook body is larger than 1 MB.');
+      chunks.push(chunk as Buffer);
+    }
+    const answer = options.coordination?.ingestLocal(ctx.params.slug!, {
+      method: ctx.raw.method ?? 'POST', query: ctx.query, headers: ctx.raw.headers, body: Buffer.concat(chunks),
+    }) ?? { status: 404, contentType: 'text/plain; charset=utf-8', body: 'Not found' };
+    ctx.res.writeHead(answer.status, { 'content-type': answer.contentType, 'content-length': Buffer.byteLength(answer.body) });
+    ctx.res.end(answer.body);
+    return HANDLED;
+  }, { maxBodyBytes: MAX_BODY_BYTES });
 
   return r;
 }

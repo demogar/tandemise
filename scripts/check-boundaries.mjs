@@ -43,8 +43,9 @@ for (const [name, spec] of Object.entries(PACKAGES)) {
     for (const mod of specifiers) {
       if (!mod || mod.startsWith('.')) continue;
       if (mod.startsWith('@tandemise/')) {
-        const dep = mod.slice('@tandemise/'.length);
-        if (!allowed.has(mod)) {
+        // A subpath export (`@tandemise/api-contract/relay`) is judged as its package.
+        const dep = mod.slice('@tandemise/'.length).split('/')[0];
+        if (!allowed.has(`@tandemise/${dep}`)) {
           errors.push(`${file}: imports ${mod} which is not a declared dependency of @tandemise/${name}`);
         } else if ((LAYERS[dep] ?? 99) >= (LAYERS[name] ?? 99)) {
           errors.push(`${file}: layer violation - ${name}(L${LAYERS[name]}) -> ${dep}(L${LAYERS[dep]})`);
@@ -112,6 +113,56 @@ for (const [name, spec] of Object.entries(PACKAGES)) {
     for (const match of src.matchAll(STATEMENT_RE)) {
       if (TYPE_ONLY_RE.test(match[0]) || PURE_SUBPATHS.has(match[1])) continue;
       errors.push(`${file}: renderer value-imports ${match[1]}, which pulls Node built-ins into the browser bundle; use \`import type\` or lib/domain.ts`);
+    }
+  }
+}
+
+// The relay (apps/relay/src) imports exactly two internal modules, and two
+// external ones, so splitting it into its own repository stays mechanical
+// (relay spec, §Monorepo or separate repo). The bare `@tandemise/api-contract`
+// is refused too: it reaches `domain` and `shared` at runtime.
+{
+  const RELAY_ALLOWED = new Set(['@tandemise/api-contract/relay', '@tandemise/coordination', 'ws', 'better-sqlite3', 'zod']);
+  let files = [];
+  try { files = walk('apps/relay/src'); } catch { /* no relay in this checkout */ }
+  for (const file of files) {
+    const src = readFileSync(file, 'utf8');
+    const specifiers = [
+      ...[...src.matchAll(IMPORT_RE)].map((m) => m[1]),
+      ...[...src.matchAll(SIDE_EFFECT_IMPORT_RE)].map((m) => m[1]),
+      ...[...src.matchAll(/\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g)].map((m) => m[1]),
+    ];
+    for (const mod of specifiers) {
+      if (!mod || mod.startsWith('.') || mod.startsWith('node:')) continue;
+      if (!RELAY_ALLOWED.has(mod)) errors.push(`${file}: the relay may import only @tandemise/api-contract/relay, @tandemise/coordination, ws, better-sqlite3, zod and node:* (found '${mod}')`);
+    }
+  }
+}
+
+// The application uses coordination's pure rules only; the store and its SQL belong to the daemon's wiring.
+for (const file of walk('packages/application/src')) {
+  const src = readFileSync(file, 'utf8');
+  for (const m of src.matchAll(IMPORT_RE)) {
+    if (m[1] === '@tandemise/coordination' && !/^\s*(?:import|export)\s+type\s/.test(m[0])) {
+      errors.push(`${file}: the application may import only '@tandemise/coordination/rules' (the pure rules), not the store`);
+    }
+  }
+}
+
+// Sources the relay server loads on their own: type-only imports plus
+// `import { z } from 'zod'`, and nothing else, so the relay stays splittable
+// (docs/superpowers/specs/2026-10-30-relay-design.md, §Monorepo or separate repo).
+const ZOD_ONLY_SOURCES = ['packages/api-contract/src/relay.ts'];
+{
+  const ANY_RE = /^\s*(?:import|export)\b[^;]*?\bfrom\s+['"]([^'"]+)['"]|^\s*import\s+['"]([^'"]+)['"]|\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)|\brequire\s*\(/gm;
+  for (const source of ZOD_ONLY_SOURCES) {
+    let src;
+    try { src = readFileSync(source, 'utf8'); } catch { errors.push(`${source}: listed as zod-only but does not exist`); continue; }
+    for (const m of src.matchAll(ANY_RE)) {
+      const stmt = m[0].trim();
+      if (/^(?:import|export)\s+type\s/.test(stmt)) continue;
+      if (/^import\s*\{\s*z\s*\}\s*from\s*['"]zod['"]$/.test(stmt)) continue;
+      errors.push(`${source}: may import only types and \`{ z } from 'zod'\` (${stmt.slice(0, 80)})`);
     }
   }
 }

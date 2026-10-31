@@ -35,7 +35,8 @@ const COLUMNS = `id, workspace_id, mission_id, metric, window_start, window_end,
   threshold, status, approval_id, paused_missions, created_at, resolved_at`;
 
 /**
- * Sums over `usage_records`. Tokens are input plus output (cache reads and
+ * Sums over `measured_usage` (migration 023): `usage_records` plus the
+ * brain's reflector and promoter passes, which have no run row (#51 spec §6). Tokens are input plus output (cache reads and
  * writes are counted by the provider differently and are not what a person
  * budgets). A sum is null when no row reported the value: SUM over nothing
  * reported would otherwise read as zero, and zero is a claim.
@@ -95,24 +96,24 @@ export class SqliteLimitRepository implements LimitRepositoryPort {
   constructor(db: TandemiseDatabase, clock: Clock) {
     this.#clock = clock;
     this.#missionUsage = db.handle.prepare<{ missionId: string }, UsageRow>(
-      `SELECT ${USAGE} FROM usage_records u WHERE u.mission_id = :missionId`,
+      `SELECT ${USAGE} FROM measured_usage u WHERE u.mission_id = :missionId`,
     );
     this.#workspaceUsage = db.handle.prepare<{ workspaceId: string; start: string; end: string }, UsageRow>(
-      `SELECT ${USAGE} FROM usage_records u JOIN missions m ON m.id = u.mission_id
-        WHERE m.workspace_id = :workspaceId AND u.recorded_at >= :start AND u.recorded_at < :end`,
+      `SELECT ${USAGE} FROM measured_usage u LEFT JOIN missions m ON m.id = u.mission_id
+        WHERE COALESCE(m.workspace_id, u.workspace_id) = :workspaceId AND u.recorded_at >= :start AND u.recorded_at < :end`,
     );
     // Eval spend within the same window (P3b): the mirror of workspaceUsage,
     // restricted to hidden trial missions. The monthly total above still
     // includes it - a trial run really did spend money this month.
     this.#evalUsage = db.handle.prepare<{ workspaceId: string; start: string; end: string }, UsageRow>(
-      `SELECT ${USAGE} FROM usage_records u JOIN missions m ON m.id = u.mission_id
+      `SELECT ${USAGE} FROM measured_usage u JOIN missions m ON m.id = u.mission_id
         WHERE m.workspace_id = :workspaceId AND u.recorded_at >= :start AND u.recorded_at < :end AND m.eval_trial_id IS NOT NULL`,
     );
     // Per-mission usage leaves eval trials out (P3b): a trial mission is
     // never listed, so it must not appear as a row in the usage-by-mission view.
     this.#usageByMission = db.handle.prepare<{ workspaceId: string; start: string; end: string }, UsageRow & { mission_id: string }>(
-      `SELECT u.mission_id AS mission_id, ${USAGE} FROM usage_records u JOIN missions m ON m.id = u.mission_id
-        WHERE m.workspace_id = :workspaceId AND u.recorded_at >= :start AND u.recorded_at < :end AND m.eval_trial_id IS NULL
+      `SELECT u.mission_id AS mission_id, ${USAGE} FROM measured_usage u JOIN missions m ON m.id = u.mission_id
+        WHERE m.workspace_id = :workspaceId AND u.recorded_at >= :start AND u.recorded_at < :end AND m.eval_trial_id IS NULL AND u.mission_id IS NOT NULL
         GROUP BY u.mission_id ORDER BY agent_ms DESC, u.mission_id`,
     );
     this.#find = db.handle.prepare<{ workspaceId: string; missionId: string; metric: string; windowStart: string; threshold: string; amount: number }, IncidentRow>(

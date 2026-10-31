@@ -23,6 +23,9 @@ export interface TandemisePaths {
   readonly skills: string;
   /** The eval case blob store (P3b), shared by every project: content-addressed by sha256. */
   readonly evalBlobs: string;
+  /** The daemon's own clones of each project's brain (#51). Never a person's checkout. */
+  readonly brains: string;
+  brain(workspaceId: string): string;
 }
 
 export function createPaths(root = defaultRoot()): TandemisePaths {
@@ -45,6 +48,8 @@ export function createPaths(root = defaultRoot()): TandemisePaths {
     browserProfiles: (w) => join(ws(w), 'browser-profiles'),
     skills: join(abs, 'skills'),
     evalBlobs: join(abs, 'evals', 'blobs'),
+    brains: join(abs, 'brains'),
+    brain: (w) => join(abs, 'brains', w),
   };
 }
 

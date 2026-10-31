@@ -34,6 +34,8 @@ import { RepositoryProber } from './support/repository-prober.js';
 import { RuntimeOverrides } from './support/runtime-overrides.js';
 import { ApprovalWaiter, createApprovalGate, createPolicyEngineToolGate } from './support/tool-policy.js';
 import { createAskHumanTool } from './tools/ask-human.js';
+import { bindBrain, brainEdits, brainWorkflows } from './brain/module.js';
+import { BRAIN_CONTEXT_SUPPLY, BRAIN_SERVICE } from './brain/tokens.js';
 import { RunDeadlines } from './engine/run-deadline.js';
 import { ConnectFlow } from './services/connect-flow.js';
 import { IntegrationCredentials } from './support/integration-credentials.js';
@@ -62,6 +64,7 @@ import { DEFAULT_QUIET_AFTER_MS, reachedReason, type IssueTrackerPort, type Pull
 import { SetupService } from './services/setup-service.js';
 import { RefinementServiceImpl } from './services/refinement-service.js';
 import { EvalService } from './services/eval-service.js';
+import { CoordinationService } from './services/coordination-service.js';
 import { PlanningServiceImpl } from './services/planning-service.js';
 import { ProjectionServiceImpl } from './services/projection-service.js';
 import { RoleServiceImpl } from './services/role-service.js';
@@ -286,6 +289,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       runScores: r.resolve(t.RUN_SCORE_REPOSITORY),
       // Resolved per call: the eval runner is composed from this executor.
       trialContext: (mission) => r.resolve(t.EVAL_RUNNER).contextFor(mission),
+      brain: r.resolve(BRAIN_CONTEXT_SUPPLY),
       paths: paths(r),
       clock: clock(r),
       log: log(r).child({ component: 'executor' }),
@@ -426,6 +430,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
         people: r.resolve(t.PERSON_REPOSITORY),
         members: r.resolve(t.MEMBER_REPOSITORY),
         unitOfWork: r.resolve(t.UNIT_OF_WORK),
+        factoryEdits: brainEdits(r),
       },
     ), { source: SOURCE });
 
@@ -452,6 +457,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
     bind(t.ROLE_SERVICE, (r) => new RoleServiceImpl(
       r.resolve(t.ROLE_REPOSITORY), clock(r),
       (workspaceId, skills) => r.resolve(t.SKILL_SERVICE).validateRoleSkills(workspaceId, skills),
+      brainEdits(r),
     ), { source: SOURCE });
 
     // P13: the daemon rebinds the files port (it reads folders and runs git); this one finds nothing.
@@ -466,6 +472,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
     }), { source: SOURCE });
 
     bind(t.SKILL_SERVICE, (r) => new SkillService({
+      factoryEdits: brainEdits(r),
       skills: r.resolve(t.SKILL_REPOSITORY),
       roles: r.resolve(t.ROLE_REPOSITORY),
       files: r.resolve(t.SKILL_FILES),
@@ -559,6 +566,11 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       },
       // Resolved per call for the same reason: a hold answers with a task view.
       holds: { standing: (task, mission) => r.resolve(t.HOLD_SERVICE).standing(task, mission) },
+      // Resolved per call: the claim banner and the Unclaimed rows (relay spec).
+      coordination: {
+        missionClaim: (missionId) => r.resolve(t.COORDINATION_SERVICE).missionClaim(missionId),
+        inboxUnclaimed: (workspaceId) => r.resolve(t.COORDINATION_SERVICE).inboxUnclaimed(workspaceId),
+      },
     }), { source: SOURCE });
 
     // Default: this installation has no workflow files. A composition root that
@@ -569,6 +581,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
     bind(t.WORKFLOW_SERVICE, (r) => new WorkflowServiceImpl(
       r.resolve(t.WORKFLOW_SOURCE),
       r.resolve(t.REPO_REPOSITORY),
+      brainWorkflows(r),
     ), { source: SOURCE });
 
     bind(t.READINESS_SERVICE, (r) => new ReadinessService({
@@ -583,6 +596,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
       repositories: r.resolve(t.REPO_REPOSITORY),
       workflows: r.resolve(t.WORKFLOW_SOURCE),
+      brain: brainWorkflows(r),
       missions: r.resolve(t.MISSION_REPOSITORY),
       tasks: r.resolve(t.TASK_REPOSITORY),
       runs: r.resolve(t.RUN_REPOSITORY),
@@ -634,6 +648,10 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       skills: r.resolve(t.SKILL_SERVICE),
       proposals: r.resolve(t.PLAN_PROPOSAL_REPOSITORY),
       replanRest: (missionId, note, planFitApprovalId) => r.resolve(t.PLANNING_SERVICE).replan(missionId, { note, planFitApprovalId }),
+      claims: {
+        assertMayStart: (mission) => r.resolve(t.COORDINATION_SERVICE).assertMayStart(mission),
+        abandonStart: (mission) => r.resolve(t.COORDINATION_SERVICE).abandonStart(mission),
+      },
       clock: clock(r),
       log: log(r).child({ component: 'approvals' }),
     }), { source: SOURCE });
@@ -692,6 +710,10 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       artifactRoot: (workspaceId) => paths(r).artifacts(workspaceId),
       events: r.resolve(t.EVENT_REPOSITORY),
       targets: r.resolve(t.EXECUTION_TARGET_REPOSITORY),
+      claims: {
+        assertMayStart: (mission) => r.resolve(t.COORDINATION_SERVICE).assertMayStart(mission),
+        abandonStart: (mission) => r.resolve(t.COORDINATION_SERVICE).abandonStart(mission),
+      },
     }), { source: SOURCE });
 
     bind(t.HOLD_SERVICE, (r) => new HoldServiceImpl({
@@ -719,6 +741,25 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       log: log(r).child({ component: 'holds' }),
       ...(options.holdStopWaitMs === undefined ? {} : { stopWaitMs: options.holdStopWaitMs }),
     }), { source: SOURCE, dispose: (service) => { if (service instanceof HoldServiceImpl) service.dispose(); } });
+
+    // Who works on what with the team (relay spec). The ports are optional: a
+    // composition with no coordination gets a service that does nothing.
+    bind(t.COORDINATION_SERVICE, (r) => {
+      const service = new CoordinationService({
+        coordination: r.tryResolve(t.COORDINATION) ?? null,
+        control: r.tryResolve(t.COORDINATION_CONTROL) ?? null,
+        missions: r.resolve(t.MISSION_REPOSITORY),
+        issues: r.resolve(t.ISSUE_REPOSITORY),
+        repositories: r.resolve(t.REPO_REPOSITORY),
+        settings: r.resolve(t.SETTINGS_STORE),
+        recorder: r.resolve(t.EVENT_RECORDER),
+        cancelMission: (id, reason) => r.resolve(t.MISSION_SERVICE).cancel(id, reason),
+        clock: clock(r),
+        log: log(r).child({ component: 'coordination' }),
+      });
+      r.resolve(t.EVENT_BUS).subscribe((record) => { void service.onEvent(record); });
+      return service;
+    }, { source: SOURCE });
 
     bind(t.REFINEMENT_SERVICE, (r) => new RefinementServiceImpl({
       workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
@@ -815,6 +856,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
     }), { source: SOURCE });
 
     bind(t.ROUTINE_SERVICE, (r) => new RoutineService({
+      factoryEdits: brainEdits(r),
       routines: r.resolve(t.ROUTINE_REPOSITORY),
       workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
       missions: r.resolve(t.MISSION_REPOSITORY),
@@ -903,7 +945,9 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       skills: r.resolve(t.SKILL_SERVICE),
       issueSettings: r.resolve(t.ISSUE_REPOSITORY),
       issues: r.resolve(t.ISSUE_SERVICE),
+      integrations: r.resolve(t.INTEGRATION_REPOSITORY),
       workflows: r.resolve(t.WORKFLOW_SOURCE),
+      brain: brainWorkflows(r),
       folder: r.resolve(t.SETUP_FOLDER),
       settings: r.resolve(t.SETTINGS_STORE),
       unitOfWork: r.resolve(t.UNIT_OF_WORK),
@@ -952,6 +996,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       roles: r.resolve(t.ROLE_REPOSITORY),
       skills: r.resolve(t.SKILL_SERVICE),
       readSetupFolder: (path) => r.resolve(t.SETUP_SERVICE).readFolder(path),
+      readBrainCandidate: (workspaceId, ref) => r.resolve(BRAIN_SERVICE).candidateAt(workspaceId, ref),
       // Lazily: the runner is composed from the executor, which nothing here needs until a run starts.
       runner: () => r.resolve(t.EVAL_RUNNER),
     }), { source: SOURCE });
@@ -986,7 +1031,11 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       contributions: r.resolve(t.CONTRIBUTION_SERVICE),
       evals: r.resolve(t.EVAL_SERVICE),
       holds: r.resolve(t.HOLD_SERVICE),
+      brain: r.resolve(BRAIN_SERVICE),
+      coordination: r.resolve(t.COORDINATION_SERVICE),
     }), { source: SOURCE });
+
+    bindBrain(container);
   });
 }
 

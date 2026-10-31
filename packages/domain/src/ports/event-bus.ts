@@ -14,7 +14,9 @@ export interface EventBusPort {
 /** Coarse-grained "something changed" signal for list/detail projections. */
 export type ProjectionTopic =
   | 'missions' | 'tasks' | 'approvals' | 'artifacts' | 'runtimes'
-  | 'integrations' | 'targets' | 'workspaces' | 'decisions' | 'checks' | 'criteria' | 'refinement';
+  | 'integrations' | 'targets' | 'workspaces' | 'decisions' | 'checks' | 'criteria' | 'refinement'
+  /** Claims, members and presence with the team (relay spec). */
+  | 'coordination';
 
 export interface ProjectionBusPort {
   invalidate(topic: ProjectionTopic, scope?: { missionId?: MissionId }): void;

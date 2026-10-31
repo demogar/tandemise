@@ -22,6 +22,7 @@ import { HandoffLinkButton, openableLinks } from '../../components/HandoffLinks.
 import { useWorkspaceId } from '../../lib/workspace.js';
 import { HoldButton, NowLine, useHoldActions } from '../../components/TerminalPanel.js';
 import { describeError } from '../../lib/daemon.js';
+import { RememberThis, WhatItKnew } from '../../components/WhatItKnew.js';
 
 export function TaskDetail({ task, detail, onClose }: { task: TaskView; detail: MissionDetail; onClose: () => void }): JSX.Element {
   // A note turns the retry into the next round, framed as a request rather than as the failure it follows.
@@ -242,6 +243,9 @@ export function TaskDetail({ task, detail, onClose }: { task: TaskView; detail: 
         {skillsLine(task) ? (
           <p className="muted" aria-label="Skills" style={{ margin: 0, fontSize: 'var(--fs-sm)' }}>{skillsLine(task)}</p>
         ) : null}
+        {/* What the run knew from the project's brain, and Remember this (#51). */}
+        {task.latestRun?.brain ? <WhatItKnew runId={task.latestRun.id} taskId={task.id} /> : null}
+        {task.latestRun?.brain ? <RememberThis taskId={task.id} roleId={task.roleId} stepKey={task.key} /> : null}
         {modelPolicyLabel(task.modelPolicy) ? (
           <p className="muted" aria-label="Step models" style={{ margin: 0, fontSize: 'var(--fs-sm)' }}>{modelPolicyLabel(task.modelPolicy)}</p>
         ) : null}

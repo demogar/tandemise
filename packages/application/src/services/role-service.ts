@@ -27,6 +27,8 @@ export class RoleServiceImpl implements RoleService {
     private readonly clock: Clock,
     /** Refuses a pin to a skill or version the project's library lacks (P13). Optional for older harnesses. */
     private readonly validateSkills?: (workspaceId: WorkspaceId, skills: readonly RoleSkill[]) => void,
+    /** A linked brain hears of each edit so it can write it through (#51). */
+    private readonly factoryEdits?: { edited(workspaceId: WorkspaceId, what: string): void },
   ) {}
 
   list(workspaceId?: string): readonly RoleTemplate[] {
@@ -64,7 +66,9 @@ export class RoleServiceImpl implements RoleService {
       createdAt: existing?.workspaceId === workspaceId ? existing.createdAt : now,
       updatedAt: now,
     };
-    return this.roles.upsert(role);
+    const saved = this.roles.upsert(role);
+    this.factoryEdits?.edited(workspaceId, `change the ${role.name} role`);
+    return saved;
   }
 
   #skills(workspaceId: WorkspaceId, requested: UpsertRoleRequest['skills'], existing: RoleTemplate | undefined): readonly RoleSkill[] | null {
@@ -134,9 +138,11 @@ export class RoleServiceImpl implements RoleService {
       // Restored reads as unedited again (updatedAt === createdAt), so later
       // upgrades to the shipped role reach it.
       this.roles.upsert({ ...builtIn, workspaceId, createdAt: scoped.createdAt, updatedAt: scoped.createdAt });
+      this.factoryEdits?.edited(workspaceId, `restore the ${builtIn.name} role`);
       return;
     }
     this.roles.remove(id, workspaceId);
+    this.factoryEdits?.edited(workspaceId, `remove the ${scoped.name} role`);
   }
 }
 

@@ -1,0 +1,30 @@
+# TLS for the relay, safe by construction. Use it on top of compose.yaml:
+#
+#   docker compose -f apps/relay/compose.yaml -f apps/relay/compose.tls.yaml up -d --build
+#
+# Caddy terminates TLS with an automatic certificate for RELAY_PUBLIC_HOST and forwards to the relay.
+# The relay is published on loopback only (nothing reaches it except through Caddy, or from this
+# host), and it trusts X-Forwarded-For, which is safe only because Caddy is the only way in.
+services:
+  relay:
+    environment:
+      RELAY_BIND: 127.0.0.1
+      RELAY_TRUST_PROXY: "1"
+    ports: !override
+      - "127.0.0.1:${RELAY_PORT:-8787}:8787"
+
+  caddy:
+    image: caddy:2
+    depends_on: [relay]
+    environment:
+      RELAY_PUBLIC_HOST: ${RELAY_PUBLIC_HOST:?Set RELAY_PUBLIC_HOST in apps/relay/.env (the host part of RELAY_PUBLIC_URL)}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    restart: unless-stopped
+
+volumes:
+  caddy-data:

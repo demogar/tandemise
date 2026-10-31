@@ -75,6 +75,11 @@
   --status-succeeded-soft: color-mix(in srgb, var(--status-succeeded) 13%, transparent);
   --status-pending-soft: color-mix(in srgb, var(--status-pending) 13%, transparent);
 
+  /* Presence with the team (relay spec): online, away, offline. */
+  --presence-online: var(--status-succeeded);
+  --presence-away: var(--status-blocked);
+  --presence-offline: var(--status-pending);
+
   --risk-read: var(--status-pending);
   --risk-write: var(--status-running);
   --risk-external: var(--status-blocked);

@@ -41,6 +41,17 @@ export function useDaemonStream(): StreamState {
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
     let attempt = 0;
     let disposed = false;
+    // Presence (relay spec): the daemon calls you away after ten idle minutes, so say when
+    // the person touches the app, at most once a minute.
+    let lastActivity = 0;
+    const reportActivity = (): void => {
+      const now = Date.now();
+      if (now - lastActivity < ACTIVITY_EVERY_MS || socket?.readyState !== WebSocket.OPEN) return;
+      lastActivity = now;
+      socket.send(JSON.stringify({ type: 'activity', t: now }));
+    };
+    window.addEventListener('pointerdown', reportActivity, true);
+    window.addEventListener('keydown', reportActivity, true);
 
     const connect = (): void => {
       if (disposed) return;
@@ -54,6 +65,8 @@ export function useDaemonStream(): StreamState {
         // Resync anything we may have missed while the socket was down.
         void resyncMissions(client, queryClient, lastSequenceByMission.current);
         heartbeat = setInterval(() => socket?.send(JSON.stringify({ type: 'ping', t: Date.now() })), HEARTBEAT_MS);
+        lastActivity = 0;
+        reportActivity();
       };
 
       socket.onmessage = (frame) => {
@@ -79,6 +92,8 @@ export function useDaemonStream(): StreamState {
 
     return () => {
       disposed = true;
+      window.removeEventListener('pointerdown', reportActivity, true);
+      window.removeEventListener('keydown', reportActivity, true);
       if (heartbeat) clearInterval(heartbeat);
       if (retryTimer) clearTimeout(retryTimer);
       socket?.close();
@@ -87,6 +102,8 @@ export function useDaemonStream(): StreamState {
 
   return state;
 }
+
+const ACTIVITY_EVERY_MS = 60_000;
 
 function parse(data: unknown): ServerMessage | null {
   if (typeof data !== 'string') return null;

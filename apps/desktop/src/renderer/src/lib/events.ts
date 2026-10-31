@@ -357,6 +357,9 @@ function describe(record: RunEventRecord, roleNames: ReadonlyMap<string, string>
         detail: body.contribution === 'file' ? 'From a file' : 'From a link',
         link: body.artifactIds[0] ? { kind: 'artifact', id: body.artifactIds[0] } : null,
       };
+    case 'brain.learned':
+      // #51: a person's correction had an effect. Not a notification, one line on the feed.
+      return { ...base, icon: 'book', tone: 'succeeded', title: `Learned: '${body.text}' (from ${signalWords(body.signal)})`, detail: null, link: null };
     case 'mission.intake_completed':
       return {
         ...base,
@@ -398,4 +401,15 @@ function rawText(body: TandemiseEventBody): string {
   if (body.type === 'raw') return `[${body.channel}] ${body.text}`;
   const { type, ...rest } = body as { type: string } & Record<string, unknown>;
   return `${type} ${JSON.stringify(rest)}`;
+}
+
+/** Where a lesson came from, in the feed's words. */
+function signalWords(signal: 'hold' | 'rejection' | 'gate' | 'person' | 'agent'): string {
+  switch (signal) {
+    case 'hold': return 'your hold';
+    case 'rejection': return 'the changes you asked for';
+    case 'gate': return 'a failed check';
+    case 'person': return 'you';
+    case 'agent': return 'an agent';
+  }
 }

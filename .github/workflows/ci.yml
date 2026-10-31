@@ -50,3 +50,24 @@ jobs:
           git config --global user.email "ci@tandemise.invalid"
           git config --global init.defaultBranch main
       - run: npm run check:offline
+
+  relay-image:
+    name: Relay image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build the relay image
+        run: docker build -f apps/relay/Dockerfile -t relay:ci .
+      - name: It starts and answers health
+        run: |
+          docker run -d --name relay-ci -e RELAY_HOST=0.0.0.0 -e RELAY_PUBLIC_URL=https://relay.example.com -p 8787:8787 relay:ci
+          for i in $(seq 1 30); do curl -fsS localhost:8787/relay/v1/health && break; sleep 1; done
+          curl -fsS localhost:8787/relay/v1/health
+          docker logs relay-ci | grep -E '^Admin invite: TRI-'
+          docker rm -f relay-ci
+      - name: It is under 120 MB to pull (compressed)
+        run: |
+          size=$(docker save relay:ci | gzip -c | wc -c)
+          echo "relay image, compressed: $size bytes"
+          test "$size" -lt 125829120

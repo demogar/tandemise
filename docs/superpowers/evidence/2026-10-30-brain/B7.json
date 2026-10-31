@@ -1,0 +1,60 @@
+{
+  "id": "B7",
+  "title": "Two homes write lessons, sync, and see the same memory",
+  "ok": true,
+  "checks": [
+    {
+      "label": "both lists have both lessons",
+      "ok": true,
+      "observed": [
+        3,
+        3
+      ]
+    },
+    {
+      "label": "both Lessons lists show the same texts and counters",
+      "ok": true,
+      "observed": {
+        "a": [
+          {
+            "text": "Home two: write the changelog line with the change.",
+            "counters": "+0 / −0",
+            "state": "active"
+          },
+          {
+            "text": "Home one: name branches after the issue.",
+            "counters": "+0 / −0",
+            "state": "active"
+          },
+          {
+            "text": "Keep the header sticky on mobile.",
+            "counters": "+6 / −0",
+            "state": "active"
+          }
+        ],
+        "b": [
+          {
+            "text": "Home two: write the changelog line with the change.",
+            "counters": "+0 / −0",
+            "state": "active"
+          },
+          {
+            "text": "Home one: name branches after the issue.",
+            "counters": "+0 / −0",
+            "state": "active"
+          },
+          {
+            "text": "Keep the header sticky on mobile.",
+            "counters": "+6 / −0",
+            "state": "active"
+          }
+        ]
+      }
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/home/demogar/projects/tandemise/tandemise/.claude/worktrees/agent-a4b7a8777ac07d5f4/docs/superpowers/evidence/2026-10-30-brain/B7-home1-lessons.png",
+    "/home/demogar/projects/tandemise/tandemise/.claude/worktrees/agent-a4b7a8777ac07d5f4/docs/superpowers/evidence/2026-10-30-brain/B7-home2-lessons.png"
+  ]
+}

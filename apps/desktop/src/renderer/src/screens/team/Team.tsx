@@ -15,6 +15,7 @@ import { pluralize } from '../../lib/format.js';
 import { MemberDrawer, memberSubtitle, type MemberTarget } from './MemberForm.js';
 import { StaffingEditor, applyPreset, needsPick, presetOf } from './StaffingEditor.js';
 import { RolesPane } from './RolesPane.js';
+import { RelayTeam } from './RelayTeam.js';
 
 export type TeamTab = 'people' | 'staffing' | 'roles';
 
@@ -61,7 +62,10 @@ export function Team({ tab }: { tab: TeamTab }): JSX.Element {
             ) : team.isPending ? (
               <SkeletonList rows={4} />
             ) : tab === 'people' ? (
-              <PeoplePane actors={actors} issues={team.data.issues} onOpen={(member) => setTarget({ kind: 'edit', member })} onAddAgent={() => setTarget({ kind: 'new-agent' })} />
+              <>
+                <PeoplePane actors={actors} issues={team.data.issues} onOpen={(member) => setTarget({ kind: 'edit', member })} onAddAgent={() => setTarget({ kind: 'new-agent' })} />
+                <RelayTeam />
+              </>
             ) : (
               <StaffingPane actors={actors} />
             )}

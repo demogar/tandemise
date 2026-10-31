@@ -83,6 +83,11 @@ export interface ProjectionDeps {
   readonly desk?: Pick<DeskService, 'metrics' | 'banners'>;
   /** A step's open hold and whether it can be held; optional for harnesses built before holds. */
   readonly holds?: Pick<HoldService, 'standing'>;
+  /** The claim banner and the Unclaimed Inbox rows (relay spec); optional for harnesses built before it. */
+  readonly coordination?: {
+    missionClaim(missionId: string): MissionDetail['claim'];
+    inboxUnclaimed(workspaceId: string): NonNullable<InboxView['unclaimed']>;
+  };
 }
 
 /** The run events a "Now" line is read from: what the agent is doing, not its bookkeeping. */
@@ -211,6 +216,7 @@ export class ProjectionServiceImpl implements ProjectionService {
       // again drops out with no state to clear (P9).
       stalled: this.deps.liveness?.stalled(workspaceId) ?? [],
       silentRuns: this.deps.liveness?.silentRuns(workspaceId) ?? [],
+      unclaimed: this.deps.coordination?.inboxUnclaimed(workspaceId) ?? [],
     };
   }
 
@@ -441,6 +447,7 @@ export class ProjectionServiceImpl implements ProjectionService {
         : { summary: this.#planSummary(mission, tasks), tasks: asPlannedTasks(tasks) },
       planIssues: this.#planIssues(mission, tasks),
       uploads: this.#uploads(id),
+      claim: this.deps.coordination?.missionClaim(id) ?? null,
     };
   }
 

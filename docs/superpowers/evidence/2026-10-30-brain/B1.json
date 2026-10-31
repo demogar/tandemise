@@ -1,0 +1,67 @@
+{
+  "id": "B1",
+  "title": "Create a brain from Project settings",
+  "ok": true,
+  "checks": [
+    {
+      "label": "the Brain section offers the three ways in",
+      "ok": true,
+      "observed": "Brain\nNot linked\n\nA brain is one git repository that holds what this project has learned and how its factory works: roles, workflows, rules and lessons. A teammate who links the same brain gets the same factory. Sharing is git pull and git push; secrets and your own settings never go in it.\n\nCreate "
+    },
+    {
+      "label": "the window says Up to date",
+      "ok": true,
+      "observed": "Brain\ngithub.com/garipass/brain\n\nUp to date (last synced 21:08).\n\n1 rules file · 0 lessons\n\nSync now\nOpen the brain\nUnlink"
+    },
+    {
+      "label": "and names the remote",
+      "ok": true
+    },
+    {
+      "label": "the fake gh created a private repository",
+      "ok": true
+    },
+    {
+      "label": "the bare repo has brain.yaml, factory/roles/development.md and memory/rules/project.md",
+      "ok": true,
+      "observed": [
+        ".gitattributes",
+        "README.md",
+        "brain.yaml",
+        "factory/roles/architecture.md",
+        "factory/roles/design.md",
+        "factory/roles/development.md",
+        "factory/roles/finance.md",
+        "factory/roles/product.md",
+        "factory/roles/qa.md",
+        "factory/roles/release.md",
+        "factory/roles/review.md",
+        "factory/routines.yaml",
+        "factory/tandemise.yaml",
+        "factory/workflows/build-only.yaml",
+        "factory/workflows/p0.yaml",
+        "factory/workflows/p10-desk.yaml",
+        "factory/workflows/p12-economy.yaml",
+        "factory/workflows/p12-escalate.yaml",
+        "factory/workflows/p12-models.yaml",
+        "factory/workflows/p12-review.yaml"
+      ]
+    },
+    {
+      "label": "the Developer in the brain says brain-model",
+      "ok": true
+    },
+    {
+      "label": "proof (API): linked, up to date",
+      "ok": true,
+      "observed": "Up to date (last synced 21:08)."
+    }
+  ],
+  "notes": [
+    "home 1 Developer model set to brain-model through the API, so B2 has something to carry"
+  ],
+  "shots": [
+    "/home/demogar/projects/tandemise/tandemise/.claude/worktrees/agent-a4b7a8777ac07d5f4/docs/superpowers/evidence/2026-10-30-brain/B1-unlinked.png",
+    "/home/demogar/projects/tandemise/tandemise/.claude/worktrees/agent-a4b7a8777ac07d5f4/docs/superpowers/evidence/2026-10-30-brain/B1-linked.png"
+  ]
+}
