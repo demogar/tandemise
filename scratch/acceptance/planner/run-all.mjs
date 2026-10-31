@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // #53 acceptance (PR 1): the factory plans by lane, says why, and opens the pull request itself.
 //
-//   node scratch/acceptance/planner/run-all.mjs [--keep-going] [--only=pm01,pm07] [--hold]
+//   node scratch/acceptance/planner/run-all.mjs [--keep-going] [--only=pm01,pm07] [--hold] [--real-claude]
 //
 // Fresh TANDEMISE_HOME + project (p0/setup.mjs). The project's checkout is
 // registered with a GitHub remote (git@github.com:acme/web.git), so the ship
@@ -81,7 +81,9 @@ desktop.unref();
 
 const keepGoing = process.argv.includes('--keep-going');
 const only = process.argv.find((a) => a.startsWith('--only='))?.slice('--only='.length).split(',');
-const scenarios = ['pm01.mjs', 'pm02.mjs', 'pm05.mjs', 'pm06.mjs', 'pm07.mjs', 'pm10.mjs', 'pm03.mjs', 'pm04.mjs', 'pm08.mjs', 'pm09.mjs'].filter((file) => !only || only.some((o) => file.includes(o)));
+// --real-claude adds PM1 on the real Claude Code runtime (claude at ~/.local/bin/claude, logged in).
+const scenarios = ['pm01.mjs', 'pm02.mjs', 'pm05.mjs', 'pm06.mjs', 'pm07.mjs', 'pm10.mjs', 'pm03.mjs', 'pm04.mjs', 'pm08.mjs', 'pm09.mjs', ...(process.argv.includes('--real-claude') ? ['pm01-real-claude.mjs'] : [])]
+  .filter((file) => !only || only.some((o) => file.replace('.mjs', '') === o || (o === 'pm01' && file === 'pm01.mjs') || (o !== 'pm01' && file.includes(o))));
 
 let failed = null;
 for (const file of scenarios) {
@@ -106,7 +108,7 @@ if (!process.argv.includes('--hold')) {
 
 // ---------------------------------------------------------------- summary
 const results = readdirSync(EVIDENCE).filter((f) => f.endsWith('.json')).map((f) => JSON.parse(readFileSync(join(EVIDENCE, f), 'utf8')));
-const order = ['PM1', 'PM2', 'PM3', 'PM4', 'PM5', 'PM6', 'PM7', 'PM8', 'PM9', 'PM10'];
+const order = ['PM1', 'PM1R', 'PM2', 'PM3', 'PM4', 'PM5', 'PM6', 'PM7', 'PM8', 'PM9', 'PM10'];
 results.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
 const lines = [
   '# Planner acceptance (#53)',

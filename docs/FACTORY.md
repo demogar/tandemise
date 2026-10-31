@@ -28,7 +28,11 @@ can't be read (that rule is skipped; one bad rule never stops planning), and
 **Write the defaults into the repository** gives you the built-in files to
 edit. A `merge.yaml` that can't be read is never replaced by the default: every
 pull request asks until it is fixed. In a project with a brain, your edits
-(the Merge switch, Write the defaults) are commits to the brain's `factory/`,
+(the Merge switch, Write the defaults) are commits to the brain's `factory/`
+that take effect on this computer at once, pushed or not (a failed push shows
+in the Brain section); when `brain.yaml` says `humanEdits: pr` they open a pull
+request in the brain instead, except turning auto-merge off, which is always
+direct;
 the files show in the Brain screen's Factory tab, outcomes are written to the
 brain's ledger so every teammate routes from the same history, and the
 factory's proposals are pull requests in the brain repository.
@@ -133,13 +137,28 @@ autoMergeAtMost: 2
 revertAutoMerge: on      # a revert of an auto-merge may merge on its own
 ```
 
+**Auto-merge needs a brain.** `autoMerge: on` counts only when `merge.yaml`
+comes from the project's brain and a person turned it on in the app (an
+accepted "Auto-merge low-risk pull requests in …" Decision); a repository's or
+this computer's `merge.yaml` saying `on` is read as `off`. A change that touches
+`.tandemise/**` or `factory/**` (Tandemise's own rules) always asks.
+
 The decision reads only facts the daemon measured from git, GitHub and its own
 records at the pull request's head commit, never anything an agent wrote. CI
-green on that commit is required even if the file leaves it out; a repository
-with no CI, or one whose branch protection requires a review, always asks; an
-unmeasured fact fails `never` and `requires` and adds no points. Every merge is
-bound to the decided commit (`gh pr merge --match-head-commit`), so a push
-after the decision makes Tandemise decide again.
+green on that commit is required even if the file leaves it out: CI is read
+from check runs (every page), check suites and commit statuses, and a pull
+request with none yet waits a few minutes for CI to start before it is treated
+as having none. A repository with no CI, or one whose branch protection (classic
+protection or rulesets) requires a review, always asks, and protection that
+can't be read counts as unknown, so it asks. A change whose diff can't be
+measured asks, saying so; commits GitHub makes itself (Update branch) are not a
+person's. An unmeasured fact fails `never` and `requires` and adds no points.
+Every merge is bound to the decided commit (`gh pr merge --match-head-commit`),
+so a push after the decision makes Tandemise decide again; `--auto` is used only
+when the branch requires checks, and a queued auto-merge is cancelled
+(`--disable-auto`) when the decision is voided or auto-merge is stopped. Your
+Merge on a Review and merge card answers at once; if GitHub refuses it,
+Tandemise keeps watching and tries again rather than marking the step blocked.
 
 Turning auto-merge on shows a **backtest** (your past decisions replayed under
 the new policy) and records a Decision. **Stop auto-merging** turns it off and

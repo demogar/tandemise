@@ -158,15 +158,54 @@ spec (`docs/superpowers/specs/2026-10-30-planner-and-merge-design.md`).
 - Ruling (Task 20): the brain-first factory source reads `factory/<name>.yaml` at the
   brain's last pull (ref `brain:<sha12>`) and falls back per file to the local source.
   A person's edit commits to the brain's `factory/` and pushes it (a local-only brain
-  takes the commit as its pull). `humanEdits: pr` is not honoured for these three
-  files yet. Outcomes go to the local table and, when linked, to the ledger as an
+  takes the commit as its pull). (Superseded by the review round below for
+  humanEdits: pr.) Outcomes go to the local table and, when linked, to the ledger as an
   `outcome` op; the lesson fold skips that op. Routing reads local rows plus ledger
   outcomes, deduped by id, and a link backfills the ledger once per process.
   Proposals in a linked project are PRs in the brain repository; a local-only brain
   gets none. Factory and Merge also show in the Brain screen's Factory tab and stay
   in Project settings. planApproval needs no change: factory quick and standard
   plans never ask, and careful plans always do.
-- Holds: #50's migration (022) is on main, but no hold service raises an outcome
-  yet, so `OutcomeRecorder.held` stays inert, as instructed.
-- merge-check: 10 consecutive passes after the comment-edit race fix, so the waits
-  stayed timed rather than event-driven.
+- Holds: superseded by the review round below (wired to `task.hold_ended`).
+- merge-check: 10 consecutive passes after the comment-edit race fix.
+
+## Review round (whole-branch review, "merge after fixes")
+
+- Auto-merge is on only when merge.yaml comes from the brain and an accepted
+  auto-merge Decision exists; otherwise the ship step decides with autoMerge off.
+  Turning it on without a linked brain is refused. A change touching `.tandemise/**`
+  or `factory/**` always asks (a hard rule in `decideMerge`). Acceptance PM3 now
+  links a local brain first and checks the brain's `factory/merge.yaml`.
+- A queued GitHub auto-merge is cancelled with `gh pr merge --disable-auto` when its
+  decision is voided or the kill switch runs; `--auto` only when the base branch
+  requires checks.
+- CI: NONE right after the pull request opens is pending for a grace period (3 min;
+  `TANDEMISE_SHIP_CI_GRACE_MS`); check runs are paged, check suites and the combined
+  status are read too.
+- Protection reads classic protection and `rules/branches/<b>`; a 404 from classic
+  protection is "unprotected" only when the rulesets API answers; otherwise null
+  (asks).
+- Measuring fetches the head (branch, else `pull/<n>/head`) and any git failure is an
+  ask that says Tandemise couldn't measure the change. person_commits excludes merges
+  and commits whose committer is noreply@github.com.
+- A person's Merge is acted on in the background; a head change or refusal voids the
+  decision and waits under the scheduler; other refusals are AWAITING_EXTERNAL and an
+  approved card for the live decision is merged again on the next look; only pending
+  cards count as already asked.
+- Brain edits: in effect locally at once (markPulled before push), push failures go
+  to `brain.reportProblem`. `humanEdits: pr` is honoured (a PR from a fresh branch off
+  origin, made in a throwaway worktree), except turning auto-merge off, which is
+  always a direct commit. Learning proposals in the brain use the same fresh-branch
+  path, so unpushed commits are never moved.
+- Minor: holds wired (`task.hold_ended` -> held outcome, and process.holds counts the
+  mission's holds); `merge.reverted` and the reverted outcome are recorded only when
+  the revert's PR is opened, and a second Revert of the same merge is refused; the
+  ship sleep removes its abort listener; a failed re-check of what a change touches
+  makes the decision ask; a left-out skill is named in the plan's why; acceptance
+  refuses to start unless `gh` resolves to the fake; merge-check asserts no `--admin`
+  in the built GitHub integration and the restart test waits on a condition.
+- Real runtime: `run-all.mjs --real-claude` adds PM1R, the quick-lane fix done by Claude
+  Code end to end to a pull request (local bare origin, fake gh).
+- Migration: renumbered to 025 for the merge order #72 -> #73 (intake, 024) -> #71.
+  `assertOrdered` refuses a gap, so this branch's checks run only once 024 is on main;
+  the review round was verified at 024 before the renumber.
