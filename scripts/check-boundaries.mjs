@@ -116,6 +116,24 @@ for (const [name, spec] of Object.entries(PACKAGES)) {
   }
 }
 
+// Sources the relay server loads on their own: type-only imports plus
+// `import { z } from 'zod'`, and nothing else, so the relay stays splittable
+// (docs/superpowers/specs/2026-10-30-relay-design.md, §Monorepo or separate repo).
+const ZOD_ONLY_SOURCES = ['packages/api-contract/src/relay.ts'];
+{
+  const ANY_RE = /^\s*(?:import|export)\b[^;]*?\bfrom\s+['"]([^'"]+)['"]|^\s*import\s+['"]([^'"]+)['"]|\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)|\brequire\s*\(/gm;
+  for (const source of ZOD_ONLY_SOURCES) {
+    let src;
+    try { src = readFileSync(source, 'utf8'); } catch { errors.push(`${source}: listed as zod-only but does not exist`); continue; }
+    for (const m of src.matchAll(ANY_RE)) {
+      const stmt = m[0].trim();
+      if (/^(?:import|export)\s+type\s/.test(stmt)) continue;
+      if (/^import\s*\{\s*z\s*\}\s*from\s*['"]zod['"]$/.test(stmt)) continue;
+      errors.push(`${source}: may import only types and \`{ z } from 'zod'\` (${stmt.slice(0, 80)})`);
+    }
+  }
+}
+
 if (errors.length) {
   console.error('Architecture boundary violations:\n' + errors.map((e) => '  ✗ ' + e).join('\n'));
   process.exit(1);
