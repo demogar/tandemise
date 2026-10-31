@@ -143,6 +143,8 @@ const lines = [
     ...r.shots.map((s) => `- screenshot: \`${s.split('/').slice(-1)[0]}\``),
     '',
   ]),
+  // What this scenario found on main, and the fixes that closed each seam.
+  readFileSync(join(here, 'HISTORY.md'), 'utf8'),
 ];
 writeFileSync(join(EVIDENCE, 'REPORT.md'), lines.join('\n'));
 console.log(`\n${lines.slice(0, 4).join('\n')}`);
