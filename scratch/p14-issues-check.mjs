@@ -305,9 +305,12 @@ section('engine: checks, drafts, edits, closes and idempotent write-back over a 
       });
     };
     qa(m11.id, []);
+    // The ship step (#53) records its pull request as an event, not as a handoff link.
+    h.container.resolve(app.EVENT_RECORDER).record({ workspaceId: h.repo.missions.get(m11.id).workspaceId, missionId: m11.id }, { type: 'ship.pr_opened', repo: REPO, number: 31, url: `https://github.com/${REPO}/pull/31`, headSha: 'a'.repeat(40) });
     h.repo.missions.update(m11.id, { status: 'COMPLETE' });
     await I().writeBack();
     const done11 = commentsOf(GH, REPO, 11).find((c) => c.user.login === 'tandemise-owner' && c.body.includes('tandemise:completed'));
+    check("complete: the comment links the ship step's pull request", done11?.body.includes(`https://github.com/${REPO}/pull/31`) === true, done11?.body);
     check('complete: the criteria table is posted', done11?.body.includes('Done in Tandemise — 5 of 5 criteria verified.') && /\| U\d+ \| The page loads with no network \| Verified \|/.test(done11.body) && done11.body.includes('Closing this issue: every criterion was verified.'), done11?.body);
     check('the contributor\'s marker comment was left alone', commentsOf(GH, REPO, 11).find((c) => c.id === mallory.id)?.body === mallory.body);
     check('the issue was closed once', calls(GH).filter((c) => c.args[0] === 'issue' && c.args[1] === 'close' && c.args[2] === '11').length === 1 && readState(GH).repos[REPO].issues.find((i) => i.number === 11).state === 'CLOSED');

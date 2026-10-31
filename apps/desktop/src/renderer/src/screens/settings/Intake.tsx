@@ -37,11 +37,13 @@ export function IntakeSettings({ focus = false }: { focus?: boolean }): JSX.Elem
           {/* Outside the read-only fieldset: a brain moves the address, this computer's person confirms it (Ruling 23). */}
           <MovedAddresses view={view} />
           {readOnly ? <div className="banner intake-settings__brain">Set in this project's brain.</div> : null}
+          {/* The tracker's settings are read-only with a brain; its token, this computer's, never is. */}
+          <TrackerCard view={view} readOnly={readOnly} />
           <fieldset className="intake-settings__fieldset" disabled={readOnly}>
-            <TrackerCard view={view} />
             <SourcesCard view={view} />
-            <CustomSources view={view} />
           </fieldset>
+          {/* Outside the read-only fieldset: a push token is this computer's, even when the brain sets the source. */}
+          <CustomSources view={view} />
           {/* Outside the read-only fieldset: running a source here is this computer's choice, even when the brain sets it. */}
           <ThisComputerCard view={view} readOnly={readOnly} />
         </>
@@ -175,7 +177,7 @@ function trackerOf(d: TrackerDraft, before: TrackerConfig | null): TrackerConfig
   };
 }
 
-function TrackerCard({ view }: { view: IntakeConfigView }): JSX.Element {
+function TrackerCard({ view, readOnly }: { view: IntakeConfigView; readOnly: boolean }): JSX.Element {
   const workspaceId = useWorkspaceId() ?? '';
   const [draft, setDraft] = useState<TrackerDraft>(() => trackerDraft(view.tracker));
   const savedKey = JSON.stringify(trackerDraft(view.tracker));
@@ -194,6 +196,7 @@ function TrackerCard({ view }: { view: IntakeConfigView }): JSX.Element {
           ? 'Set this project\'s tracker first: work from every source is filed there, once, and you start it from the Board.'
           : `Work is filed in ${youtrack ? `YouTrack ${view.tracker.project ?? ''}` : `GitHub Issues ${view.tracker.repo ?? ''}`}, and you start it from the Board.`}
       </p>
+      <fieldset className="intake-settings__fieldset" disabled={readOnly}>
       <div className="grid grid--2">
         <Field label="Tracker">
           <select className="select" aria-label="Tracker kind" value={draft.kind} onChange={(e) => set({ kind: e.target.value as TrackerDraft['kind'] })}>
@@ -249,6 +252,7 @@ function TrackerCard({ view }: { view: IntakeConfigView }): JSX.Element {
           {save.isPending ? 'Checking with your tracker…' : 'Save tracker'}
         </button>
       </div>
+      </fieldset>
       <div className="intake-settings__secret">
         <Field label={youtrack ? 'YouTrack token' : 'GitHub'} hint={youtrack ? 'A permanent token. Kept only on this computer, in its secret store.' : 'GitHub Issues are read with the gh command line tool you are signed in to.'}>
           {youtrack ? <input className="input mono" type="password" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)} placeholder="perm:…" /> : <span />}

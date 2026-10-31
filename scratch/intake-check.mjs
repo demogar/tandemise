@@ -752,6 +752,8 @@ const pipeline = await (async () => {
   const ytTracker = (url) => ({
     kind: 'youtrack', url, project: 'GAR', board: 'project: GAR #Unresolved', onComplete: 'in_review',
     states: { ready: ['Open'], in_progress: 'In Progress', in_review: 'In Review', done: ['Fixed', 'Done'], wont_do: ["Won't fix", 'Duplicate', 'Obsolete'] },
+    // A Task runs the planned preset with its plan card (the write-back sections drive it); any other type, the factory.
+    workflows: { Task: 'feature-delivery' },
   });
   const SOURCES = [
     { id: 'sentry-web', kind: 'sentry', instance: 'acme/web', filter: { minLevel: 'error', minEvents: 20, minUsers: 3, window: '24h' }, create: { type: 'Bug' }, closeOnDone: false, closeWontDo: false },
@@ -1155,7 +1157,7 @@ try {
   // planNow: planning began at once. With no planner runtime here the preset
   // plans it in the same call, so it is already past PLANNING (RULINGS ruling 13).
   const planned = missions.get(mission.id);
-  check('…never queued, and planned at once (its Done-when was parsed)', stored?.queuedAt === null && ['PLANNING', 'AWAITING_PLAN_APPROVAL'].includes(mission.status) && planned?.queuedAt === null, { queuedAt: stored?.queuedAt, status: mission.status });
+  check('…never queued, and planned at once (its Done-when was parsed)', stored?.queuedAt === null && ['PLANNING', 'AWAITING_PLAN_APPROVAL', 'EXECUTING'].includes(mission.status) && planned?.queuedAt === null, { queuedAt: stored?.queuedAt, status: mission.status });
   check("…its goal starts 'YouTrack GAR-1, started by Demo: '", stored?.goal.startsWith('YouTrack GAR-1, started by Demo: ') === true, stored?.goal);
   check('…quotes the task as written and lists its sources', stored?.goal.includes(`The task as written in the tracker:\n\n${SAFARI}\n\n${DONE_WHEN}`) === true && stored?.goal.includes('\n\nSources:\n- Sentry · acme/web · ') === true, stored?.goal);
   check('…its title is the item title', stored?.title === SAFARI, stored?.title);
@@ -1176,8 +1178,15 @@ try {
   // No Done-when: a draft, not queued, and never pulled.
   fakeB.putIssue({ summary: 'Claims are checked', description: 'Two people, one item.', state: 'Open' });
   fakeB.putIssue({ summary: 'Dark mode toggle forgets its choice', description: 'It resets after a reload.', state: 'Open' });
-  const draft = await tracker.start(BD.caller, boardWs, 'GAR-5');
-  check('an item with no criteria starts as a DRAFT, not queued', draft.status === 'DRAFT' && missions.get(draft.id)?.queuedAt === null, { status: draft.status, queuedAt: missions.get(draft.id)?.queuedAt });
+  // #53 §4 changes #52 §7: with no type mapping the factory decides, and a Start with no
+  // Done-when line plans at once in the quick and standard lanes.
+  check('with no type mapping, Start lets the factory decide (workflow auto)', stored?.workflowPreset === 'auto', stored?.workflowPreset);
+  const plain = await tracker.start(BD.caller, boardWs, 'GAR-5');
+  check('an item with no criteria that is not careful plans at once, not queued', plain.status !== 'DRAFT' && missions.get(plain.id)?.queuedAt === null, { status: plain.status, queuedAt: missions.get(plain.id)?.queuedAt });
+  // The careful lane still asks for Done-when lines: such an item opens as a draft to refine.
+  const careful = fakeB.putIssue({ summary: 'Migrate the sessions schema', description: 'Sessions move to their own table.', state: 'Open' }).idReadable;
+  const draft = await tracker.start(BD.caller, boardWs, careful);
+  check('a careful item with no criteria starts as a DRAFT, not queued', draft.status === 'DRAFT' && missions.get(draft.id)?.queuedAt === null, { status: draft.status, queuedAt: missions.get(draft.id)?.queuedAt });
   const pulled = await BD.services.backlog.pull();
   check("P7's pull never picks it", pulled.length === 0, pulled);
   const scheduler = BD.container.resolve(pipeline.app.SCHEDULER);
@@ -1382,9 +1391,9 @@ const driver = (d, ws) => {
 };
 let WD = null;
 try {
-  fakeW.putIssue({ summary: SAFARI, description: DONE_WHEN, state: 'Open' });
-  fakeW.putIssue({ summary: 'Refunds are sent twice', description: 'One click, two refunds.\n\n## Done when\n- [ ] One refund per click', state: 'Open' });
-  fakeW.putIssue({ summary: 'Coupon field rejects valid codes', description: 'SAVE10 is refused.\n\n## Done when\n- [ ] SAVE10 is accepted', state: 'Open' });
+  fakeW.putIssue({ summary: SAFARI, description: DONE_WHEN, state: 'Open', type: 'Task' });
+  fakeW.putIssue({ summary: 'Refunds are sent twice', description: 'One click, two refunds.\n\n## Done when\n- [ ] One refund per click', state: 'Open', type: 'Task' });
+  fakeW.putIssue({ summary: 'Coupon field rejects valid codes', description: 'SAVE10 is refused.\n\n## Done when\n- [ ] SAVE10 is accepted', state: 'Open', type: 'Task' });
   WD = await pipeline.open({ home: wbHome(), settings: pipeline.app.createMemorySettingsStore(), secrets: pipeline.memorySecrets(), providers: [pipeline.Y.youtrackIntegrationModule] });
   const ws = await pipeline.configureYouTrack(WD, fakeW.url);
   WD.container.resolve(pipeline.app.PERSON_REPOSITORY).update(WD.caller.personId, { displayName: 'Demo' });
@@ -1435,6 +1444,18 @@ try {
   await w.pass();
   check("a pull request plus a pending approval moves GAR-1 to 'In Review'", fakeW.issues.get('GAR-1')?.state === 'In Review' && WD.items.byKey(ws, 'GAR-1')?.writtenState === 'In Review', { state: fakeW.issues.get('GAR-1')?.state, written: WD.items.byKey(ws, 'GAR-1')?.writtenState });
   check('…and the comment links it', activity('GAR-1')[0].text.includes('\n\nPull request: https://github.com/acme/web/pull/7'), activity('GAR-1')[0].text);
+
+  // 3b. The ship step's pull request (#53) is no handoff link, only a ship.pr_opened event: it counts too.
+  fakeW.putIssue({ summary: 'Typo in the settings title', description: 'Settigns.\n\n## Done when\n- [ ] Settings', state: 'Open', type: 'Task' });
+  const typo = await tracker.start(WD.caller, ws, 'GAR-4');
+  await tracker.settle();
+  const typoSteps = await w.approvePlan(typo.id);
+  WD.container.resolve(pipeline.app.EVENT_RECORDER).record({ workspaceId: ws, missionId: typo.id, taskId: typoSteps[0]?.id ?? null }, { type: 'ship.pr_opened', repo: 'acme/web', number: 12, url: 'https://github.com/acme/web/pull/12', headSha: 'a'.repeat(40) });
+  w.pendingCard(typo.id);
+  pipeline.advance(61_000);
+  await w.pass();
+  check("the ship step's pull request plus a pending approval moves GAR-4 to 'In Review'", fakeW.issues.get('GAR-4')?.state === 'In Review', fakeW.issues.get('GAR-4')?.state);
+  check('…and its activity comment links that pull request', activity('GAR-4')[0]?.text.includes('Pull request: https://github.com/acme/web/pull/12') === true, activity('GAR-4')[0]?.text);
 
   // 4. COMPLETE → onComplete (In Review), with the criteria table.
   w.repo.approvals.update(card.id, { status: 'APPROVED', selectedOptionId: card.options[0]?.id ?? null, decidedAt: pipeline.clock.now() });
@@ -1500,7 +1521,7 @@ try {
       },
     }), { source: 'check' });
   });
-  fakeN.putIssue({ summary: SAFARI, description: DONE_WHEN, state: 'Open' });
+  fakeN.putIssue({ summary: SAFARI, description: DONE_WHEN, state: 'Open', type: 'Task' });
   const ND = await pipeline.open({ home: wbHome(), settings: pipeline.app.createMemorySettingsStore(), secrets: pipeline.memorySecrets(), providers: [noEdits] });
   try {
     const ws = await pipeline.configureYouTrack(ND, fakeN.url);

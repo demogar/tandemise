@@ -4,6 +4,7 @@ import { TandemiseError, createPaths, nullLogger, systemClock } from '@tandemise
 import type { BrainHostPort, BrainRepoPort } from '@tandemise/domain';
 import * as t from '../tokens.js';
 import * as b from './tokens.js';
+import * as it from '../intake-tokens.js';
 import { BrainService } from './brain-service.js';
 import { BrainSyncLoop } from './sync-loop.js';
 import { BrainContextSupply } from './context-supply.js';
@@ -69,6 +70,24 @@ export function bindBrain(container: Container): void {
       roles: r.resolve(t.ROLE_REPOSITORY),
       // Resolved per promotion, so a check can stub the evals.
       evals: () => r.resolve(b.BRAIN_PROMOTION_EVALS),
+    },
+    // Resolved per call: intake's config source reads the brain's in turn.
+    intake: {
+      current: (ws) => {
+        const config = r.tryResolve(it.INTAKE_CONFIG_SOURCE);
+        if (config === undefined || (config.originFor?.(ws) ?? config.origin) !== 'local') return null;
+        const read = config.read(ws);
+        return read.tracker === null && read.sources.length === 0 ? null : read;
+      },
+      keepOnHere: (caller, ws) => {
+        const config = r.tryResolve(it.INTAKE_CONFIG_SOURCE);
+        const intake = r.tryResolve(it.INTAKE_REPOSITORY);
+        if (config === undefined || intake === undefined) return;
+        for (const source of config.read(ws).sources) {
+          if (intake.source(ws, source.id) !== undefined) continue;
+          intake.saveSource(ws, source.id, { kind: source.kind, enabled: true, enabledBy: caller.personId });
+        }
+      },
     },
   }), { source: SOURCE });
 

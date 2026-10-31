@@ -11,6 +11,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, 
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
+import { keepPainting } from './lib/frame-pump.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '../../..');
@@ -49,6 +50,8 @@ const desktop = spawn('npx', ['electron-vite', 'dev', '--', `--remote-debugging-
   detached: true,
 });
 desktop.unref();
+// --keep-painting (or ACCEPTANCE_KEEP_PAINTING=1): for a display that is idle during the run.
+keepPainting([PORT]);
 
 const P1 = process.argv.includes('--p1');
 const P2 = process.argv.includes('--p2');

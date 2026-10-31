@@ -1,0 +1,282 @@
+{
+  "id": "N1",
+  "title": "The owner's normal day: intake → Board → quick lane → hold → pull request → tracker → claims",
+  "ok": true,
+  "checks": [
+    {
+      "label": "brain: the project is linked to a brain on this machine",
+      "ok": true,
+      "observed": {
+        "linked": true,
+        "status": "local_only"
+      }
+    },
+    {
+      "label": "brain: the project's intake still reads its tracker and web-form source",
+      "ok": true,
+      "observed": {
+        "origin": "brain",
+        "sources": [
+          "web-form"
+        ]
+      }
+    },
+    {
+      "label": "Settings → Intake: Make a token shows a tdi_ token",
+      "ok": true,
+      "observed": "tdi_mXbt…"
+    },
+    {
+      "label": "Settings → Intake, with a brain: Save token saves this computer's YouTrack token",
+      "ok": true,
+      "observed": {
+        "button": "clicked",
+        "saves": [
+          1,
+          2
+        ]
+      }
+    },
+    {
+      "label": "a shell pushes the signal (tandemise intake push exits 0)",
+      "ok": true,
+      "observed": {
+        "code": 0,
+        "stdout": "custom:web-form:form-7: received\n",
+        "stderr": ""
+      }
+    },
+    {
+      "label": "Intake tab: the signal is filed in the tracker",
+      "ok": true,
+      "observed": {
+        "fingerprint": "custom:web-form:form-7",
+        "title": "Typo in the settings title",
+        "source": "custom",
+        "status": "Filed as GAR-2",
+        "text": "Typo in the settings title\ncustom\nFiled as GAR-2\njust now"
+      }
+    },
+    {
+      "label": "fake YouTrack: GAR-2 exists, a Bug, Open",
+      "ok": true,
+      "observed": {
+        "summary": "Typo in the settings title",
+        "type": "Bug",
+        "state": "Open"
+      }
+    },
+    {
+      "label": "Board: GAR-2 is under Ready with Start",
+      "ok": true,
+      "observed": "GAR-2\nTypo in the settings title\ncustom · web-form\nStart"
+    },
+    {
+      "label": "Start: the factory decides the workflow (auto)",
+      "ok": true,
+      "observed": "auto"
+    },
+    {
+      "label": "Start with no Done-when line plans at once (no draft, no refinement)",
+      "ok": true,
+      "observed": "EXECUTING"
+    },
+    {
+      "label": "…and asks for no plan approval",
+      "ok": true,
+      "observed": []
+    },
+    {
+      "label": "Plan → Why these steps: \"Quick lane: one step, then a pull request.\"",
+      "ok": true,
+      "observed": "Fix\ntiny\nlow risk\nMake it careful\n\nFix · tiny · low risk\n\nQuick lane: one step, then a pull request. The project's lane rules matched it.\n\nNo plan approval.\nNo separate review or QA: the tests carry it, and the merge decision will take that into account.\nNo Done-when lines: \"The task as written is done\" stands in, and reads \"Not independently verified\".\nImplement · role model"
+    },
+    {
+      "label": "…profiled from the tracker as a fix",
+      "ok": true,
+      "observed": [
+        "Fix",
+        "tiny",
+        "low risk"
+      ]
+    },
+    {
+      "label": "fake YouTrack: GAR-2 is In Progress",
+      "ok": true,
+      "observed": "In Progress"
+    },
+    {
+      "label": "the implement step runs on the Coding agent's fake runtime",
+      "ok": true,
+      "observed": "Day fake"
+    },
+    {
+      "label": "Hold opens the terminal panel, \"Held by You\"",
+      "ok": true,
+      "observed": "Implement the changeHeld by YouContinueReleaseClose terminalClaude Code may ask whether to trust this folder — choose “Yes, I trust this folder”. Tandemise created it for this task."
+    },
+    {
+      "label": "what you type reaches the session (it writes notes.txt)",
+      "ok": true,
+      "observed": "Fake session sess-day-run_01m68t98638rh78a03tz\nwrite notes.txt\n> write notes.txt\nwrote notes.txt\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
+    },
+    {
+      "label": "proof (disk): notes.txt is in the step's worktree",
+      "ok": true,
+      "observed": "/tmp/tdm-integrated/home/workspaces/ws_01m68t8zb58xm1s25etc/missions/msn_01m68t981zjqwttrz7te/worktrees/typo-in-the-settings-title-implement-dy0tnm9d"
+    },
+    {
+      "label": "Continue: the step finishes on a resumed pass, no attempt spent",
+      "ok": true,
+      "observed": {
+        "status": "SUCCEEDED",
+        "reason": null,
+        "attempts": [
+          1,
+          1
+        ]
+      }
+    },
+    {
+      "label": "proof (DB): the hold ended as continued",
+      "ok": true,
+      "observed": {
+        "ending": "continued",
+        "diffStat": "{\"files\":2,\"insertions\":2,\"deletions\":0}"
+      }
+    },
+    {
+      "label": "ship: one pull request opened on acme/web",
+      "ok": true,
+      "observed": {
+        "repo": "acme/web",
+        "number": 1,
+        "url": "https://github.com/acme/web/pull/1"
+      }
+    },
+    {
+      "label": "ship: waiting for your review, \"Auto-merge is off for this project.\"",
+      "ok": true,
+      "observed": {
+        "headline": "Waiting for your review",
+        "decision": {
+          "id": "mrg_01m68t9fxghxwvhv0n8s",
+          "verdict": "ask",
+          "headSha": "ebefff3cc3f30c39e3c57d2cff7279ac8131323a",
+          "scoreLine": "Risk score 4 of 2 allowed",
+          "reasons": [
+            "Auto-merge is off for this project.",
+            "This repository has no CI checks, so Tandemise never merges it on its own.",
+            "Risk score 4 of 2 allowed: no tests changed, no independent review, a person had to step in."
+          ],
+          "factors": [
+            "no tests changed (+2)",
+            "no independent review (+1)",
+            "a person had to step in (+1)"
+          ],
+          "wouldHave": "would still ask: score 4 of 2",
+          "policyRef": "shipped",
+          "cardId": "apr_01m68t9fyxqtsec3n1jk",
+          "mergedBy": null,
+          "mergeSha": null,
+          "canRevert": false
+        }
+      }
+    },
+    {
+      "label": "fake gh: one `pr create`, and no `pr merge`",
+      "ok": true,
+      "observed": [
+        "pr create --repo acme/web --head tandemise/typo-in-the-settings-title/typo-in-the-settings-title-implement-dy0tnm9d --base main --title fix: typo in the settings title --body-file -"
+      ]
+    },
+    {
+      "label": "the pull request's branch carries the agent's change and the file made in the hold",
+      "ok": true,
+      "observed": {
+        "title": "fix: typo in the settings title",
+        "head": "tandemise/typo-in-the-settings-title/typo-in-the-settings-title-implement-dy0tnm9d",
+        "files": [
+          ".gitignore",
+          ".tandemise/workflows/build-only.yaml",
+          ".tandemise/workflows/p0.yaml",
+          ".tandemise/workflows/p10-desk.yaml",
+          ".tandemise/workflows/p12-economy.yaml",
+          ".tandemise/workflows/p12-escalate.yaml",
+          ".tandemise/workflows/p12-models.yaml",
+          ".tandemise/workflows/p12-review.yaml",
+          ".tandemise/workflows/p13-lint.yaml",
+          ".tandemise/workflows/p13-skills.yaml",
+          ".tandemise/workflows/p13-unknown.yaml",
+          ".tandemise/workflows/p2-chain.yaml",
+          ".tandemise/workflows/p2-solo.yaml",
+          ".tandemise/workflows/p3-hold.yaml",
+          ".tandemise/workflows/p3b-evals.yaml",
+          ".tandemise/workflows/p5.yaml",
+          ".tandemise/workflows/p8-steps.yaml",
+          ".tandemise/workflows/p9-implement.yaml",
+          ".tandemise/workflows/plan-fit-chain.yaml",
+          ".tandemise/workflows/plan-fit.yaml",
+          ".tandemise/workflows/relay-person.yaml",
+          "README.md",
+          "notes.txt",
+          "package.json",
+          "settings-title.txt"
+        ]
+      }
+    },
+    {
+      "label": "Inbox: \"Review and merge\"",
+      "ok": true,
+      "observed": [
+        "Review and merge fix: typo in the settings title"
+      ]
+    },
+    {
+      "label": "the ship card says \"Waiting for your review\" with Open in GitHub",
+      "ok": true,
+      "observed": "Waiting for your review\n\nWaiting for your review: Auto-merge is off for this project.\n\nacme/web #1\nOpen in GitHub\nMerge\nAuto-merge is off for this project.\nThis repository has no CI checks, so Tandemise never merges it on its own.\nRisk score 4 of 2 allowed: no tests changed, no independent review, a person had to step in.\n\nRisk score 4 of 2 allowed: no tests changed (+2), no independent review (+1), a person had to step in (+1)\n\nWhat would have happened with auto-merge on: would still ask: score 4 of 2\n\nChecked ebefff3 · policy shipped"
+    },
+    {
+      "label": "fake YouTrack: GAR-2 moved to In Review while the pull request waits for you",
+      "ok": true,
+      "observed": "In Review"
+    },
+    {
+      "label": "fake YouTrack: one activity comment, linking the pull request",
+      "ok": true,
+      "observed": [
+        {
+          "id": "4-1",
+          "text": "<!-- tandemise:activity -->\n\nStarted in Tandemise by Demostenes Garcia: Typo in the settings title.\n\nPlan:\n- [x] Implement the change\n- [ ] Ship — waiting for a person\n\nPull request: https://github.com/acme/web/pull/1",
+          "author": "tandemise-bot",
+          "created": 1793444847726
+        }
+      ]
+    },
+    {
+      "label": "Board: GAR-2 shows its mission",
+      "ok": true,
+      "observed": "GAR-2\nTypo in the settings title\ncustom · web-form\nMission: Executing\nStart"
+    },
+    {
+      "label": "Home → Who's working on what: GAR-2 (Typo in the settings title), yours",
+      "ok": true,
+      "observed": "Who's working on what\nYou\nGAR-2\nTypo in the settings title\nsince 06:07"
+    }
+  ],
+  "notes": [
+    "setup: the Coding agent (development) runs on a fake runtime that resumes and opens an interactive session on a PTY",
+    "mission msn_01m68t981zjqwttrz7te"
+  ],
+  "shots": [
+    "/home/demogar/projects/tandemise/tandemise/.claude/worktrees/agent-a9687dc3bcf2b48e5/docs/superpowers/evidence/2026-10-31-integrated/N1-settings-tokens.png",
+    "/home/demogar/projects/tandemise/tandemise/.claude/worktrees/agent-a9687dc3bcf2b48e5/docs/superpowers/evidence/2026-10-31-integrated/N1-intake-filed.png",
+    "/home/demogar/projects/tandemise/tandemise/.claude/worktrees/agent-a9687dc3bcf2b48e5/docs/superpowers/evidence/2026-10-31-integrated/N1-board-ready.png",
+    "/home/demogar/projects/tandemise/tandemise/.claude/worktrees/agent-a9687dc3bcf2b48e5/docs/superpowers/evidence/2026-10-31-integrated/N1-why-these-steps.png",
+    "/home/demogar/projects/tandemise/tandemise/.claude/worktrees/agent-a9687dc3bcf2b48e5/docs/superpowers/evidence/2026-10-31-integrated/N1-held-terminal.png",
+    "/home/demogar/projects/tandemise/tandemise/.claude/worktrees/agent-a9687dc3bcf2b48e5/docs/superpowers/evidence/2026-10-31-integrated/N1-ship-card.png",
+    "/home/demogar/projects/tandemise/tandemise/.claude/worktrees/agent-a9687dc3bcf2b48e5/docs/superpowers/evidence/2026-10-31-integrated/N1-board-after.png",
+    "/home/demogar/projects/tandemise/tandemise/.claude/worktrees/agent-a9687dc3bcf2b48e5/docs/superpowers/evidence/2026-10-31-integrated/N1-home-who.png"
+  ]
+}

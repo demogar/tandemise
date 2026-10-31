@@ -973,7 +973,7 @@ try {
     check('the Sentry signal created GAR-1 and the Slack thread linked to it',
       d6.repo.linkFor(sSentry?.id)?.itemRef === 'youtrack:GAR-1' && d6.repo.linkFor(sSlack?.id)?.itemRef === 'youtrack:GAR-1',
       { sentry: sSentry?.status, slack: sSlack?.status, reason: sSlack?.reason });
-    // A started mission in a repository whose remote is acme/web, with a commit and a pull request.
+    // A started mission in a repository whose remote is acme/web, with a commit and the pull request its ship step opened (#53).
     await d6.services.tracker.refreshBoard(ws);
     const gar1 = d6.container.resolve(app.TRACKER_ITEM_REPOSITORY).byKey(ws, 'GAR-1');
     const checkout = join(home6, 'web');
@@ -983,9 +983,11 @@ try {
     d6.container.resolve(app.ARTIFACT_REPOSITORY).create({
       id: 'art_close_1', workspaceId: ws, missionId: mission.id, taskId: null, createdByRunId: null, type: 'ChangeSet', title: 'The fix',
       contentRef: 'artifacts/close-1.md', mediaType: 'text/markdown', sha256: 'c'.repeat(64), byteSize: 1, schemaVersion: 1,
-      sourceRefs: [{ kind: 'git.commit', value: 'abc123' }, { kind: 'github.pr', value: 'https://github.com/acme/web/pull/7' }],
+      sourceRefs: [{ kind: 'git.commit', value: 'abc123' }],
       supersedes: null, summary: 'The fix', createdAt: clock.now(),
     });
+    // The ship step records its pull request as an event, not as a handoff link.
+    d6.container.resolve(app.EVENT_RECORDER).record({ workspaceId: ws, missionId: mission.id }, { type: 'ship.pr_opened', repo: 'acme/web', number: 7, url: 'https://github.com/acme/web/pull/7', headSha: 'a'.repeat(40) });
     yt4.setState('GAR-1', 'Fixed');
     await d6.services.tracker.refreshBoard(ws);
     check('the refresh writes a pending closure per linked signal, and both signals read closure_pending',

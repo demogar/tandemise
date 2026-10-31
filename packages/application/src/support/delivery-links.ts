@@ -1,4 +1,4 @@
-import type { ArtifactRepositoryPort } from '@tandemise/domain';
+import type { ArtifactRepositoryPort, EventRepositoryPort } from '@tandemise/domain';
 import type { MissionId } from '@tandemise/shared';
 
 /** A link the mission delivered: a pull request or a branch. */
@@ -12,8 +12,14 @@ export interface DeliveryLink {
  * Pull request and branch links from the mission's handoffs, first mention
  * wins. P14's completion comment lists them; the tracker's write-back reads a
  * pull request among them as "a pull request is open" (intake plan Task 9).
+ * With `events`, the pull requests the ship step opened (#53) count too: they
+ * are recorded as `ship.pr_opened`, not as a handoff link.
  */
-export function deliveryLinks(artifacts: Pick<ArtifactRepositoryPort, 'listByMission'>, missionId: MissionId): DeliveryLink[] {
+export function deliveryLinks(
+  artifacts: Pick<ArtifactRepositoryPort, 'listByMission'>,
+  missionId: MissionId,
+  events?: Pick<EventRepositoryPort, 'listByMission'>,
+): DeliveryLink[] {
   const out: DeliveryLink[] = [];
   for (const manifest of artifacts.listByMission(missionId)) {
     for (const link of manifest.handoff?.links ?? []) {
@@ -31,6 +37,10 @@ export function deliveryLinks(artifacts: Pick<ArtifactRepositoryPort, 'listByMis
         out.push({ kind: 'pr', label: `Pull request${ref.label === undefined ? '' : ` (${ref.label})`}`, url: ref.value });
       }
     }
+  }
+  for (const { body } of events?.listByMission(missionId, { semanticOnly: true }) ?? []) {
+    if (body.type !== 'ship.pr_opened' || !/^https?:\/\//.test(body.url) || out.some((l) => l.url === body.url)) continue;
+    out.push({ kind: 'pr', label: `Pull request (${body.repo} #${body.number})`, url: body.url });
   }
   return out;
 }
