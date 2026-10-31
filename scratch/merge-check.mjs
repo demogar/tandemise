@@ -548,6 +548,34 @@ await attempt('review: a diff that cannot be measured asks', async () => {
   check('a head that isn\'t here asks, saying it couldn\'t measure', d.verdict === 'ask' && d.reasons.some((r) => r.startsWith('Tandemise couldn\'t measure this change')), d.reasons);
 });
 
+await attempt('review: a person\'s Merge never hangs or sticks', async () => {
+  section('review: a person\'s Merge never hangs or sticks');
+  const fake = await import('./fake-gh.mjs');
+  const w = await world();
+  fake.setRepo(w.ghDir, REPO, { defaultChecks: [{ name: 'unit', conclusion: 'success' }] });
+  const m = await w.mission('fix: typo in the settings title');
+  const ship = () => w.h.repo.tasks.listByMission(m.id).find((t) => t.key === 'ship');
+  await w.h.until(() => ship()?.status === 'AWAITING_APPROVAL', 60000);
+  const card = w.h.repo.approvals.list({ missionId: m.id, statuses: ['PENDING'] })[0];
+  // The moved head's CI is still running: a Merge that waited for it would hang the request.
+  fake.setRepo(w.ghDir, REPO, { moveHeadOnMerge: 'd'.repeat(40), defaultChecks: [{ name: 'unit', status: 'in_progress' }] });
+  const t0 = Date.now();
+  await w.h.services.approvals.decide(w.caller, card.id, { optionId: 'approve' });
+  check('Merge answers at once, whatever GitHub does next', Date.now() - t0 < 3000, Date.now() - t0);
+  await w.h.until(() => w.h.repo.mergeDecisions.listByMission(m.id)[0].voidedAt !== null && ship().statusReason?.startsWith('Waiting for CI'), 30000);
+  check('GitHub refusing (the head moved) voids the decision and the step waits for CI again', w.h.repo.mergeDecisions.listByMission(m.id)[0].voidedAt !== null && ship().status === 'AWAITING_EXTERNAL', [ship().status, ship().statusReason]);
+  fake.setRepo(w.ghDir, REPO, { defaultChecks: [{ name: 'unit', conclusion: 'success' }] });
+  // A merge that fails once on GitHub is tried again, because you already said Merge.
+  const m2 = await w.mission('fix: typo in the footer');
+  const ship2 = () => w.h.repo.tasks.listByMission(m2.id).find((t) => t.key === 'ship');
+  await w.h.until(() => ship2()?.status === 'AWAITING_APPROVAL', 60000);
+  const card2 = w.h.repo.approvals.list({ missionId: m2.id, statuses: ['PENDING'] })[0];
+  const state = fake.readState(w.ghDir); state.failNext = 'gh: Something went wrong (HTTP 502)'; fake.writeState(w.ghDir, state);
+  await w.h.services.approvals.decide(w.caller, card2.id, { optionId: 'approve' });
+  await w.h.until(() => w.h.repo.missions.get(m2.id).status === 'COMPLETE', 30000);
+  check('…and is merged on a later look', w.h.repo.missions.get(m2.id).status === 'COMPLETE' && ship2().status === 'SUCCEEDED', [ship2().status, ship2().statusReason]);
+});
+
 // @sections
 
 clearInterval(keepAlive);

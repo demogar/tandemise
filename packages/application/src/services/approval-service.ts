@@ -193,7 +193,8 @@ export class ApprovalServiceImpl implements ApprovalService {
     // Only after the commit: a stopped pass re-reads its row as it settles and must find the round there.
     if (begun !== null) this.deps.rounds.stopOvertaken(begun);
 
-    if (this.#isShipCard(decided)) await this.deps.shipDecided?.(decided);
+    // The ship step acts on it in the background: a person's Merge never waits on GitHub or CI.
+    if (this.#isShipCard(decided)) void this.deps.shipDecided?.(decided).catch(() => undefined);
     this.deps.recorder.invalidate('approvals', decided.missionId ?? undefined);
     this.deps.scheduler.wake();
     return toApprovalView(this.deps, decided);

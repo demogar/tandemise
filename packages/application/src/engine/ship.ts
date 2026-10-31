@@ -285,7 +285,13 @@ export class ShipService {
     if (decision.verdict === 'merge') return this.mergeDecided(mission, task, repository, decision, 'auto');
     const d = this.deps.decide!;
     const scope: EventScope = { workspaceId: mission.workspaceId, missionId: mission.id, taskId: task.id };
-    const cards = d.approvals.list({ missionId: mission.id }).filter((a) => a.taskId === task.id && a.evidence.some((e) => e.label === DECISION_LABEL && e.value === decision.id));
+    const forDecision = d.approvals.list({ missionId: mission.id }).filter((a) => a.taskId === task.id && a.evidence.some((e) => e.label === DECISION_LABEL && e.value === decision.id));
+    // You already said Merge for this exact decision and it didn't go through: try again.
+    const approved = forDecision.find((a) => a.status === 'APPROVED' && a.selectedOptionId === APPROVE_OPTION);
+    if (approved !== undefined && decision.mergedAt === null) return this.mergeDecided(mission, task, repository, decision, 'person', approved.decidedBy ?? 'a person');
+    // You chose to merge it in GitHub yourself: watch for that, ask nothing more.
+    if (forDecision.some((a) => a.status === 'REJECTED')) return { kind: 'waiting' };
+    const cards = forDecision.filter((a) => a.status === 'PENDING');
     const current = this.deps.tasks.get(task.id) ?? task;
     if (cards.length === 0) {
       const factory = await d.factory(mission.workspaceId);
@@ -449,8 +455,10 @@ export class ShipService {
     const pr = await this.deps.pullRequests.view(repository.path, decision.repo, decision.prNumber);
     if (pr.state !== 'OPEN') return this.#closedOrMerged(mission, task, pr, decision);
     if (pr.headSha !== decision.headSha) {
+      // Changed since it was decided: void it and let the scheduler's next look check again.
       this.#void(mission, task, decision);
-      return this.#afterOpen(mission, task, repository, pr, new AbortController().signal);
+      this.#status(mission, task, 'AWAITING_EXTERNAL', 'Waiting for CI on the new commit.');
+      return { kind: 'waiting' };
     }
     const protection = await this.deps.pullRequests.protection(repository.path, pr.repo, pr.baseBranch);
     if (protection.upToDate === true) {
@@ -475,10 +483,12 @@ export class ShipService {
     if (result.refused !== null) {
       if (/head branch was modified|head commit/i.test(result.refused)) {
         this.#void(mission, task, decision);
-        const now = await this.deps.pullRequests.view(repository.path, pr.repo, pr.number);
-        return this.#afterOpen(mission, task, repository, now, new AbortController().signal);
+        this.#status(mission, task, 'AWAITING_EXTERNAL', 'Waiting for CI on the new commit.');
+        return { kind: 'waiting' };
       }
-      return { kind: 'blocked', reason: `GitHub refused the merge: ${result.refused}` };
+      // Watched, not blocked: GitHub may take it on a later look, or a person merges it there.
+      this.#status(mission, task, 'AWAITING_EXTERNAL', `GitHub refused the merge (${result.refused}); Tandemise tries again, or you can merge it in GitHub.`);
+      return { kind: 'waiting' };
     }
     const mergedBy = by === 'auto' ? 'tandemise' : (member ?? 'a person');
     if (result.queued) {
