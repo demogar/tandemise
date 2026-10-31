@@ -1,6 +1,6 @@
 import type { ArtifactType } from './entities/artifact.js';
 import type { IsolationMode } from './entities/task.js';
-import { concreteFactNames, factDefinition } from './gate-facts.js';
+import { concreteFactNames, factDefinition, SHIP_READS_STEP_FACTS } from './gate-facts.js';
 import { gateDependencies, validateGate } from './gate.js';
 
 /**
@@ -21,6 +21,7 @@ export type GateProblemCode =
   | 'syntax'
   | 'unknown_fact'
   | 'not_step_scope'
+  | 'not_rule_scope'
   | 'needs_independent_of'
   | 'needs_worktree'
   | 'needs_changeset'
@@ -63,7 +64,7 @@ export function lintGate(expression: string, subject: GateSubject): readonly Gat
       continue;
     }
     if (definition.scope !== 'step') {
-      const whole = definition.scope === 'mission' ? 'the whole mission' : 'the whole project';
+      const whole = SCOPE_WORDS[definition.scope];
       problems.push({
         code: 'not_step_scope',
         fact,
@@ -105,6 +106,40 @@ export function lintGate(expression: string, subject: GateSubject): readonly Gat
         fact: null,
         message: `${on} never checks that the step wrote its output: add ${own.join(' or ')}, so a run that writes nothing cannot pass.`,
       });
+    }
+  }
+  return problems;
+}
+
+const SCOPE_WORDS: Readonly<Record<string, string>> = {
+  mission: 'the whole mission',
+  workspace: 'the whole project',
+  plan: 'the factory\'s planning rules',
+  ship: 'the merge decision',
+};
+
+/**
+ * Refuses a factory rule (`planner.yaml` with scope `plan`, `merge.yaml` with
+ * scope `ship`) that reads a fact its scope never measures, so a bad rule is
+ * reported and skipped when the file loads, not silently never matched (#53 §3).
+ */
+export function lintRule(expression: string, scope: 'plan' | 'ship'): readonly GateProblem[] {
+  const on = `The rule '${expression}'`;
+  const parsed = validateGate(expression);
+  if (!parsed.ok) return [{ code: 'syntax', fact: null, message: `${on} cannot be read: ${parsed.error}.` }];
+  const problems: GateProblem[] = [];
+  for (const fact of gateDependencies(expression)) {
+    const definition = factDefinition(fact);
+    if (definition === undefined) {
+      const near = nearest(fact);
+      problems.push({ code: 'unknown_fact', fact, message: `${on} reads ${fact}, which Tandemise never measures.${near === null ? '' : ` Did you mean ${near}?`}` });
+      continue;
+    }
+    const allowed = definition.scope === scope
+      || (scope === 'ship' && (SHIP_READS_STEP_FACTS as readonly string[]).includes(fact));
+    if (!allowed) {
+      const where = scope === 'plan' ? 'when the factory plans a task' : 'when the factory decides a merge';
+      problems.push({ code: 'not_rule_scope', fact, message: `${on} reads ${fact}, which is not known ${where}.` });
     }
   }
   return problems;

@@ -19,7 +19,7 @@ import { ARTIFACT_TYPES, isArtifactType } from './entities/artifact.js';
  * A fact that is not measured is `undefined`, and `undefined` compares false
  * against everything. A gate never passes because a measurement was missing.
  */
-export type FactScope = 'step' | 'mission' | 'workspace';
+export type FactScope = 'step' | 'mission' | 'workspace' | 'plan' | 'ship';
 
 /**
  * A step fact measured only under a condition the step itself declares. The
@@ -29,7 +29,7 @@ export type FactRequirement = 'independentOf' | 'worktree' | 'changeset';
 
 export interface FactDefinition {
   readonly name: string;
-  readonly type: 'outcome' | 'boolean' | 'number' | 'verdict' | 'approval';
+  readonly type: 'outcome' | 'boolean' | 'number' | 'verdict' | 'approval' | 'string' | 'predicate';
   readonly description: string;
   /** Written with `<...>` where the name is parameterised. */
   readonly example: string;
@@ -38,6 +38,9 @@ export interface FactDefinition {
    * `mission` / `workspace`: measured for the whole mission or project by a
    * daemon rule or service, never inside a step - a step gate reading one
    * fails as "not measured" on every attempt.
+   * `plan` / `ship`: read only by factory rules (#53): `planner.yaml` rules
+   * when a task is profiled, `merge.yaml` rules when a pull request's merge is
+   * decided. A predicate's name ends in `()` and is called with literals.
    */
   readonly scope: FactScope;
   /** Where the daemon supplies it, in words, for the docs table. */
@@ -46,6 +49,72 @@ export interface FactDefinition {
 }
 
 const STEP_GATE = 'step gate';
+const PLANNER = 'planner';
+const SHIP = 'ship step';
+
+const planFact = (name: string, type: FactDefinition['type'], description: string, example: string): FactDefinition =>
+  ({ name, type, description, example, scope: 'plan', measuredIn: PLANNER });
+const shipFact = (name: string, type: FactDefinition['type'], description: string, example: string): FactDefinition =>
+  ({ name, type, description, example, scope: 'ship', measuredIn: SHIP });
+
+/**
+ * Facts a planner rule reads (`planner.yaml`), measured from the tracker item
+ * and the task profile before any code changes (#53 §3).
+ */
+const PLAN_FACTS: readonly FactDefinition[] = [
+  planFact('item.type', 'string', 'The tracker item\'s type as the tracker names it (Bug, Feature), or not measured when it has none.', 'item.type == "Bug"'),
+  planFact('item.prefix', 'string', 'The Conventional-Commit prefix of the title (fix, docs, feat), or not measured when the title has none.', 'item.prefix == "docs"'),
+  planFact('item.criteria', 'number', 'Done-when lines the task was given.', 'item.criteria >= 2'),
+  planFact('item.keywords_any()', 'predicate', 'True when the title or description contains any of the words given, ignoring case.', 'item.keywords_any("typo", "rename")'),
+  planFact('item.labels_any()', 'predicate', 'True when the tracker item has any of the labels given.', 'item.labels_any("dependencies")'),
+  planFact('item.source_any()', 'predicate', 'True when the task came from any of the source kinds given (sentry, posthog, dependabot, advisory).', 'item.source_any("sentry")'),
+  planFact('profile.type', 'string', 'The task profile\'s type: fix, feature, refactor, chore, docs, deps, test, security or unknown.', 'profile.type == "feature"'),
+  planFact('profile.size', 'string', 'The task profile\'s size: xs, s, m or l.', 'profile.size == "xs"'),
+  planFact('profile.risk', 'string', 'The task profile\'s risk: low, medium or high. Never below the sensitivity floor.', 'profile.risk == "high"'),
+  planFact('profile.max_sensitivity', 'string', 'The highest sensitivity of the areas the task touches: none, sensitive or critical.', 'profile.max_sensitivity == "critical"'),
+  planFact('profile.repos', 'number', 'Repositories the task names or implies.', 'profile.repos > 1'),
+  planFact('profile.areas_any()', 'predicate', 'True when the task touches any of the areas named.', 'profile.areas_any("auth", "payments")'),
+];
+
+/**
+ * Facts a merge rule reads (`merge.yaml`), measured by the daemon from the
+ * repository, GitHub and its own records at the pull request's head commit
+ * (#53 §8.2). None is ever taken from text an agent wrote.
+ */
+const SHIP_FACTS: readonly FactDefinition[] = [
+  shipFact('change.files', 'number', 'Files the pull request changes.', 'change.files > 15'),
+  shipFact('change.lines_added', 'number', 'Lines added, from the diff\'s numstat.', 'change.lines_added + change.lines_removed > 400'),
+  shipFact('change.lines_removed', 'number', 'Lines removed, from the diff\'s numstat.', 'change.lines_removed > 100'),
+  shipFact('change.repos', 'number', 'Repositories this mission opened pull requests in.', 'change.repos > 1'),
+  shipFact('change.binary_files', 'number', 'Binary files changed.', 'change.binary_files > 0'),
+  shipFact('change.deleted_files', 'number', 'Files deleted.', 'change.deleted_files > 0'),
+  shipFact('change.tests_touched', 'number', 'Changed files that match the merge policy\'s test globs.', 'change.tests_touched == 0'),
+  shipFact('change.dependencies_changed', 'boolean', 'A dependency manifest or lockfile changed.', 'change.dependencies_changed'),
+  shipFact('change.lockfile_only', 'boolean', 'Only lockfiles changed among the dependency files.', '!change.lockfile_only'),
+  shipFact('change.max_sensitivity', 'string', 'The highest sensitivity of the areas the change touches: none, sensitive or critical.', 'change.max_sensitivity == "sensitive"'),
+  shipFact('change.areas_any()', 'predicate', 'True when the change touches any of the areas named.', 'change.areas_any("auth")'),
+  shipFact('change.paths_matching()', 'predicate', 'How many changed paths match the glob given.', 'change.paths_matching("**/*.sql") > 0'),
+  shipFact('coverage.changed_lines', 'number', 'Percent of changed lines covered, only when the checks produce a coverage report. Otherwise not measured.', 'coverage.changed_lines < 60'),
+  shipFact('ci.state', 'outcome', 'PASS only when every check on the head commit succeeded and there is at least one.', 'ci.state == PASS'),
+  shipFact('ci.required_present', 'boolean', 'The base branch has required status checks.', 'ci.required_present'),
+  shipFact('github.review_required', 'boolean', 'Branch protection requires an approving review.', 'github.review_required'),
+  shipFact('criteria.unverified', 'number', 'Done-when lines the person gave that no QA report verified.', 'criteria.unverified > 0'),
+  shipFact('criteria.implicit', 'boolean', 'The only Done-when line is the implicit one: the task as written.', 'criteria.implicit'),
+  shipFact('process.lane', 'string', 'The lane the mission ran in: quick, standard or careful.', 'process.lane == "careful"'),
+  shipFact('process.lightened_by_person', 'boolean', 'A person made the mission quick.', 'process.lightened_by_person'),
+  shipFact('process.steps_skipped', 'number', 'Ceremony the lane skipped.', 'process.steps_skipped > 2'),
+  shipFact('process.holds', 'number', 'Times a person held a step of this mission.', 'process.holds > 0'),
+  shipFact('process.changes_requested', 'number', 'Request-changes rounds in this mission.', 'process.changes_requested > 0'),
+  shipFact('process.escalations', 'number', 'Times a step moved to a stronger model.', 'process.escalations > 1'),
+  shipFact('process.gate_retries', 'number', 'Attempts after a failed gate across the mission.', 'process.gate_retries > 2'),
+  shipFact('process.person_commits', 'number', 'Commits on the pull request not made by Tandemise or its agents.', 'process.person_commits > 0'),
+  shipFact('process.revert_of_auto', 'boolean', 'The pull request reverts a change Tandemise merged on its own.', 'process.revert_of_auto'),
+  shipFact('history.area_reverts_90d', 'number', 'Reverts in the areas touched over the last 90 days.', 'history.area_reverts_90d > 1'),
+  shipFact('history.area_recent_revert', 'boolean', 'An area touched had a revert or broke main in the last 14 days.', 'history.area_recent_revert'),
+];
+
+/** Step facts a merge rule may also read, measured on the mission's last code step. */
+export const SHIP_READS_STEP_FACTS = ['checks.tests', 'review.blocking_findings', 'review.major_findings', 'review.independent'] as const;
 
 export const GATE_FACT_VOCABULARY: readonly FactDefinition[] = [
   {
@@ -411,6 +480,8 @@ export const GATE_FACT_VOCABULARY: readonly FactDefinition[] = [
     scope: 'mission',
     measuredIn: 'the liveness service',
   },
+  ...PLAN_FACTS,
+  ...SHIP_FACTS,
 ];
 
 /** Approval kinds a gate names directly; `release` is published as `approval.release_candidate`. */

@@ -12,9 +12,16 @@ import { Err, Ok, type Result } from '@tandemise/shared';
  *   expr    := or
  *   or      := and ( '||' and )*
  *   and     := cmp ( '&&' cmp )*
- *   cmp     := primary ( ('=='|'!='|'>'|'>='|'<'|'<=') primary )?
- *   primary := '(' expr ')' | '!' primary | literal | path
+ *   cmp     := sum ( ('=='|'!='|'>'|'>='|'<'|'<=') sum )?
+ *   sum     := primary ( ('+'|'-') primary )*
+ *   primary := '(' expr ')' | '!' primary | literal | call | path
+ *   call    := path '(' ( literal ( ',' literal )* )? ')'
  *   path    := ident ( '.' ident )*
+ *
+ * Calls and sums exist for factory rules (planner.yaml, merge.yaml; #53): a
+ * call is a *predicate the daemon supplies* (`profile.areas_any("auth")`), never
+ * code the rule writes. A call with no predicate of that name is not measured,
+ * and `+`/`-` with a non-number operand is not measured, so neither can pass.
  *
  * Values are resolved from a flat `GateFacts` map. An unknown path resolves to
  * `undefined`, which compares false against everything - a missing fact never
@@ -34,7 +41,15 @@ export interface GateOutcome {
   readonly facts: Readonly<Record<string, GateValue>>;
 }
 
-export function evaluateGate(expression: GateExpression, facts: GateFacts): GateOutcome {
+/**
+ * Measured predicates a factory rule may call, by name (`item.keywords_any`).
+ * Supplied by the daemon from what it measured; a rule cannot define one.
+ */
+export type GatePredicates = Readonly<Record<string, (args: readonly GateValue[]) => GateValue>>;
+
+const NO_PREDICATES: GatePredicates = {};
+
+export function evaluateGate(expression: GateExpression, facts: GateFacts, predicates: GatePredicates = NO_PREDICATES): GateOutcome {
   const used: Record<string, GateValue> = {};
   const parsed = parse(expression);
   if (!parsed.ok) {
@@ -42,7 +57,7 @@ export function evaluateGate(expression: GateExpression, facts: GateFacts): Gate
   }
   let value: GateValue;
   try {
-    value = evaluate(parsed.value, facts, used);
+    value = evaluate(parsed.value, facts, used, predicates);
   } catch (e) {
     return { expression, passed: false, detail: `Gate evaluation failed: ${String(e)}`, facts: used };
   }
@@ -52,7 +67,7 @@ export function evaluateGate(expression: GateExpression, facts: GateFacts): Gate
   return {
     expression,
     passed,
-    detail: passed ? 'All gate conditions met.' : explainFailure(parsed.value, facts),
+    detail: passed ? 'All gate conditions met.' : explainFailure(parsed.value, facts, predicates),
     facts: used,
   };
 }
@@ -77,14 +92,16 @@ export function gateDependencies(expression: GateExpression): readonly string[] 
 type Node =
   | { kind: 'literal'; value: GateValue }
   | { kind: 'path'; path: string }
+  | { kind: 'call'; name: string; args: readonly GateValue[] }
   | { kind: 'not'; operand: Node }
+  | { kind: 'arith'; op: '+' | '-'; left: Node; right: Node }
   | { kind: 'binary'; op: BinaryOp; left: Node; right: Node };
 
 type BinaryOp = '&&' | '||' | '==' | '!=' | '>' | '>=' | '<' | '<=';
 
 type Token = { t: 'op'; v: string } | { t: 'ident'; v: string } | { t: 'num'; v: number } | { t: 'str'; v: string };
 
-const OPERATORS = ['&&', '||', '==', '!=', '>=', '<=', '>', '<', '!', '(', ')'] as const;
+const OPERATORS = ['&&', '||', '==', '!=', '>=', '<=', '>', '<', '!', '(', ')', '+', '-', ','] as const;
 
 function tokenize(src: string): Result<Token[], string> {
   const tokens: Token[] = [];
@@ -139,11 +156,29 @@ function parse(src: string): Result<Node, string> {
     return left;
   }
   function parseCmp(): Node {
-    const left = parsePrimary();
+    const left = parseSum();
     for (const op of ['==', '!=', '>=', '<=', '>', '<'] as const) {
-      if (eatOp(op)) return { kind: 'binary', op, left, right: parsePrimary() };
+      if (eatOp(op)) return { kind: 'binary', op, left, right: parseSum() };
     }
     return left;
+  }
+  function parseSum(): Node {
+    let left = parsePrimary();
+    for (;;) {
+      if (eatOp('+')) left = { kind: 'arith', op: '+', left, right: parsePrimary() };
+      else if (eatOp('-')) left = { kind: 'arith', op: '-', left, right: parsePrimary() };
+      else return left;
+    }
+  }
+  function parseLiteral(): GateValue {
+    const t = peek();
+    if (!t) throw new Error('unexpected end of expression');
+    pos++;
+    if (t.t === 'num' || t.t === 'str') return t.v;
+    if (t.t === 'ident' && t.v === 'true') return true;
+    if (t.t === 'ident' && t.v === 'false') return false;
+    if (t.t === 'ident' && /^(PASS|FAIL|SKIP|APPROVED|REJECTED|PENDING)$/.test(t.v)) return t.v;
+    throw new Error(`a call takes only literal arguments, not ${JSON.stringify(t.v)}`);
   }
   function parsePrimary(): Node {
     if (eatOp('!')) return { kind: 'not', operand: parsePrimary() };
@@ -163,6 +198,14 @@ function parse(src: string): Result<Node, string> {
       // Bare PASS/FAIL/SKIP read as string literals so `checks.x == PASS` works
       // without quoting - the form that appears throughout MVP.md.
       if (/^(PASS|FAIL|SKIP|APPROVED|REJECTED|PENDING)$/.test(t.v)) return { kind: 'literal', value: t.v };
+      if (eatOp('(')) {
+        const args: GateValue[] = [];
+        if (!eatOp(')')) {
+          do args.push(parseLiteral()); while (eatOp(','));
+          if (!eatOp(')')) throw new Error('expected ) after the arguments');
+        }
+        return { kind: 'call', name: t.v, args };
+      }
       return { kind: 'path', path: t.v };
     }
     throw new Error(`unexpected token ${JSON.stringify(t)}`);
@@ -177,7 +220,7 @@ function parse(src: string): Result<Node, string> {
   }
 }
 
-function evaluate(node: Node, facts: GateFacts, used: Record<string, GateValue>): GateValue {
+function evaluate(node: Node, facts: GateFacts, used: Record<string, GateValue>, predicates: GatePredicates): GateValue {
   switch (node.kind) {
     case 'literal':
       return node.value;
@@ -186,23 +229,39 @@ function evaluate(node: Node, facts: GateFacts, used: Record<string, GateValue>)
       used[node.path] = v;
       return v;
     }
-    case 'not':
-      return !truthy(evaluate(node.operand, facts, used));
+    case 'call': {
+      const fn = predicates[node.name];
+      const v = fn === undefined ? undefined : fn(node.args);
+      used[`${node.name}()`] = v;
+      return v;
+    }
+    case 'not': {
+      // `!x` of an unmeasured x stays unmeasured: a rule like
+      // `!change.lockfile_only` must not pass because nothing was measured.
+      const v = evaluate(node.operand, facts, used, predicates);
+      return v === undefined ? undefined : !truthy(v);
+    }
+    case 'arith': {
+      const l = evaluate(node.left, facts, used, predicates);
+      const r = evaluate(node.right, facts, used, predicates);
+      if (typeof l !== 'number' || typeof r !== 'number') return undefined;
+      return node.op === '+' ? l + r : l - r;
+    }
     case 'binary': {
       if (node.op === '&&') {
         // Both sides are evaluated so the failure explanation can name every
         // unmet condition rather than only the first.
-        const l = truthy(evaluate(node.left, facts, used));
-        const r = truthy(evaluate(node.right, facts, used));
+        const l = truthy(evaluate(node.left, facts, used, predicates));
+        const r = truthy(evaluate(node.right, facts, used, predicates));
         return l && r;
       }
       if (node.op === '||') {
-        const l = truthy(evaluate(node.left, facts, used));
-        const r = truthy(evaluate(node.right, facts, used));
+        const l = truthy(evaluate(node.left, facts, used, predicates));
+        const r = truthy(evaluate(node.right, facts, used, predicates));
         return l || r;
       }
-      const l = evaluate(node.left, facts, used);
-      const r = evaluate(node.right, facts, used);
+      const l = evaluate(node.left, facts, used, predicates);
+      const r = evaluate(node.right, facts, used, predicates);
       return compare(node.op, l, r);
     }
   }
@@ -233,8 +292,9 @@ function truthy(v: GateValue): boolean {
 
 function collectPaths(node: Node, out: Set<string>): void {
   if (node.kind === 'path') out.add(node.path);
+  else if (node.kind === 'call') out.add(`${node.name}()`);
   else if (node.kind === 'not') collectPaths(node.operand, out);
-  else if (node.kind === 'binary') { collectPaths(node.left, out); collectPaths(node.right, out); }
+  else if (node.kind === 'binary' || node.kind === 'arith') { collectPaths(node.left, out); collectPaths(node.right, out); }
 }
 
 /**
@@ -243,29 +303,36 @@ function collectPaths(node: Node, out: Set<string>): void {
  * reports each unmet branch - reporting only the first would hide the second
  * problem until the first was fixed.
  */
-function explainFailure(node: Node, facts: GateFacts): string {
+function explainFailure(node: Node, facts: GateFacts, predicates: GatePredicates): string {
   const unmet: string[] = [];
   const walk = (n: Node): void => {
     if (n.kind === 'binary' && n.op === '&&') { walk(n.left); walk(n.right); return; }
     const probe: Record<string, GateValue> = {};
     let value: GateValue;
-    try { value = evaluate(n, facts, probe); } catch { value = undefined; }
+    try { value = evaluate(n, facts, probe, predicates); } catch { value = undefined; }
     if (truthy(value)) return;
-    unmet.push(render(n, facts));
+    unmet.push(render(n, facts, predicates));
   };
   walk(node);
   if (unmet.length === 0) return 'Gate did not evaluate to true.';
   return `Not met: ${unmet.join('; ')}`;
 }
 
-function render(node: Node, facts: GateFacts): string {
+function render(node: Node, facts: GateFacts, predicates: GatePredicates = NO_PREDICATES): string {
   switch (node.kind) {
     case 'literal': return String(node.value);
     case 'path': {
       const v = facts[node.path];
       return `${node.path} is ${v === undefined ? 'not measured' : JSON.stringify(v)}`;
     }
-    case 'not': return `not (${render(node.operand, facts)})`;
+    case 'call': {
+      const text = `${node.name}(${node.args.map((a) => JSON.stringify(a)).join(', ')})`;
+      const fn = predicates[node.name];
+      const v = fn === undefined ? undefined : fn(node.args);
+      return `${text} is ${v === undefined ? 'not measured' : JSON.stringify(v)}`;
+    }
+    case 'arith': return `${render(node.left, facts, predicates)} ${node.op} ${render(node.right, facts, predicates)}`;
+    case 'not': return `not (${render(node.operand, facts, predicates)})`;
     case 'binary': {
       // A comparison of a measurement against a requirement is rendered as a
       // sentence, not as the expression that produced it. Composing the two
@@ -276,7 +343,7 @@ function render(node: Node, facts: GateFacts): string {
       if (COMPARISONS.has(node.op) && node.left.kind === 'path' && node.right.kind === 'literal') {
         return `${node.left.path} is ${plain(facts[node.left.path])}, needs ${requirement(node.op, node.right.value)}`;
       }
-      return `${render(node.left, facts)} ${node.op} ${render(node.right, facts)}`;
+      return `${render(node.left, facts, predicates)} ${node.op} ${render(node.right, facts, predicates)}`;
     }
   }
 }

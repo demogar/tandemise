@@ -57,7 +57,7 @@ section('the vocabulary: one scope per fact, nothing listed that is never measur
 {
   const vocab = D.GATE_FACT_VOCABULARY;
   check('evaluation re-exports the same list', E.GATE_FACT_VOCABULARY === vocab);
-  check('every fact has a scope of step, mission or workspace', vocab.every((f) => ['step', 'mission', 'workspace'].includes(f.scope)), vocab.filter((f) => !f.scope).map((f) => f.name));
+  check('every fact has a scope of step, mission, workspace, plan or ship', vocab.every((f) => ['step', 'mission', 'workspace', 'plan', 'ship'].includes(f.scope)), vocab.filter((f) => !f.scope).map((f) => f.name));
   check('every fact says where it is measured', vocab.every((f) => typeof f.measuredIn === 'string' && f.measuredIn.length > 3));
   check('security.required_checks is gone (nothing could ever measure it)', !vocab.some((f) => f.name === 'security.required_checks'));
   check('checks.<name> is gone (a repository configures only five checks)', !vocab.some((f) => f.name === 'checks.<name>'));

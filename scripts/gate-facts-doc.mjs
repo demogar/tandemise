@@ -22,8 +22,10 @@ const TYPE = {
   number: 'number',
   verdict: 'text',
   approval: 'PENDING / APPROVED / REJECTED / EXPIRED / CANCELLED',
+  string: 'text',
+  predicate: 'predicate',
 };
-const SCOPE = { step: 'step', mission: 'whole mission', workspace: 'whole project' };
+const SCOPE = { step: 'step', mission: 'whole mission', workspace: 'whole project', plan: 'planning rule', ship: 'merge rule' };
 const cell = (text) => text.replace(/\|/g, '\\|').replace(/\n/g, ' ');
 
 export function renderFactsTable(vocabulary) {
@@ -48,6 +50,16 @@ export function renderFactsTable(vocabulary) {
     ...head,
     ...rows('mission'),
     ...rows('workspace'),
+    '',
+    '#### Facts for factory rules',
+    '',
+    'Read only by the factory\'s own rules: planning rules in `planner.yaml` and merge rules in `merge.yaml` (see',
+    '`docs/FACTORY.md`). A predicate is called with literal arguments, such as `profile.areas_any("auth")`. A merge',
+    'rule may also read `checks.tests` and the `review.*` facts of the mission\'s last code step.',
+    '',
+    ...head,
+    ...rows('plan'),
+    ...rows('ship'),
     '',
     END,
   ].join('\n');
