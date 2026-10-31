@@ -136,6 +136,13 @@ section('source leases');
   check('…and now Ana is refused', (await lease(A)).body.granted === false);
   const bad = await call('POST', '/relay/v1/leases', { token: A, body: { projectKey: 'p', scope: 'item', key: 'x', ttlSeconds: 120 } });
   check('only the source scope is leased', bad.status === 400, bad.body);
+  // A device holds at most 200 live leases (Ruling 27): Bruno holds sentry-web, so 199 more fit.
+  const many = (i) => call('POST', '/relay/v1/leases', { token: B, body: { projectKey: 'p', scope: 'source', key: `s-${i}`, ttlSeconds: 120 } });
+  let granted = 0;
+  for (let i = 0; i < 199; i++) if ((await many(i)).body.granted === true) granted++;
+  const over = await many(199);
+  check('a device past 200 live leases is refused with 429', granted === 199 && over.status === 429 && over.body.error?.code === 'RATE_LIMITED', { granted, status: over.status, body: over.body });
+  check('…while renewing one it holds still works', (await many(0)).body.granted === true);
 }
 
 section('8. revoking a device closes its socket');

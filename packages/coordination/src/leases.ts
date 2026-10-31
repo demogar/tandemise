@@ -21,6 +21,21 @@ export type LeaseOutcome =
   | { readonly granted: false; readonly holder: LeaseHolder; readonly expiresAt: string };
 
 export const LEASE_SCOPES = ['source'] as const;
+
+/**
+ * Live leases one device may hold at once. A daemon holds one per source it
+ * runs; this only stops a buggy or hostile device from filling the relay's
+ * memory (the table is never persisted).
+ */
+export const MAX_LEASES_PER_DEVICE = 200;
+
+/** Thrown by `take` when a device would hold more than `MAX_LEASES_PER_DEVICE` live leases. */
+export class LeaseLimitError extends Error {
+  constructor() {
+    super(`This device already holds ${MAX_LEASES_PER_DEVICE} source leases; let some go before taking more.`);
+    this.name = 'LeaseLimitError';
+  }
+}
 export type LeaseScope = (typeof LEASE_SCOPES)[number];
 
 interface Lease {
@@ -48,9 +63,11 @@ export class LeaseTable {
     if (current !== undefined && current.expiresAtMs > now && current.holder.deviceId !== input.holder.deviceId) {
       return { granted: false, holder: current.holder, expiresAt: new Date(current.expiresAtMs).toISOString() };
     }
+    this.#sweep(now);
+    const renewing = current !== undefined && current.expiresAtMs > now && current.holder.deviceId === input.holder.deviceId;
+    if (!renewing && this.#liveFor(input.holder.deviceId) >= MAX_LEASES_PER_DEVICE) throw new LeaseLimitError();
     const expiresAtMs = now + input.ttlMs;
     this.#leases.set(id, { holder: input.holder, expiresAtMs });
-    this.#sweep(now);
     return { granted: true, expiresAt: new Date(expiresAtMs).toISOString() };
   }
 
@@ -58,6 +75,12 @@ export class LeaseTable {
   release(input: { readonly projectKey: string; readonly scope: LeaseScope; readonly key: string; readonly deviceId: string }): void {
     const id = leaseId(input.projectKey, input.scope, input.key);
     if (this.#leases.get(id)?.holder.deviceId === input.deviceId) this.#leases.delete(id);
+  }
+
+  #liveFor(deviceId: string): number {
+    let n = 0;
+    for (const lease of this.#leases.values()) if (lease.holder.deviceId === deviceId) n++;
+    return n;
   }
 
   #sweep(now: number): void {

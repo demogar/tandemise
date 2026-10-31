@@ -155,13 +155,20 @@ export class CoordinationService {
   }
 
   /** Lets go of your active claims on an item (a Start that failed after claiming). Never throws. */
-  async releaseItem(itemRef: string, reason: 'done' | 'released'): Promise<void> {
+  /**
+   * Releases this member's claims on the item. With `localRef` (a failed
+   * Start, Ruling 27), only the claim made for that mission: another of the
+   * member's missions on the same item keeps its claim.
+   */
+  async releaseItem(itemRef: string, reason: 'done' | 'released', localRef?: string): Promise<void> {
     const port = this.deps.coordination;
     if (port === null) return;
     try {
       const ref = normalizeItemRef(itemRef);
       const me = port.me().memberId;
-      for (const claim of port.claims().filter((c) => c.itemRef === ref && c.memberId === me)) await port.release(claim.id, reason);
+      for (const claim of port.claims().filter((c) => c.itemRef === ref && c.memberId === me && (localRef === undefined || c.localRef === localRef))) {
+        await port.release(claim.id, reason);
+      }
       this.#invalidate();
     } catch (e) {
       this.deps.log.warn('could not release an item claim', { itemRef, error: errorMessage(e) });

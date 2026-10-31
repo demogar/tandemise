@@ -4,7 +4,7 @@ import {
   RELAY_API_VERSION, claimRequest, createInviteRequest, leaseRequest, redeemInviteRequest, releaseClaimRequest, takeOverRequest,
   type ClaimView, type RelaySnapshot,
 } from '@tandemise/api-contract/relay';
-import { CoordError, LeaseTable, claimForViewer, heldBy, leaseView, type CoordinationStore } from '@tandemise/coordination';
+import { CoordError, LeaseLimitError, LeaseTable, claimForViewer, heldBy, leaseView, type CoordinationStore } from '@tandemise/coordination';
 import type { Principal } from './auth.js';
 import { RelayError, readJson } from './http.js';
 import type { RelayStreamHub } from './stream.js';
@@ -160,7 +160,12 @@ export function coreRoutes(d: RouteDeps): Route[] {
       const p = me(ctx);
       const body = await ctx.body(leaseRequest);
       const holder = { memberId: p.memberId, memberName: store.memberRow(p.memberId)?.display_name ?? '', deviceId: p.device.id, deviceLabel: p.device.label };
-      return { status: 200, body: leaseView(leases.take({ projectKey: body.projectKey, scope: body.scope, key: body.key, ttlMs: body.ttlSeconds * 1000, holder })) };
+      try {
+        return { status: 200, body: leaseView(leases.take({ projectKey: body.projectKey, scope: body.scope, key: body.key, ttlMs: body.ttlSeconds * 1000, holder })) };
+      } catch (e) {
+        if (e instanceof LeaseLimitError) throw new RelayError(429, 'RATE_LIMITED', e.message);
+        throw e;
+      }
     }),
 
     route('GET', '/relay/v1/claims', 'device', (ctx) => {

@@ -651,3 +651,24 @@ was ambiguous or wrong, decided against the spec
     source of the project, makes no mailbox pull). Two existing assertions moved with the behaviour: the 61-delivery
     PostHog burst saves its webhook secret first, and the unconfigured endpoint is parked after nine more of Ana's
     drains (Bruno no longer leases it).
+- Ruling 27 (acceptance I10, how the brain is set up in the real app): decided from Rulings 22 and 23 and the
+  harness rule "no network":
+  - **A real brain, on this machine.** I10 links the acceptance project with `POST …/brain { mode: 'local' }` (#70's
+    local-only brain: a git repository at `<TANDEMISE_HOME>/brains/<ws>`, no remote), then commits
+    `factory/tracker.yaml` and `factory/intake.yaml` there as a teammate would and pulls them with `POST …/brain/sync`.
+    No fake remote or `gh` is needed, and the daemon reads the files through `BrainIntakeConfigSource` exactly as
+    for a shared brain. The link is made over the daemon's API (setup); everything asserted is driven in the window.
+  - **A source id the machine has never seen.** The brain names `sentry-team` (the same fake Sentry as the local
+    `sentry-web`): an existing `intake_sources` row keeps its own `enabled`, so only a new id shows the brain's
+    default (off). Its token is saved in the window's "On this computer" row, which leaves it off.
+  - **The second address.** run-all starts a second fake YouTrack (`youtrack-b`, same project and token, so a request
+    carrying the token would be accepted and shows); the brain's second commit moves `tracker.url` to it. I10 runs
+    last: it leaves the project linked to the brain.
+- Ruling 28 (re-review items on PR #73):
+  - **Lease cap.** A device holds at most `MAX_LEASES_PER_DEVICE = 200` live relay leases. Past that, `POST /relay/v1/leases` answers `429 RATE_LIMITED` ("This device already holds 200 source leases; let some go before taking more."). Renewing a lease the device already holds is never refused. The route is listed in the relay spec's route table.
+  - **Scoped release on a failed Start.** `releaseItem(itemRef, reason, localRef?)`: when the mission create fails, Start releases only the claim whose `localRef` is its pre-named mission id. A release without `localRef` (mission end) still lets go of all of the person's claims on the item.
+  - **Proof.** Both are proven in `relay-check` and `intake-check`, which failed before the change.
+- Ruling 29 (the board shows the board query, found by I10): the cache keeps items that a mission or a signal points at, even when the board query no longer returns them (Ruling 13). I10 showed this leaking onto the board: after the tracker moved to YouTrack B, A's `GAR-1` stayed in Ready because a signal was linked to it.
+  - `TrackerService` now remembers which refs the last successful read returned, and `board()` lists only those.
+  - Until the first read after a daemon start, the whole cache shows.
+  - Proven offline in `intake-check`, which failed before the change: a narrowed board query hides a linked, still-Open item, and it reappears once the query returns it again. Proven in the real app by I10.

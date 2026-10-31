@@ -1043,6 +1043,22 @@ try {
   const chips = tracker.board(boardWs).groups.ready[0]?.sources;
   check("GAR-1's chips show Sentry · 132 events", eq(chips, [{ label: 'Sentry', detail: '132 events' }]), chips);
 
+  // Ruling 29 (found by I10): the board shows what the board query returns. An
+  // item kept in the cache only because a signal points at it (Ruling 13) is
+  // not on the board, even while its cached state is still a ready one.
+  {
+    const cfg = BD.container.resolve(pipeline.app.INTAKE_CONFIG_SOURCE);
+    const tracker0 = cfg.read(boardWs).tracker;
+    cfg.write(boardWs, { tracker: { ...tracker0, board: 'project: GAR #Unresolved Search' } });
+    const narrowed = await tracker.refreshBoard(boardWs);
+    const cachedGar1 = BD.container.resolve(pipeline.app.TRACKER_ITEM_REPOSITORY).byRef(boardWs, 'youtrack:GAR-1');
+    check('an item the board query no longer returns is not on the board, though a signal keeps it cached',
+      !narrowed.groups.ready.some((i) => i.key === 'GAR-1') && eq(keys(narrowed.groups.inProgress), ['GAR-2']) && cachedGar1?.state === 'Open', { ready: keys(narrowed.groups.ready), cached: cachedGar1?.state });
+    cfg.write(boardWs, { tracker: tracker0 });
+    const back = await tracker.refreshBoard(boardWs);
+    check('…and it is back once the query returns it again', back.groups.ready.some((i) => i.key === 'GAR-1'), keys(back.groups.ready));
+  }
+
   // An item the board query no longer returns stays cached while a signal points at it.
   fakeB.setState('GAR-1', 'Fixed');
   const afterFix = await tracker.refreshBoard(boardWs);
@@ -1175,6 +1191,38 @@ try {
   await BD?.intake?.settle?.();
   await BD?.services?.tracker?.settle?.();
   await BD?.container.dispose();
+}
+
+// Ruling 27: a failed Start lets go only of the claim it made (its mission id),
+// never another claim the same person holds on the same item.
+try {
+  const released = [];
+  const claims = [
+    { id: 'clm_a', itemRef: 'youtrack:GAR-7', memberId: 'mem_ana', localRef: 'msn_live' },
+    { id: 'clm_b', itemRef: 'youtrack:GAR-7', memberId: 'mem_ana', localRef: 'msn_failed' },
+  ];
+  const port = {
+    me: () => ({ memberId: 'mem_ana', deviceId: 'dev_1' }),
+    claims: () => claims,
+    release: async (id) => { released.push(id); },
+    onChange: () => {},
+    status: () => ({ kind: 'relay' }),
+  };
+  const quiet = { info() {}, warn() {}, error() {}, debug() {}, child() { return quiet; } };
+  const cs = new pipeline.app.CoordinationService({
+    coordination: port, control: null, missions: { get: () => undefined }, issues: { getLink: () => undefined },
+    settings: { read: () => ({}), write: () => ({}) }, recorder: { invalidate() {} }, cancelMission: async () => {},
+    clock: { now: () => new Date() }, log: quiet,
+  });
+  await cs.releaseItem('youtrack:GAR-7', 'released', 'msn_failed');
+  check("a failed Start's release names its mission: only that claim goes", eq(released, ['clm_b']), released);
+  released.length = 0;
+  await cs.releaseItem('youtrack:GAR-7', 'done');
+  check('…a release without a mission still lets go of every claim of the person on the item', eq(released, ['clm_a', 'clm_b']), released);
+  const src = readFileSync(join(repo, 'packages/application/src/services/tracker-service.ts'), 'utf8');
+  check("…and Start's failure path passes its pre-named mission id", /releaseItem\(item\.ref, 'released', missionId\)/.test(src));
+} catch (e) {
+  check('the scoped release section ran', false, String(e?.stack ?? e));
 }
 
 // The claim refuses: Start says the claim's own words and makes nothing.

@@ -284,7 +284,8 @@ export interface IntakeClaimsPort {
    */
   item(input: { readonly workspaceId: WorkspaceId; readonly itemRef: string; readonly itemTitle: string; readonly itemUrl: string; readonly localRef: string }):
     Promise<{ readonly ok: true } | { readonly ok: false; readonly reason: string }>;
-  releaseItem(itemRef: string, reason: 'done' | 'released'): Promise<void>;
+  /** With `localRef`, only the claim made for that mission (Ruling 27). */
+  releaseItem(itemRef: string, reason: 'done' | 'released', localRef?: string): Promise<void>;
 }
 
 // ------------------------------------------------------------------ runners (plan Task 10; spec §2)

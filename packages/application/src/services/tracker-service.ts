@@ -97,6 +97,13 @@ export class TrackerService {
   readonly #running = new Set<Promise<void>>();
   /** When each project's board was last read, and why it could not be. */
   readonly #refreshes = new Map<WorkspaceId, { at: string | null; problem: string | null }>();
+  /**
+   * The refs the last successful board read returned, per project. The board
+   * shows only these: the cache also keeps items a mission or a signal points
+   * at (Ruling 13), which the board query may no longer return (Ruling 29).
+   * Unknown until the first read after a start, when the whole cache shows.
+   */
+  readonly #onBoard = new Map<WorkspaceId, ReadonlySet<string>>();
   readonly #lastRefreshMs = new Map<WorkspaceId, number>();
   readonly #lastStartRetryMs = new Map<WorkspaceId, number>();
   readonly #lastWriteBackMs = new Map<WorkspaceId, number>();
@@ -121,7 +128,9 @@ export class TrackerService {
     const ready: BoardItemView[] = [];
     const inProgress: BoardItemView[] = [];
     const inReview: BoardItemView[] = [];
+    const onBoard = this.#onBoard.get(workspaceId);
     for (const item of cached) {
+      if (onBoard !== undefined && !onBoard.has(item.ref)) continue;
       const group = config.states.ready.includes(item.state) ? ready
         : item.state === config.states.in_progress ? inProgress
           : config.states.in_review !== undefined && item.state === config.states.in_review ? inReview : null;
@@ -201,6 +210,7 @@ export class TrackerService {
       // signal points at it: forgetting it would cut the mission from its item
       // and the signal from its chip (RULINGS ruling 13).
       const keep = new Set<string>(fetched.map((i) => i.ref));
+      this.#onBoard.set(workspaceId, new Set(keep));
       const missions = this.#missionsByItem(workspaceId);
       for (const item of this.deps.items.list(workspaceId)) {
         if (missions.has(item.id) || this.deps.intake.linksForItem(workspaceId, item.ref).length > 0) keep.add(item.ref);
@@ -419,7 +429,9 @@ export class TrackerService {
     try {
       mission = await this.deps.createMission(caller, request, { trackerItemId: item.id, missionId });
     } catch (e) {
-      await this.deps.claims.releaseItem(item.ref, 'released').catch(() => {});
+      // Only the claim taken for this Start (its pre-named mission id): a claim
+      // the same person holds for another mission on this item stays (Ruling 27).
+      await this.deps.claims.releaseItem(item.ref, 'released', missionId).catch(() => {});
       throw e;
     }
     this.deps.log.info('tracker.started', { workspaceId, ref: item.ref, missionId: mission.id, criteria: criteria.length });

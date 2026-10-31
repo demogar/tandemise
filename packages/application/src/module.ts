@@ -988,7 +988,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
     bind(it.INTAKE_CLAIMS, (r) => ({
       source: (workspaceId, sourceId) => r.resolve(t.COORDINATION_SERVICE).sourceClaim(workspaceId, sourceId),
       item: (input) => r.resolve(t.COORDINATION_SERVICE).claimItem(input),
-      releaseItem: (itemRef, reason) => r.resolve(t.COORDINATION_SERVICE).releaseItem(itemRef, reason),
+      releaseItem: (itemRef, reason, localRef) => r.resolve(t.COORDINATION_SERVICE).releaseItem(itemRef, reason, localRef),
     }), { source: SOURCE });
     bind(it.INTAKE_SERVICE, (r) => new IntakeService({
       intake: r.resolve(it.INTAKE_REPOSITORY),
