@@ -7,7 +7,7 @@ import { Field, Segmented } from '../../components/primitives.js';
 import { useEvalCases, useRoles, useSkills } from '../../lib/queries.js';
 import { evalsHref } from './link.js';
 import { Refusal, useEvalMutation } from './shared.js';
-import { Button, Card } from '@tandemise/design/react';
+import { Button, Card, Truncate } from '@tandemise/design/react';
 
 /** A brain candidate is started by a promotion, never from this form (#51). */
 type Kind = Exclude<EvalCandidate['kind'], 'brain'>;
@@ -154,18 +154,18 @@ export function RunForm({ suites, suiteId: initialSuiteId, candidate, onStarted,
           </select>
         </Field>
         <Field label="Try">
-          <div aria-label="Candidate kind">
-            <Segmented value={kind} options={KINDS} onChange={setKind} block />
-          </div>
+          {(control, label) => (
+            <Segmented data-candidate-kind aria-labelledby={label.id} aria-describedby={control['aria-describedby']} value={kind} options={KINDS} onChange={setKind} block />
+          )}
         </Field>
       </div>
 
       {kind === 'setup' ? (
         <Field label="Setup folder" hint="A repository, or its .tandemise folder. Its roles are tried as they are there; nothing is applied to this project.">
           <div className="row" style={{ gap: 'var(--s2)' }}>
-            <span className={`mono truncate${folder === '' ? ' dim' : ''}`} style={{ flex: 1, minWidth: 0, fontSize: 'var(--fs-sm)' }} title={folder}>
+            <Truncate className={`mono${folder === '' ? ' dim' : ''}`} style={{ flex: 1, minWidth: 0, fontSize: 'var(--fs-sm)' }}>
               {folder === '' ? 'No folder chosen' : folder}
-            </span>
+            </Truncate>
             <Button onClick={() => void chooseFolder()}>
               <Icon name="folder" size={13} />
               {folder === '' ? 'Choose…' : 'Change…'}

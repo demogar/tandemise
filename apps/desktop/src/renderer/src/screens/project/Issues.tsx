@@ -3,7 +3,7 @@ import type { RepositoryIssuesView, UpdateIssueSettingsRequest } from '@tandemis
 import { ErrorState, Field, SectionHead, Switch } from '../../components/primitives.js';
 import { Icon } from '../../components/Icon.js';
 import { useDaemonMutation, useIssues, useWorkflows } from '../../lib/queries.js';
-import { Button, Card } from '@tandemise/design/react';
+import { Banner, Button, Card, Chip } from '@tandemise/design/react';
 
 /** Mirrors ISSUE_POLL_MINUTES in @tandemise/domain; the daemon refuses anything else. */
 const POLL_MINUTES = [5, 10, 15, 30, 60] as const;
@@ -73,7 +73,7 @@ function RepositoryIssues({ view }: { view: RepositoryIssuesView }): JSX.Element
         <div className="list__main">
           <div className="list__title">
             {view.repositoryName}
-            {view.deprecated ? <span className="chip chip--muted" style={{ marginLeft: 'var(--s2)' }}>Deprecated</span> : null}
+            {view.deprecated ? <Chip muted style={{ marginLeft: 'var(--s2)' }}>Deprecated</Chip> : null}
           </div>
           {view.deprecated ? (
             <div className="list__subtitle" aria-label="Deprecated">
@@ -198,21 +198,30 @@ function UseAsTracker({ view }: { view: RepositoryIssuesView }): JSX.Element | n
   if (dismissed) return null;
   const repo = view.settings.githubRepo ?? view.suggestedRepo ?? view.repositoryName;
   return (
-    <div className="banner banner--accent" role="status" aria-label="Use as tracker" style={{ marginBottom: 'var(--s3)' }}>
-      <span style={{ flex: 1 }}>Use {repo}'s GitHub Issues as this project's board?</span>
-      <Button variant="primary" disabled={adopt.isPending} onClick={() => adopt.mutate()}>
-        {adopt.isPending ? 'Switching…' : 'Use them'}
-      </Button>
-      <Button
-        variant="ghost"
-        onClick={() => {
-          try { localStorage.setItem(OFFER_DISMISSED + view.repositoryId, '1'); } catch { /* the offer simply comes back */ }
-          setDismissed(true);
-        }}
-      >
-        Not now
-      </Button>
-      {adopt.isError ? <ErrorState error={adopt.error} /> : null}
-    </div>
+    <Banner
+      tone="accent"
+      live="polite"
+      aria-label="Use as tracker"
+      style={{ marginBottom: 'var(--s3)' }}
+      action={
+        <>
+          <Button variant="primary" disabled={adopt.isPending} onClick={() => adopt.mutate()}>
+            {adopt.isPending ? 'Switching…' : 'Use them'}
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={() => {
+              try { localStorage.setItem(OFFER_DISMISSED + view.repositoryId, '1'); } catch { /* the offer simply comes back */ }
+              setDismissed(true);
+            }}
+          >
+            Not now
+          </Button>
+          {adopt.isError ? <ErrorState error={adopt.error} /> : null}
+        </>
+      }
+    >
+      Use {repo}'s GitHub Issues as this project's board?
+    </Banner>
   );
 }

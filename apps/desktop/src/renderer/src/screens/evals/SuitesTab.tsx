@@ -7,7 +7,7 @@ import { Empty, ErrorState, SkeletonList } from '../../components/primitives.js'
 import { useEvalCases, useRoles } from '../../lib/queries.js';
 import { pluralize, relativeTime } from '../../lib/format.js';
 import { Refusal, useEvalMutation } from './shared.js';
-import { Button, Card } from '@tandemise/design/react';
+import { Button, Card, Tooltip, Truncate } from '@tandemise/design/react';
 
 type Deleting = { readonly kind: 'suite'; readonly suite: EvalSuiteView } | { readonly kind: 'case'; readonly kase: EvalCaseView };
 
@@ -120,15 +120,19 @@ function SuiteDetail({ suite, onDeleted }: { suite: EvalSuiteView; onDeleted: ()
                   <td style={{ minWidth: 120 }}>{kase.name}</td>
                   <td className="muted">{kase.stepTitle}</td>
                   <td>{roleName(kase.roleId)}</td>
-                  <td className="mono" title={kase.baseSha}>{kase.baseSha.slice(0, 7)}</td>
+                  <td className="mono">
+                    <Tooltip content={kase.baseSha}>
+                      <span>{kase.baseSha.slice(0, 7)}</span>
+                    </Tooltip>
+                  </td>
                   <td>
                     {kase.inputs.length === 0 ? (
                       <span className="dim">None</span>
                     ) : (
                       kase.inputs.map((input) => (
-                        <div key={`${input.type}-${input.title}`} className="truncate" style={{ maxWidth: 220 }} title={input.title}>
+                        <Truncate as="div" key={`${input.type}-${input.title}`} style={{ maxWidth: 220 }}>
                           {input.title} <span className="dim">({input.type})</span>
-                        </div>
+                        </Truncate>
                       ))
                     )}
                   </td>
@@ -140,9 +144,11 @@ function SuiteDetail({ suite, onDeleted }: { suite: EvalSuiteView; onDeleted: ()
                     )}
                   </td>
                   <td style={{ textAlign: 'right' }}>
-                    <Button variant="ghost" iconOnly aria-label={`Delete case ${kase.name}`} title="Delete case" onClick={() => setDeleting({ kind: 'case', kase })}>
-                      <Icon name="trash" size={13} />
-                    </Button>
+                    <Tooltip content={`Delete case ${kase.name}`}>
+                      <Button variant="ghost" iconOnly aria-label={`Delete case ${kase.name}`} onClick={() => setDeleting({ kind: 'case', kase })}>
+                        <Icon name="trash" size={13} />
+                      </Button>
+                    </Tooltip>
                   </td>
                 </tr>
               ))}

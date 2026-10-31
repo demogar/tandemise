@@ -30,9 +30,7 @@ export function FromYourRuns(): JSX.Element {
         <p className="muted" style={{ margin: 0, fontSize: 'var(--fs-sm)' }}>
           Every gated step your team ran, by role and model. Measured, not judged.
         </p>
-        <div aria-label="Window">
-          <Segmented value={days} options={WINDOWS} onChange={setDays} />
-        </div>
+        <Segmented label="Window" value={days} options={WINDOWS} onChange={setDays} />
       </div>
       {summary.isError ? (
         <ErrorState error={summary.error} onRetry={() => void summary.refetch()} />

@@ -15,7 +15,7 @@ import { showFlash } from '../../lib/notices.js';
 import { actorLabel, useActors, type Actors } from '../../lib/team.js';
 import { bytes, dateTime, pluralize, titleCase } from '../../lib/format.js';
 import { lineDiff, type DiffLine } from '../../lib/line-diff.js';
-import { Badge, Button } from '@tandemise/design/react';
+import { Badge, Banner, Button, Chip, Tooltip } from '@tandemise/design/react';
 
 /** Unchanged lines kept around each change in the comparison; the rest fold into "N unchanged lines". */
 const DIFF_CONTEXT = 2;
@@ -149,49 +149,50 @@ function ReaderDocument({ view, onVersion }: { view: ArtifactReadView; onVersion
           {versions.length > 1 ? (
             <span className="reader__versions" role="group" aria-label="Versions">
               {versions.map((v) => (
-                <button
-                  key={v.artifactId}
-                  type="button"
-                  className="reader__version"
-                  aria-pressed={v.artifactId === manifest.id}
-                  title={v.round !== null ? `Round ${v.round} · ${dateTime(v.createdAt)}` : dateTime(v.createdAt)}
-                  onClick={() => v.artifactId !== manifest.id && onVersion(v.artifactId)}
-                >
-                  v{v.version}
-                </button>
+                <Tooltip key={v.artifactId} content={v.round !== null ? `Round ${v.round} · ${dateTime(v.createdAt)}` : dateTime(v.createdAt)}>
+                  <button
+                    type="button"
+                    className="reader__version"
+                    aria-pressed={v.artifactId === manifest.id}
+                    onClick={() => v.artifactId !== manifest.id && onVersion(v.artifactId)}
+                  >
+                    v{v.version}
+                  </button>
+                </Tooltip>
               ))}
             </span>
           ) : null}
-          {versions.length > 1 && setAside ? <span className="chip" title="Set aside: its task was redone before this was reviewed">Set aside</span> : null}
-          {versions.length > 1 && !setAside && manifest.supersededBy ? <span className="chip chip--muted">Older version</span> : null}
+          {versions.length > 1 && setAside ? <Tooltip content="Set aside: its task was redone before this was reviewed"><Chip tabIndex={0}>Set aside</Chip></Tooltip> : null}
+          {versions.length > 1 && !setAside && manifest.supersededBy ? <Chip muted>Older version</Chip> : null}
           {previous !== null && isText ? (
             <button type="button" className="reader__details-toggle reader__compare" aria-pressed={comparing} onClick={() => setComparing((on) => !on)}>
               {comparing ? 'Show the document' : `Compare with v${previous.version}`}
             </button>
           ) : null}
-          <span className="chip">{titleCase(manifest.type)}</span>
+          <Chip>{titleCase(manifest.type)}</Chip>
           <span>{dateTime(manifest.createdAt)}</span>
           {showVersion ? (
-            <span className="chip" title={setAside ? 'Set aside: its task was redone before this was reviewed' : manifest.supersededBy ? 'A newer version replaced this one' : 'Latest version'}>
-              v{manifest.version}
-              {setAside ? ' · set aside' : manifest.supersededBy ? ' · older' : ''}
-            </span>
+            <Tooltip content={setAside ? 'Set aside: its task was redone before this was reviewed' : manifest.supersededBy ? 'A newer version replaced this one' : 'Latest version'}>
+              <Chip tabIndex={0}>
+                v{manifest.version}
+                {setAside ? ' · set aside' : manifest.supersededBy ? ' · older' : ''}
+              </Chip>
+            </Tooltip>
           ) : setAside ? (
-            <span className="chip" title="Set aside: its task was redone before this was reviewed">Set aside</span>
+            <Tooltip content="Set aside: its task was redone before this was reviewed">
+              <Chip tabIndex={0}>Set aside</Chip>
+            </Tooltip>
           ) : null}
           {/* A note about length, not a failure: neutral, and it says only what was measured. */}
           {manifest.overBudget ? (
-            <Badge
-              title={manifest.wordCount != null ? `${pluralize(manifest.wordCount, 'word')}, longer than the word budget for its type` : 'Longer than the word budget for its type'}
-            >
-              Over budget
-            </Badge>
+            <Tooltip content={manifest.wordCount != null ? `${pluralize(manifest.wordCount, 'word')}, longer than the word budget for its type` : 'Longer than the word budget for its type'}>
+              <Badge tabIndex={0}>Over budget</Badge>
+            </Tooltip>
           ) : null}
           {manifest.sourceRefs.map((ref, index) => (
-            <span key={index} className="chip chip--muted" title={ref.kind}>
-              <Icon name={ref.kind.startsWith('git') ? 'branch' : 'link'} size={10} />
+            <Chip key={index} muted icon={<Icon name={ref.kind.startsWith('git') ? 'branch' : 'link'} size={10} />}>
               {ref.label ?? ref.value}
-            </span>
+            </Chip>
           ))}
           <button
             type="button"
@@ -207,7 +208,9 @@ function ReaderDocument({ view, onVersion }: { view: ArtifactReadView; onVersion
           <div className="reader__meta">
             <IdChip id={manifest.id} />
             <span>{bytes(manifest.byteSize)}</span>
-            <span className="mono" title="sha256">{manifest.sha256.slice(0, 12)}</span>
+            <Tooltip content={`sha256 ${manifest.sha256}`}>
+              <span className="mono">{manifest.sha256.slice(0, 12)}</span>
+            </Tooltip>
             {manifest.wordCount != null ? <span>{pluralize(manifest.wordCount, 'word')} in the main body</span> : null}
           </div>
         ) : null}
@@ -229,13 +232,9 @@ function ReaderDocument({ view, onVersion }: { view: ArtifactReadView; onVersion
           ) : null}
         </>
       ) : (
-        <div className="banner">
-          <Icon name="file" size={15} className="dim" />
-          <span>
-            This artifact is <span className="mono">{manifest.mediaType}</span> and cannot be shown inline.
-          </span>
-          <RevealButton artifactId={manifest.id} />
-        </div>
+        <Banner icon={<Icon name="file" size={15} className="dim" />} action={<RevealButton artifactId={manifest.id} />}>
+          This artifact is <span className="mono">{manifest.mediaType}</span> and cannot be shown inline.
+        </Banner>
       )}
     </article>
   );
@@ -308,7 +307,7 @@ function Changes({ changes, version, actors }: { changes: readonly FeedChange[];
               {change.feedback.length > 0 ? (
                 <details className="reader__change">
                   <summary>
-                    {change.declined ? <span className="chip chip--muted">Declined</span> : null}
+                    {change.declined ? <Chip muted>Declined</Chip> : null}
                     <span>{what}</span>
                     <Icon name="chevronDown" size={11} className="reader__change-chevron" />
                   </summary>
@@ -323,7 +322,7 @@ function Changes({ changes, version, actors }: { changes: readonly FeedChange[];
                 </details>
               ) : (
                 <span className="reader__change reader__change--plain">
-                  {change.declined ? <span className="chip chip--muted">Declined</span> : null}
+                  {change.declined ? <Chip muted>Declined</Chip> : null}
                   <span>{what}</span>
                 </span>
               )}
@@ -351,7 +350,7 @@ function Comparison({ before, beforeVersion, after, afterVersion }: { before: st
   if (older.isPending) return <Skeleton height={120} />;
   if (older.isError) return <ErrorState error={older.error} onRetry={() => void older.refetch()} />;
   if (lines === null) {
-    return <div className="banner">Too large to compare line by line. Switch between v{beforeVersion} and v{afterVersion} above to read both.</div>;
+    return <Banner>Too large to compare line by line. Switch between v{beforeVersion} and v{afterVersion} above to read both.</Banner>;
   }
   const added = lines.filter((l) => l.kind === 'added').length;
   const removed = lines.filter((l) => l.kind === 'removed').length;

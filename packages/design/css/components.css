@@ -2,8 +2,9 @@
  * @tandemise/design - components.css
  *
  * The stylesheet behind @tandemise/design/react: buttons, badges and status
- * dots, cards, fields and inputs, dialogs, tabs, tooltips, empty states and
- * the logo. Import it after tokens.css and base.css. The React components
+ * dots, cards, fields and inputs, segmented controls and switches, chips and
+ * id chips, stats, banners, dialogs, tabs, tooltips and truncated text, empty
+ * states and the logo. Import it after tokens.css and base.css. The React components
  * render these classes, and plain markup may use them directly.
  *
  * Conventions:
@@ -25,15 +26,15 @@
   gap: 6px;
   height: var(--control-h);
   padding: 0 var(--s3);
-  border-radius: var(--radius-sm);
+  border-radius: var(--tds-radius-sm);
   border: 1px solid var(--border-strong);
   background: var(--surface-raised);
   color: var(--text);
   font-size: var(--fs-sm);
   font-weight: 550;
   white-space: nowrap;
-  transition: background var(--duration-fast) var(--ease), border-color var(--duration-fast) var(--ease),
-    transform var(--duration-fast) var(--ease), opacity var(--duration-fast) var(--ease);
+  transition: background var(--duration-fast) var(--tds-ease), border-color var(--duration-fast) var(--tds-ease),
+    transform var(--duration-fast) var(--tds-ease), opacity var(--duration-fast) var(--tds-ease);
   text-decoration: none;
 }
 
@@ -97,9 +98,19 @@
   font-size: var(--fs-base);
 }
 
+.btn--sm {
+  height: var(--control-h-sm);
+  padding: 0 var(--s2);
+  gap: 5px;
+}
+
 .btn--icon {
   width: var(--control-h);
   padding: 0;
+}
+
+.btn--sm.btn--icon {
+  width: var(--control-h-sm);
 }
 
 .btn--lg.btn--icon {
@@ -164,10 +175,10 @@
   padding: 7px var(--s3);
   background: var(--surface-sunken);
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
+  border-radius: var(--tds-radius-sm);
   color: var(--text);
   font-size: var(--fs-base);
-  transition: border-color var(--duration-fast) var(--ease), background var(--duration-fast) var(--ease);
+  transition: border-color var(--duration-fast) var(--tds-ease), background var(--duration-fast) var(--tds-ease);
 }
 
 .input::placeholder,
@@ -213,11 +224,16 @@
   gap: 5px;
   height: var(--control-h-xs);
   padding: 0 7px;
-  border-radius: var(--radius-xs);
+  border-radius: var(--tds-radius-xs);
   font-size: var(--fs-xs);
   font-weight: 600;
   letter-spacing: 0.005em;
   white-space: nowrap;
+  background: var(--status-pending-soft);
+  color: var(--status-pending);
+}
+
+.badge--pending {
   background: var(--status-pending-soft);
   color: var(--status-pending);
 }
@@ -278,7 +294,7 @@
 
 /* A gentle pulse marks *live* work; it must never be the only signal. */
 .dot--pulse {
-  animation: tds-pulse var(--duration-pulse) var(--ease) infinite;
+  animation: tds-pulse var(--duration-pulse) var(--tds-ease) infinite;
 }
 
 @keyframes tds-pulse {
@@ -298,7 +314,7 @@
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--tds-radius-lg);
   padding: var(--s4);
 }
 
@@ -349,7 +365,7 @@
   place-items: center;
   width: 40px;
   height: 40px;
-  border-radius: var(--radius-md);
+  border-radius: var(--tds-radius-md);
   background: var(--surface-sunken);
   border: 1px solid var(--border);
   color: var(--text-tertiary);
@@ -381,7 +397,7 @@
   justify-content: center;
   background: var(--scrim);
   backdrop-filter: blur(3px);
-  animation: tds-fade var(--duration) var(--ease);
+  animation: tds-fade var(--duration) var(--tds-ease);
 }
 
 .overlay--center {
@@ -409,9 +425,9 @@
   /* Set here, not inherited: a modal opened from inside secondary text would otherwise take its colour. */
   color: var(--text);
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
-  animation: tds-rise var(--duration) var(--ease);
+  border-radius: var(--tds-radius-lg);
+  box-shadow: var(--tds-shadow-lg);
+  animation: tds-rise var(--duration) var(--tds-ease);
   overflow: hidden;
 }
 
@@ -492,7 +508,7 @@
   white-space: nowrap;
   border-bottom: 2px solid transparent;
   margin-bottom: -1px;
-  transition: color var(--duration-fast) var(--ease), border-color var(--duration-fast) var(--ease);
+  transition: color var(--duration-fast) var(--tds-ease), border-color var(--duration-fast) var(--tds-ease);
   text-decoration: none;
 }
 
@@ -511,27 +527,276 @@
   font-variant-numeric: tabular-nums;
   color: var(--text-tertiary);
   background: var(--surface-active);
-  border-radius: var(--radius-full);
+  border-radius: var(--tds-radius-full);
   padding: 0 6px;
   line-height: 16px;
 }
 
 /* ----------------------------------------------------------------- tooltip */
 
-/* Positioned by the component (fixed, beside its trigger); never takes the pointer. */
+/* Positioned by the component (fixed, beside its trigger, kept inside the
+   window). It takes the pointer, so it can be hovered and read (WCAG 1.4.13). */
 .tooltip {
   position: fixed;
   z-index: var(--z-tooltip);
   max-width: 280px;
   padding: var(--s1) var(--s2);
-  border-radius: var(--radius-sm);
+  border-radius: var(--tds-radius-sm);
   background: var(--tooltip-background);
   color: var(--tooltip-text);
   font-size: var(--fs-xs);
   line-height: 1.4;
-  box-shadow: var(--shadow-md);
-  pointer-events: none;
-  animation: tds-fade var(--duration-fast) var(--ease-out);
+  box-shadow: var(--tds-shadow-md);
+  overflow-wrap: anywhere;
+  animation: tds-fade var(--duration-fast) var(--tds-ease-out);
+}
+
+/* The whole of a truncated value: a path or a sentence, so it may be longer. */
+.tooltip--full {
+  max-width: min(480px, calc(100vw - var(--s4)));
+}
+
+/* --------------------------------------------------------------- truncate */
+
+/*
+ * One line, ending in an ellipsis. `text-overflow` needs a block container
+ * with inline content, so this sets `display: block`: on a flex container the
+ * overflow would be clipped with no ellipsis at all.
+ */
+.truncate {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* -------------------------------------------------------------- segmented */
+
+/* A small set of mutually exclusive choices (a radio group): theme, window, priority. */
+.segmented {
+  display: inline-flex;
+  padding: 2px;
+  gap: 2px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--tds-radius-md);
+}
+
+.segmented__option {
+  padding: 5px var(--s3);
+  border-radius: var(--tds-radius-sm);
+  font-size: var(--fs-sm);
+  font-weight: 540;
+  color: var(--text-secondary);
+  transition: background var(--duration-fast) var(--tds-ease), color var(--duration-fast) var(--tds-ease);
+}
+
+.segmented__option:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.segmented__option[aria-checked='true'] {
+  background: var(--surface-raised);
+  color: var(--text);
+  box-shadow: var(--tds-shadow-sm);
+}
+
+.segmented__option:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.segmented--block {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+}
+
+/* ------------------------------------------------------------------ switch */
+
+.switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 34px;
+  height: 20px;
+  border-radius: var(--tds-radius-full);
+  background: var(--surface-active);
+  border: 1px solid var(--border-strong);
+  transition: background var(--duration) var(--tds-ease), border-color var(--duration) var(--tds-ease);
+  flex: none;
+}
+
+/* The hit area: 24px tall around the 20px track, so it is an easy target. */
+.switch::before {
+  content: '';
+  position: absolute;
+  inset: -3px -1px;
+}
+
+/* The thumb. */
+.switch::after {
+  content: '';
+  position: absolute;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--text-secondary);
+  transition: transform var(--duration) var(--tds-ease), background var(--duration) var(--tds-ease);
+}
+
+.switch[aria-checked='true'] {
+  background: var(--accent);
+  border-color: transparent;
+}
+
+.switch[aria-checked='true']::after {
+  transform: translateX(14px);
+  background: var(--accent-text);
+}
+
+.switch:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* -------------------------------------------------------------------- chip */
+
+/* A short value in a box: a kind, a version, a branch. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 var(--s2);
+  border-radius: var(--tds-radius-xs);
+  border: 1px solid var(--border);
+  background: var(--surface-sunken);
+  color: var(--text-secondary);
+  font-size: var(--fs-xs);
+  font-family: var(--tds-font-mono);
+  white-space: nowrap;
+}
+
+.chip--muted {
+  color: var(--text-tertiary);
+}
+
+/* A copyable record id. Quiet until pointed at: it is for referring to a
+   record, not for reading. Its keyboard focus shows the focus ring. */
+.idchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: var(--tds-radius-xs);
+  font-family: var(--tds-font-mono);
+  font-size: var(--fs-micro);
+  line-height: 1;
+  letter-spacing: 0;
+  white-space: nowrap;
+  color: var(--text-tertiary);
+  background: transparent;
+  border: 1px solid var(--border);
+  cursor: copy;
+  user-select: all;
+}
+
+.idchip:hover,
+.idchip:focus-visible {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+.idchip[data-copied='true'] {
+  color: var(--status-succeeded);
+}
+
+.idchip__prefix {
+  font-family: inherit;
+}
+
+/* -------------------------------------------------------------------- stat */
+
+/* One measured value under its label: a <dl> with a <dt> and a <dd>. */
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--tds-radius-md);
+  padding: var(--s3) var(--s4);
+}
+
+.stat__label {
+  font-size: var(--fs-xs);
+  color: var(--text-tertiary);
+  font-weight: 550;
+}
+
+.stat__value {
+  margin: 0;
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.stat__value--muted {
+  font-size: var(--fs-md);
+  font-weight: 500;
+  color: var(--text-tertiary);
+  letter-spacing: 0;
+}
+
+.stat__note {
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--text-secondary);
+}
+
+/* ------------------------------------------------------------------ banner */
+
+/* A message across a section: words first, the tone only reinforces them. */
+.banner {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s3) var(--s4);
+  border-radius: var(--tds-radius-md);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-size: var(--fs-sm);
+}
+
+.banner__body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.banner--accent {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+
+.banner--warn {
+  border-color: color-mix(in srgb, var(--status-blocked) 34%, transparent);
+  background: var(--status-blocked-soft);
+}
+
+.banner--danger {
+  border-color: color-mix(in srgb, var(--status-failed) 34%, transparent);
+  background: var(--status-failed-soft);
+}
+
+.banner__dismiss {
+  margin: calc(var(--s1) * -1) calc(var(--s2) * -1) calc(var(--s1) * -1) 0;
 }
 
 /* -------------------------------------------------------------------- logo */

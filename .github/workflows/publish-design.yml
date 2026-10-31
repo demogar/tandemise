@@ -1,0 +1,102 @@
+name: Publish @tandemise/design
+
+# Publishes the design system package to npm, with provenance, at the version
+# of the release: release-please keeps packages/design/package.json on the
+# app's version, so @tandemise/design 0.10.0 is the design of Tandemise v0.10.0.
+#
+# Runs on its own when a release is published by a token that triggers
+# workflows (RELEASE_PLEASE_TOKEN), is called by the Release workflow right
+# after release-please creates one (a release made with GITHUB_TOKEN triggers
+# nothing), and can be run by hand for a tag. Publishing twice is harmless: a
+# version already on npm is skipped.
+#
+# Needs an NPM_TOKEN secret (an npm granular access token that can publish
+# @tandemise/design). Without it the job says so and publishes nothing.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The release tag to publish from (e.g. v0.10.0)
+        required: true
+  workflow_call:
+    inputs:
+      tag:
+        description: The release tag to publish from
+        required: true
+        type: string
+    secrets:
+      NPM_TOKEN:
+        required: false
+
+permissions:
+  contents: read
+  id-token: write # npm provenance
+
+concurrency:
+  group: publish-design-${{ inputs.tag || github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      TAG: ${{ inputs.tag || github.event.release.tag_name }}
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+    steps:
+      - name: Is publishing set up?
+        id: gate
+        run: |
+          if [ -z "$NPM_TOKEN" ]; then
+            echo "::notice title=@tandemise/design not published::Add an NPM_TOKEN repository secret (an npm token that can publish @tandemise/design) to publish the design package on release."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.gate.outputs.ready == 'true'
+        with:
+          ref: ${{ env.TAG }}
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: steps.gate.outputs.ready == 'true'
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      - name: Version matches the release
+        id: version
+        if: steps.gate.outputs.ready == 'true'
+        run: |
+          version="$(node -p "require('./packages/design/package.json').version")"
+          if [ "v${version}" != "$TAG" ]; then
+            echo "::error::packages/design/package.json is ${version}, but the release is ${TAG}"
+            exit 1
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          if npm view "@tandemise/design@${version}" version >/dev/null 2>&1; then
+            echo "::notice::@tandemise/design@${version} is already on npm; nothing to publish."
+            echo "published=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build and check the package
+        if: steps.gate.outputs.ready == 'true' && steps.version.outputs.published == 'false'
+        run: |
+          npm ci
+          npm run build
+          npm run check:design
+          npm pack --dry-run -w @tandemise/design
+
+      - name: Publish with provenance
+        if: steps.gate.outputs.ready == 'true' && steps.version.outputs.published == 'false'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish -w @tandemise/design --provenance --access public

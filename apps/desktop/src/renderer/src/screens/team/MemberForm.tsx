@@ -8,7 +8,7 @@ import { useDaemonMutation, useIntegrations, useRoles, useRuntimes } from '../..
 import { useWorkspaceId } from '../../lib/workspace.js';
 import { pluralize } from '../../lib/format.js';
 import type { Actors } from '../../lib/team.js';
-import { Button } from '@tandemise/design/react';
+import { Button, Tooltip } from '@tandemise/design/react';
 
 export type MemberTarget = { readonly kind: 'new-agent' } | { readonly kind: 'edit'; readonly member: MemberView };
 
@@ -288,15 +288,21 @@ function RankedRuntimes({
                 <span className="routing__rank">{index + 1}</span>
                 <span className={`dot dot--${runtime?.healthy ? 'succeeded' : 'pending'}`} />
                 <span style={{ flex: 1 }}>{runtime?.name ?? 'Removed runtime'}</span>
-                <Button iconOnly variant="ghost" disabled={index === 0} onClick={() => move(index, -1)} aria-label="Move up">
-                  <Icon name="arrowUp" size={13} />
-                </Button>
-                <Button iconOnly variant="ghost" disabled={index === value.length - 1} onClick={() => move(index, 1)} aria-label="Move down">
-                  <Icon name="arrowDown" size={13} />
-                </Button>
-                <Button iconOnly variant="ghost" onClick={() => onChange(value.filter((v) => v !== id))} aria-label="Remove runtime">
-                  <Icon name="x" size={13} />
-                </Button>
+                <Tooltip content="Move up">
+                  <Button iconOnly variant="ghost" disabled={index === 0} onClick={() => move(index, -1)} aria-label="Move up">
+                    <Icon name="arrowUp" size={13} />
+                  </Button>
+                </Tooltip>
+                <Tooltip content="Move down">
+                  <Button iconOnly variant="ghost" disabled={index === value.length - 1} onClick={() => move(index, 1)} aria-label="Move down">
+                    <Icon name="arrowDown" size={13} />
+                  </Button>
+                </Tooltip>
+                <Tooltip content="Remove runtime">
+                  <Button iconOnly variant="ghost" onClick={() => onChange(value.filter((v) => v !== id))} aria-label="Remove runtime">
+                    <Icon name="x" size={13} />
+                  </Button>
+                </Tooltip>
               </div>
             );
           })}

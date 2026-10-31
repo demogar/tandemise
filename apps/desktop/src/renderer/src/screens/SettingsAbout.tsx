@@ -14,7 +14,7 @@ import { Icon } from '../components/Icon.js';
 import { SectionHead } from '../components/primitives.js';
 import { useConnection } from '../lib/connection.js';
 import { useSystem } from '../lib/queries.js';
-import { Button, Card } from '@tandemise/design/react';
+import { Banner, Button, Card, Truncate } from '@tandemise/design/react';
 
 /**
  * Settings → About: which code is running, where its data lives, and one
@@ -71,13 +71,10 @@ export function SettingsAbout(): JSX.Element {
       />
 
       {mismatch ? (
-        <div className="banner banner--warn" role="alert" style={{ marginBottom: 'var(--s3)' }}>
-          <Icon name="alert" size={14} />
-          <span>
-            <strong>{mismatch.kind === 'version' ? 'The app and the daemon run different versions.' : 'The daemon was built from different code than the app.'}</strong>{' '}
-            {mismatchAdvice(mismatch, daemon?.pid ?? null)}
-          </span>
-        </div>
+        <Banner tone="warn" live="assertive" style={{ marginBottom: 'var(--s3)' }} icon={<Icon name="alert" size={14} />}>
+          <strong>{mismatch.kind === 'version' ? 'The app and the daemon run different versions.' : 'The daemon was built from different code than the app.'}</strong>{' '}
+          {mismatchAdvice(mismatch, daemon?.pid ?? null)}
+        </Banner>
       ) : null}
 
       <Card flush>
@@ -94,7 +91,7 @@ export function SettingsAbout(): JSX.Element {
               <td style={{ width: 160, color: 'var(--text-tertiary)', verticalAlign: 'middle' }}>Data folder</td>
               <td>
                 <div className="row" style={{ justifyContent: 'space-between' }}>
-                  <span className="mono truncate" title={daemon?.home}>{daemon?.home ?? '—'}</span>
+                  <Truncate className="mono">{daemon?.home ?? '—'}</Truncate>
                   {daemon ? (
                     <Button variant="ghost" onClick={() => void window.tandemise.revealInFinder(daemon.home)}>
                       <Icon name="folder" size={14} />

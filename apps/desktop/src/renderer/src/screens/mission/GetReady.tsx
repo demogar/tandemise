@@ -6,7 +6,7 @@ import { useDaemonMutation, useMissionRefinement } from '../../lib/queries.js';
 import { pluralize, type Tone } from '../../lib/format.js';
 import { ArtifactReader } from '../artifacts/ArtifactReader.js';
 import { Icon } from '../../components/Icon.js';
-import { Button, Card } from '@tandemise/design/react';
+import { Banner, Button, Card, Truncate } from '@tandemise/design/react';
 
 type Upload = NonNullable<MissionDetail['uploads']>[number];
 
@@ -63,9 +63,9 @@ export function GetReady({ missionId, uploads = [] }: { missionId: string; uploa
               </span>
             </div>
             {view.state === 'failed' && view.failure ? (
-              <div className="banner banner--warn">
-                <span>{view.failure}</span>
-              </div>
+              <Banner tone="warn">
+                {view.failure}
+              </Banner>
             ) : null}
             {refine.isError ? <ErrorState error={refine.error} /> : null}
           </div>
@@ -84,9 +84,9 @@ export function GetReady({ missionId, uploads = [] }: { missionId: string; uploa
               <div key={upload.evidenceId} className="list__row">
                 <Icon name={upload.refs.some((r) => r.kind === 'url') ? 'link' : 'file'} size={13} className="dim" />
                 <div className="list__main">
-                  <div className="list__title truncate" title={upload.filename}>
+                  <Truncate as="div" className="list__title">
                     {upload.filename}
-                  </div>
+                  </Truncate>
                   <div className="list__subtitle truncate">{uploadSource(upload)}</div>
                 </div>
                 <div className="list__aside">
@@ -156,9 +156,9 @@ export function GetReady({ missionId, uploads = [] }: { missionId: string; uploa
                 <div key={c.id} className="list__row">
                   <span className="mono muted">{c.key}</span>
                   <div className="list__main">
-                    <div className="list__title" title={c.statement}>
+                    <Truncate as="div" className="list__title">
                       {c.statement}
-                    </div>
+                    </Truncate>
                     <div className="list__subtitle truncate">{originLine(c)}</div>
                   </div>
                   <div className="list__aside">
@@ -185,9 +185,9 @@ export function GetReady({ missionId, uploads = [] }: { missionId: string; uploa
               <div key={c.id} className="list__row">
                 <span className="mono dim">{c.key}</span>
                 <div className="list__main">
-                  <div className="list__title dim" title={c.statement}>
+                  <Truncate as="div" className="list__title dim">
                     {c.statement}
-                  </div>
+                  </Truncate>
                 </div>
                 <div className="list__aside">
                   <StatusBadge status={c.status === 'rejected' ? 'Rejected' : 'Replaced by a newer proposal'} tone="pending" />
@@ -225,9 +225,9 @@ function ProposedRow({ missionId, criterion }: { missionId: string; criterion: R
       <span className="mono muted">{criterion.key}</span>
       <div className="list__main">
         {editing === null ? (
-          <div className="list__title" title={criterion.statement}>
+          <Truncate as="div" className="list__title">
             {criterion.statement}
-          </div>
+          </Truncate>
         ) : (
           <textarea
             className="textarea"

@@ -11,8 +11,16 @@ import { cx } from './cx.js';
  */
 export type ButtonVariant = 'secondary' | 'primary' | 'ghost' | 'danger';
 
-/** `md` is a control's height (`--control-h`); `lg` is `--control-h-lg`, for an onboarding or empty-state call to action. */
-export type ButtonSize = 'md' | 'lg';
+/**
+ * The height of the button:
+ *
+ *   sm  `--control-h-sm` (28px; 24px when compact), for a dense row of
+ *       actions on a list item or a card. Never smaller than 24x24, so it
+ *       stays an easy target (WCAG 2.5.8).
+ *   md  `--control-h` (30px), the default.
+ *   lg  `--control-h-lg` (36px), for an onboarding or empty-state call to action.
+ */
+export type ButtonSize = 'sm' | 'md' | 'lg';
 
 export interface ButtonClassOptions {
   variant?: ButtonVariant;
@@ -32,7 +40,7 @@ export function buttonClass({ variant = 'secondary', size = 'md', iconOnly = fal
   return cx(
     'btn',
     variant !== 'secondary' && `btn--${variant}`,
-    size === 'lg' && 'btn--lg',
+    size !== 'md' && `btn--${size}`,
     iconOnly && 'btn--icon',
     block && 'btn--block',
     className,
@@ -52,14 +60,16 @@ export interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement
 
 /**
  * A `<button type="button">` drawing the `.btn` classes. An icon-only button
- * (`iconOnly`) must have an `aria-label`; it is the button's whole name.
+ * (`iconOnly`) must have an `aria-label`; it is the button's whole name. Wrap
+ * it in a `Tooltip` with the same words so a sighted user sees the name too.
  */
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
   { variant, size, iconOnly, block, className, loading = false, loadingLabel, disabled, type = 'button', children, ...rest },
   ref,
 ) {
   if (iconOnly && !rest['aria-label'] && !rest['aria-labelledby'] && isDev()) {
-    console.warn('@tandemise/design: an iconOnly Button needs an aria-label');
+    // A `title` is not a name: it is not reliably announced and never shown to a keyboard user.
+    console.warn('@tandemise/design: an iconOnly Button needs an aria-label (a title is not enough; add a Tooltip for sighted users)');
   }
   const showLabel = loading && loadingLabel !== undefined;
   return (

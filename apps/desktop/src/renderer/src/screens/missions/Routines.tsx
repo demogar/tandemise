@@ -8,7 +8,7 @@ import { useDaemonMutation, useRoutines } from '../../lib/queries.js';
 import { priorityLabel } from '../../lib/domain.js';
 import { pluralize } from '../../lib/format.js';
 import { RoutineDialog } from './RoutineDialog.js';
-import { Badge, Button, Card } from '@tandemise/design/react';
+import { Badge, Button, Card, Chip, Tooltip } from '@tandemise/design/react';
 
 /**
  * Routines (P11): standing work that adds itself to the backlog on a schedule.
@@ -128,16 +128,18 @@ function RoutineRow({
         ))}
       </div>
       <div className="list__aside">
-        <span className="chip chip--muted">{routine.kind === 'mission' ? `${priorityLabel(routine.priority)} mission` : 'Status report'}</span>
+        <Chip muted>{routine.kind === 'mission' ? `${priorityLabel(routine.priority)} mission` : 'Status report'}</Chip>
         <span className="row" style={{ gap: 'var(--s2)' }}>
           <span className="dim" style={{ fontSize: 'var(--fs-xs)' }}>{routine.enabled ? 'On' : 'Off'}</span>
           <Switch checked={routine.enabled} label="Enabled" onChange={onToggle} />
         </span>
         <Button variant="ghost" disabled={busy} onClick={onRunNow}>Run now</Button>
         <Button variant="ghost" onClick={onEdit}>Edit</Button>
-        <Button variant="ghost" iconOnly aria-label="Delete" title="Delete routine" onClick={onDelete}>
-          <Icon name="trash" size={14} />
-        </Button>
+        <Tooltip content="Delete routine">
+          <Button variant="ghost" iconOnly aria-label="Delete routine" onClick={onDelete}>
+            <Icon name="trash" size={14} />
+          </Button>
+        </Tooltip>
       </div>
     </div>
   );

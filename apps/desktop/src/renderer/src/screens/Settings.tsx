@@ -33,15 +33,19 @@ export function Settings({ section = null }: { section?: string | null } = {}): 
                 <SectionHead title="Appearance" />
                 <Card>
                   <Field label="Theme" hint="System follows macOS. An explicit choice overrides it everywhere.">
-                    <Segmented<ThemePreference>
-                      value={theme}
-                      onChange={setTheme}
-                      options={[
-                        { value: 'system', label: 'System' },
-                        { value: 'light', label: 'Light' },
-                        { value: 'dark', label: 'Dark' },
-                      ]}
-                    />
+                    {(control, label) => (
+                      <Segmented<ThemePreference>
+                        aria-labelledby={label.id}
+                        aria-describedby={control['aria-describedby']}
+                        value={theme}
+                        onChange={setTheme}
+                        options={[
+                          { value: 'system', label: 'System' },
+                          { value: 'light', label: 'Light' },
+                          { value: 'dark', label: 'Dark' },
+                        ]}
+                      />
+                    )}
                   </Field>
                 </Card>
               </section>
@@ -84,6 +88,7 @@ export function Settings({ section = null }: { section?: string | null } = {}): 
                     </div>
                     <div className="list__aside">
                       <Segmented
+                        label="Log level"
                         value={settings.data?.logLevel ?? 'info'}
                         options={[
                           { value: 'debug', label: 'Debug' },

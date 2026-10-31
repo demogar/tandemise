@@ -20,15 +20,19 @@ as one product.
 npm install @tandemise/design
 ```
 
+It is published to npm with provenance by the Tandemise release workflow, at
+the app's version: `@tandemise/design@0.10.0` is the design of Tandemise
+v0.10.0.
+
 ## What is in it
 
 | Import | What |
 |---|---|
-| `@tandemise/design/tokens.css` | Every token as a CSS custom property: palette, roles (both themes), shadows, radius, spacing, type, motion, the focus ring, the z-index scale and control heights (with a `[data-density='compact']` set). |
+| `@tandemise/design/tokens.css` | Every token as a CSS custom property: palette, roles (both themes), shadows, radius, spacing, type, motion, the focus ring, the z-index scale and control heights (with a `[data-density='compact']` set). No name collides with a Tailwind v4 theme variable: fonts, radii, shadows and easings are `--tds-*`. |
 | `@tandemise/design/base.css` | A small reset and type defaults built on the roles (body colours and font, focus ring, selection, scrollbars, reduced motion). Import after tokens.css. |
-| `@tandemise/design/components.css` | The component stylesheet: `.btn`, `.badge`, `.dot`, `.card`, `.field` and inputs, `.overlay`/`.modal`, `.tabs`/`.tab`, `.tooltip`, `.empty`, `.logo`. BEM classes, state in `data-*`/`aria-*`, roles and scales only. Import after base.css. |
-| `@tandemise/design/react` | Accessible React components over components.css: `Button`, `Badge`, `StatusPill`, `StatusDot`, `Card`, `Icon`, `Logo`, `Field`, `Dialog` (+ `useDialogLayer`), `Tabs`/`Tab`, `Tooltip`, `EmptyState`. See [React components](#react-components). |
-| `@tandemise/design/tailwind.css` | A Tailwind v4 theme (`@theme`) with the palette as utilities and the roles bridged to tokens.css. |
+| `@tandemise/design/components.css` | The component stylesheet: `.btn`, `.badge`, `.dot`, `.card`, `.field` and inputs, `.segmented`, `.switch`, `.chip`, `.idchip`, `.stat`, `.banner`, `.overlay`/`.modal`, `.tabs`/`.tab`, `.tooltip`, `.truncate`, `.empty`, `.logo`. BEM classes, state in `data-*`/`aria-*`, roles and scales only. Import after base.css. |
+| `@tandemise/design/react` | Accessible React components over components.css: `Button`, `Badge`, `StatusPill`, `StatusDot`, `Card`, `Icon`, `Logo`, `Field`, `Segmented`, `Switch`, `Chip`, `IdChip`, `Stat`, `Banner`, `Dialog` (+ `useDialogLayer`), `Tabs`/`Tab`, `Tooltip`, `Truncate`, `EmptyState`. See [React components](#react-components). |
+| `@tandemise/design/tailwind.css` | A Tailwind v4 theme (`@theme`) with the palette as utilities, and the roles and Tailwind's font, radius, shadow and easing names bridged to tokens.css. |
 | `@tandemise/design` | The tokens as typed data (`palette`, `colorRoles`, `radius`, `space`, `fontSize`, ...), `resolveTheme()`, `contrast()`, the Tailwind v3 `tailwindPreset`, `LOGO` and `ICON_PATHS`. |
 | `@tandemise/design/tokens`, `/icons`, `/logo`, `/resolve`, `/tailwind` | The same, one module at a time, for bundles that want only one. |
 | `@tandemise/design/assets/*` | `app-icon.svg` / `app-icon.png` (the tile icon), `logo-mark.svg` (follows the viewer's scheme), `logo-mark-on-dark.svg`, `logo-mark-on-light.svg`, `logo-mark-template.svg` (black, for macOS template images). |
@@ -56,8 +60,16 @@ your CSS / components
 3. **No `var()` fallbacks.** Tokens are always defined, so a fallback only hides
    a typo.
 4. **`light-dark()` takes colours only.** To vary a shadow or a percentage by
-   theme, mix inside each branch (`--shadow-*` shows how).
-5. **Contrast is measured, not remembered.** `CONTRAST_PAIRS` lists what the
+   theme, mix inside each branch (`--tds-shadow-*` shows how).
+5. **No Tailwind names in tokens.css.** Tailwind v4 declares `--font-*`,
+   `--radius-*`, `--shadow-*`, `--ease-*`, `--color-*` and more in its own
+   theme; a stylesheet that declares the same names on `:root` silently wins
+   or loses against it depending on load order. So the scales that share a
+   Tailwind namespace are `--tds-font-sans`, `--tds-font-mono`,
+   `--tds-radius-{xs,sm,md,lg,full}`, `--tds-shadow-{sm,md,lg}` and
+   `--tds-ease`, `--tds-ease-out`, `--tds-ease-in`; `tailwind.css` maps
+   Tailwind's names onto them. `npm run check:design` fails on a collision.
+6. **Contrast is measured, not remembered.** `CONTRAST_PAIRS` lists what the
    system promises (body text >= 10:1 on every surface, secondary and tertiary
    text and every status colour >= 4.5:1, a badge's text on its own `-soft` wash
    >= 4.5:1 over every surface, accent text on accent >= 12:1, tooltip
@@ -142,9 +154,18 @@ resolveTheme('light')['accent-soft']; // '#201e5014' (a wash keeps its alpha)
 A dark-only site sets `<html data-theme="dark">`. Utility names: a brand anchor
 drops its `brand-` prefix (`bg-mint`, `stroke-lichen`), every other hue is its
 token name (`bg-ink-950`, `text-lichen-300`, `text-signal-amber-bright`), and a
-role is its role name (`bg-surface-raised`, `border-border`). Loading
-tokens.css also gives Tailwind's `rounded-*` and `shadow-sm/md/lg` the
-Tandemise values, since they share names.
+role is its role name (`bg-surface-raised`, `border-border`). `font-sans`,
+`font-mono`, `rounded-{xs,sm,md,lg,full}`, `shadow-{sm,md,lg}` and
+`ease-in`/`ease-out`/`ease-in-out` draw the Tandemise values: tailwind.css maps
+Tailwind's names onto the `--tds-*` tokens. To keep your own type or corners,
+restate those names in your own `@theme` after the import:
+
+```css
+@theme {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --radius-md: 0.375rem;
+}
+```
 
 The logo, as an image or inline:
 
@@ -176,20 +197,27 @@ classes in `components.css`, takes its state as props and reports it as
 
 | Component | Props worth knowing | Accessibility |
 |---|---|---|
-| `Button` | `variant` (`secondary` default, `primary` at most once per view, `ghost`, `danger`), `size` (`md`, `lg`), `iconOnly`, `block`, `loading`, `loadingLabel` | `type="button"` by default; `loading` sets `aria-busy` and `data-loading` and stops presses while keeping the width; an `iconOnly` button warns in development without an `aria-label`. `buttonClass()` gives a link the same look. |
+| `Button` | `variant` (`secondary` default, `primary` at most once per view, `ghost`, `danger`), `size` (`sm` 28px, `md` 30px, `lg` 36px), `iconOnly`, `block`, `loading`, `loadingLabel` | `type="button"` by default; `loading` sets `aria-busy` and `data-loading` and stops presses while keeping the width; an `iconOnly` button warns in development without an `aria-label` (a `title` is not a name) and should sit in a `Tooltip` with the same words. Nothing is smaller than 24x24, compact density and icon-only included. `buttonClass()` gives a link the same look. |
 | `Badge` | `tone` (a status, `accent`, `release`) | Plain text; colour is never the only signal. |
 | `StatusPill` | `tone`, `label`, `icon`, `live` | Words plus a dot or icon; the dot is `aria-hidden`. |
 | `StatusDot` | `tone`, `live` | Decorative, unless given an `aria-label` (then `role="img"`). |
 | `Card` | `title`, `actions`, `flush` | With a title, a `<section>` labelled by its heading. |
 | `Icon` | `name`, `size`, `label` | Decorative (`aria-hidden`) unless `label` makes it an image. |
 | `Logo` | `size`, `muted`, `title` | Decorative unless titled. |
-| `Field` | `label`, `hint`, `error`, `required`; children a node or `(control) => …` | Node form: a wrapping `<label>`. Render-prop form: `<label for>`, and the control gets `id`, `aria-describedby` (hint or error) and `aria-invalid`. |
+| `Field` | `label`, `hint`, `error`, `required`; children a node or `(control, label) => …` | Node form: a wrapping `<label>`. Render-prop form: `<label for>`, and the control gets `id`, `aria-describedby` (hint or error) and `aria-invalid`; `label.id` names a control `<label for>` cannot (a `Segmented`, through `aria-labelledby`). |
+| `Segmented` | `value`, `options` (`value`, `label`, `disabled`), `onChange`, `label`, `block` | A radio group: `radiogroup` named by `label` or `aria-labelledby`, a `radio` per option with `aria-checked`; one tab stop; arrow keys move the choice and wrap, Home/End jump, disabled options are skipped. |
+| `Switch` | `checked`, `onChange`, `label` | `<button role="switch">` with `aria-checked`; Space or Enter toggles. Named by `label`, `aria-labelledby` or a wrapping `<label>`. 24px-tall hit area. |
+| `Chip` | `muted`, `icon` | Plain text in a box. |
+| `IdChip` | `id`, `prefix`, `interactive`, `copy`, `onCopied` | A `<button>` named by the id that copies it on click, Enter or Space, with a tooltip saying so; the result is announced in a polite live region. `interactive={false}` inside a link or button (no control inside a control). |
+| `Stat` | `label`, `value`, `note`, `muted` | A `<dl>`: the label a `<dt>`, the value and note `<dd>`s, read as a pair. |
+| `Banner` | `tone` (`neutral`, `accent`, `warn`, `danger`), `live`, `icon`, `action`, `onDismiss`, `dismissLabel`, `as` | No role when it is there on load; `live="polite"` is `role="status"`, `live="assertive"` is `role="alert"`. The dismiss button is named. |
 | `Dialog` | `title`, `description`, `footer`, `onClose`, `wide`, `initialFocus`, `closeOnScrim` | `role="dialog"`, `aria-modal`, named and described; focus moves in (to `[data-autofocus]` first), Tab is trapped, Escape closes only the topmost layer, focus returns to the opener. `useDialogLayer` gives a drawer or palette the same behaviour and the same Escape stack. |
 | `Tabs` / `Tab` | `label`; `selected`, `count`, `as` (a router link) | `tablist`/`tab`, `aria-selected`, roving `tabIndex`; Left/Right/Home/End move focus. |
-| `Tooltip` | `content`, `placement`, `delay`; children `(trigger) => …` | `role="tooltip"`, tied with `aria-describedby`; shows on hover and on focus, hides on Escape, blur or leave. |
+| `Tooltip` | `content`, `placement`, `delay`; children one element or `(trigger) => …` | `role="tooltip"`, tied with `aria-describedby` unless it repeats the trigger's name. WCAG 1.4.13: shows on hover and on focus; Escape dismisses it (and not the dialog around it); the pointer can move onto it; it stays until pointer and focus have left. Plain-text triggers are made focusable; it stays inside the window. Use it instead of a native `title`. |
+| `Truncate` | `as`, `placement` | One line with an ellipsis. Only while it is cut off: its full text in a tooltip on hover and focus, and a tab stop (or, inside a link or button, shown when that control has keyboard focus). |
 | `EmptyState` | `icon`, `title`, `body`, `action`, `inline` | Plain content. |
 
-The pure parts (`trapTarget`, `nextTabIndex`, `tooltipPosition`, `buttonClass`)
+The pure parts (`trapTarget`, `nextTabIndex`, `nextSegmentIndex`, `tooltipPosition`, `tooltipFit`, `isClipped`, `buttonClass`)
 are exported and tested on their own.
 
 ## Storybook
@@ -228,6 +256,16 @@ it is published to npm: the package's `files` leaves Storybook out.
 
 The app icon (`assets/app-icon.svg`) is hand-drawn at 1024px and may use only
 palette hex values; `npm run icons` in the Tandemise repo rasterises it.
+
+## Releasing
+
+Nothing to do by hand. When release-please publishes a Tandemise release,
+`.github/workflows/publish-design.yml` builds the package at the release tag,
+runs `check:design`, and publishes it with `npm publish --provenance`. It needs
+an `NPM_TOKEN` repository secret (an npm granular access token that may
+publish `@tandemise/design`); without one it leaves a notice on the run and
+publishes nothing. A version already on npm is skipped, so a re-run is safe;
+run it by hand for a tag from the Actions tab.
 
 ## License
 

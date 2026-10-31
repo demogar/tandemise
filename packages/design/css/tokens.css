@@ -134,18 +134,18 @@
   --tint-3: light-dark(var(--lichen-700), var(--brand-lichen));
   --tint-4: light-dark(var(--brand-slate), var(--slate-300));
   --tint-5: light-dark(var(--brand-indigo), var(--indigo-300));
-  --shadow-sm: 0 1px 2px light-dark(color-mix(in srgb, var(--brand-indigo) 8%, transparent), color-mix(in srgb, var(--ink-1000) 45%, transparent));
-  --shadow-md: 0 4px 16px light-dark(color-mix(in srgb, var(--brand-indigo) 11%, transparent), color-mix(in srgb, var(--ink-1000) 50%, transparent));
-  --shadow-lg: 0 18px 48px light-dark(color-mix(in srgb, var(--brand-indigo) 18%, transparent), color-mix(in srgb, var(--ink-1000) 62%, transparent));
+  --tds-shadow-sm: 0 1px 2px light-dark(color-mix(in srgb, var(--brand-indigo) 8%, transparent), color-mix(in srgb, var(--ink-1000) 45%, transparent));
+  --tds-shadow-md: 0 4px 16px light-dark(color-mix(in srgb, var(--brand-indigo) 11%, transparent), color-mix(in srgb, var(--ink-1000) 50%, transparent));
+  --tds-shadow-lg: 0 18px 48px light-dark(color-mix(in srgb, var(--brand-indigo) 18%, transparent), color-mix(in srgb, var(--ink-1000) 62%, transparent));
 }
 
 /* Scales: radius, the 4pt spacing scale, type, motion, focus, stacking, control heights. */
 :root {
-  --radius-xs: 4px;
-  --radius-sm: 6px;
-  --radius-md: 9px;
-  --radius-lg: 13px;
-  --radius-full: 999px;
+  --tds-radius-xs: 4px;
+  --tds-radius-sm: 6px;
+  --tds-radius-md: 9px;
+  --tds-radius-lg: 13px;
+  --tds-radius-full: 999px;
   --s1: 4px;
   --s2: 8px;
   --s3: 12px;
@@ -157,8 +157,8 @@
   --s10: 40px;
   --s12: 48px;
   --s16: 64px;
-  --font-sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --font-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, 'JetBrains Mono', Consolas, monospace;
+  --tds-font-sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --tds-font-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, 'JetBrains Mono', Consolas, monospace;
   --fs-micro: 10.5px;
   --fs-xs: 11.5px;
   --fs-sm: 12.5px;
@@ -173,9 +173,9 @@
   --duration-slow: 240ms;
   --duration-shimmer: 1300ms;
   --duration-pulse: 1900ms;
-  --ease: cubic-bezier(0.32, 0.72, 0, 1);
-  --ease-out: cubic-bezier(0, 0, 0.2, 1);
-  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --tds-ease: cubic-bezier(0.32, 0.72, 0, 1);
+  --tds-ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --tds-ease-in: cubic-bezier(0.4, 0, 1, 1);
   --focus-ring-width: 2px;
   --focus-ring-offset: 2px;
   --z-raised: 2;
@@ -185,7 +185,7 @@
   --z-toast: 60;
   --z-tooltip: 70;
   --control-h-xs: 20px;
-  --control-h-sm: 26px;
+  --control-h-sm: 28px;
   --control-h: 30px;
   --control-h-lg: 36px;
 }
@@ -193,7 +193,7 @@
 /* Density: control heights for a dense table or toolbar, on any subtree. */
 [data-density='compact'] {
   --control-h-xs: 18px;
-  --control-h-sm: 22px;
+  --control-h-sm: 24px;
   --control-h: 26px;
   --control-h-lg: 32px;
 }

@@ -12,7 +12,7 @@ import { ArtifactReader } from '../artifacts/ArtifactReader.js';
 import { DecisionForm, copyFor, riskLabel, useApprovalDecision } from '../../components/Decision.js';
 import { LimitDecision } from './LimitDecision.js';
 import { isLimitCard } from '../../lib/domain.js';
-import { Badge } from '@tandemise/design/react';
+import { Badge, Banner } from '@tandemise/design/react';
 
 /**
  * MVP.md §23.4 is a hard requirement, not a style note: every card must answer
@@ -37,7 +37,7 @@ export function ApprovalCard({ view, compact = false }: { view: ApprovalView; co
       <header className="approval__head">
         {/* A question carries no risk of its own; a badge saying so is noise. */}
         {copy.question || isLimitCard(approval) ? null : (
-          <span className={`badge ${riskBadgeClass(approval.risk)}`} title={`Risk class: ${approval.risk}`}>
+          <span className={`badge ${riskBadgeClass(approval.risk)}`}>
             <Icon name={riskIcon(approval.risk)} size={12} />
             {riskLabel(approval.risk)}
           </span>
@@ -96,10 +96,9 @@ export function ApprovalCard({ view, compact = false }: { view: ApprovalView; co
 
       {approval.expiresAt ? (
         <div style={{ padding: '0 var(--s5) var(--s4)' }}>
-          <div className="banner banner--warn">
-            <Icon name="clock" size={14} />
+          <Banner tone="warn" icon={<Icon name="clock" size={14} />}>
             This request expires {relativeTime(approval.expiresAt)}. If it lapses, the task stays blocked.
-          </div>
+          </Banner>
         </div>
       ) : null}
 

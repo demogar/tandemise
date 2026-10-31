@@ -10,7 +10,7 @@ import { useWorkspaceId } from '../../lib/workspace.js';
 import { dateTime, pluralize } from '../../lib/format.js';
 import { showFlash } from '../../lib/notices.js';
 import './TeamRelay.css';
-import { Button, Card } from '@tandemise/design/react';
+import { Banner, Button, Card } from '@tandemise/design/react';
 
 /** An `http://` address that is not this machine: the person must say they understand it is unencrypted. */
 function isInsecure(url: string): boolean {
@@ -130,16 +130,20 @@ function Connected({ status }: { status: Exclude<CoordinationStatusView, { kind:
         </ul>
       ) : null}
       {status.kind === 'connected' && status.offerImport ? (
-        <div className="banner team-relay__offer">
-          <span style={{ flex: 1 }}>This relay is new. Bring what this computer knows: what you're working on, your webhook addresses and unread webhooks.</span>
-          <Button
-            variant="primary"
-            disabled={bring.isPending}
-            onClick={() => bring.mutate(undefined, { onSuccess: (r) => showFlash(`Brought ${pluralize(r.claims.length, 'claim')}, ${pluralize(r.endpoints, 'webhook address', 'webhook addresses')} and ${pluralize(r.messages, 'webhook')}.`) })}
-          >
-            Bring my local data
-          </Button>
-        </div>
+        <Banner
+          className="team-relay__offer"
+          action={
+            <Button
+              variant="primary"
+              disabled={bring.isPending}
+              onClick={() => bring.mutate(undefined, { onSuccess: (r) => showFlash(`Brought ${pluralize(r.claims.length, 'claim')}, ${pluralize(r.endpoints, 'webhook address', 'webhook addresses')} and ${pluralize(r.messages, 'webhook')}.`) })}
+            >
+              Bring my local data
+            </Button>
+          }
+        >
+          This relay is new. Bring what this computer knows: what you're working on, your webhook addresses and unread webhooks.
+        </Banner>
       ) : null}
       {bring.isError ? <ErrorState error={bring.error} /> : null}
       {disconnect.isError ? <ErrorState error={disconnect.error} /> : null}
@@ -178,7 +182,7 @@ function Webhooks(): JSX.Element {
   return (
     <Card className="team-relay__webhooks" aria-label="Webhooks">
       <h3 className="team-relay__subhead">Webhooks</h3>
-      {dropped ? <div className="banner banner--warn"><Icon name="alert" size={15} /> Webhooks were dropped because nobody picked them up.</div> : null}
+      {dropped ? <Banner tone="warn" icon={<Icon name="alert" size={15} />}>Webhooks were dropped because nobody picked them up.</Banner> : null}
       {list.length === 0 ? <p className="muted">No webhook addresses yet.</p> : (
         <ul className="team-relay__endpoints">
           {list.map((e) => (

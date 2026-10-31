@@ -303,13 +303,14 @@ export const zIndex = { raised: 2, dropdown: 40, overlay: 50, 'overlay-raised': 
 /* ------------------------------------------------------------------ density */
 
 /**
- * Control heights, in px: `xs` a badge, `sm` a compact button or chip, `md` a
- * button or input, `lg` the one primary action of a screen. `compact` is what
- * they become under `[data-density='compact']`, for a dense table or toolbar.
+ * Control heights, in px: `xs` a badge (not a target), `sm` a compact button,
+ * `md` a button or input, `lg` the one primary action of a screen. `compact`
+ * is what they become under `[data-density='compact']`, for a dense table or
+ * toolbar. Nothing a person presses is under 24px, even compact (WCAG 2.5.8).
  */
 export const controlHeight = {
-  comfortable: { xs: 20, sm: 26, md: 30, lg: 36 },
-  compact: { xs: 18, sm: 22, md: 26, lg: 32 },
+  comfortable: { xs: 20, sm: 28, md: 30, lg: 36 },
+  compact: { xs: 18, sm: 24, md: 26, lg: 32 },
 } as const;
 
 export type Density = keyof typeof controlHeight;

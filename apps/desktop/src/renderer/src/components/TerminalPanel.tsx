@@ -11,7 +11,7 @@ import { describeError } from '../lib/daemon.js';
 import { useDaemonMutation } from '../lib/queries.js';
 import { closeTerminal, openTerminal } from '../lib/terminal.js';
 import { useActors } from '../lib/team.js';
-import { Button } from '@tandemise/design/react';
+import { Button, Tooltip, Truncate } from '@tandemise/design/react';
 
 /** What a hold changes on the mission: the step's status, the run it stopped, the requests it withdrew. */
 const HOLD_TOPICS = ['tasks', 'missions', 'approvals'] as const;
@@ -81,30 +81,34 @@ export function TerminalPanel({ task, detail }: { task: TaskView; detail: Missio
         <header className="terminal-panel__head">
           <Icon name="terminal" size={15} className="terminal-panel__icon" />
           <div className="terminal-panel__titles">
-            <h2 className="terminal-panel__title truncate" title={task.title}>{task.title}</h2>
+            <Truncate as="h2" className="terminal-panel__title">{task.title}</Truncate>
             {heldBy !== null ? <span className="terminal-panel__holder">Held by {heldBy}</span> : null}
           </div>
           <div className="terminal-panel__actions">
-            <Button
-              variant="primary"
-              disabled={cont.isPending || release.isPending || hold === null}
-              title="End your hold and let the agent finish the step from where you left it"
-              onClick={() => cont.mutate(undefined)}
-            >
-              <Icon name="play" size={13} />
-              {cont.isPending ? 'Continuing…' : 'Continue'}
-            </Button>
-            <Button
-              disabled={cont.isPending || release.isPending || hold === null}
-              title="End your hold without asking the agent to continue; the step goes back to the queue"
-              onClick={() => release.mutate(undefined)}
-            >
-              {release.isPending ? 'Releasing…' : 'Release'}
-            </Button>
-            <Button variant="ghost" title="The session keeps running; open it again from the step" onClick={closeTerminal}>
-              <Icon name="x" size={13} />
-              Close terminal
-            </Button>
+            <Tooltip content="End your hold and let the agent finish the step from where you left it">
+              <Button
+                variant="primary"
+                disabled={cont.isPending || release.isPending || hold === null}
+                onClick={() => cont.mutate(undefined)}
+              >
+                <Icon name="play" size={13} />
+                {cont.isPending ? 'Continuing…' : 'Continue'}
+              </Button>
+            </Tooltip>
+            <Tooltip content="End your hold without asking the agent to continue; the step goes back to the queue">
+              <Button
+                disabled={cont.isPending || release.isPending || hold === null}
+                onClick={() => release.mutate(undefined)}
+              >
+                {release.isPending ? 'Releasing…' : 'Release'}
+              </Button>
+            </Tooltip>
+            <Tooltip content="The session keeps running; open it again from the step">
+              <Button variant="ghost" onClick={closeTerminal}>
+                <Icon name="x" size={13} />
+                Close terminal
+              </Button>
+            </Tooltip>
           </div>
         </header>
 
@@ -313,19 +317,28 @@ export function HoldButton({ task, missionId, className = 'btn', onOpen }: {
       </button>
     );
   }
-  const reason = task.holdable.ok ? 'Stop the agent and work with it in its own terminal' : task.holdable.reason;
+  const button = (
+    <button
+      type="button"
+      className={className}
+      disabled={!task.holdable.ok || hold.isPending}
+      onClick={() => hold.mutate(undefined, { onSuccess: () => onOpen?.() })}
+    >
+      <Icon name="pause" size={13} />
+      {hold.isPending ? 'Holding…' : 'Hold'}
+    </button>
+  );
   return (
     <>
-      <button
-        type="button"
-        className={className}
-        disabled={!task.holdable.ok || hold.isPending}
-        title={reason}
-        onClick={() => hold.mutate(undefined, { onSuccess: () => onOpen?.() })}
-      >
-        <Icon name="pause" size={13} />
-        {hold.isPending ? 'Holding…' : 'Hold'}
-      </button>
+      {task.holdable.ok ? (
+        <Tooltip content="Stop the agent and work with it in its own terminal">{button}</Tooltip>
+      ) : (
+        <>
+          {button}
+          {/* A disabled button takes no focus, so a tooltip could not say why: it is said beside it. */}
+          <span className="dim hold-reason">{task.holdable.reason}</span>
+        </>
+      )}
       {hold.isError ? <span className="field__error hold-refusal" role="alert">{describeError(hold.error).detail}</span> : null}
     </>
   );
@@ -342,9 +355,9 @@ export function useHoldActions(taskId: string, missionId: string) {
 export function NowLine({ now, className = '' }: { now: string | null; className?: string }): JSX.Element | null {
   if (now === null) return null;
   return (
-    <p className={`now-line ${className}`.trim()} aria-label="Now" title={now}>
+    <p className={`now-line ${className}`.trim()}>
       <span className="now-line__label">Now</span>
-      <span className="now-line__text truncate">{now}</span>
+      <Truncate className="now-line__text">{now}</Truncate>
     </p>
   );
 }

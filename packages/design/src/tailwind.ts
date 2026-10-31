@@ -15,8 +15,15 @@
  * Utility names: a brand anchor drops its `brand-` prefix (`brand-mint` ->
  * `mint`), every other hue splits at its last dash (`ink-950` -> `ink.950`,
  * `signal-red-bright` -> `signal-red.bright`), so the class is the token name.
+ *
+ * Fonts, radii, shadows and easings: tokens.css names them `--tds-*` so they
+ * never collide with Tailwind's own theme variables, and the v4 theme maps
+ * Tailwind's names onto them (`--radius-md: var(--tds-radius-md)`), so
+ * `rounded-md`, `shadow-lg`, `font-sans` and `ease-out` draw the Tandemise
+ * values. A site that wants its own type or corners overrides those names in
+ * its own `@theme`, after this file, as with any Tailwind theme.
  */
-import { colorRoles, fontFamily, palette, radius, type PaletteName } from './tokens.js';
+import { colorRoles, fontFamily, palette, radius, shadows, type PaletteName } from './tokens.js';
 
 /** `brand-mint` -> ['mint', 'DEFAULT'], `ink-950` -> ['ink', '950']. */
 function tailwindPath(name: PaletteName): [string, string] {
@@ -57,6 +64,7 @@ export const tailwindPreset = {
       colors: { ...paletteColors(), ...roleColors() },
       fontFamily: { sans: [...fontFamily.sans], mono: [...fontFamily.mono] },
       borderRadius: Object.fromEntries(Object.entries(radius).map(([name, n]) => [name, px(n)])),
+      boxShadow: Object.fromEntries(Object.keys(shadows).map((name) => [name, `var(--tds-shadow-${name})`])),
     },
   },
 };
@@ -74,22 +82,31 @@ export function tailwindThemeCss(generatedNote: string): string {
  *   @import '@tandemise/design/tokens.css';    (for the role utilities)
  *   @import '@tandemise/design/tailwind.css';
  *
- * Hues are literal, so bg-ink-950 or text-mint work on their own. Roles bridge
- * to tokens.css (\`@theme inline\`), so bg-canvas or text-text-secondary follow
- * the theme.
+ * Hues are literal, so bg-ink-950 or text-mint work on their own. Everything
+ * else bridges to tokens.css (\`@theme inline\`): the roles, so bg-canvas or
+ * text-text-secondary follow the theme, and Tailwind's font, radius, shadow
+ * and easing names, mapped onto the --tds-* tokens. tokens.css declares no
+ * Tailwind name itself, so neither file overrides the other by accident; to
+ * keep your own fonts or corners, restate those names in your own @theme.
  */
 `,
     '@theme {',
     ...hues,
-    '',
-    `  --font-sans: ${fontFamily.sans.join(', ')};`,
-    `  --font-mono: ${fontFamily.mono.join(', ')};`,
-    '',
-    ...Object.entries(radius).map(([name, n]) => `  --radius-${name}: ${px(n)};`),
     '}',
     '',
     '@theme inline {',
     ...roles,
+    '',
+    '  --font-sans: var(--tds-font-sans);',
+    '  --font-mono: var(--tds-font-mono);',
+    '',
+    ...Object.keys(radius).map((name) => `  --radius-${name}: var(--tds-radius-${name});`),
+    '',
+    ...Object.keys(shadows).map((name) => `  --shadow-${name}: var(--tds-shadow-${name});`),
+    '',
+    '  --ease-in: var(--tds-ease-in);',
+    '  --ease-out: var(--tds-ease-out);',
+    '  --ease-in-out: var(--tds-ease);',
     '}',
     '',
   ].join('\n');

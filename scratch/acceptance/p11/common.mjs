@@ -92,7 +92,7 @@ export const missionsFrom = (c, routineId) => c.sql('SELECT id, title, status, q
 export async function deleteInWindow(c, id) {
   const { page, until, sleep } = c;
   await page.navigate(`#/missions/${id}`);
-  await until(() => page.evaluate(`(() => { const b = document.querySelector('button[title="Delete mission"]'); if (!b) return false; b.click(); return true; })()`), { label: 'delete button', timeoutMs: 15_000 });
+  await until(() => page.evaluate(`(() => { const b = document.querySelector('button[aria-label="Delete mission"]'); if (!b) return false; b.click(); return true; })()`), { label: 'delete button', timeoutMs: 15_000 });
   await until(() => page.evaluate(`[...document.querySelectorAll('[role=dialog] button')].some((b) => b.innerText.trim() === 'Delete permanently')`), { label: 'delete dialog', timeoutMs: 10_000 });
   await page.evaluate(`[...document.querySelectorAll('[role=dialog] button')].find((b) => b.innerText.trim() === 'Delete permanently')?.click()`);
   await until(() => c.sql('SELECT COUNT(*) AS n FROM missions WHERE id = ?', id)[0].n === 0, { label: 'deleted', timeoutMs: 15_000 });

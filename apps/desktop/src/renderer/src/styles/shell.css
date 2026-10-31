@@ -67,11 +67,11 @@
   align-items: center;
   gap: var(--s3);
   padding: 6px var(--s2);
-  border-radius: var(--radius-sm);
+  border-radius: var(--tds-radius-sm);
   color: var(--text-secondary);
   font-size: var(--fs-base);
   font-weight: 500;
-  transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
+  transition: background var(--duration-fast) var(--tds-ease), color var(--duration-fast) var(--tds-ease);
   text-decoration: none;
 }
 
@@ -112,7 +112,7 @@
   padding: 0 5px;
   display: grid;
   place-items: center;
-  border-radius: var(--radius-full);
+  border-radius: var(--tds-radius-full);
   background: var(--status-blocked);
   color: var(--text-inverse);
   font-size: var(--fs-micro);
@@ -134,11 +134,11 @@
   gap: var(--s2);
   width: 100%;
   padding: var(--s2);
-  border-radius: var(--radius-sm);
+  border-radius: var(--tds-radius-sm);
   text-align: left;
   color: var(--text-secondary);
   font-size: var(--fs-xs);
-  transition: background var(--duration-fast) var(--ease);
+  transition: background var(--duration-fast) var(--tds-ease);
 }
 
 .connection:hover {
@@ -363,7 +363,7 @@
   width: 100%;
   padding: var(--s2) var(--s2) var(--s2) var(--s3);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: var(--tds-radius-md);
   background: var(--surface);
   color: var(--text);
   text-align: left;
@@ -402,9 +402,9 @@
   top: calc(100% - var(--s1));
   padding: var(--s1);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: var(--tds-radius-md);
   background: var(--surface-raised);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--tds-shadow-lg);
 }
 
 .wsswitch__option {
@@ -414,7 +414,7 @@
   width: 100%;
   padding: var(--s2);
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--tds-radius-sm);
   background: none;
   color: var(--text);
   font-size: var(--fs-sm);
@@ -472,7 +472,7 @@
   height: 60px;
   margin: 0 auto var(--s4);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--tds-radius-lg);
   background: var(--surface);
 }
 
@@ -492,5 +492,5 @@
 
 .list__row--bordered {
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: var(--tds-radius-md);
 }

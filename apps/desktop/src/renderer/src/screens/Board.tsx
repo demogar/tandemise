@@ -12,7 +12,7 @@ import { useWorkspaceId } from '../lib/workspace.js';
 import { humanizeStatus, missionTone, relativeTime } from '../lib/format.js';
 import { IntakeList } from './board/IntakeList.js';
 import './Board.css';
-import { Button, Card, Tab, Tabs } from '@tandemise/design/react';
+import { Banner, Button, Card, Tab, Tabs, Tooltip } from '@tandemise/design/react';
 
 export type BoardTab = 'board' | 'intake';
 export const BOARD_TABS: readonly BoardTab[] = ['board', 'intake'];
@@ -101,7 +101,7 @@ export function Board({ tab }: { tab: BoardTab }): JSX.Element {
                   {check.isPending ? 'Checking…' : 'Check sources now'}
                 </Button>
               </div>
-              {board.data?.problem ? <div className="banner banner--warn board__problem" role="status">{board.data.problem}</div> : null}
+              {board.data?.problem ? <Banner tone="warn" live="polite" className="board__problem">{board.data.problem}</Banner> : null}
               {check.isError ? <ErrorState error={check.error} /> : null}
               {board.isError ? <ErrorState error={board.error} onRetry={() => void board.refetch()} /> : null}
               {board.isPending ? (
@@ -153,9 +153,11 @@ function Row({ item }: { item: BoardItemView }): JSX.Element {
     <div className="list__row board__row" data-board-item={item.key} data-startable={item.startable.ok}>
       <div className="list__main">
         <div className="board__line">
-          <button type="button" className="board__key mono" title={`Open ${item.key}`} onClick={() => void window.tandemise.openExternal(item.url)}>
-            {item.key}
-          </button>
+          <Tooltip content={`Open ${item.key}`}>
+            <button type="button" className="board__key mono" onClick={() => void window.tandemise.openExternal(item.url)}>
+              {item.key}
+            </button>
+          </Tooltip>
           <span className="list__title board__title">{item.title}</span>
         </div>
         <div className="list__subtitle board__meta">
@@ -173,14 +175,17 @@ function Row({ item }: { item: BoardItemView }): JSX.Element {
         {start.isError ? <ErrorState error={start.error} /> : null}
       </div>
       <div className="list__aside">
-        <Button
-          variant="primary" className="board__start"
-          disabled={blocked !== null || start.isPending}
-          title={blocked ?? `Start ${item.key} as a mission`}
-          onClick={() => start.mutate()}
-        >
-          {start.isPending ? 'Starting…' : 'Start'}
-        </Button>
+        {/* A disabled button takes no focus, so why it cannot start is said beside it, not in a tooltip. */}
+        {blocked !== null ? <span className="dim board__blocked">{blocked}</span> : null}
+        <Tooltip content={`Start ${item.key} as a mission`}>
+          <Button
+            variant="primary" className="board__start"
+            disabled={blocked !== null || start.isPending}
+            onClick={() => start.mutate()}
+          >
+            {start.isPending ? 'Starting…' : 'Start'}
+          </Button>
+        </Tooltip>
       </div>
     </div>
   );

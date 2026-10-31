@@ -17,7 +17,7 @@ const meta = {
   },
   argTypes: {
     variant: { control: 'inline-radio', options: ['secondary', 'primary', 'ghost', 'danger'] },
-    size: { control: 'inline-radio', options: ['md', 'lg'] },
+    size: { control: 'inline-radio', options: ['sm', 'md', 'lg'] },
     loadingLabel: { control: 'text' },
     children: { control: 'text' },
   },
@@ -40,6 +40,30 @@ export const Secondary: Story = { args: { children: 'Request changes' } };
 export const Primary: Story = { args: { variant: 'primary', children: 'Approve plan' } };
 export const Ghost: Story = { args: { variant: 'ghost', children: 'Skip' } };
 export const Danger: Story = { args: { variant: 'danger', children: 'Cancel mission' } };
+
+/** `sm`: 28px tall (24px compact), for a row of actions on a list item. Never under 24x24, icon-only included. */
+export const Small: Story = {
+  args: { size: 'sm', children: undefined },
+  render: (args) => (
+    <div className="sb-row">
+      <Button {...args}>Accept</Button>
+      <Button {...args} variant="ghost">
+        Reject
+      </Button>
+      <Button {...args} variant="ghost" iconOnly aria-label="Move up">
+        <Icon name="chevronUp" size={13} />
+      </Button>
+    </div>
+  ),
+  play: async ({ canvas }) => {
+    for (const button of canvas.getAllByRole('button')) {
+      const box = button.getBoundingClientRect();
+      await expect(box.height).toBeGreaterThanOrEqual(24);
+      await expect(box.width).toBeGreaterThanOrEqual(24);
+    }
+    await expect(canvas.getByRole('button', { name: 'Move up' })).toHaveClass('btn--sm', 'btn--icon');
+  },
+};
 
 export const Large: Story = {
   args: { variant: 'primary', size: 'lg', children: undefined },

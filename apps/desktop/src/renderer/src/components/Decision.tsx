@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import type { ApprovalView } from '@tandemise/api-contract';
 import type { Approval, ApprovalOption, RiskClass } from '@tandemise/domain';
 import { NEEDS_CHANGES_OPTION, REJECT_OPTION, REPLAN_REST_OPTION, REQUEST_CHANGES_OPTION, SKIP_REST_OPTION, isLimitCard, isPlanFitCard } from '../lib/domain.js';
@@ -10,7 +10,7 @@ import { useDaemon } from '../lib/connection.js';
 import { openImpact } from '../lib/notices.js';
 import { useActors, type Actors } from '../lib/team.js';
 import { titleCase } from '../lib/format.js';
-import { Badge, Button } from '@tandemise/design/react';
+import { Badge, Button, Tooltip } from '@tandemise/design/react';
 
 /**
  * Deciding an approval, wherever it is decided.
@@ -201,11 +201,9 @@ export function DecisionForm({ decision, variant = 'full' }: { decision: Approva
           </span>
           {ordered.map((option) => {
             const { danger } = decision.consequence(option.id);
-            return (
+            const button = (
               <Button
-                key={option.id}
                 variant={danger ? 'danger' : option.id === primaryId ? 'primary' : 'secondary'}
-                title={option.description ?? undefined}
                 disabled={decision.pending}
                 onMouseEnter={aim(option.id)}
                 onMouseLeave={aim(null)}
@@ -218,6 +216,11 @@ export function DecisionForm({ decision, variant = 'full' }: { decision: Approva
               >
                 {decision.pending && option.id === decision.selected ? 'Submitting…' : submitLabel(decision.consequence(option.id).copy, option)}
               </Button>
+            );
+            return (
+              <Fragment key={option.id}>
+                {option.description ? <Tooltip content={option.description}>{button}</Tooltip> : button}
+              </Fragment>
             );
           })}
         </div>
