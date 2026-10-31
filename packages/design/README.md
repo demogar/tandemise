@@ -190,6 +190,15 @@ classes in `components.css`, takes its state as props and reports it as
 The pure parts (`trapTarget`, `nextTabIndex`, `tooltipPosition`, `buttonClass`)
 are exported and tested on their own.
 
+## The gallery
+
+[`gallery/index.html`](gallery/index.html) shows every token (palette, roles,
+type, spacing, radius, elevation, motion, focus, stacking, control heights)
+and every component, side by side in light and dark. It is generated from the
+package by `npm run -w @tandemise/design gallery` (after a build), links the
+package's own stylesheets, and opens straight from disk. `check:design` fails
+when it is stale or misses a component that `@tandemise/design/react` exports.
+
 ## Changing a token
 
 1. Edit [`src/tokens.ts`](src/tokens.ts). A new colour goes in `palette`,

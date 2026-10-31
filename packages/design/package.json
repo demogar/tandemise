@@ -28,6 +28,7 @@
     "dist",
     "css",
     "assets",
+    "gallery",
     "README.md",
     "LICENSE"
   ],
@@ -90,7 +91,9 @@
   "scripts": {
     "build": "tsc -b",
     "emit": "node scripts/emit.mjs",
-    "emit:check": "node scripts/emit.mjs --check"
+    "emit:check": "node scripts/emit.mjs --check",
+    "gallery": "node scripts/gallery.mjs",
+    "gallery:check": "node scripts/gallery.mjs --check"
   },
   "publishConfig": {
     "access": "public"

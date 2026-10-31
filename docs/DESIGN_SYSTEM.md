@@ -279,6 +279,8 @@ because it carries product logic or is used in one place.
 6. `app-icon.svg` uses a colour outside the palette, or
    `logo-mark-template.svg` uses anything but black.
 7. `src/shared/brand.ts` drifts from the palette.
+8. The gallery (`packages/design/gallery/index.html`) is stale, or leaves out a
+   component that `@tandemise/design/react` exports (`COMPONENTS`).
 
 ## Changing the system
 
@@ -290,6 +292,12 @@ because it carries product logic or is used in one place.
   anchor in OKLCH, and add any pairing it must hold to `CONTRAST_PAIRS`.
 - **New brand anchor:** update this document, `tokens.ts`, the logo roles and
   the identity tints in one change.
+- **New component:** add it under `packages/design/src/react/`, its classes to
+  `css/components.css`, its name to `COMPONENTS`, a demo to
+  `scripts/gallery.mjs`, and assertions to `scratch/design-react-check.mjs`;
+  then `npm run -w @tandemise/design gallery`.
+- **The gallery** (`packages/design/gallery/index.html`, open it from disk) is
+  the visual reference: every token and component in light and dark.
 - **Verify in the real app.** Walk every screen in both themes with a real
   mission, not only the mock, and regenerate `apps/desktop/screenshots/` from
   the real app with the scripts in `scratch/docs-screenshots/` (its README has
