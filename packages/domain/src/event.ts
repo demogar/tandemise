@@ -79,6 +79,8 @@ export type OrchestrationEvent =
   /** A note was withdrawn or superseded without a round addressing it. */
   | { readonly type: 'feedback.dismissed'; readonly feedbackId: string }
   /** The task's next round began, carrying the feedback it is meant to address. */
+  /** The brain learned a lesson from a person's correction (#51 spec §11): one line on the mission feed. */
+  | { readonly type: 'brain.learned'; readonly entryId: string; readonly text: string; readonly signal: 'hold' | 'rejection' | 'gate' | 'person' | 'agent' }
   | { readonly type: 'task.round_started'; readonly round: number; readonly feedbackIds: readonly string[]; readonly downstream: 'redo' | 'keep' | 'none'; readonly redone: readonly string[] }
   /**
    * A queued draft was taken from the backlog into planning (P7): `position` in
@@ -135,6 +137,7 @@ export const SEMANTIC_EVENT_TYPES: ReadonlySet<string> = new Set([
   'artifact.tighten_requested', 'artifact.over_budget',
   'feedback.given', 'feedback.addressed', 'feedback.dismissed', 'task.round_started', 'mission.pulled',
   'task.parked_external', 'task.unparked', 'task.handed_back', 'mission.intake_completed',
+  'brain.learned',
 ]);
 
 export function isSemanticEvent(body: TandemiseEventBody): boolean {

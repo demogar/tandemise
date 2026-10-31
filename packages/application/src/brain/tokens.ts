@@ -2,6 +2,7 @@ import { token } from '@tandemise/kernel';
 import type { BrainService } from './brain-service.js';
 import type { BrainSyncLoop } from './sync-loop.js';
 import type { BrainContextSupply } from './context-supply.js';
+import type { BrainSignals, WorktreeDiff } from './signals.js';
 import type { BrainHostPort, BrainRecordRepositoryPort, BrainRepoPort, WorkspaceBrainRepositoryPort } from '@tandemise/domain';
 
 /**
@@ -23,3 +24,7 @@ export const BRAIN_SERVICE = token<BrainService>('application.BrainService');
 export const BRAIN_SYNC_LOOP = token<BrainSyncLoop>('application.BrainSyncLoop');
 /** What each attempt reads from the brain; the executor's optional `brain` dep. */
 export const BRAIN_CONTEXT_SUPPLY = token<BrainContextSupply>('application.BrainContextSupply');
+/** Holds, rejections and gates become lessons; the daemon adds it to the lifecycle. */
+export const BRAIN_SIGNALS = token<BrainSignals>('application.BrainSignals');
+/** A diff of a task's working directory, for the reflector's evidence; bound by the daemon. */
+export const BRAIN_WORKTREE_DIFF = token<WorktreeDiff>('port.BrainWorktreeDiff');

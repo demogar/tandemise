@@ -492,6 +492,7 @@ async function brainHarness(name) {
   const hostPort = await brainHost();
   container.rebind(app.BRAIN_REPO, () => repoPort, { source: 'check' });
   container.rebind(app.BRAIN_HOST, () => hostPort, { source: 'check' });
+  container.bind(app.BRAIN_WORKTREE_DIFF, () => async (dir) => { try { return execFileSync('git', ['diff'], { cwd: dir, encoding: 'utf8' }); } catch { return ''; } }, { source: 'check' });
   const ctx = await import('@tandemise/context');
   const prompts = [];
   const realCompiler = ctx.createContextCompiler();
@@ -983,6 +984,124 @@ if (H1 !== null && (wants('tools') || wants('signals') || wants('promotion') || 
   check('without a brain there is no brain.propose line', bare1.task.status === 'SUCCEEDED' && !bare1.prompt.includes(NOTE) && bare1.run.brain === null, [bare1.task.status, bare1.run?.brain]);
   check('the run view summarises what it knew', view.summary === 'Loaded 1 rules file and 2 lessons; read 1 more.' || /^Loaded 1 rules file and \d+ lessons?; read 1 more\.$/.test(view.summary), view.summary);
   check('the run view lists the fetched lesson and the proposals', view.fetched.some((e) => e.id === npmLesson.entry.id) && view.proposed.length === 5 && view.shortSha === view.sha.slice(0, 7));
+}
+
+// ------------------------------------------------------------------ signals
+if (H1 !== null && (wants('signals') || wants('promotion') || wants('intake'))) {
+  section('signals: holds, rejections and gates become lessons through the reflector');
+  const { services: s1, caller: c1, ws: ws1 } = H1;
+  const { FAKE_ADAPTER_ID } = await import('@tandemise/runtime-generic');
+  const now = () => shared.systemClock.now();
+  const fence = (obj) => `Here is what I learned.\n\n\`\`\`json\n${JSON.stringify(obj)}\n\`\`\`\n`;
+  const reply = (marker, obj) => ({ kind: 'message', text: typeof obj === 'string' ? obj : fence(obj), when: { promptIncludes: marker } });
+  const reflectorProfile = H1.r(app.RUNTIME_PROFILE_REPOSITORY).create({
+    id: shared.ids.runtimeProfile(), workspaceId: null, adapterId: FAKE_ADAPTER_ID, name: 'reflector', executablePath: null, args: [],
+    settings: { script: { steps: [
+      reply('HOLD-DIFF-LINE', { lessons: [{ text: 'Keep the header sticky on mobile.', scope: { role: 'development' } }], tags: [] }),
+      reply('design tokens', { lessons: [{ text: 'Use the design tokens, never hex colours.', scope: { role: 'development' } }], tags: [] }),
+      reply('GATE-FIXED', { lessons: [{ text: 'Run the migrations before the tests.', scope: { step: 'build' } }], tags: [] }),
+      reply('VOTE-ME', { lessons: [], tags: [{ id: '__LOADED__', tag: 'harmful' }] }),
+      reply('SAY-SECRET', { lessons: [{ text: 'Set API_KEY=abcd1234 first.', scope: {} }], tags: [] }),
+      reply('BROKEN-JSON', 'not json'),
+      { kind: 'usage', inputTokens: 10, outputTokens: 5, costUsd: 0.01 },
+      { kind: 'complete', summary: 'reflected' },
+    ] } }, capabilities: [], enabled: true, maxConcurrent: 4, createdAt: now(), updatedAt: now(),
+  }).id;
+  s1.workspaces.update(ws1, { routing: { development: [reflectorProfile] } });
+  const signals = H1.r(app.BRAIN_SIGNALS);
+  await signals.start();
+  const learned = () => H1.published.filter((e) => e.body.type === 'brain.learned');
+  const passes = () => H1.r(app.BRAIN_RECORD_REPOSITORY).passes(ws1, '2000-01-01T00:00:00.000Z');
+  const promptOf = (pass) => { const f = join(H1.paths.workspace(ws1), 'brain-passes', pass.id, 'prompt.md'); return existsSync(f) ? readFileSync(f, 'utf8') : ''; };
+  const publish = (mission, task, body) => H1.r(app.EVENT_RECORDER).record({ workspaceId: ws1, missionId: mission.id, taskId: task.id }, body);
+
+  // A hold: the person changed a file in the worktree, then pressed Continue.
+  const held = await runTaskIn(H1, { title: 'Held mission' });
+  const workdir = H1.r(app.EXECUTION_TARGET_REPOSITORY).get(held.run.executionTargetId).workingDirectory;
+  writeFileSync(join(workdir, 'held-change.txt'), `HOLD-DIFF-LINE and a token ghp_${'h'.repeat(36)}\n`);
+  if (!existsSync(join(workdir, '.git'))) { git(workdir, 'init', '-q', '-b', 'main'); }
+  git(workdir, 'add', '-N', 'held-change.txt');
+  const passesBefore = passes().length;
+  publish(held.mission, held.task, { type: 'task.hold_ended', holdId: 'hold_1', ending: 'continued', endedBy: null, sessionAfter: null, durationMs: 30_000, diffStat: { files: 1, insertions: 1, deletions: 0 } });
+  await signals.idle();
+  const holdPass = passes().slice(passesBefore);
+  check('a hold runs the reflector once', holdPass.length === 1 && holdPass[0].kind === 'reflect' && holdPass[0].status === 'ok', holdPass);
+  check("the reflector's evidence has the worktree diff", promptOf(holdPass[0]).includes('HOLD-DIFF-LINE'));
+  const holdLesson = s1.brain.entries(ws1, {}).find((e) => e.text === 'Keep the header sticky on mobile.');
+  check('the hold made an active lesson from your hold', holdLesson?.state === 'active' && holdLesson.sourceLabel === 'your hold', holdLesson);
+  check('a brain.learned event names it', learned().some((e) => e.body.text === 'Keep the header sticky on mobile.' && e.body.signal === 'hold'));
+
+  const p2 = passes().length;
+  publish(held.mission, held.task, { type: 'task.hold_ended', holdId: 'hold_2', ending: 'released', endedBy: null, sessionAfter: null, durationMs: 30_000, diffStat: { files: 0, insertions: 0, deletions: 0 } });
+  await signals.idle();
+  check('a short released hold with no diff runs nothing', passes().length === p2);
+
+  // A rejection: a request-changes round with a note.
+  const rejected = await runTaskIn(H1, { title: 'Rejected mission' });
+  const note = H1.r(app.FEEDBACK_REPOSITORY).create({ id: shared.ids.feedback(), taskId: rejected.task.id, artifactId: null, authorId: 'mem_x', recordedBy: 'mem_x', text: 'Use the design tokens, not hex colours.', attachments: [], status: 'open', round: 2, createdAt: now(), updatedAt: now() });
+  const p3 = passes().length;
+  publish(rejected.mission, rejected.task, { type: 'task.round_started', round: 2, feedbackIds: [note.id], downstream: 'none', redone: [] });
+  await signals.idle();
+  const rejPass = passes().slice(p3)[0];
+  check('the rejection note reaches the reflector', rejPass !== undefined && promptOf(rejPass).includes('Use the design tokens, not hex colours.'));
+  const rejLesson = s1.brain.entries(ws1, {}).find((e) => e.text === 'Use the design tokens, never hex colours.');
+  check('it made an active lesson from the change you asked for', rejLesson?.state === 'active' && rejLesson.sourceLabel === 'a change you asked for', rejLesson);
+
+  // A gate that failed, then passed: a candidate.
+  const gated = await runTaskIn(H1, { title: 'Gated mission' });
+  const secondRun = H1.r(app.RUN_REPOSITORY).create({ ...gated.run, id: shared.ids.run(), attempt: gated.run.attempt + 1 });
+  const score = (attempt, passed) => ({ runId: attempt === 1 ? gated.run.id : secondRun.id, taskId: gated.task.id, missionId: gated.mission.id, workspaceId: ws1, roleId: 'development', model: null, skills: [], attempt, round: 1, purpose: null, gatePassed: passed, gateDetail: passed ? 'ok' : 'GATE-FIXED: tests failed', facts: { 'checks.tests': passed ? 'PASS' : 'FAIL' }, criteria: null, overBudget: 0, inputTokens: null, outputTokens: null, costUsd: null, wallTimeMs: null, evalTrial: false, scoredAt: now() });
+  H1.r(app.RUN_SCORE_REPOSITORY).insert(score(1, false));
+  H1.r(app.RUN_SCORE_REPOSITORY).insert(score(2, true));
+  publish(gated.mission, gated.task, { type: 'gate.evaluated', gate: 'checks.tests == PASS', passed: true });
+  await signals.idle();
+  const gateLesson = s1.brain.entries(ws1, {}).find((e) => e.text === 'Run the migrations before the tests.');
+  check('a gate that failed then passed is a candidate', gateLesson?.state === 'candidate' && gateLesson.sourceLabel === 'a failed check', gateLesson);
+  check('a candidate does not load until confirmed elsewhere', gateLesson !== undefined && !D.isLoadable(s1.brain.memory(ws1).entries.find((e) => e.id === gateLesson.id), now()));
+
+  // Votes from the reflector's tags on what the run loaded.
+  const voted = await runTaskIn(H1, { title: 'VOTE-ME mission' });
+  const loadedId = voted.run.brain?.loaded[0]?.id;
+  const before = s1.brain.memory(ws1).entries.find((e) => e.id === loadedId)?.harmful ?? 0;
+  const refl = H1.r(app.RUNTIME_PROFILE_REPOSITORY).get(reflectorProfile);
+  const steps = refl.settings.script.steps.map((s) => (s.when?.promptIncludes === 'VOTE-ME' ? { ...s, text: s.text.replace('__LOADED__', loadedId) } : s));
+  H1.r(app.RUNTIME_PROFILE_REPOSITORY).update(reflectorProfile, { settings: { script: { steps } } });
+  const vnote = H1.r(app.FEEDBACK_REPOSITORY).create({ id: shared.ids.feedback(), taskId: voted.task.id, artifactId: null, authorId: 'mem_x', recordedBy: 'mem_x', text: 'VOTE-ME please.', attachments: [], status: 'open', round: 2, createdAt: now(), updatedAt: now() });
+  publish(voted.mission, voted.task, { type: 'task.round_started', round: 2, feedbackIds: [vnote.id], downstream: 'none', redone: [] });
+  await signals.idle();
+  check('a harmful tag is one reflector vote', loadedId !== undefined && (s1.brain.memory(ws1).entries.find((e) => e.id === loadedId)?.harmful ?? 0) === before + 1, [loadedId, before]);
+
+  // A failure never blocks the task.
+  const broken = await runTaskIn(H1, { title: 'Broken mission' });
+  const bnote = H1.r(app.FEEDBACK_REPOSITORY).create({ id: shared.ids.feedback(), taskId: broken.task.id, artifactId: null, authorId: 'mem_x', recordedBy: 'mem_x', text: 'BROKEN-JSON here.', attachments: [], status: 'open', round: 2, createdAt: now(), updatedAt: now() });
+  const entriesBefore = s1.brain.memory(ws1).entries.length;
+  const p5 = passes().length;
+  publish(broken.mission, broken.task, { type: 'task.round_started', round: 2, feedbackIds: [bnote.id], downstream: 'none', redone: [] });
+  await signals.idle();
+  const bad = passes().slice(p5)[0];
+  check('invalid JSON is a failed pass with a reason', bad?.status === 'failed' && typeof bad.reason === 'string' && bad.reason.length > 0, bad);
+  check('and nothing is written', s1.brain.memory(ws1).entries.length === entriesBefore);
+  check('the task is untouched', H1.r(app.TASK_REPOSITORY).get(broken.task.id).status === broken.task.status);
+
+  // Scrubbing on the way in.
+  const secretRun = await runTaskIn(H1, { title: 'Secret mission' });
+  const snote = H1.r(app.FEEDBACK_REPOSITORY).create({ id: shared.ids.feedback(), taskId: secretRun.task.id, artifactId: null, authorId: 'mem_x', recordedBy: 'mem_x', text: 'SAY-SECRET now.', attachments: [], status: 'open', round: 2, createdAt: now(), updatedAt: now() });
+  publish(secretRun.mission, secretRun.task, { type: 'task.round_started', round: 2, feedbackIds: [snote.id], downstream: 'none', redone: [] });
+  await signals.idle();
+  await s1.brain.sync(ws1, 'person');
+  check('a secret in reflector output is saved redacted', s1.brain.entries(ws1, {}).some((e) => e.text.startsWith('Set API_KEY=') && e.text.includes('[redacted secret]')), s1.brain.entries(ws1, {}).filter((e) => e.text.includes('API_KEY')).map((e) => e.text));
+  const log = git(remoteDir, 'log', '-p', '--all');
+  check('the remote never sees the reflector secret or the hold token', !log.includes('abcd1234') && !log.includes('ghp_hhhh'));
+
+  // Trials teach nothing.
+  const trialMission = missionFor(H1, 'Trial mission', { evalTrialId: 'etr_trial' });
+  const p6 = passes().length;
+  H1.r(app.EVENT_RECORDER).record({ workspaceId: ws1, missionId: trialMission, taskId: held.task.id }, { type: 'task.round_started', round: 2, feedbackIds: [note.id], downstream: 'none', redone: [] });
+  await signals.idle();
+  check('a trial round runs no reflector', passes().length === p6);
+  check('every reflector prompt is free of evals/', passes().every((p) => !promptOf(p).includes('SECRET-EVAL-MARKER')));
+  check('the reflector spends on the economy model and counts its usage', passes().some((p) => p.usage?.costUsd === 0.01));
+  await signals.stop();
 }
 
 // ------------------------------------------------------------------ end

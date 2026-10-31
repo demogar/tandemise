@@ -174,6 +174,13 @@ export function bootstrap(config: DaemonConfig, options: { readonly localPersonN
     ...pickGitCredentialEnv(process.env),
     ...(process.env['GIT_CONFIG_GLOBAL'] === undefined ? {} : { GIT_CONFIG_GLOBAL: process.env['GIT_CONFIG_GLOBAL'] }),
   })), { source: 'bootstrap' });
+  // The reflector's evidence: a task's changes since its last commit, untracked files included when added.
+  container.bind(applicationTokens.BRAIN_WORKTREE_DIFF, (r) => async (directory: string) => {
+    const supervisor = r.resolve(PROCESS_SUPERVISOR);
+    const run = (args: string[]) => supervisor.run({ command: 'git', args: ['--no-pager', ...args], cwd: directory, env: { GIT_TERMINAL_PROMPT: '0' }, timeoutMs: 30_000, label: 'brain diff' });
+    const head = await run(['diff', 'HEAD']);
+    return head.exitCode === 0 ? head.stdout : (await run(['diff'])).stdout;
+  }, { source: 'bootstrap' });
   container.rebind(applicationTokens.BRAIN_HOST, (r) => new GhBrainHost(r.resolve(TOOL_COMMAND_EXECUTOR)), { source: 'bootstrap' });
 
   const services = createServices(container);
@@ -188,6 +195,7 @@ export function bootstrap(config: DaemonConfig, options: { readonly localPersonN
   // Added after the scheduler, so shutdown stops the runner first; its live trial is left for boot recovery (P3b).
   lifecycle.add(container.resolve(EVAL_RUNNER));
   lifecycle.add(container.resolve(applicationTokens.BRAIN_SYNC_LOOP));
+  lifecycle.add(container.resolve(applicationTokens.BRAIN_SIGNALS));
 
   return { container, services, lifecycle, events, projections, log, testClock };
 }

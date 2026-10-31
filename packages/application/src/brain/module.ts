@@ -7,6 +7,8 @@ import * as b from './tokens.js';
 import { BrainService } from './brain-service.js';
 import { BrainSyncLoop } from './sync-loop.js';
 import { BrainContextSupply } from './context-supply.js';
+import { BrainSignals } from './signals.js';
+import { RUNTIME_MANAGER } from '@tandemise/runtimes-core';
 import { BUILT_IN_TOOLS } from '@tandemise/integrations-core';
 import { createBrainTools } from '../tools/brain-tools.js';
 
@@ -68,6 +70,27 @@ export function bindBrain(container: Container): void {
   container.contribute(BUILT_IN_TOOLS, (r) => tools(r)[0]!, { source: SOURCE });
   container.contribute(BUILT_IN_TOOLS, (r) => tools(r)[1]!, { source: SOURCE });
   container.contribute(BUILT_IN_TOOLS, (r) => tools(r)[2]!, { source: SOURCE });
+
+  container.bind(b.BRAIN_SIGNALS, (r) => new BrainSignals({
+    brain: r.resolve(b.BRAIN_SERVICE),
+    bus: r.resolve(t.EVENT_BUS),
+    workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
+    missions: r.resolve(t.MISSION_REPOSITORY),
+    tasks: r.resolve(t.TASK_REPOSITORY),
+    runs: r.resolve(t.RUN_REPOSITORY),
+    targets: r.resolve(t.EXECUTION_TARGET_REPOSITORY),
+    roles: r.resolve(t.ROLE_REPOSITORY),
+    feedback: r.resolve(t.FEEDBACK_REPOSITORY),
+    runScores: r.resolve(t.RUN_SCORE_REPOSITORY),
+    records: r.resolve(b.BRAIN_RECORD_REPOSITORY),
+    recorder: r.resolve(t.EVENT_RECORDER),
+    runtimeManager: r.resolve(RUNTIME_MANAGER),
+    runtimeProfiles: r.resolve(t.RUNTIME_PROFILE_REPOSITORY),
+    paths: paths(r),
+    clock: clock(r),
+    log: log(r),
+    diff: r.tryResolve(b.BRAIN_WORKTREE_DIFF) ?? null,
+  }), { source: SOURCE });
 
   container.bind(b.BRAIN_SYNC_LOOP, (r) => new BrainSyncLoop(
     r.resolve(b.BRAIN_SERVICE), r.resolve(b.WORKSPACE_BRAIN_REPOSITORY), log(r).child({ component: 'brain-sync' }),
