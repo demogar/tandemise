@@ -134,6 +134,7 @@ export class DaemonSkillFiles implements SkillFilesPort {
         '--', source.url, join(dir, 'repo'),
       ], {
         timeout: CLONE_TIMEOUT_MS,
+        windowsHide: true,
         env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_LFS_SKIP_SMUDGE: '1', GIT_ASKPASS: 'echo' },
         maxBuffer: 4 * 1024 * 1024,
       });

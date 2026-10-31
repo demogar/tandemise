@@ -257,7 +257,7 @@ async function findDaemonNode(): Promise<NodeResolution> {
       }
     },
     versionOf: (path) => {
-      const out = spawnSync(path, ['--version'], { encoding: 'utf8', timeout: 5_000, env: withoutElectronNode(env) });
+      const out = spawnSync(path, ['--version'], { encoding: 'utf8', timeout: 5_000, env: withoutElectronNode(env), windowsHide: true });
       return out.status === 0 ? out.stdout.trim() : null;
     },
   });
@@ -274,7 +274,7 @@ function readLoginShellPath(): Promise<string | null> {
     execFile(
       shell,
       ['-ilc', `printf '%s' "${LOGIN_PATH_MARKER}$PATH${LOGIN_PATH_MARKER}"`],
-      { timeout: 5_000, encoding: 'utf8', env: withoutElectronNode(process.env) },
+      { timeout: 5_000, encoding: 'utf8', env: withoutElectronNode(process.env), windowsHide: true },
       (_error, stdout) => done(parseLoginShellPath(typeof stdout === 'string' ? stdout : '')),
     );
   });
@@ -298,6 +298,8 @@ async function spawnDaemon(entry: string, node: Extract<NodeResolution, { ok: tr
     // from anywhere, and the daemon outlives it.
     ...(app.isPackaged ? { cwd: homedir() } : {}),
     stdio: ['ignore', 'ignore', stderr ?? 'ignore'],
+    // The daemon is a console program to Windows; it must not get a window.
+    windowsHide: true,
     // A packaged app's daemon never opens test routes, whatever the environment says.
     env: { ...withoutElectronNode(process.env), ...node.env, ...(app.isPackaged ? { TANDEMISE_PACKAGED: '1', TANDEMISE_TEST_ROUTES: '0' } : {}) },
   });
