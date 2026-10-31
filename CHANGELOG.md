@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.9.0](https://github.com/tandemise/tandemise/compare/v0.8.0...v0.9.0) (2026-10-31)
+
+
+### Features
+
+* a brain repo per project for memory and the factory ([#70](https://github.com/tandemise/tandemise/issues/70)) ([b8e88b3](https://github.com/tandemise/tandemise/commit/b8e88b332a35c4b4987f5ab6f6042bc0ee3dbbe6))
+* a step can say the plan no longer fits, and the steps after it wait for you ([#38](https://github.com/tandemise/tandemise/issues/38)) ([9f7ee03](https://github.com/tandemise/tandemise/commit/9f7ee031a3c5c8e2ea189c9b35b2e4263c39a6fc))
+* an optional, slim, self-hosted relay ([#69](https://github.com/tandemise/tandemise/issues/69)) ([9392dd7](https://github.com/tandemise/tandemise/commit/9392dd7b6fbce787af950649c119ec1c7680e71f))
+* hold a task and work with its agent in the terminal ([#72](https://github.com/tandemise/tandemise/issues/72)) ([d87bb2c](https://github.com/tandemise/tandemise/commit/d87bb2c2037e092a691b7aa016cd39b89958aea0))
+* intake from any source into the primary tracker ([#73](https://github.com/tandemise/tandemise/issues/73)) ([654c06e](https://github.com/tandemise/tandemise/commit/654c06e862318c26ee3da7757c7d6a70a3ebccfe))
+* plan each task's steps, models and gates, and merge by risk ([#71](https://github.com/tandemise/tandemise/issues/71)) ([de9631b](https://github.com/tandemise/tandemise/commit/de9631ba7ba2a74f696461b818cc60dc08add4ac))
+* plan the rest of a mission again, keeping what is done ([#45](https://github.com/tandemise/tandemise/issues/45)) ([3bdb837](https://github.com/tandemise/tandemise/commit/3bdb8370d3efe6af6a9720f9941ab97a25d5ea5c))
+* the tandemise design system as its own package ([#75](https://github.com/tandemise/tandemise/issues/75)) ([0526630](https://github.com/tandemise/tandemise/commit/0526630913ae0e75c19824660afadd3ee587f0eb))
+
+
+### Bug Fixes
+
+* a person's step shows what came in, and questions are asked in the app ([#37](https://github.com/tandemise/tandemise/issues/37)) ([0aeda64](https://github.com/tandemise/tandemise/commit/0aeda64d54b245310839725d781e3ffedb777f78))
+* a quick change verifies what done means ([#43](https://github.com/tandemise/tandemise/issues/43)) ([388bc69](https://github.com/tandemise/tandemise/commit/388bc696a2975096b1c8a22f002008112556fda3))
+* default the claude config directory to ~/.claude ([#76](https://github.com/tandemise/tandemise/issues/76)) ([c81bc67](https://github.com/tandemise/tandemise/commit/c81bc67921d9822cdacfb9e40a191439d705d2c4))
+* review and qa can run commands on claude code ([#42](https://github.com/tandemise/tandemise/issues/42)) ([a433e6f](https://github.com/tandemise/tandemise/commit/a433e6fad71587ff761e3d6bdd8d5034941a19ee))
+* what a first real run shows reads like it was meant ([#44](https://github.com/tandemise/tandemise/issues/44)) ([0de07e7](https://github.com/tandemise/tandemise/commit/0de07e712daa15950b31f3f7f4177a9a356e7073))
+
+
+### Documentation
+
+* design hold and interact ([#59](https://github.com/tandemise/tandemise/issues/59)) ([12d583a](https://github.com/tandemise/tandemise/commit/12d583a9565e186236525274220a619a48c0a852))
+* design intake into the primary tracker ([#62](https://github.com/tandemise/tandemise/issues/62)) ([c9ae4ed](https://github.com/tandemise/tandemise/commit/c9ae4eda8b494fcec721488cba55686243bbb452))
+* design the brain repo ([#63](https://github.com/tandemise/tandemise/issues/63)) ([9b3eae7](https://github.com/tandemise/tandemise/commit/9b3eae7edb8ce0cfda2f83ae2b522763fea02eb6))
+* design the optional relay ([#61](https://github.com/tandemise/tandemise/issues/61)) ([e76536e](https://github.com/tandemise/tandemise/commit/e76536e95205f4d29bf1c1e587dca1b7e0c7503a))
+* design the planner and risk-based merge ([#67](https://github.com/tandemise/tandemise/issues/67)) ([f2ef4ab](https://github.com/tandemise/tandemise/commit/f2ef4ab32baa7444426e65bf1288ba11484bd92f))
+* notes for the tandemise pivot ([#49](https://github.com/tandemise/tandemise/issues/49)) ([27dcf0c](https://github.com/tandemise/tandemise/commit/27dcf0cb8fe1b2c5724bdb8b6d8f8fa833dd9e4f))
+* plan hold and interact ([#60](https://github.com/tandemise/tandemise/issues/60)) ([df098b1](https://github.com/tandemise/tandemise/commit/df098b171b4dfdd9e02cb78836b56de766b068e0))
+* plan the planner and risk-based merge ([#68](https://github.com/tandemise/tandemise/issues/68)) ([cf96f75](https://github.com/tandemise/tandemise/commit/cf96f75f7632ad19ba8cd5d2e4a243041f0ca078))
+
 ## [0.8.0](https://github.com/demogar/tandemise/compare/v0.7.0...v0.8.0) (2026-09-28)
 
 
