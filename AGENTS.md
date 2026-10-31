@@ -58,6 +58,6 @@ Conventional Commits, same as PR titles. Write a `## What and why` and
   `docs/superpowers/plans/`, acceptance evidence in `docs/superpowers/evidence/`.
 - Each sub-project is specced and planned before code is written, then proven
   in the real app.
-- The factory's rules live in `.tandemise/factory/{planner,routing,merge}.yaml`
-  (until the brain lands) and are documented in `docs/FACTORY.md`.
+- The factory's rules live in the brain's `factory/{planner,routing,merge}.yaml`
+  (or a repository's `.tandemise/factory/` without a brain); see `docs/FACTORY.md`.
 - The brain clone lives under `TANDEMISE_HOME/brains/`; the daemon owns it.

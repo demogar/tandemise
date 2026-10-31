@@ -112,7 +112,7 @@ export class SetupService {
     try {
       const problems: string[] = [];
       const taken: Record<string, SetupChoice> = {};
-      const skipped = new Set(['workflow', 'tracker', 'intake', 'mcps']);
+      const skipped = new Set(['workflow', 'tracker', 'intake', 'mcps', 'planner', 'routing', 'merge']);
       const usable = items.filter((item) => {
         if (item.action === 'same' || skipped.has(item.kind)) return false;
         if (item.problem !== null) { problems.push(`${item.name}: ${item.problem}`); return false; }
@@ -313,6 +313,9 @@ export class SetupService {
         case 'workflow':
         case 'tracker':
         case 'intake':
+        case 'planner':
+        case 'routing':
+        case 'merge':
         case 'mcps':
           break;
       }

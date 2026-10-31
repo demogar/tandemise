@@ -31,6 +31,10 @@ export interface ProposalServiceDeps {
   readonly clock: Clock;
   readonly log: Logger;
   readonly tmpRoot: string;
+  /** A linked brain takes proposals instead of the project repository (#51 §8, #53 Task 20). */
+  readonly brain?: () => Pick<import('../brain/brain-service.js').BrainService, 'linkOf' | 'readAt' | 'exclusive' | 'author'> | undefined;
+  readonly brainRepo?: () => Pick<import('@tandemise/domain').BrainRepoPort, 'commit' | 'moveUnpushedTo' | 'push' | 'head'> | undefined;
+  readonly brainHost?: () => Pick<import('@tandemise/domain').BrainHostPort, 'openPr'> | undefined;
 }
 
 export class ProposalService {
@@ -79,15 +83,41 @@ export class ProposalService {
     }
     const proposals = draftProposals(stats, events, current, prior);
     const opened: Proposal[] = [];
+    const link = this.deps.brain?.()?.linkOf(workspaceId);
     for (const p of proposals) {
       if (p.kind !== 'tighten') continue; // never: loosening is a person's edit
       const backtest = p.file === 'merge' && !('error' in config.merge)
         ? (await this.deps.mergePolicy().backtest(workspaceId, applyProposal(config.merge as unknown as Record<string, unknown>, p.edit))).sentence
         : null;
-      await this.#open(repository, repo, p, backtest);
+      if (link !== undefined) {
+        // The brain's promotion path: a branch in the brain repository and a PR there. A brain on this machine only gets none.
+        if (link.remote === null || !(await this.#openInBrain(workspaceId, p, backtest))) continue;
+      } else {
+        await this.#open(repository, repo, p, backtest);
+      }
       opened.push(p);
     }
     return opened;
+  }
+
+  async #openInBrain(workspaceId: WorkspaceId, p: Proposal, backtest: string | null): Promise<boolean> {
+    const brain = this.deps.brain?.();
+    const repo = this.deps.brainRepo?.();
+    const host = this.deps.brainHost?.();
+    const link = brain?.linkOf(workspaceId);
+    if (brain === undefined || repo === undefined || host === undefined || link === undefined || link.lastPulledSha === null) return false;
+    const file = `factory/${p.file}.yaml`;
+    const shown = await brain.readAt(workspaceId, link.lastPulledSha, file);
+    const raw = shown !== null ? (parseYaml(shown) as Record<string, unknown>) : (SHIPPED_FILES[p.file] as Record<string, unknown>);
+    const head = branchOf(p);
+    return brain.exclusive(workspaceId, async () => {
+      await repo.commit(link.clonePath, [{ path: file, mode: 'write', content: stringifyYaml(applyProposal(raw, p.edit)) }], p.title, brain.author());
+      await repo.moveUnpushedTo(link.clonePath, head, link.defaultBranch);
+      const pushed = await repo.push(link.clonePath, head, { setUpstream: false });
+      if (pushed !== 'pushed') return false;
+      await host.openPr({ clone: link.clonePath, head, base: link.defaultBranch, title: p.title, body: proposalBody(file, p, backtest), draft: false });
+      return true;
+    });
   }
 
   async #open(repository: Repository, repo: string, p: Proposal, backtest: string | null): Promise<void> {
@@ -116,17 +146,20 @@ export class ProposalService {
     } finally {
       await git(['worktree', 'remove', '--force', dir]);
     }
-    const body = [
-      `The factory proposes a tighter rule from what happened, for you to review (#53 §9.2). It changes \`${file}\` at \`${p.edit.path}\`.`,
-      '',
-      `Evidence: ${p.evidence.outcomeIds.length} outcomes, from missions:`,
-      ...p.evidence.missions.map((m) => `- \`${m}\``),
-      ...(backtest === null ? [] : ['', `Backtest: ${backtest}`]),
-      '',
-      'Nothing changes until this is merged. Close it to say no; it is proposed again only when the evidence doubles.',
-    ].join('\n');
-    await this.deps.pullRequests.open({ cwd: repository.path, repo, head, base, title: p.title, body });
+    await this.deps.pullRequests.open({ cwd: repository.path, repo, head, base, title: p.title, body: proposalBody(file, p, backtest) });
   }
+}
+
+function proposalBody(file: string, p: Proposal, backtest: string | null): string {
+  return [
+    `The factory proposes a tighter rule from what happened, for you to review (#53 §9.2). It changes \`${file}\` at \`${p.edit.path}\`.`,
+    '',
+    `Evidence: ${p.evidence.outcomeIds.length} outcomes, from missions:`,
+    ...p.evidence.missions.map((m) => `- \`${m}\``),
+    ...(backtest === null ? [] : ['', `Backtest: ${backtest}`]),
+    '',
+    'Nothing changes until this is merged. Close it to say no; it is proposed again only when the evidence doubles.',
+  ].join('\n');
 }
 
 const branchOf = (p: Proposal): string => `tandemise/promote/${p.id}`;

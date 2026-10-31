@@ -8,6 +8,8 @@ import { useBrain, useBrainEntries, useBrainFactory, useBrainProposals, useDaemo
 import { useWorkspaceId } from '../lib/workspace.js';
 import { dateTime } from '../lib/format.js';
 import { showFlash } from '../lib/notices.js';
+import { Factory } from './project/Factory.js';
+import { Merge } from './project/Merge.js';
 import './Brain.css';
 
 export type BrainTab = 'sync' | 'lessons' | 'proposals' | 'factory';
@@ -260,6 +262,9 @@ function FactoryTab(): JSX.Element {
           {move.isError ? <ErrorState error={move.error} /> : null}
         </div>
       ) : null}
+      {/* The planner, routing and merge rules (#53): read from the brain's factory/, edited here as a commit to it. */}
+      <Factory workspaceId={workspaceId} />
+      <Merge workspaceId={workspaceId} />
     </section>
   );
 }

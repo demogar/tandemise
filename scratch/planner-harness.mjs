@@ -7,7 +7,7 @@ import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-export async function engineHarness(HOME, { factory, tiebreak, pullRequests, commandExecutor, shipPollMs } = {}) {
+export async function engineHarness(HOME, { factory, tiebreak, pullRequests, commandExecutor, shipPollMs, brainRepo } = {}) {
   const app = await import('@tandemise/application');
   const { Container, compose } = await import('@tandemise/kernel');
   const { createLogger, createPaths, systemClock } = await import('@tandemise/shared');
@@ -60,6 +60,7 @@ export async function engineHarness(HOME, { factory, tiebreak, pullRequests, com
   if (factory !== undefined) container.rebind(app.FACTORY_CONFIG_SOURCE, () => factory, { source: 'check' });
   if (tiebreak !== undefined) container.rebind(app.TIEBREAK_RUNNER, () => tiebreak, { source: 'check' });
   if (pullRequests !== undefined) container.rebind(app.PULL_REQUEST_FLOW, () => pullRequests, { source: 'check' });
+  if (brainRepo !== undefined) container.rebind(app.BRAIN_REPO, () => brainRepo, { source: 'check' });
 
   const services = app.createServices(container);
   const scheduler = container.resolve(app.SCHEDULER);

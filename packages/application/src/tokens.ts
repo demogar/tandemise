@@ -109,6 +109,10 @@ export const ARTIFACT_STORE = token<ArtifactStorePort>('port.ArtifactStore');
 export const WORKFLOW_SOURCE = token<WorkflowSourcePort>('port.WorkflowSource');
 /** The factory's planner, routing and merge files (#53). The daemon binds the real one. */
 export const FACTORY_CONFIG_SOURCE = token<import('./ports.js').FactoryConfigSourcePort>('port.FactoryConfigSource');
+/** The factory files outside a brain: project repository, this computer, built in. The daemon binds the file one. */
+export const LOCAL_FACTORY_CONFIG_SOURCE = token<import('./ports.js').FactoryConfigSourcePort>('port.LocalFactoryConfigSource');
+/** Outcomes, local and from the brain's ledger (#53 Task 20). */
+export const OUTCOME_HISTORY = token<import('./brain/outcome-history.js').OutcomeHistory>('application.OutcomeHistory');
 /** The factory's cheap classifier pass (#53 §2). Bound to a runtime-backed runner. */
 export const TIEBREAK_RUNNER = token<import('./planning/tiebreak.js').TiebreakRunnerPort>('port.TiebreakRunner');
 /** The factory planner (#53 §5). */

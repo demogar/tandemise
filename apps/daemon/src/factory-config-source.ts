@@ -19,7 +19,7 @@ const refOf = (text: string): string => `sha256:${createHash('sha256').update(te
 export class FileFactoryConfigSource implements FactoryConfigSourcePort {
   constructor(private readonly homeDir: string) {}
 
-  async read(name: FactoryFileName, repositoryPaths: readonly string[]): Promise<LoadedFactoryFile> {
+  async read(name: FactoryFileName, repositoryPaths: readonly string[], _workspaceId?: string): Promise<LoadedFactoryFile> {
     const candidates: { origin: 'project' | 'home'; path: string }[] = [
       ...repositoryPaths.flatMap((root) => ['yaml', 'yml'].map((ext) => ({ origin: 'project' as const, path: join(root, FACTORY_DIR, `${name}.${ext}`) }))),
       ...['yaml', 'yml'].map((ext) => ({ origin: 'home' as const, path: join(this.homeDir, `${name}.${ext}`) })),

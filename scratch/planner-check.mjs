@@ -496,6 +496,84 @@ await attempt('plan-time approvals from holds', async () => {
   clearInterval(keepAlive);
 });
 
+await attempt('brain source', async () => {
+  section('brain source');
+  const { mkdtempSync, writeFileSync, mkdirSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { execFileSync } = await import('node:child_process');
+  const { engineHarness } = await import('./planner-harness.mjs');
+  const EL = await import('@tandemise/execution-local');
+  const { nullLogger } = await import('@tandemise/shared');
+  const keepAlive = setInterval(() => {}, 1000);
+  const base = mkdtempSync(join(tmpdir(), 'tdm-brainsrc-'));
+  const gitconfig = join(base, 'gitconfig');
+  writeFileSync(gitconfig, '[user]\n\tname = Check\n\temail = check@example.com\n[init]\n\tdefaultBranch = main\n[commit]\n\tgpgsign = false\n');
+  const supervisor = new EL.NodeProcessSupervisor(nullLogger);
+  const brainRepo = new EL.GitBrainRepo(supervisor, nullLogger, () => ({ GIT_CONFIG_GLOBAL: gitconfig }));
+  const boot = async () => {
+    const h = await engineHarness(join(base, 'home'), { brainRepo });
+    return h;
+  };
+  const h = await boot();
+  execFileSync('git', ['init', '-q', '-b', 'main', h.paths.root]);
+  execFileSync('git', ['-C', h.paths.root, '-c', 'user.name=c', '-c', 'user.email=c@e.com', 'commit', '-q', '--allow-empty', '-m', 'init']);
+  const code = join(base, 'code');
+  mkdirSync(code);
+  execFileSync('git', ['init', '-q', '-b', 'main', code]);
+  execFileSync('git', ['-C', code, '-c', 'user.name=c', '-c', 'user.email=c@e.com', 'commit', '-q', '--allow-empty', '-m', 'init']);
+  const caller = { personId: h.services.identity.localPerson().id };
+  const ws = (await h.services.workspaces.create(caller, { name: 'Brainy', repositoryPath: code })).workspace.id;
+  const brain = h.container.resolve(app.BRAIN_SERVICE);
+  await brain.link(caller, ws, { mode: 'local' });
+  const link = brain.linkOf(ws);
+  check('a local brain is linked', link !== undefined && link.lastPulledSha !== null, link);
+  // A person writes the brain's planner rules: every task is careful.
+  const planner = { ...app.SHIPPED_PLANNER, lanes: [{ lane: 'careful' }] };
+  await brain.exclusive(ws, async () => {
+    await brainRepo.commit(link.clonePath, [{ path: 'factory/planner.yaml', mode: 'write', content: JSON.stringify(planner) }], 'chore: careful rules', brain.author());
+  });
+  brain.markPulled(ws, await brainRepo.head(link.clonePath));
+  const sha = brain.linkOf(ws).lastPulledSha;
+  const plannerService = h.container.resolve(app.PLANNER_SERVICE);
+  const config = await plannerService.config(ws);
+  check('the planner reads factory/planner.yaml from the brain', config.origins.planner === 'brain' && config.refs.planner === `brain:${sha.slice(0, 12)}` && config.planner.lanes[0].lane === 'careful', [config.origins, config.refs]);
+  check('files the brain lacks fall back to the built-in ones', config.origins.merge === 'shipped', config.origins);
+  const m = await h.services.missions.create(caller, { workspaceId: ws, goal: 'docs: fix the readme', title: 'docs: fix the readme', workflowPreset: 'auto', successCriteria: ['It reads well.'] });
+  const predicted = await plannerService.predict(h.repo.missions.get(m.id));
+  check('planning follows the brain\'s rules', predicted.lane === 'careful', predicted.lane);
+
+  // A person's edit to the merge policy is a commit to the brain's factory/merge.yaml.
+  await h.services.mergePolicy.update(ws, { ...app.SHIPPED_MERGE, autoMerge: 'on' }, caller);
+  const head = await brainRepo.head(brain.linkOf(ws).clonePath);
+  const text = await brainRepo.readAt(brain.linkOf(ws).clonePath, head, 'factory/merge.yaml');
+  check('turning auto-merge on writes factory/merge.yaml in the brain', typeof text === 'string' && /autoMerge: on/.test(text), text?.slice(0, 120));
+  check('…and the project repository is untouched', !execFileSync('git', ['-C', code, 'ls-files'], { encoding: 'utf8' }).includes('.tandemise/factory'));
+  check('…and the merge policy now comes from the brain', (await plannerService.config(ws)).origins.merge === 'brain');
+
+  // Outcomes go into the brain's ledger, once.
+  const recorder = h.container.resolve(app.OUTCOME_RECORDER);
+  h.repo.planDecisions.create({ id: 'pld_brain', missionId: m.id, policyRef: 'x', basis: 'predicted', profile: { type: 'docs', size: 'xs', risk: 'low', areas: [], repos: [], signals: [], source: 'rules', basis: 'predicted' }, lane: 'quick', laneBecause: 'x', workflowId: 'quick', modules: [], dropped: [], steps: [], approvals: [], skipped: [], tiebreak: null, lightenedByPerson: false, createdAt: new Date().toISOString() });
+  const task = { id: 'tsk_brain', missionId: m.id, key: 'implement', executor: 'agent', stepClass: 'implement', roleId: 'development', attempts: 1, modelPolicy: null, status: 'SUCCEEDED' };
+  recorder.changesRequested(task);
+  await brain.flush(ws);
+  const history = h.container.resolve(app.OUTCOME_HISTORY);
+  const fromLedger = await history.ledger(ws);
+  check('an outcome is appended to the brain\'s ledger as an outcome op', fromLedger.filter((o) => o.mission === m.id && o.kind === 'changes_requested').length === 1, fromLedger);
+  const local = h.repo.outcomes.listByWorkspace(ws, '1970').filter((o) => o.mission === m.id);
+  await history.refresh(ws);
+  const merged = history.listByWorkspace(ws, '1970');
+  check('the routing history reads it once, from both', merged.filter((o) => o.mission === m.id).length === local.length && local.length === 1, merged.length);
+  // A restart: the same outcome is still there once.
+  const h2 = await boot();
+  const h2history = h2.container.resolve(app.OUTCOME_HISTORY);
+  await h2history.refresh(ws);
+  const again = h2history.listByWorkspace(ws, '1970');
+  check('after a restart the outcome is still there once', again.filter((o) => o.mission === m.id && o.kind === 'changes_requested').length === 1, again.length);
+  check('the brain\'s memory fold is not disturbed by outcome ops', Array.isArray(brain.memory(ws).problems) && !brain.memory(ws).problems.some((p) => /outcome/i.test(p.problem)), brain.memory(ws).problems);
+  clearInterval(keepAlive);
+});
+
 // @sections
 
 console.log(`\n${passed} passed, ${failures.length} failed`);

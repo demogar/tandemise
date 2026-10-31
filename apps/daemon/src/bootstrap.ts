@@ -34,7 +34,7 @@ import { mcpIntegrationModule } from '@tandemise/integration-mcp';
 import { browserIntegrationModule } from '@tandemise/browser';
 import { createApplicationModule, createServices, EVAL_RUNNER, SCHEDULER, type TandemiseServices,
   WORKFLOW_SOURCE,
-  FACTORY_CONFIG_SOURCE,
+  LOCAL_FACTORY_CONFIG_SOURCE,
   SKILL_FILES,
   ISSUE_TRACKER,
   PULL_REQUEST_SNAPSHOTS, PULL_REQUEST_FLOW, GIT_CREDENTIAL_ENV, pickGitCredentialEnv,
@@ -156,7 +156,7 @@ export function bootstrap(config: DaemonConfig, options: { readonly localPersonN
   container.rebind(WORKFLOW_SOURCE, (r) =>
     new FileWorkflowSource(r.resolve(LOGGER).child({ component: 'workflows' })), { source: 'bootstrap' });
   // The factory's planner, routing and merge files (#53): the same reasoning.
-  container.rebind(FACTORY_CONFIG_SOURCE, (r) =>
+  container.rebind(LOCAL_FACTORY_CONFIG_SOURCE, (r) =>
     new FileFactoryConfigSource(join(r.resolve(CONFIG).home, 'factory')), { source: 'bootstrap' });
   // The project's setup as files (P15): the same reasoning, for `.tandemise/`.
   container.rebind(SETUP_FOLDER, (r) =>

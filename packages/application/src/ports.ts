@@ -249,7 +249,7 @@ export type FactoryFileName = (typeof FACTORY_FILES)[number];
 
 export interface LoadedFactoryFile {
   readonly name: FactoryFileName;
-  readonly origin: 'project' | 'home' | 'shipped';
+  readonly origin: 'brain' | 'project' | 'home' | 'shipped';
   /** Null for the shipped file. */
   readonly path: string | null;
   /** Parsed YAML, or the shipped object; null when `error` is set. */
@@ -261,9 +261,10 @@ export interface LoadedFactoryFile {
 }
 
 export interface FactoryConfigSourcePort {
-  read(name: FactoryFileName, repositoryPaths: readonly string[]): Promise<LoadedFactoryFile>;
-  /** A person's edit or "Write the defaults": writes `<repo>/.tandemise/factory/<name>.yaml`. */
-  write(name: FactoryFileName, repositoryPath: string, raw: unknown): Promise<{ readonly path: string; readonly ref: string }>;
+  /** With `workspaceId`, a project linked to a brain reads `factory/<name>.yaml` there first (#51, #53 Task 20). */
+  read(name: FactoryFileName, repositoryPaths: readonly string[], workspaceId?: string): Promise<LoadedFactoryFile>;
+  /** A person's edit or "Write the defaults": the brain's `factory/` when linked, else `<repo>/.tandemise/factory/<name>.yaml`. */
+  write(name: FactoryFileName, repositoryPath: string, raw: unknown, workspaceId?: string): Promise<{ readonly path: string; readonly ref: string }>;
 }
 
 // ------------------------------------------------------------- coordination

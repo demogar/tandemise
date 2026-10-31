@@ -35,7 +35,7 @@ export const ONLY_A_PERSON = 'Only a person can change the merge policy.';
 
 export interface MergePolicyView {
   readonly policy: MergePolicy;
-  readonly origin: 'project' | 'home' | 'shipped';
+  readonly origin: 'brain' | 'project' | 'home' | 'shipped';
   readonly path: string | null;
   readonly error: string | null;
 }
@@ -73,7 +73,7 @@ export class MergePolicyService {
     if (repository === undefined) throw new TandemiseError('PRECONDITION_FAILED', 'This project has no repository to write the merge policy into.');
     const turningOn = before.policy.autoMerge === 'off' && policy.autoMerge === 'on';
     const tested = turningOn ? await this.backtest(workspaceId, policy) : null;
-    await this.deps.factorySource.write('merge', repository.path, policy);
+    await this.deps.factorySource.write('merge', repository.path, policy, workspaceId);
     if (turningOn) {
       const workspace = this.deps.workspaces.get(workspaceId);
       const now = this.deps.clock.now();

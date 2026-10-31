@@ -153,7 +153,7 @@ export interface RoutingView {
 
 // -------------------------------------------------------------- factory files
 
-export type FactoryFileOrigin = 'project' | 'home' | 'shipped';
+export type FactoryFileOrigin = 'brain' | 'project' | 'home' | 'shipped';
 
 export interface FactoryFileView {
   readonly name: 'planner' | 'routing' | 'merge';
@@ -186,7 +186,7 @@ export const mergePolicyRequest = z.object({ policy: z.record(z.string(), z.unkn
 
 export interface MergePolicyResponse {
   readonly policy: Readonly<Record<string, unknown>> & { readonly autoMerge: 'on' | 'off'; readonly autoMergeAtMost: number };
-  readonly origin: 'project' | 'home' | 'shipped';
+  readonly origin: 'brain' | 'project' | 'home' | 'shipped';
   readonly path: string | null;
   readonly error: string | null;
 }

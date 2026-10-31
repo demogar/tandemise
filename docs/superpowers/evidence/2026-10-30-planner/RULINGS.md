@@ -152,3 +152,21 @@ spec (`docs/superpowers/specs/2026-10-30-planner-and-merge-design.md`).
   real-runtime mode, and the scripted agent drives every scenario. PM6 now checks
   that the PR opened after the security review finished, since a ship step goes
   on to wait for CI and the review instead of ending when it opens.
+- Ruling (merge with main): the planner's migration is 024, after 022 (holds) and
+  023 (brain). `brain-check` now asserts that schema 023 is the brain migration,
+  rather than that 023 is the latest.
+- Ruling (Task 20): the brain-first factory source reads `factory/<name>.yaml` at the
+  brain's last pull (ref `brain:<sha12>`) and falls back per file to the local source.
+  A person's edit commits to the brain's `factory/` and pushes it (a local-only brain
+  takes the commit as its pull). `humanEdits: pr` is not honoured for these three
+  files yet. Outcomes go to the local table and, when linked, to the ledger as an
+  `outcome` op; the lesson fold skips that op. Routing reads local rows plus ledger
+  outcomes, deduped by id, and a link backfills the ledger once per process.
+  Proposals in a linked project are PRs in the brain repository; a local-only brain
+  gets none. Factory and Merge also show in the Brain screen's Factory tab and stay
+  in Project settings. planApproval needs no change: factory quick and standard
+  plans never ask, and careful plans always do.
+- Holds: #50's migration (022) is on main, but no hold service raises an outcome
+  yet, so `OutcomeRecorder.held` stays inert, as instructed.
+- merge-check: 10 consecutive passes after the comment-edit race fix, so the waits
+  stayed timed rather than event-driven.

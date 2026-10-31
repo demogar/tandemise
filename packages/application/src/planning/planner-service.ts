@@ -555,7 +555,7 @@ export class PlannerService {
   async #config(workspaceId: WorkspaceId, repositories: readonly Repository[], fresh: boolean): Promise<FactoryConfig> {
     const cached = this.#configs.get(workspaceId);
     if (cached !== undefined && !fresh) return cached;
-    const loaded = await loadFactoryConfig(this.deps.factory, repositories.map((r) => r.path));
+    const loaded = await loadFactoryConfig(this.deps.factory, repositories.map((r) => r.path), workspaceId);
     this.#configs.set(workspaceId, loaded);
     return loaded;
   }

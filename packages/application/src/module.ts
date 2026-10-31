@@ -52,7 +52,9 @@ import { RuntimeOverrides } from './support/runtime-overrides.js';
 import { ApprovalWaiter, createApprovalGate, createPolicyEngineToolGate } from './support/tool-policy.js';
 import { createAskHumanTool } from './tools/ask-human.js';
 import { bindBrain, brainEdits, brainWorkflows } from './brain/module.js';
-import { BRAIN_CONTEXT_SUPPLY, BRAIN_SERVICE } from './brain/tokens.js';
+import { BRAIN_CONTEXT_SUPPLY, BRAIN_HOST, BRAIN_REPO, BRAIN_SERVICE } from './brain/tokens.js';
+import { BrainFirstFactoryConfigSource } from './brain/brain-factory-config-source.js';
+import { OutcomeHistory } from './brain/outcome-history.js';
 import { RunDeadlines } from './engine/run-deadline.js';
 import { ConnectFlow } from './services/connect-flow.js';
 import { IntegrationCredentials } from './support/integration-credentials.js';
@@ -375,7 +377,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
     bind(t.PULL_REQUEST_FLOW, () => NO_PULL_REQUESTS, { source: SOURCE });
     bind(t.MERGE_WATCH, (r) => new MergeWatch({
       workspaces: r.resolve(t.WORKSPACE_REPOSITORY), missions: r.resolve(t.MISSION_REPOSITORY), tasks: r.resolve(t.TASK_REPOSITORY),
-      repositories: r.resolve(t.REPO_REPOSITORY), mergeDecisions: r.resolve(t.MERGE_DECISION_REPOSITORY), outcomeRows: r.resolve(t.OUTCOME_REPOSITORY),
+      repositories: r.resolve(t.REPO_REPOSITORY), mergeDecisions: r.resolve(t.MERGE_DECISION_REPOSITORY), outcomeRows: r.resolve(t.OUTCOME_HISTORY),
       pullRequests: r.resolve(t.PULL_REQUEST_FLOW), approvals: r.resolve(t.APPROVAL_REPOSITORY), approvalFactory: r.resolve(APPROVAL_FACTORY),
       outcomes: () => r.tryResolve(t.OUTCOME_RECORDER), recorder: r.resolve(t.EVENT_RECORDER), clock: clock(r), log: log(r).child({ component: 'merge-watch' }),
     }), { source: SOURCE });
@@ -388,14 +390,16 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       wake: () => r.resolve(t.SCHEDULER).wake(), tmpRoot: `${paths(r).root}/ship-reverts`,
     }), { source: SOURCE });
     bind(t.PROPOSAL_SERVICE, (r) => new ProposalService({
-      workspaces: r.resolve(t.WORKSPACE_REPOSITORY), planner: r.resolve(t.PLANNER_SERVICE), outcomes: r.resolve(t.OUTCOME_REPOSITORY),
+      workspaces: r.resolve(t.WORKSPACE_REPOSITORY), planner: r.resolve(t.PLANNER_SERVICE), outcomes: r.resolve(t.OUTCOME_HISTORY),
       pullRequests: r.resolve(t.PULL_REQUEST_FLOW), mergePolicy: () => r.resolve(t.MERGE_POLICY_SERVICE),
       exec: r.tryResolve(INTEGRATION_COMMAND_EXECUTOR) ?? null,
       ...(r.has(t.GIT_CREDENTIAL_ENV) ? { credentialEnv: r.resolve(t.GIT_CREDENTIAL_ENV) } : {}),
       clock: clock(r), log: log(r).child({ component: 'proposals' }), tmpRoot: `${paths(r).root}/proposals`,
+      brain: () => r.tryResolve(BRAIN_SERVICE), brainRepo: () => r.tryResolve(BRAIN_REPO), brainHost: () => r.tryResolve(BRAIN_HOST),
     }), { source: SOURCE });
     bind(t.OUTCOME_RECORDER, (r) => new OutcomeRecorder({
       outcomes: r.resolve(t.OUTCOME_REPOSITORY),
+      sink: (workspaceId, event) => { void r.resolve(t.OUTCOME_HISTORY).send(workspaceId, event); },
       missions: r.resolve(t.MISSION_REPOSITORY),
       planDecisions: r.resolve(t.PLAN_DECISION_REPOSITORY),
       runScores: r.resolve(t.RUN_SCORE_REPOSITORY),
@@ -430,7 +434,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
         approvalFactory: r.resolve(APPROVAL_FACTORY),
         evaluations: r.resolve(t.EVALUATION_REPOSITORY),
         runScores: r.resolve(t.RUN_SCORE_REPOSITORY),
-        outcomeRows: r.resolve(t.OUTCOME_REPOSITORY),
+        outcomeRows: r.resolve(t.OUTCOME_HISTORY),
         unitOfWork: r.resolve(t.UNIT_OF_WORK),
         rounds: () => r.resolve(t.FEEDBACK_ROUNDS),
         outcomes: () => r.tryResolve(t.OUTCOME_RECORDER),
@@ -673,7 +677,14 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
     // can read the filesystem rebinds it; one that cannot - a test, an embedder
     // - still gets the built-in presets rather than an unresolved token.
     bind(t.WORKFLOW_SOURCE, () => ({ list: async () => [] }), { source: SOURCE });
-    bind(t.FACTORY_CONFIG_SOURCE, () => SHIPPED_FACTORY_SOURCE, { source: SOURCE });
+    bind(t.LOCAL_FACTORY_CONFIG_SOURCE, () => SHIPPED_FACTORY_SOURCE, { source: SOURCE });
+    // A linked brain's factory/ first, then the local files (#53 Task 20).
+    bind(t.FACTORY_CONFIG_SOURCE, (r) => new BrainFirstFactoryConfigSource(
+      () => r.tryResolve(BRAIN_SERVICE), () => r.tryResolve(BRAIN_REPO), r.resolve(t.LOCAL_FACTORY_CONFIG_SOURCE),
+    ), { source: SOURCE });
+    bind(t.OUTCOME_HISTORY, (r) => new OutcomeHistory(
+      r.resolve(t.OUTCOME_REPOSITORY), () => r.tryResolve(BRAIN_SERVICE), () => r.tryResolve(BRAIN_REPO), log(r).child({ component: 'outcomes' }),
+    ), { source: SOURCE });
     bind(t.TIEBREAK_RUNNER, (r) => runtimeTiebreakRunner({
       runtimeManager: r.resolve(RUNTIME_MANAGER),
       runtimeProfiles: r.resolve(t.RUNTIME_PROFILE_REPOSITORY),
@@ -700,7 +711,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       approvalFactory: r.resolve(APPROVAL_FACTORY),
       proposals: r.resolve(t.PLAN_PROPOSAL_REPOSITORY),
       members: r.resolve(t.MEMBER_REPOSITORY),
-      outcomes: r.resolve(t.OUTCOME_REPOSITORY),
+      outcomes: r.resolve(t.OUTCOME_HISTORY),
     }), { source: SOURCE });
 
     bind(t.WORKFLOW_SERVICE, (r) => new WorkflowServiceImpl(

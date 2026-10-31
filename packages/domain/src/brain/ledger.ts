@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { OUTCOME_KINDS, type OutcomeEvent } from './outcomes.js';
 
 /**
  * The brain's memory ledger (#51 spec §5): an append-only log of events, one
@@ -64,6 +65,11 @@ export type LedgerEvent = (
   | { readonly op: 'retire'; readonly id: EntryId; readonly at: Iso; readonly by: string; readonly reason: string }
   /** A promotion's PR closed unmerged: the lesson is no longer promoted by that PR. Idempotent per PR. */
   | { readonly op: 'unpromote'; readonly id: EntryId; readonly at: Iso; readonly by: string; readonly pr: string | null }
+  /**
+   * What happened to a mission's work (#53 §9.1): routing and learning read
+   * these; the lesson fold skips them. Same per-writer, append-only rules.
+   */
+  | ({ readonly op: 'outcome'; readonly id: string; readonly at: Iso; readonly by: string } & Omit<OutcomeEvent, 'op' | 'id' | 'at' | 'by'>)
 ) & { readonly eid?: string };
 
 export interface LedgerProblem {
@@ -140,6 +146,18 @@ const eventSchema = z.discriminatedUnion('op', [
   z.object({ op: z.literal('promote'), ...base, target: z.string().min(1), pr: z.string().nullable() }),
   z.object({ op: z.literal('retire'), ...base, reason: z.string() }),
   z.object({ op: z.literal('unpromote'), ...base, pr: z.string().nullable() }),
+  z.object({
+    op: z.literal('outcome'), ...base,
+    mission: z.string().min(1), tracker: z.string().optional(),
+    lane: z.enum(['quick', 'standard', 'careful']),
+    profile: z.object({ type: z.string(), size: z.string(), risk: z.string(), areas: z.array(z.string()), sensitivity: z.string().optional() }),
+    kind: z.enum(OUTCOME_KINDS),
+    step: z.object({
+      class: z.string(), model: z.string().nullable(), attempt: z.number(), gatePassed: z.boolean(),
+      costUsd: z.number().nullable(), wallTimeMs: z.number().nullable(), taskKey: z.string().optional(),
+    }).optional(),
+    merge: z.object({ verdict: z.enum(['merge', 'ask']), score: z.number(), pr: z.string() }).optional(),
+  }),
 ]);
 
 /** Validates an event the daemon is about to write (the same schema the fold reads with). */
@@ -255,6 +273,8 @@ export function foldLedger(events: readonly LedgerEvent[], problems: readonly Le
 
   const seenEids = new Set<string>();
   for (const e of sorted) {
+    // Outcomes (#53) are read by routing, not folded into lessons.
+    if (e.op === 'outcome') continue;
     if (e.eid !== undefined) {
       if (seenEids.has(e.eid)) continue;
       seenEids.add(e.eid);

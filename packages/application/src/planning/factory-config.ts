@@ -19,7 +19,7 @@ export interface FactoryConfig {
   readonly merge: MergePolicyOrError;
   readonly problems: readonly { readonly file: FactoryFileName; readonly path: string; readonly message: string }[];
   readonly refs: Readonly<Record<FactoryFileName, string>>;
-  readonly origins: Readonly<Record<FactoryFileName, 'project' | 'home' | 'shipped'>>;
+  readonly origins: Readonly<Record<FactoryFileName, 'brain' | 'project' | 'home' | 'shipped'>>;
   readonly paths: Readonly<Record<FactoryFileName, string | null>>;
 }
 
@@ -32,11 +32,11 @@ export const SHIPPED_FILES: Readonly<Record<FactoryFileName, unknown>> = {
 /** The shipped planner, parsed once. */
 export const SHIPPED_PLANNER_CONFIG: PlannerConfig = parsePlannerConfig(SHIPPED_PLANNER).config;
 
-export async function loadFactoryConfig(source: FactoryConfigSourcePort, repositoryPaths: readonly string[]): Promise<FactoryConfig> {
+export async function loadFactoryConfig(source: FactoryConfigSourcePort, repositoryPaths: readonly string[], workspaceId?: string): Promise<FactoryConfig> {
   const [planner, routing, merge] = await Promise.all([
-    source.read('planner', repositoryPaths),
-    source.read('routing', repositoryPaths),
-    source.read('merge', repositoryPaths),
+    source.read('planner', repositoryPaths, workspaceId),
+    source.read('routing', repositoryPaths, workspaceId),
+    source.read('merge', repositoryPaths, workspaceId),
   ]);
   const problems: { file: FactoryFileName; path: string; message: string }[] = [];
 

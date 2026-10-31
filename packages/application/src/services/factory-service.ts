@@ -148,7 +148,7 @@ export class FactoryService {
     const config = await this.deps.planner.config(workspaceId);
     for (const name of FACTORY_FILES) {
       if (config.origins[name] === 'project') continue;
-      await this.deps.factorySource.write(name, repository.path, SHIPPED_FILES[name]);
+      await this.deps.factorySource.write(name, repository.path, SHIPPED_FILES[name], workspaceId);
     }
     this.deps.recorder.invalidate('workspaces');
     return this.factory(workspaceId);
@@ -248,6 +248,7 @@ function chips(decision: PlanDecision): readonly PlanChipView[] {
 
 const FILE_TITLES: Readonly<Record<FactoryFileName, string>> = { planner: 'Planner rules', routing: 'Model routing', merge: 'Merge policy' };
 const ORIGIN_WORDS: Readonly<Record<FactoryConfig['origins'][FactoryFileName], string>> = {
+  brain: 'From the brain',
   project: "From this project's repository",
   home: 'From this computer',
   shipped: 'Built in',

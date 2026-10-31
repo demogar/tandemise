@@ -201,7 +201,7 @@ export class BrainFactory {
     const canonical = (snap: SetupSnapshot): Map<string, string> => new Map(renderSetup({
       ...snap,
       project: snap.project === null ? null : { ...snap.project, knowledge: knowledge ?? snap.project.knowledge },
-      workflows: null, mcps: null, tracker: null, intake: null,
+      workflows: null, mcps: null, tracker: null, intake: null, planner: null, routing: null, merge: null,
     }).files.map((f) => [f.path, f.content]));
     const base = canonical(baseSnap);
     const theirs = canonical(readSetup(theirsFiles).snapshot);

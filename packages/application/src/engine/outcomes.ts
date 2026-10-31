@@ -3,7 +3,7 @@ import type {
   PlanDecisionRepositoryPort, RunScoreRepositoryPort,
 } from '@tandemise/domain';
 import { isTrialMission, maxSensitivity, stepClassFor } from '@tandemise/domain';
-import { ids, type Clock, type Logger, type MissionId } from '@tandemise/shared';
+import { ids, type Clock, type Logger, type MissionId, type WorkspaceId } from '@tandemise/shared';
 import type { EventRecorder } from '../support/event-recorder.js';
 
 /**
@@ -22,6 +22,8 @@ export interface OutcomeRecorderDeps {
   readonly log: Logger;
   /** Who writes them: this machine's local person, as a ledger writer would be. */
   readonly writer?: () => string;
+  /** Also sends each outcome to the brain's ledger when the project has one (#53 Task 20). */
+  readonly sink?: (workspaceId: WorkspaceId, event: OutcomeEvent) => void;
 }
 
 export class OutcomeRecorder {
@@ -80,6 +82,7 @@ export class OutcomeRecorder {
         kind, ...extra,
       };
       this.deps.outcomes.append({ ...event, workspaceId: mission.workspaceId });
+      this.deps.sink?.(mission.workspaceId, event);
       this.deps.recorder.record({ workspaceId: mission.workspaceId, missionId }, {
         type: 'task.outcome', outcomeId: event.id, kind, stepClass: event.step?.class ?? null, model: event.step?.model ?? null,
       });

@@ -18,16 +18,20 @@ reasons on the Plan tab ("Why these steps") and on the ship card. Design:
 
 They are read from, in order:
 
-1. each repository's `.tandemise/factory/<name>.yaml` (the project's default repository first);
-2. this computer's `$TANDEMISE_HOME/factory/<name>.yaml`;
-3. the built-in defaults.
+1. the project's brain, `factory/<name>.yaml` at its last pull, when the project has one;
+2. each repository's `.tandemise/factory/<name>.yaml` (the project's default repository first);
+3. this computer's `$TANDEMISE_HOME/factory/<name>.yaml`;
+4. the built-in defaults.
 
 **Project settings → Factory** shows where each came from and any rule that
 can't be read (that rule is skipped; one bad rule never stops planning), and
 **Write the defaults into the repository** gives you the built-in files to
 edit. A `merge.yaml` that can't be read is never replaced by the default: every
-pull request asks until it is fixed. Once the brain (#51) lands, these files
-move into it.
+pull request asks until it is fixed. In a project with a brain, your edits
+(the Merge switch, Write the defaults) are commits to the brain's `factory/`,
+the files show in the Brain screen's Factory tab, outcomes are written to the
+brain's ledger so every teammate routes from the same history, and the
+factory's proposals are pull requests in the brain repository.
 
 ## `planner.yaml`
 
