@@ -14,6 +14,7 @@ import { TimelinePane } from './TimelinePane.js';
 import { ArtifactsPane } from './ArtifactsPane.js';
 import { ChecksPane } from './ChecksPane.js';
 import { MetricsPane } from './MetricsPane.js';
+import { ClaimBanner, ClaimRefusal, claimHeld } from '../../components/ClaimBanner.js';
 import { isApprovalForMember, isApprovalWaitingOnMember, isHumanTaskForMember, isPlanUnstarted, planStanding } from '@tandemise/api-contract/for-me';
 import { useApprovals, useDaemonMutation, useMission, useMissionRefinement, useMyMemberId, useIssues, useRoutines } from '../../lib/queries.js';
 import { missionTone, pluralize } from '../../lib/format.js';
@@ -119,10 +120,14 @@ export function MissionDetail({ id, tab }: { id: string; tab: MissionTab }): JSX
         }
       />
 
-      {act.isError ? (
+      {act.isError && claimHeld(act.error) === null ? (
         <div style={{ padding: 'var(--s3) var(--s7) 0' }}>
           <ErrorState error={act.error} />
         </div>
+      ) : null}
+      {act.isError && claimHeld(act.error) !== null ? (
+        // Someone is working on this tracker item: the daemon's words, Take over where allowed, Not now.
+        <ClaimRefusal error={act.error} onClose={() => act.reset()} onTakenOver={() => act.mutate({ action: 'start' })} />
       ) : null}
 
       {/* On the feed, "Needs you" already says this, at the top, with the decision in reach. */}
@@ -162,6 +167,12 @@ export function MissionDetail({ id, tab }: { id: string; tab: MissionTab }): JSX
         <div className="banner banner--warn" style={{ margin: 'var(--s3) var(--s7) 0' }}>
           <Icon name="alert" size={15} />
           <span>{detail.mission.statusReason}</span>
+        </div>
+      ) : null}
+
+      {detail.claim && detail.claim.state !== 'held' ? (
+        <div style={{ padding: 'var(--s3) var(--s7) 0' }}>
+          <ClaimBanner missionId={id} claim={detail.claim} />
         </div>
       ) : null}
 

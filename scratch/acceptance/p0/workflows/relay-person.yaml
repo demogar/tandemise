@@ -1,0 +1,8 @@
+name: Relay person step
+description: One step a person does, so a mission stays running until they finish it (relay acceptance).
+steps:
+  - key: work
+    role: product
+    executor: human
+    objective: Do the work on the tracker item yourself.
+    outputs: [Evidence]

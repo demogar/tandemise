@@ -82,6 +82,7 @@ const SEMANTIC: Readonly<Record<TandemiseEventBody['type'], boolean>> = {
   'merge.merged': true,
   'merge.asked': true,
   'merge.reverted': true,
+  'brain.learned': true,
   note: true,
 };
 

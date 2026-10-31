@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { createEndpointRequest } from './relay.js';
 import {
   ACCESS_LEVELS, ARTIFACT_TYPES, skillNameProblem, AUTONOMY_LEVELS, CONTRIBUTION_MAX_BYTES, decodedSize, LIMIT_METRICS, MAX_LADDER, MAX_MODEL_NAME, MISSION_PRIORITIES, MISSION_STATUSES, OVERSIGHT_MODES, ROUTINE_HOURS, ROUTINE_KINDS, RUNTIME_CAPABILITIES,
   staffingPatchSchema,
@@ -601,6 +602,7 @@ export const evalCandidateSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('models'), roles: z.record(z.string(), z.string().min(1)) }),
   z.object({ kind: z.literal('skills'), roles: z.record(z.string(), z.array(skillRef)) }),
   z.object({ kind: z.literal('setup'), folder: z.string().min(1) }),
+  z.object({ kind: z.literal('brain'), ref: z.string().min(1) }),
 ]);
 export type EvalCandidateRequest = z.infer<typeof evalCandidateSchema>;
 
@@ -619,3 +621,34 @@ export type StartEvalRunRequest = z.infer<typeof startEvalRunRequest>;
 /** `GET /v1/workspaces/:id/evals/run-scores?days=30`. */
 export const runScoresQuery = z.object({ days: z.enum(['7', '30', '90']).default('30') });
 export type RunScoresQuery = z.infer<typeof runScoresQuery>;
+
+// ---- coordination (the optional relay, docs/superpowers/specs/2026-10-30-relay-design.md)
+
+/** Settings → Team relay → Connect. */
+export const connectRelayRequest = z.object({
+  url: z.string().trim().min(1).max(2000),
+  code: z.string().trim().min(1).max(64),
+  displayName: z.string().trim().min(1).max(120),
+  deviceLabel: z.string().trim().min(1).max(120),
+  allowInsecure: z.boolean().default(false),
+});
+export type ConnectRelayRequest = z.infer<typeof connectRelayRequest>;
+
+/** Which project's claims or mailbox: a workspace (its project key is looked up) or a project key. */
+export const projectKeyRequest = z.object({
+  workspaceId: z.string().min(1).optional(),
+  projectKey: z.string().min(1).optional(),
+});
+export type ProjectKeyRequest = z.infer<typeof projectKeyRequest>;
+
+/** "Take over", for the mission on this machine that should hold the claim. */
+export const takeOverClaimRequest = z.object({ missionId: z.string().min(1).nullable().default(null) });
+
+/** A local runner's pull from the daemon's mailbox. */
+export const coordinationPullRequest = projectKeyRequest.extend({
+  max: z.number().int().min(1).max(50).default(10),
+  leaseSeconds: z.number().int().min(1).max(300).default(60),
+});
+
+/** A webhook endpoint created through the daemon: for a workspace's project, or a project key. */
+export const coordinationEndpointRequest = createEndpointRequest.omit({ projectKey: true }).merge(projectKeyRequest);

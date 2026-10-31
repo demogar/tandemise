@@ -24,4 +24,5 @@ export type { WorktreeTargetDeps } from './targets/worktree-factory.js';
 export { WorkspaceProvisioner } from './workspace-provisioner.js';
 export type { MissionLayout, WorkspaceLayout } from './workspace-provisioner.js';
 
-export { executionLocalModule, GIT_SERVICE, WORKSPACE_PROVISIONER } from './module.js';
+export { executionLocalModule, BRAIN_REPO, GIT_SERVICE, WORKSPACE_PROVISIONER } from './module.js';
+export { GitBrainRepo, LEDGER_APPEND_ONLY, remoteUrl } from './git/brain-repo.js';

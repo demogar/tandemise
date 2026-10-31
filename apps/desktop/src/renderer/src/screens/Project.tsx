@@ -12,6 +12,7 @@ import { Factory } from './project/Factory.js';
 import { Merge } from './project/Merge.js';
 import { Issues } from './project/Issues.js';
 import { SetupAsCode } from './project/SetupAsCode.js';
+import { BrainLink } from './project/BrainLink.js';
 
 const AUTONOMY_ROWS: readonly { key: keyof AutonomySettings; label: string; hint: string; options: readonly string[] }[] = [
   { key: 'planApproval', label: 'Plan approval', hint: 'Show the proposed task graph before anything runs.', options: ['ask', 'auto'] },
@@ -205,6 +206,8 @@ export function Project(): JSX.Element {
 
               <Factory key={workspace.id} workspaceId={workspace.id} />
               <Merge key={`merge-${workspace.id}`} workspaceId={workspace.id} />
+
+              <BrainLink key={`brain-${workspace.id}`} workspaceId={workspace.id} ownerHint={workspace.name.toLowerCase().replace(/[^a-z0-9-]+/g, '-')} />
 
               <SetupAsCode
                 key={workspace.id}

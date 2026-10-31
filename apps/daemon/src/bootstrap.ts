@@ -24,12 +24,12 @@ import {
   executionCoreModule, PROCESS_SUPERVISOR,
   CLOCK as EXECUTION_CLOCK, LOGGER as EXECUTION_LOGGER, PATHS as EXECUTION_PATHS,
 } from '@tandemise/execution-core';
-import { executionLocalModule } from '@tandemise/execution-local';
+import { GitBrainRepo, executionLocalModule } from '@tandemise/execution-local';
 import {
   integrationsCoreModule,
   BACKGROUND_PROCESS_LAUNCHER, COMMAND_EXECUTOR as TOOL_COMMAND_EXECUTOR,
 } from '@tandemise/integrations-core';
-import { GhIssueTracker, GhPullRequestFlow, GhPullRequestSnapshots, githubIntegrationModule } from '@tandemise/integration-github';
+import { GhBrainHost, GhIssueTracker, GhPullRequestFlow, GhPullRequestSnapshots, githubIntegrationModule } from '@tandemise/integration-github';
 import { mcpIntegrationModule } from '@tandemise/integration-mcp';
 import { browserIntegrationModule } from '@tandemise/browser';
 import { createApplicationModule, createServices, EVAL_RUNNER, SCHEDULER, type TandemiseServices,
@@ -54,12 +54,17 @@ import { FileSetupFolder } from './setup-folder.js';
 import { FileWorkflowSource } from './workflow-source.js';
 import { FileFactoryConfigSource } from './factory-config-source.js';
 import { DaemonSkillFiles } from './skill-files.js';
+import { SwitchableCoordination, type RelayFactory } from './coordination.js';
+import type { SqlHandle } from '@tandemise/coordination';
+import { relayFactory } from '@tandemise/coordination-relay';
 
 export const CLOCK = token<Clock>('Clock');
 export const LOGGER = token<Logger>('Logger');
 export const EVENT_BUS = token<EventBusPort>('EventBusPort');
 export const PROJECTION_BUS = token<ProjectionBusPort>('ProjectionBusPort');
 export const CONFIG = token<DaemonConfig>('DaemonConfig');
+/** The daemon's coordination switch (relay spec): local, or a team relay, swapped in place. */
+export const COORDINATION_SWITCH = token<SwitchableCoordination>('daemon.Coordination');
 
 export interface Bootstrapped {
   readonly container: Container;
@@ -80,7 +85,7 @@ export interface Bootstrapped {
  * `requires`, so this list is a readable manifest rather than a fragile
  * sequence - and adding a capability really is one more entry here.
  */
-export function bootstrap(config: DaemonConfig, options: { readonly localPersonName?: string } = {}): Bootstrapped {
+export function bootstrap(config: DaemonConfig, options: { readonly localPersonName?: string; readonly relayFactory?: RelayFactory | null } = {}): Bootstrapped {
   const log = createLogger({ level: config.logLevel, base: { component: 'daemon' } });
   const container = new Container();
   const events = new InMemoryEventBus();
@@ -177,6 +182,42 @@ export function bootstrap(config: DaemonConfig, options: { readonly localPersonN
   // remote, so it may use their ssh-agent or askpass helper. Given to that
   // fetch alone, read when it runs; the tool runner's allowlist stays as it is.
   container.bind(GIT_CREDENTIAL_ENV, () => () => pickGitCredentialEnv(process.env), { source: 'bootstrap' });
+  // The brain (#51): git with the person's credential variables (and their own
+  // git config location, when they moved it), and gh for repositories and PRs.
+  container.rebind(applicationTokens.BRAIN_REPO, (r) => new GitBrainRepo(r.resolve(PROCESS_SUPERVISOR), log.child({ component: 'brain-git' }), () => ({
+    ...pickGitCredentialEnv(process.env),
+    ...(process.env['GIT_CONFIG_GLOBAL'] === undefined ? {} : { GIT_CONFIG_GLOBAL: process.env['GIT_CONFIG_GLOBAL'] }),
+  })), { source: 'bootstrap' });
+  // The reflector's evidence: a task's changes since its last commit, untracked files included when added.
+  container.bind(applicationTokens.BRAIN_WORKTREE_DIFF, (r) => async (directory: string) => {
+    const supervisor = r.resolve(PROCESS_SUPERVISOR);
+    const run = (args: string[]) => supervisor.run({ command: 'git', args: ['--no-pager', ...args], cwd: directory, env: { GIT_TERMINAL_PROMPT: '0' }, timeoutMs: 30_000, label: 'brain diff' });
+    const head = await run(['diff', 'HEAD']);
+    return head.exitCode === 0 ? head.stdout : (await run(['diff'])).stdout;
+  }, { source: 'bootstrap' });
+  container.rebind(applicationTokens.BRAIN_HOST, (r) => new GhBrainHost(r.resolve(TOOL_COMMAND_EXECUTOR)), { source: 'bootstrap' });
+
+  // Who works on what with the team (relay spec): one switch, bound to both
+  // coordination ports, over the persistence database's own handle.
+  container.bind(COORDINATION_SWITCH, (r) => new SwitchableCoordination({
+    db: r.resolve(persistenceTokens.DATABASE).handle as unknown as SqlHandle,
+    settings: r.resolve(applicationTokens.SETTINGS_STORE),
+    secrets: r.resolve(applicationTokens.SECRET_STORE),
+    clock,
+    log,
+    localName: options.localPersonName ?? 'You',
+    // The relay client is a provider: bootstrap is the one place that names it.
+    relayFactory: options.relayFactory === undefined ? relayFactory : options.relayFactory,
+    setRelayHandle: (handle) => {
+      const me = r.resolve(applicationTokens.IDENTITY).localPerson();
+      const handles: Record<string, string> = { ...me.handles };
+      if (handle === null) delete handles['relay'];
+      else handles['relay'] = handle;
+      r.resolve(applicationTokens.PERSON_REPOSITORY).update(me.id, { handles });
+    },
+  }), { source: 'bootstrap' });
+  container.bind(applicationTokens.COORDINATION, (r) => r.resolve(COORDINATION_SWITCH), { source: 'bootstrap' });
+  container.bind(applicationTokens.COORDINATION_CONTROL, (r) => r.resolve(COORDINATION_SWITCH), { source: 'bootstrap' });
 
   const services = createServices(container);
 
@@ -189,6 +230,8 @@ export function bootstrap(config: DaemonConfig, options: { readonly localPersonN
   lifecycle.add(container.resolve(SCHEDULER));
   // Added after the scheduler, so shutdown stops the runner first; its live trial is left for boot recovery (P3b).
   lifecycle.add(container.resolve(EVAL_RUNNER));
+  lifecycle.add(container.resolve(applicationTokens.BRAIN_SYNC_LOOP));
+  lifecycle.add(container.resolve(applicationTokens.BRAIN_SIGNALS));
 
   return { container, services, lifecycle, events, projections, log, testClock };
 }

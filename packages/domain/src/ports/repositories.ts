@@ -21,6 +21,7 @@ import type { ExecutionTargetRecord, ResourceLease, TargetStatus } from '../enti
 import type { Integration } from '../entities/integration.js';
 import type { WorkerAssignment } from '../entities/assignment.js';
 import type { RunEventRecord, TandemiseEventBody } from '../event.js';
+import type { BrainPass, BrainProposal, WorkspaceBrain } from '../entities/brain.js';
 import type { Decision } from '../entities/decision.js';
 import type { CheckResult, Evaluation } from '../entities/evaluation.js';
 import type { FeedbackItem, FeedbackStatus } from '../entities/feedback.js';
@@ -488,4 +489,22 @@ export interface MergeDecisionRepositoryPort {
 export interface OutcomeRepositoryPort {
   append(o: OutcomeEvent & { readonly workspaceId: WorkspaceId }): void;
   listByWorkspace(workspaceId: WorkspaceId, sinceIso: string): readonly OutcomeEvent[];
+}
+
+/** A project's brain link on this machine (#51). */
+export interface WorkspaceBrainRepositoryPort {
+  get(workspaceId: WorkspaceId): WorkspaceBrain | undefined;
+  list(): readonly WorkspaceBrain[];
+  create(brain: WorkspaceBrain): void;
+  update(workspaceId: WorkspaceId, patch: Partial<Omit<WorkspaceBrain, 'workspaceId'>>): WorkspaceBrain;
+  remove(workspaceId: WorkspaceId): void;
+}
+
+/** The brain's model passes and promotions (#51). */
+export interface BrainRecordRepositoryPort {
+  insertPass(pass: BrainPass): void;
+  passes(workspaceId: WorkspaceId, since: Timestamp): readonly BrainPass[];
+  upsertProposal(proposal: BrainProposal): void;
+  proposal(id: string): BrainProposal | undefined;
+  proposals(workspaceId: WorkspaceId): readonly BrainProposal[];
 }

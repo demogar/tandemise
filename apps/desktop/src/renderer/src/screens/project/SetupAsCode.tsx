@@ -14,6 +14,7 @@ type NeedsImport = NonNullable<SetupItemView['needsImport']>;
 const KIND_LABEL: Readonly<Record<SetupItemView['kind'], string>> = {
   settings: 'Project', wip: 'Project', monthly_limits: 'Limits', mission_limits: 'Limits',
   role: 'Role', workflow: 'Workflow', routine: 'Routine', skill: 'Skill', issues: 'Issues',
+  mcps: 'Connection', tracker: 'Tracker', intake: 'Intake',
 };
 const ACTION_LABEL: Readonly<Record<SetupItemView['action'], string>> = { add: 'Add', change: 'Change', remove: 'Remove', same: 'Same' };
 const ACTION_CLASS: Readonly<Record<SetupItemView['action'], string>> = {

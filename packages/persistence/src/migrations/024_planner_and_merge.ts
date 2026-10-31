@@ -15,14 +15,13 @@ import type { Migration } from './types.js';
  *    merge fills in later) and `outcomes` (no foreign key: routing stats
  *    outlive a deleted mission).
  *
- * The number is the next free one on this branch's base; parallel sub-projects
- * (#50, #51, #52, #54) settle the final order by merge order.
+ * Numbered after 022 (holds, #50) and 023 (the brain, #51), by merge order.
  */
 const OLD_SOURCES = `source IN ('user','spec')`;
 const NEW_SOURCES = `source IN ('user','spec','implicit')`;
 
-export const migration022: Migration = {
-  version: 22,
+export const migration024: Migration = {
+  version: 24,
   name: 'planner_and_merge',
   up: `
 ALTER TABLE missions ADD COLUMN lane_request TEXT CHECK (lane_request IN ('quick','careful'));
@@ -95,7 +94,7 @@ CREATE INDEX idx_outcomes_workspace ON outcomes(workspace_id, at);
       }
       const row = db.prepare<[], { sql: string }>(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'mission_criteria'`).get();
       if (!(row?.sql ?? '').includes(NEW_SOURCES)) {
-        throw new TandemiseError('INTERNAL', 'Migration 022 did not widen the mission_criteria source constraint; implicit criteria would be rejected.', {
+        throw new TandemiseError('INTERNAL', 'Migration 024 did not widen the mission_criteria source constraint; implicit criteria would be rejected.', {
           details: { schema: row?.sql ?? null },
         });
       }

@@ -20,6 +20,8 @@ export interface WorkspaceTeamDeps {
   readonly people: PersonRepositoryPort;
   readonly members: MemberRepositoryPort;
   readonly unitOfWork: UnitOfWork;
+  /** A linked brain hears of each edit so it can write it through (#51). */
+  readonly factoryEdits?: { edited(workspaceId: WorkspaceId, what: string): void };
 }
 
 /**
@@ -115,6 +117,7 @@ export class WorkspaceServiceImpl implements WorkspaceService {
         updatedAt: this.clock.now(),
       });
     });
+    this.team.factoryEdits?.edited(id, 'change the project settings');
     return this.view(id);
   }
 

@@ -9,3 +9,4 @@ export { GhIssueTracker } from './issues.js';
 export { GhPullRequestSnapshots } from './pull-requests.js';
 export { GhPullRequestFlow } from './pull-request-flow.js';
 export type { GhContext } from './gh.js';
+export { GhBrainHost } from './brain-host.js';

@@ -30,6 +30,7 @@ const PRIMARY: readonly NavEntry[] = [
  */
 const PROJECT: readonly NavEntry[] = [
   { href: '/project', label: 'Repositories', icon: 'folder' },
+  { href: '/brain', label: 'Brain', icon: 'book' },
   { href: '/team', label: 'Team', icon: 'workforce' },
   { href: '/skills', label: 'Skills', icon: 'book' },
   // An explicit query: the hash router keeps a query until a link names one, so a bare

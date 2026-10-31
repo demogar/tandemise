@@ -11,7 +11,7 @@ import { errorMessage, type Logger } from '@tandemise/shared';
 const run = promisify(execFile);
 const SETUP_DIR = '.tandemise';
 /** What an import reads; anything else in the folder is listed as ignored. */
-const READ = [/^tandemise\.yaml$/, /^routines\.yaml$/, /^skills\.lock$/, /^issues\.yaml$/, /^roles\/[^/]+\.md$/, /^workflows\/[^/]+\.(ya?ml|json)$/];
+const READ = [/^tandemise\.yaml$/, /^routines\.yaml$/, /^skills\.lock$/, /^issues\.yaml$/, /^tracker\.yaml$/, /^intake\.yaml$/, /^mcps\.yaml$/, /^roles\/[^/]+\.md$/, /^workflows\/[^/]+\.(ya?ml|json)$/];
 /** Tandemise's own working files: never read, never listed. */
 const SKIP = [/^out(\/|$)/, /^\.gitignore$/, /\.tandemise-staged$/];
 const STAGED_SUFFIX = '.tandemise-staged';
@@ -27,8 +27,10 @@ const STAGED_SUFFIX = '.tandemise-staged';
 export class FileSetupFolder implements SetupFolderPort {
   constructor(private readonly log: Logger) {}
 
-  async read(folder: string): Promise<{ root: string; files: Record<string, string>; ignored: string[] } | null> {
-    const root = basename(folder) === SETUP_DIR ? folder : join(folder, SETUP_DIR);
+  async read(folder: string, opts?: { readonly root?: string }): Promise<{ root: string; files: Record<string, string>; ignored: string[] } | null> {
+    // A brain keeps the same tree under `factory/` (#51 spec §2).
+    const dir = opts?.root ?? SETUP_DIR;
+    const root = basename(folder) === dir ? folder : join(folder, dir);
     try {
       if (!(await stat(root)).isDirectory()) return null;
     } catch {

@@ -208,7 +208,9 @@ function CandidateLines({ candidate }: { candidate: EvalCandidate }): JSX.Elemen
   const roles = useRoles();
   const name = (roleId: string): string => roles.data?.find((r) => r.id === roleId)?.name ?? roleId;
   const lines =
-    candidate.kind === 'setup'
+    candidate.kind === 'brain'
+      ? [`The brain's proposed change on ${candidate.ref}`]
+      : candidate.kind === 'setup'
       ? [`The setup in ${candidate.folder}`]
       : candidate.kind === 'models'
         ? Object.entries(candidate.roles).map(([roleId, model]) => `${name(roleId)} on ${model}`)
@@ -222,6 +224,7 @@ function CandidateLines({ candidate }: { candidate: EvalCandidate }): JSX.Elemen
 }
 
 function candidateLabel(candidate: EvalCandidate): string {
+  if (candidate.kind === 'brain') return 'A brain promotion';
   if (candidate.kind === 'setup') return `Setup from ${candidate.folder.split('/').filter(Boolean).slice(-1)[0] ?? candidate.folder}`;
   if (candidate.kind === 'models') {
     const models = [...new Set(Object.values(candidate.roles))];

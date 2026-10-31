@@ -80,6 +80,11 @@ export interface ProjectionDeps {
   readonly liveness?: Pick<LivenessService, 'stalled' | 'silentRuns' | 'watchOf'>;
   /** The desk's numbers and banners (P10); optional for harnesses built before it. */
   readonly desk?: Pick<DeskService, 'metrics' | 'banners'>;
+  /** The claim banner and the Unclaimed Inbox rows (relay spec); optional for harnesses built before it. */
+  readonly coordination?: {
+    missionClaim(missionId: string): MissionDetail['claim'];
+    inboxUnclaimed(workspaceId: string): NonNullable<InboxView['unclaimed']>;
+  };
 }
 
 /**
@@ -202,6 +207,7 @@ export class ProjectionServiceImpl implements ProjectionService {
       // again drops out with no state to clear (P9).
       stalled: this.deps.liveness?.stalled(workspaceId) ?? [],
       silentRuns: this.deps.liveness?.silentRuns(workspaceId) ?? [],
+      unclaimed: this.deps.coordination?.inboxUnclaimed(workspaceId) ?? [],
     };
   }
 
@@ -432,6 +438,7 @@ export class ProjectionServiceImpl implements ProjectionService {
         : { summary: this.#planSummary(mission, tasks), tasks: asPlannedTasks(tasks) },
       planIssues: this.#planIssues(mission, tasks),
       uploads: this.#uploads(id),
+      claim: this.deps.coordination?.missionClaim(id) ?? null,
     };
   }
 

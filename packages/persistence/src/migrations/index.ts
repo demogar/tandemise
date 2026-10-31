@@ -22,7 +22,9 @@ import { migration018 } from './018_skills.js';
 import { migration019 } from './019_issues.js';
 import { migration020 } from './020_evals.js';
 import { migration021 } from './021_plan_proposals.js';
-import { migration022 } from './022_planner_and_merge.js';
+import { migration022 } from './022_task_holds.js';
+import { migration023 } from './023_brain.js';
+import { migration024 } from './024_planner_and_merge.js';
 
 export type { Migration } from './types.js';
 
@@ -40,7 +42,7 @@ export const MIGRATIONS: readonly Migration[] = [
   migration001, migration002, migration003, migration004, migration005, migration006, migration007,
   migration008, migration009, migration010, migration011, migration012, migration013, migration014,
   migration015, migration016, migration017, migration018, migration019, migration020,
-  migration021, migration022,
+  migration021, migration022, migration023, migration024,
 ];
 
 /** The newest schema version this binary understands. */

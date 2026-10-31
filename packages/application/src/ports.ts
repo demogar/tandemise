@@ -1,5 +1,8 @@
 import type { ArtifactHandoff, ArtifactType, SkillFile, WorkflowDefinition, WorkflowIssue } from '@tandemise/domain';
 import type { Result, Timestamp } from '@tandemise/shared';
+import type {
+  ClaimView, CoordDeviceView, CoordMemberView, CreateEndpointRequest, CreateInviteRequest, EndpointView, ImportReport, MailboxMessage, PresenceView,
+} from '@tandemise/api-contract/relay';
 
 /**
  * Ports the mission engine owns.
@@ -123,6 +126,8 @@ export interface LoadedWorkflow {
   readonly issues: readonly WorkflowIssue[];
   /** The file's text as it is on disk, so an export can copy it byte for byte (P15). */
   readonly text?: string;
+  /** Where it was read from: the project's brain, or a code repository (#51). */
+  readonly origin?: 'brain' | 'repository';
 }
 
 /**
@@ -145,9 +150,9 @@ export interface SetupFolderPort {
   /**
    * The files of `<folder>/.tandemise/` - or of `folder` itself when it is a
    * `.tandemise` folder - as path (relative to it) → text. Null when there is
-   * no such folder.
+   * no such folder. `root` names another setup folder: a brain passes `factory`.
    */
-  read(folder: string): Promise<{ readonly root: string; readonly files: Readonly<Record<string, string>>; readonly ignored: readonly string[] } | null>;
+  read(folder: string, opts?: { readonly root?: string }): Promise<{ readonly root: string; readonly files: Readonly<Record<string, string>>; readonly ignored: readonly string[] } | null>;
   /**
    * Stages writes (absolute path → text) next to their destinations. Nothing
    * is visible until `commit` renames them into place and deletes `remove`;
@@ -259,4 +264,97 @@ export interface FactoryConfigSourcePort {
   read(name: FactoryFileName, repositoryPaths: readonly string[]): Promise<LoadedFactoryFile>;
   /** A person's edit or "Write the defaults": writes `<repo>/.tandemise/factory/<name>.yaml`. */
   write(name: FactoryFileName, repositoryPath: string, raw: unknown): Promise<{ readonly path: string; readonly ref: string }>;
+}
+
+// ------------------------------------------------------------- coordination
+
+/**
+ * Who is working on which tracker item, with or without a team relay
+ * (docs/superpowers/specs/2026-10-30-relay-design.md, §The coordination port).
+ * The daemon binds it to the local store or to the relay client; the
+ * application never learns which. Reads are synchronous from local tables and
+ * never touch the network.
+ */
+export type CoordinationStatus =
+  | { readonly kind: 'local' }
+  | { readonly kind: 'connected'; readonly host: string; readonly teamName: string }
+  | { readonly kind: 'offline'; readonly since: string; readonly pendingOps: number }
+  | { readonly kind: 'refused'; readonly reason: string };
+
+export type ClaimResult =
+  | { readonly kind: 'claimed'; readonly claim: ClaimView }
+  /** `mayTakeOver` is decided where the claim lives: the relay knows the time and who was seen when. */
+  | { readonly kind: 'held_by'; readonly claim: ClaimView; readonly self: boolean; readonly sentence: string; readonly mayTakeOver: boolean }
+  | { readonly kind: 'queued_offline'; readonly claim: ClaimView };
+
+export interface ClaimSync {
+  readonly sync: 'confirmed' | 'pending' | 'conflicted' | 'lost';
+  readonly note: string | null;
+  readonly decided: 'keep_going' | null;
+}
+
+export interface CoordinationMe {
+  readonly memberId: string;
+  readonly deviceId: string;
+  readonly role: 'admin' | 'member';
+  readonly displayName: string;
+  readonly deviceLabel: string;
+}
+
+export type CoordinationTopic = 'claims' | 'members' | 'presence' | 'mailbox';
+
+export interface CoordinationPort {
+  readonly mode: 'local' | 'relay';
+  status(): CoordinationStatus;
+  me(): CoordinationMe;
+  claim(input: { readonly projectKey: string; readonly itemRef: string; readonly itemTitle: string; readonly itemUrl: string | null; readonly localRef: string }): Promise<ClaimResult>;
+  release(claimId: string, reason: 'done' | 'released'): Promise<void>;
+  takeOver(claimId: string, localRef: string): Promise<ClaimResult>;
+  /** Active claims, from the local copy. */
+  claims(projectKey?: string): readonly ClaimView[];
+  /** The newest claim, active or ended, tied to a local mission. */
+  claimByLocalRef(localRef: string): ClaimView | null;
+  members(): readonly CoordMemberView[];
+  presence(): readonly PresenceView[];
+  /** When a member was last seen on any of their computers, as far as this install knows. */
+  holderLastSeenAt(memberId: string): string | null;
+  claimSync(claimId: string): ClaimSync;
+  keepGoing(claimId: string): void;
+  /**
+   * A mission that could not claim its item in the background (it was already
+   * held). Recorded under the claim id `lost:<localRef>`, so the mission shows
+   * Unclaimed and the person decides.
+   */
+  markLost(localRef: string, note: string): void;
+  onChange(listener: (topic: CoordinationTopic) => void): () => void;
+  readonly mailbox: {
+    pull(projectKey: string, max: number, leaseSeconds?: number): Promise<readonly MailboxMessage[]>;
+    ack(ids: readonly string[]): Promise<{ readonly acked: readonly string[]; readonly ignored: readonly string[] }>;
+  };
+}
+
+/** Connecting, importing, membership and webhooks: what Settings and the Team screen drive. */
+export interface CoordinationControlPort {
+  connect(input: { readonly url: string; readonly code: string; readonly displayName: string; readonly deviceLabel: string; readonly allowInsecure: boolean }): Promise<CoordinationStatus>;
+  /** Whether "Bring my local data" applies: connected, an admin, and the relay empty. */
+  offerImport(): boolean;
+  importLocal(): Promise<ImportReport>;
+  disconnect(): Promise<void>;
+  createInvite(req: CreateInviteRequest): Promise<{ readonly code: string; readonly expiresAt: string }>;
+  revokeDevice(id: string): Promise<void>;
+  removeMember(id: string): Promise<void>;
+  devices(): readonly CoordDeviceView[];
+  createEndpoint(req: CreateEndpointRequest): Promise<EndpointView>;
+  disableEndpoint(id: string): Promise<void>;
+  retryParked(id: string): Promise<void>;
+  dropParked(id: string): Promise<void>;
+  endpoints(): readonly EndpointView[];
+  /** Webhooks leased ten times without an ack, with the last computer that tried. */
+  parked(): Promise<readonly { readonly id: string; readonly endpointId: string; readonly receivedAt: string; readonly lastDeviceId: string | null }[]>;
+  /** Outbox writes that failed for good, in plain words. */
+  failures(): readonly { readonly id: string; readonly op: string; readonly lastError: string }[];
+  exportLines(): string[];
+  /** The relay host, when connected or offline. */
+  host(): string | null;
+  teamName(): string | null;
 }

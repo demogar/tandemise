@@ -1,5 +1,8 @@
+import type { CoordDeviceView, CoordMemberView, EndpointView, ImportReport } from '@tandemise/api-contract/relay';
 import type {
   BacktestResponse, MergePolicyResponse, FactoryView, PlanDecisionView, RoutingView, SetLaneRequest, ShipView,
+  BrainAdoptPreview, BrainEntryView, BrainFactoryView, BrainProposalView, BrainView, LinkBrainRequest, RememberView, RunBrainView,
+  CoordinationClaimRowView, CoordinationStatusView,
   IssuesOverview, RepositoryIssuesView, UpdateIssueSettingsRequest,
   ApiErrorBody,
   NotificationPreferencesView,
@@ -362,6 +365,93 @@ export class DaemonClient {
     return this.#request('POST', `/workspaces/${workspaceId}/setup/apply`, body);
   }
 
+  // ------------------------------------------------------------ the brain (#51)
+
+  brain(workspaceId: string): Promise<BrainView> {
+    return this.#get(`/workspaces/${workspaceId}/brain`);
+  }
+
+  linkBrain(workspaceId: string, body: LinkBrainRequest): Promise<BrainView | BrainAdoptPreview> {
+    return this.#request('POST', `/workspaces/${workspaceId}/brain`, body, undefined, { timeoutMs: CONTRIBUTION_TIMEOUT_MS });
+  }
+
+  applyBrain(workspaceId: string, body: { hash: string; choices: Record<string, 'mine' | 'theirs'> }): Promise<BrainView> {
+    return this.#request('POST', `/workspaces/${workspaceId}/brain/link`, body, undefined, { timeoutMs: CONTRIBUTION_TIMEOUT_MS });
+  }
+
+  shareBrain(workspaceId: string, body: { owner: string; name: string }): Promise<BrainView> {
+    return this.#request('POST', `/workspaces/${workspaceId}/brain/share`, body, undefined, { timeoutMs: CONTRIBUTION_TIMEOUT_MS });
+  }
+
+  unlinkBrain(workspaceId: string): Promise<BrainView> {
+    return this.#request('DELETE', `/workspaces/${workspaceId}/brain`);
+  }
+
+  syncBrain(workspaceId: string): Promise<BrainView> {
+    return this.#request('POST', `/workspaces/${workspaceId}/brain/sync`, {}, undefined, { timeoutMs: CONTRIBUTION_TIMEOUT_MS });
+  }
+
+  brainFactory(workspaceId: string): Promise<BrainFactoryView> {
+    return this.#get(`/workspaces/${workspaceId}/brain/factory`);
+  }
+
+  moveWorkflowIntoBrain(workspaceId: string, id: string): Promise<BrainFactoryView> {
+    return this.#request('POST', `/workspaces/${workspaceId}/brain/factory/workflows`, { id });
+  }
+
+  brainEntries(workspaceId: string, q: { scope?: string; state?: string; history?: boolean } = {}): Promise<readonly BrainEntryView[]> {
+    const params = new URLSearchParams();
+    if (q.scope) params.set('scope', q.scope);
+    if (q.state) params.set('state', q.state);
+    if (q.history) params.set('history', 'true');
+    const query = params.toString();
+    return this.#get(`/workspaces/${workspaceId}/brain/entries${query === '' ? '' : `?${query}`}`);
+  }
+
+  remember(workspaceId: string, body: { text: string; scope?: { role?: string; step?: string; repo?: string }; taskId?: string }): Promise<RememberView> {
+    return this.#request('POST', `/workspaces/${workspaceId}/brain/entries`, body);
+  }
+
+  voteEntry(id: string, body: { vote: 'helpful' | 'harmful'; taskId?: string }): Promise<BrainEntryView> {
+    return this.#request('POST', `/brain/entries/${encodeURIComponent(id)}/vote`, body);
+  }
+
+  acceptEntry(id: string): Promise<BrainEntryView> {
+    return this.#request('POST', `/brain/entries/${encodeURIComponent(id)}/accept`, {});
+  }
+
+  rejectEntry(id: string): Promise<BrainEntryView> {
+    return this.#request('POST', `/brain/entries/${encodeURIComponent(id)}/reject`, {});
+  }
+
+  retireEntry(id: string, reason?: string): Promise<BrainEntryView> {
+    return this.#request('POST', `/brain/entries/${encodeURIComponent(id)}/retire`, reason === undefined ? {} : { reason });
+  }
+
+  promoteEntry(id: string, target?: 'rules' | 'role'): Promise<unknown> {
+    return this.#request('POST', `/brain/entries/${encodeURIComponent(id)}/promote`, target === undefined ? {} : { target }, undefined, { timeoutMs: CONTRIBUTION_TIMEOUT_MS });
+  }
+
+  brainProposals(workspaceId: string): Promise<readonly BrainProposalView[]> {
+    return this.#get(`/workspaces/${workspaceId}/brain/proposals`);
+  }
+
+  acceptProposal(id: string): Promise<unknown> {
+    return this.#request('POST', `/brain/proposals/${encodeURIComponent(id)}/accept`, {});
+  }
+
+  declineProposal(id: string): Promise<unknown> {
+    return this.#request('POST', `/brain/proposals/${encodeURIComponent(id)}/decline`, {});
+  }
+
+  revertProposal(id: string): Promise<unknown> {
+    return this.#request('POST', `/brain/proposals/${encodeURIComponent(id)}/revert`, {});
+  }
+
+  runBrain(runId: string): Promise<RunBrainView> {
+    return this.#get(`/runs/${runId}/brain`);
+  }
+
   workspaceUsage(workspaceId: string, month?: string): Promise<WorkspaceUsageView> {
     return this.#get(`/workspaces/${workspaceId}/usage${month === undefined ? '' : `?month=${encodeURIComponent(month)}`}`);
   }
@@ -420,6 +510,89 @@ export class DaemonClient {
   /** Per step class, per bucket: each model's measured record and where a new step starts. */
   routing(workspaceId: string): Promise<RoutingView> {
     return this.#get(`/workspaces/${workspaceId}/routing`);
+  }
+
+  // ---- coordination (who works on what with the team; relay spec)
+
+  coordinationStatus(): Promise<CoordinationStatusView> {
+    return this.#get('/coordination/status');
+  }
+
+  coordinationClaims(workspaceId: string): Promise<readonly CoordinationClaimRowView[]> {
+    return this.#get('/coordination/claims', { workspaceId });
+  }
+
+  /** "Take over", for the mission on this machine that should hold it. */
+  takeOverClaim(claimId: string, missionId: string | null): Promise<unknown> {
+    return this.#request('POST', `/coordination/claims/${claimId}/take-over`, { missionId });
+  }
+
+  takeBackClaim(missionId: string): Promise<unknown> {
+    return this.#request('POST', `/missions/${missionId}/claim/take-back`, {});
+  }
+
+  keepGoingWithoutClaim(missionId: string): Promise<void> {
+    return this.#request('POST', `/missions/${missionId}/claim/keep-going`, {});
+  }
+
+  stopWorking(missionId: string): Promise<void> {
+    return this.#request('POST', `/missions/${missionId}/claim/stop`, {});
+  }
+
+  connectRelay(body: { url: string; code: string; displayName: string; deviceLabel: string; allowInsecure: boolean }): Promise<CoordinationStatusView> {
+    return this.#request('POST', '/coordination/connect', body);
+  }
+
+  importToRelay(): Promise<ImportReport> {
+    return this.#request('POST', '/coordination/import', {});
+  }
+
+  disconnectRelay(): Promise<CoordinationStatusView> {
+    return this.#request('POST', '/coordination/disconnect', {});
+  }
+
+  relayMembers(): Promise<{ members: readonly CoordMemberView[]; devices: readonly CoordDeviceView[] }> {
+    return this.#get('/coordination/members');
+  }
+
+  relayFailures(): Promise<readonly { id: string; op: string; lastError: string }[]> {
+    return this.#get('/coordination/failures');
+  }
+
+  createRelayInvite(body: { role: 'admin' | 'member'; displayName: string; expiresInDays?: number }): Promise<{ code: string; expiresAt: string }> {
+    return this.#request('POST', '/coordination/invites', body);
+  }
+
+  revokeDevice(id: string): Promise<void> {
+    return this.#request('DELETE', `/coordination/devices/${id}`);
+  }
+
+  removeRelayMember(id: string): Promise<void> {
+    return this.#request('DELETE', `/coordination/members/${id}`);
+  }
+
+  endpoints(): Promise<readonly EndpointView[]> {
+    return this.#get('/coordination/endpoints');
+  }
+
+  createEndpoint(body: { workspaceId: string; name: string; source: string; handshake: 'none' | 'meta_hub' | 'echo_challenge'; handshakeSecret?: string }): Promise<EndpointView> {
+    return this.#request('POST', '/coordination/endpoints', body);
+  }
+
+  disableEndpoint(id: string): Promise<void> {
+    return this.#request('POST', `/coordination/endpoints/${id}/disable`, {});
+  }
+
+  parkedMessages(): Promise<readonly { id: string; endpointId: string; receivedAt: string; lastDeviceId: string | null }[]> {
+    return this.#get('/coordination/messages/parked');
+  }
+
+  retryMessage(id: string): Promise<void> {
+    return this.#request('POST', `/coordination/messages/${id}/retry`, {});
+  }
+
+  dropMessage(id: string): Promise<void> {
+    return this.#request('POST', `/coordination/messages/${id}/drop`, {});
   }
 
   deleteMission(id: string): Promise<void> {

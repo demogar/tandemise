@@ -60,6 +60,8 @@ export interface ApprovalDeps {
   readonly shipDecided?: (approval: Approval) => Promise<void>;
   /** Plan fit's "Plan the rest again": starts the replan once the card is decided. Resolved late, as planning composes after this. */
   readonly replanRest?: (missionId: Mission['id'], note: string | null, planFitApprovalId: Approval['id']) => Promise<unknown>;
+  /** Claims the mission's tracker item before an approved plan starts it (relay spec). Optional for older harnesses. */
+  readonly claims?: { assertMayStart(mission: Mission): Promise<boolean | void>; abandonStart?(mission: Mission): Promise<void> };
   readonly clock: Clock;
   readonly log: Logger;
 }
@@ -128,9 +130,16 @@ export class ApprovalServiceImpl implements ApprovalService {
     // reading "Figma" back to the worker as a refusal would make the whole
     // asking mechanism useless.
     const approved = isAffirmative(approval.kind, option.id);
+    // Approving a plan starts the mission, so a held tracker item refuses it before the card is answered.
+    const starting = approval.kind === 'plan' && approved && approval.missionId !== null && this.deps.proposals?.get(approval.id) === undefined
+      ? this.deps.missions.get(approval.missionId) : undefined;
+    const claimed = starting !== undefined ? await this.deps.claims?.assertMayStart(starting) : false;
+    const abandon = async (): Promise<void> => { if (claimed === true && starting !== undefined) await this.deps.claims?.abandonStart?.(starting); };
     // One unit: a round that fails to start leaves no card decided for it and no
     // note recorded, and nothing reaches subscribers until it has committed.
-    const { decided, begun } = this.deps.recorder.deferred(() => this.deps.unitOfWork.transaction(() => {
+    let committed: { decided: Approval; begun: RoundBegun | null };
+    try {
+      committed = this.deps.recorder.deferred(() => this.deps.unitOfWork.transaction(() => {
       const written = this.deps.approvals.update(id, {
         status: approved ? 'APPROVED' : 'REJECTED',
         selectedOptionId: option.id,
@@ -159,6 +168,11 @@ export class ApprovalServiceImpl implements ApprovalService {
       else if (this.deps.limits?.incidentFor(written) !== undefined) this.deps.limits.decide(written, option.id, request.raiseTo, actorId);
       return { decided: written, begun: round };
     }));
+    } catch (e) {
+      await abandon();
+      throw e;
+    }
+    const { decided, begun } = committed;
 
     // Started after the commit, as a round is: planning runs in the background and must
     // not begin inside the transaction. A replan that cannot start now (a step is still

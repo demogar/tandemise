@@ -112,7 +112,9 @@ export interface EvalCase {
 export type EvalCandidate =
   | { readonly kind: 'models'; readonly roles: Readonly<Record<string, string>> }
   | { readonly kind: 'skills'; readonly roles: Readonly<Record<string, readonly SkillRef[]>> }
-  | { readonly kind: 'setup'; readonly folder: string };
+  | { readonly kind: 'setup'; readonly folder: string }
+  /** A brain promotion (#51): `factory/` and `memory/rules` at a branch of the project's brain. */
+  | { readonly kind: 'brain'; readonly ref: string; readonly rules?: readonly { readonly path: string; readonly text: string }[] };
 
 /** A role as one variant runs it: the frozen template plus its resolved role pins. */
 export interface EvalRoleVariant { readonly role: RoleTemplate; readonly pins: readonly SkillPin[] }

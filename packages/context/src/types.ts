@@ -42,6 +42,19 @@ export interface ContextRequest {
    * written without them would re-open what the person already settled.
    */
   readonly answers?: readonly AnsweredQuestion[];
+  /**
+   * The project's brain at one commit (#51 spec §10), already selected by the
+   * caller. When present, its rules replace the five knowledge fields.
+   */
+  readonly brain?: {
+    readonly sha: string;
+    /** Layer 1: always loaded. */
+    readonly rules: readonly { readonly path: string; readonly text: string }[];
+    /** Layer 2: budgeted lessons. */
+    readonly lessons: readonly { readonly id: string; readonly text: string; readonly net: number }[];
+    /** Layer 3: one line each, for brain.read. */
+    readonly index: readonly { readonly id: string; readonly title: string }[];
+  };
 }
 
 /** A refinement question and the person's answer, as a prompt states it. */

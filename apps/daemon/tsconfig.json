@@ -45,6 +45,12 @@
       "path": "../../packages/evaluation"
     },
     {
+      "path": "../../packages/coordination"
+    },
+    {
+      "path": "../../packages/coordination-relay"
+    },
+    {
       "path": "../../packages/runtime-claude"
     },
     {

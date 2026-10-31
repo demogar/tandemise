@@ -50,6 +50,8 @@ Conventional Commits, same as PR titles. Write a `## What and why` and
 
 ## Repo shape (one line each)
 
+- `apps/relay` is the optional team relay; it imports only
+  `@tandemise/api-contract/relay` and `@tandemise/coordination`.
 - `apps/desktop` (Electron + React) is a control surface only; the daemon
   `apps/daemon` owns state. Boundary rule enforced by `npm run check:boundaries`.
 - Design specs live in `docs/superpowers/specs/`, implementation plans in
@@ -58,3 +60,4 @@ Conventional Commits, same as PR titles. Write a `## What and why` and
   in the real app.
 - The factory's rules live in `.tandemise/factory/{planner,routing,merge}.yaml`
   (until the brain lands) and are documented in `docs/FACTORY.md`.
+- The brain clone lives under `TANDEMISE_HOME/brains/`; the daemon owns it.

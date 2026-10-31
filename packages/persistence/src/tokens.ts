@@ -7,6 +7,7 @@ import type {
   PlanProposalRepositoryPort, RepoRepositoryPort, RoleRepositoryPort, RunInputRepositoryPort,
   RunRepositoryPort, RuntimeProfileRepositoryPort, TaskRepositoryPort, UnitOfWork,
   WorkspaceRepositoryPort, PlanDecisionRepositoryPort, MergeDecisionRepositoryPort, OutcomeRepositoryPort,
+  WorkspaceBrainRepositoryPort, BrainRecordRepositoryPort,
 } from '@tandemise/domain';
 import type { TandemiseDatabase } from './database.js';
 
@@ -56,3 +57,5 @@ export const EVAL_REPOSITORY = token<EvalRepositoryPort>('persistence.EvalReposi
 export const PLAN_DECISION_REPOSITORY = token<PlanDecisionRepositoryPort>('persistence.PlanDecisionRepository');
 export const MERGE_DECISION_REPOSITORY = token<MergeDecisionRepositoryPort>('persistence.MergeDecisionRepository');
 export const OUTCOME_REPOSITORY = token<OutcomeRepositoryPort>('persistence.OutcomeRepository');
+export const WORKSPACE_BRAIN_REPOSITORY = token<WorkspaceBrainRepositoryPort>('persistence.WorkspaceBrainRepository');
+export const BRAIN_RECORD_REPOSITORY = token<BrainRecordRepositoryPort>('persistence.BrainRecordRepository');

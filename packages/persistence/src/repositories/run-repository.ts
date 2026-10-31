@@ -1,7 +1,7 @@
 import {
   TandemiseError, asId, type Clock, type MissionId, type RunId, type TaskId, type Timestamp,
 } from '@tandemise/shared';
-import type { Run, RunPurpose, RunRepositoryPort, RunSkill, RunStatus, RunUsage } from '@tandemise/domain';
+import type { Run, RunBrain, RunPurpose, RunRepositoryPort, RunSkill, RunStatus, RunUsage } from '@tandemise/domain';
 import type { TandemiseDatabase } from '../database.js';
 import { parseJsonOrNull, toJsonOrNull, toJson } from '../json.js';
 import { applyPatch } from '../patch.js';
@@ -33,6 +33,7 @@ interface RunRow {
   model: string | null;
   model_reason: string | null;
   skills: string | null;
+  brain: string | null;
 }
 
 function toRow(r: Run): RunRow {
@@ -63,6 +64,7 @@ function toRow(r: Run): RunRow {
     model: r.model ?? null,
     model_reason: r.modelReason ?? null,
     skills: r.skills === null || r.skills === undefined ? null : toJson(r.skills),
+    brain: r.brain === null || r.brain === undefined ? null : toJson(r.brain),
   };
 }
 
@@ -94,13 +96,14 @@ function fromRow(r: RunRow): Run {
     model: r.model,
     modelReason: r.model_reason,
     skills: parseJsonOrNull<RunSkill[]>(r.skills),
+    brain: parseJsonOrNull<RunBrain>(r.brain),
   };
 }
 
 const COLUMNS = `id, mission_id, task_id, assignment_id, attempt, status, role_id,
   runtime_profile_id, execution_target_id, external_session_id, pid, exit_code,
   error_code, error_message, usage, started_at, finished_at, heartbeat_at, last_event_at, watch_snoozed_until, agent_member_id,
-  round, purpose, model, model_reason, skills`;
+  round, purpose, model, model_reason, skills, brain`;
 
 interface UsageParams {
   runId: string;
@@ -137,7 +140,7 @@ export class SqliteRunRepository implements RunRepositoryPort {
         :id, :mission_id, :task_id, :assignment_id, :attempt, :status, :role_id,
         :runtime_profile_id, :execution_target_id, :external_session_id, :pid, :exit_code,
         :error_code, :error_message, :usage, :started_at, :finished_at, :heartbeat_at, :last_event_at, :watch_snoozed_until, :agent_member_id,
-        :round, :purpose, :model, :model_reason, :skills)`,
+        :round, :purpose, :model, :model_reason, :skills, :brain)`,
     );
     this.#update = db.handle.prepare<RunRow>(
       `UPDATE runs SET
@@ -148,7 +151,7 @@ export class SqliteRunRepository implements RunRepositoryPort {
          error_message = :error_message, usage = :usage, finished_at = :finished_at,
          heartbeat_at = :heartbeat_at, last_event_at = :last_event_at,
          watch_snoozed_until = :watch_snoozed_until, agent_member_id = :agent_member_id,
-         round = :round, purpose = :purpose, model = :model, model_reason = :model_reason, skills = :skills
+         round = :round, purpose = :purpose, model = :model, model_reason = :model_reason, skills = :skills, brain = :brain
        WHERE id = :id`,
     );
     this.#selectOne = db.handle.prepare<{ id: string }, RunRow>(

@@ -114,6 +114,14 @@ for your review or, once you turn auto-merge on for the project, merges low-risk
 changes on its own from measured facts, never from what an agent says — see
 [The factory](docs/FACTORY.md).
 
+Each project can have a **brain**: one git repository (say `garipass/brain`)
+that holds how its factory works and what it has learned. Link it in Project
+settings in one of three ways: create one on GitHub, use one a teammate made, or
+keep it on this machine. When you hold a step or ask for changes, the brain keeps
+a short lesson; the next run on that step loads it and the task shows what it
+knew; a lesson that keeps helping is proposed as a rule through a pull request.
+Sharing is `git pull` and `git push`; secrets and your own settings never go in it.
+
 Label a GitHub issue `tandemise` and it becomes a draft mission (queued when it
 says what "done" means); when the work ships, the issue gets the criteria table
 and, if you want, is closed — see [GitHub issues in and out](docs/guides/github-issues.md).
@@ -197,6 +205,15 @@ automatically; any other CLI can be wired through the generic adapter without
 writing code), and create a mission. [docs/QUICKSTART.md](docs/QUICKSTART.md)
 walks through the first one.
 
+### Working as a team (optional relay)
+
+Solo needs nothing more. A team can run its own slim relay with
+`docker compose up`: one container, one SQLite file. It tells every
+connected Tandemise who is working on which tracker item, keeps the team's
+members and per-computer tokens, and holds webhooks for a daemon to pick up.
+It runs no agents and stores no work; losing it never stops local work. See
+[apps/relay/README.md](apps/relay/README.md).
+
 ## Guides
 
 Task-oriented, one per concept:
@@ -237,7 +254,10 @@ Task-oriented, one per concept:
 | `packages/runtimes-core` | The `AgentRuntimeAdapter` contract, registry, and capability router |
 | `packages/execution-core` | Execution target contract, process supervisor, scoped filesystem |
 | `packages/integrations-core` | Tool broker, run-scoped tool gateway, MCP gateway |
+| `packages/coordination` | Who works on which tracker item: the `coord_*` schema, claim and take-over rules, the webhook mailbox, local (solo) mode |
+| `packages/coordination-relay` | The daemon's client for an optional team relay: mirror, outbox, stream |
 | `apps/daemon` | `tandemd` — HTTP/WS API, composition root, lifecycle |
+| `apps/relay` | The optional, self-hosted team relay (`node:http` + `ws` + SQLite), its CLI, Dockerfile and compose file |
 | `apps/desktop` | Electron main/preload + React renderer |
 | `native/macos-helper` | Swift helper for Accessibility, screen capture, and input |
 | `docs/` | `guides/` (how to use each feature), `QUICKSTART.md`, `WORKFLOWS.md` (workflow files and gate facts), `BUILD_BRIEF.md` (engineering contract), `APPLICATION_DESIGN.md` (mission engine), `DESIGN_SYSTEM.md` (palette, tokens, logo) |
