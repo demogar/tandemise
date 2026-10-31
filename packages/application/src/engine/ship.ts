@@ -221,7 +221,16 @@ export class ShipService {
     const protection = await this.deps.pullRequests.protection(repository.path, pr.repo, pr.baseBranch);
     const fetched = await this.#git(repository, ['fetch', '--quiet', 'origin', pr.baseBranch], true);
     const baseRef = fetched.exitCode === 0 ? `origin/${pr.baseBranch}` : pr.baseBranch;
-    const facts = await measureMergeFacts({
+    // The head being decided must be here: its branch, else GitHub's pull/<n>/head ref.
+    if ((await this.#git(repository, ['cat-file', '-e', `${pr.headSha}^{commit}`], false)).exitCode !== 0) {
+      await this.#git(repository, ['fetch', '--quiet', 'origin', pr.headBranch], true);
+      if ((await this.#git(repository, ['cat-file', '-e', `${pr.headSha}^{commit}`], false)).exitCode !== 0) {
+        await this.#git(repository, ['fetch', '--quiet', 'origin', `pull/${pr.number}/head:refs/tandemise/pr/${pr.number}`], true);
+      }
+    }
+    let measured: MergeFacts;
+    try {
+      measured = await measureMergeFacts({
       git: (args) => this.#git(repository, args, false),
       tasks: this.deps.tasks, evaluations: d.evaluations, runScores: d.runScores, criteria: this.deps.criteria, planDecisions: this.deps.planDecisions,
     }, {
@@ -230,14 +239,28 @@ export class ShipService {
       stats: foldOutcomes(d.outcomeRows.listByWorkspace(mission.workspaceId, new Date(this.deps.clock.epochMs() - 90 * 86_400_000).toISOString())),
       now: this.deps.clock.epochMs(),
     });
+    } catch (e) {
+      return this.#recordDecision(mission, task, repository, pr, factory.policyRef, commentId, null, `Tandemise couldn't measure this change (${errorMessage(e)}), so it asks.`);
+    }
+    const facts = measured;
     // Auto-merge counts only when the policy came from the brain and a person turned it on in the app (#53 §8.4);
     // a merge.yaml in a repository or on this computer saying "on" is not that.
     const policy = 'error' in factory.merge || factory.autoMergeAuthorized ? factory.merge : { ...factory.merge, autoMerge: 'off' as const, revertAutoMerge: 'off' as const };
-    const decided: MergeDecision = decideMerge(facts, policy);
+    return this.#recordDecision(mission, task, repository, pr, factory.policyRef, commentId, { facts, decided: decideMerge(facts, policy) }, null);
+  }
+
+  /** Writes a decision (or a "couldn't measure" ask) before anything acts on it, then the one PR comment. */
+  async #recordDecision(
+    mission: Mission, task: MissionTask, repository: Repository, pr: PullRequestRef, policyRef: string, commentId: number | null,
+    made: { facts: MergeFacts; decided: MergeDecision } | null, failure: string | null,
+  ): Promise<MergeDecisionRecord> {
+    const d = this.deps.decide!;
+    const decided: MergeDecision = made?.decided ?? { verdict: 'ask', score: 0, allowed: null, wouldMerge: false, factors: [], reasons: [failure ?? 'Tandemise couldn\'t measure this change, so it asks.'] };
+    const facts = made?.facts ?? null;
     const record: MergeDecisionRecord = {
       id: ids.mergeDecision(), workspaceId: mission.workspaceId, missionId: mission.id, repo: pr.repo, prNumber: pr.number, headSha: pr.headSha,
-      policyRef: factory.policyRef, verdict: decided.verdict, score: decided.score, allowed: decided.allowed, wouldMerge: decided.wouldMerge,
-      factors: decided.factors, reasons: decided.reasons, facts: facts as unknown as Record<string, unknown>,
+      policyRef, verdict: decided.verdict, score: decided.score, allowed: decided.allowed, wouldMerge: decided.wouldMerge,
+      factors: decided.factors, reasons: decided.reasons, facts: (facts ?? {}) as unknown as Record<string, unknown>,
       decidedAt: this.deps.clock.now() as Timestamp, voidedAt: null, commentId, mergedAt: null, mergedBy: null, mergeSha: null,
     };
     const scope: EventScope = { workspaceId: mission.workspaceId, missionId: mission.id, taskId: task.id };
@@ -247,7 +270,8 @@ export class ShipService {
       this.deps.recorder.record(scope, { type: 'merge.decided', decisionId: record.id, verdict: record.verdict, score: record.score, repo: pr.repo, number: pr.number, headSha: pr.headSha });
     }));
     try {
-      const comment = await this.deps.pullRequests.comment(repository.path, pr.repo, pr.number, decisionComment(decided, facts, { headSha: pr.headSha, policyRef: factory.policyRef }), commentId);
+      const text = facts === null ? `Tandemise asks for a review: ${decided.reasons.join(' ')} Policy: ${policyRef}.` : decisionComment(decided, facts, { headSha: pr.headSha, policyRef });
+      const comment = await this.deps.pullRequests.comment(repository.path, pr.repo, pr.number, text, commentId);
       d.mergeDecisions.update(record.id, { commentId: comment.id });
     } catch (e) {
       this.deps.log.warn('ship.comment_failed', { missionId: mission.id, error: errorMessage(e) });

@@ -43,6 +43,9 @@ export interface MeasureDeps {
   readonly planDecisions: Pick<PlanDecisionRepositoryPort, 'latest'>;
 }
 
+/** A measurement that failed: the decision asks rather than read an empty change. */
+export class MeasureError extends Error {}
+
 const lines = (text: string): string[] => text.split('\n').map((l) => l.trim()).filter((l) => l.length > 0);
 
 function latestScore(deps: MeasureDeps, task: MissionTask | undefined) {
@@ -55,7 +58,9 @@ const num = (v: unknown): number | null => (typeof v === 'number' ? v : null);
 export async function measureMergeFacts(deps: MeasureDeps, input: MeasureInput): Promise<MergeFacts> {
   const range = `${input.baseRef}...${input.pr.headSha}`;
   const numstat = await deps.git(['diff', '--numstat', range]);
+  if (numstat.exitCode !== 0) throw new MeasureError(firstLine(numstat.stderr) ?? 'git diff failed');
   const deleted = await deps.git(['diff', '--diff-filter=D', '--name-only', range]);
+  if (deleted.exitCode !== 0) throw new MeasureError(firstLine(deleted.stderr) ?? 'git diff failed');
   const rows = lines(numstat.stdout).map((l) => l.split('\t')).filter((p) => p.length >= 3);
   const deletedPaths = lines(deleted.stdout);
   const changedPaths = rows.map((r) => r[2]!).filter((p) => !deletedPaths.includes(p));
@@ -93,8 +98,10 @@ export async function measureMergeFacts(deps: MeasureDeps, input: MeasureInput):
   const agentTasks = tasks.filter((t) => t.executor === 'agent');
   let personCommits = 0;
   if (input.pushedSha !== null && input.pushedSha !== input.pr.headSha) {
-    const counted = await deps.git(['rev-list', '--count', `${input.pushedSha}..${input.pr.headSha}`]);
-    personCommits = counted.exitCode === 0 ? Number(counted.stdout.trim()) || 0 : 1;
+    // Commits after the one Tandemise pushed, except merges and those GitHub itself made (Update branch).
+    const log = await deps.git(['log', '--no-merges', '--format=%ce', `${input.pushedSha}..${input.pr.headSha}`]);
+    if (log.exitCode !== 0) throw new MeasureError(firstLine(log.stderr) ?? 'git log failed');
+    personCommits = lines(log.stdout).filter((email) => email !== GITHUB_COMMITTER).length;
   }
 
   const touched = areas.map((a) => input.stats.areas[a.name]).filter((a) => a !== undefined);
@@ -133,4 +140,11 @@ export async function measureMergeFacts(deps: MeasureDeps, input: MeasureInput):
       areaRecentRevert: touched.some((a) => a.lastRevertAt !== null && Date.parse(a.lastRevertAt) >= recent),
     },
   };
+}
+
+/** The committer GitHub uses for commits it makes itself, such as Update branch. */
+const GITHUB_COMMITTER = 'noreply@github.com';
+
+function firstLine(text: string): string | null {
+  return text.split('\n').map((l) => l.trim()).find((l) => l.length > 0) ?? null;
 }

@@ -282,7 +282,8 @@ await attempt('reviewed commit', async () => {
   const rows = w.h.repo.mergeDecisions.listByMission(m2.id);
   check('the first decision was voided, the second is on the new sha', rows.length === 2 && rows[0].voidedAt !== null && rows[1].headSha === moved, rows.map((r) => [r.headSha.slice(0, 7), r.voidedAt, r.mergeSha]));
   // The new head is a commit Tandemise didn't push: someone else's, so it asks.
-  check('…and asks, because someone else committed to it', rows[1].verdict === 'ask' && rows[1].reasons.includes('A person committed to this pull request, so they should look at the result.'), rows[1].reasons);
+  // The fake's moved head is a commit this machine never sees, so it can't be measured: either way it asks.
+  check('…and asks', rows[1].verdict === 'ask' && rows[1].reasons.some((r) => r.startsWith('A person committed') || r.startsWith('Tandemise couldn\'t measure')), rows[1].reasons);
   const m2calls = merges().slice(1);
   check('only the refused merge call was made, on the decided sha', m2calls.length === 1 && m2calls[0].args[m2calls[0].args.indexOf('--match-head-commit') + 1] === rows[0].headSha, m2calls.map((c) => c.args.join(' ')));
 
@@ -521,6 +522,30 @@ await attempt('review: rulesets and unknown protection', async () => {
   fake.setRepo(w.ghDir, REPO, { rules: undefined, rulesUnavailable: true });
   const unknown = await flow.protection(w.checkout, REPO, 'main');
   check('no classic protection and rulesets unreadable: unknown, so it asks', unknown.reviewRequired === null && unknown.requiredChecks === null, unknown);
+});
+
+await attempt('review: a diff that cannot be measured asks', async () => {
+  section('review: a diff that cannot be measured asks');
+  const fake = await import('./fake-gh.mjs');
+  const planner = D.parsePlannerConfig(app.SHIPPED_PLANNER).config;
+  const pr = { repo: REPO, number: 1, url: 'u', title: 't', headSha: 'h'.repeat(40), headBranch: 'b', baseBranch: 'main', state: 'OPEN', isDraft: false, mergedBy: null, mergeSha: null };
+  const deps = (git) => ({ git, tasks: { listByMission: () => [] }, evaluations: { latestChecksForTask: () => [] }, runScores: { listByTask: () => [] }, criteria: { listActive: () => [] }, planDecisions: { latest: () => undefined } });
+  const input = (pushedSha) => ({ mission: { id: 'm', workflowInputs: {} }, repository: {}, pr, baseRef: 'origin/main', checks: { state: 'PASS' }, protection: { requiredChecks: true, reviewRequired: false }, policy: D.parseMergePolicy(app.SHIPPED_MERGE), planner, pushedSha, repos: 1, stats: { areas: {} }, now: Date.now() });
+  let threw = null;
+  try { await app.measureMergeFacts(deps(async () => ({ exitCode: 128, stdout: '', stderr: 'fatal: bad revision' })), input(null)); } catch (e) { threw = e.message; }
+  check('a failing git diff is an error, never an empty change', typeof threw === 'string' && threw.includes('bad revision'), threw);
+  const ok = async (args) => ({ exitCode: 0, stdout: args[0] === 'log' ? 'noreply@github.com\nsam@example.com' : args.includes('--numstat') ? '1\t0\tsrc/a.ts' : '', stderr: '' });
+  const facts = await app.measureMergeFacts(deps(ok), input('p'.repeat(40)));
+  check('a commit GitHub made (update branch) is not a person\'s commit; a person\'s is', facts.process.personCommits === 1, facts.process.personCommits);
+  // In the engine: a head that can't be fetched is "couldn't measure", and asks.
+  const w = await world();
+  fake.setRepo(w.ghDir, REPO, { defaultCheckSequence: [[{ name: 'unit', status: 'in_progress' }], [{ name: 'unit', conclusion: 'success' }]] });
+  const m = await w.mission('fix: typo in the settings title');
+  await w.h.until(() => fake.pullRequests(w.ghDir, REPO).length > 0, 60000);
+  fake.putPullRequest(w.ghDir, REPO, { ...fake.pullRequests(w.ghDir, REPO)[0], headRefOid: '9'.repeat(40) });
+  await w.h.until(() => w.h.repo.mergeDecisions.listByMission(m.id).length > 0, 60000);
+  const d = w.h.repo.mergeDecisions.listByMission(m.id).at(-1);
+  check('a head that isn\'t here asks, saying it couldn\'t measure', d.verdict === 'ask' && d.reasons.some((r) => r.startsWith('Tandemise couldn\'t measure this change')), d.reasons);
 });
 
 // @sections
