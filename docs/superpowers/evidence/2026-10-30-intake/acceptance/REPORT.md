@@ -1,6 +1,6 @@
 # Intake acceptance report
 
-Run: 2026-10-31T03:31:46.269Z · build 4dec2cb · fresh install at /tmp/tdm-intake-run-mvvua7ah · fake YouTrack, Sentry and Slack
+Run: 2026-10-31T03:53:40.981Z · build 94c280a · fresh install at /tmp/tdm-intake-run-mvvv2ddf · fake YouTrack, Sentry and Slack
 Result: **ALL PASS** (9/9 scenarios)
 
 | Scenario | Result | Checks |
@@ -17,7 +17,7 @@ Result: **ALL PASS** (9/9 scenarios)
 
 ## I1 — The Board lists the tracker's items, grouped by mapped state
 
-- ✅ the sidebar has Board right after Home — `["Home","Board","Missions","Inbox","Artifacts","Repositories","Team","Skills","Evals","Runtimes","Integrations","Settings"]`
+- ✅ the sidebar has Board right after Home — `["Home","Board","Missions","Inbox","Artifacts","Repositories","Brain","Team","Skills","Evals","Runtimes","Integrations","Settings"]`
 - ✅ three groups: Ready, In progress, In review — `{"ready":"Ready\n1","inProgress":"In progress\n1","inReview":"In review\n1"}`
 - ✅ the header names the tracker and offers Check sources now — `"YouTrack\nRead just now\nCheck sources now"`
 - ✅ Ready lists GAR-1 "Checkout fails on Safari" with Start — `{"heading":"Ready\n1","rows":[{"key":"GAR-1","title":"Checkout fails on Safari","chips":[],"text":"GAR-1\nCheckout fails on Safari\nStart"}]}`
@@ -71,7 +71,7 @@ Result: **ALL PASS** (9/9 scenarios)
 ## I6 — Start opens a mission with the item's criteria and the tracker follows
 
 - ✅ GAR-5 is Ready with Start enabled — `"GAR-5\nTypeError: basket is null\nSentry · 132 events\nSlack · thread\nStart"`
-- ✅ Start opens the mission — `"msn_01m680201je7bgy2xt8v"`
+- ✅ Start opens the mission — `"msn_01m681a3tj957ywew5mb"`
 - ✅ the mission's Done when is the item's criterion — `"Done when\n0 of 1 verified\nU1\nCheckout no longer throws when the basket is empty\nThe spec will cover this\nNot verified"`
 - ✅ the mission was planned, never queued — `{"status":"AWAITING_PLAN_APPROVAL"}`
 - ✅ proof (fake YouTrack): GAR-5 is In Progress — `"In Progress"`
@@ -92,7 +92,7 @@ Result: **ALL PASS** (9/9 scenarios)
 
 ## I8 — The item is done: the loop closes at Sentry and in Slack
 
-- ✅ proof (fake Sentry): issue 501 resolved inCommit, in acme/web — `{"status":"resolved","statusDetails":{"inCommit":{"commit":"3ea677f0f6179ef290788cacd9a8e110bd74549d","repository":"acme/web"}}}`
+- ✅ proof (fake Sentry): issue 501 resolved inCommit, in acme/web — `{"status":"resolved","statusDetails":{"inCommit":{"commit":"6cecc885982b6f0604427efc9b123e0bb394b629","repository":"acme/web"}}}`
 - ✅ proof (fake Slack): one thread reply naming GAR-5 — `["Done: TypeError: basket is null · GAR-5"]`
 - ✅ Intake: the Sentry signal reads "Closed" — `{"fingerprint":"sentry:acme/web:501","title":"TypeError: basket is null","source":"Sentry · 3 times","status":"Closed","text":"TypeError: basket is null\nSentry · 3 times\nClosed\njust now"}`
 - ✅ Intake: the Slack signal reads "Closed" — `{"fingerprint":"slack:acme.slack.com#support:C0SUPPORT:1730000001.000100","title":"TypeError: basket is null","source":"Slack","status":"Closed","text":"TypeError: basket is null\nSlack\nClosed\n3m ago"}`
@@ -101,12 +101,12 @@ Result: **ALL PASS** (9/9 scenarios)
 
 ## I9 — A custom runner pushes with its own token, and reads its closure back
 
-- ✅ Make a token shows a tdi_ token once, with Copy — `"tdi_pM-Q…"`
+- ✅ Make a token shows a tdi_ token once, with Copy — `"tdi_uz82…"`
 - ✅ tandemise intake push exits 0 and prints the fingerprint and status — `{"code":0,"stdout":"custom:web-form:form-18: received\n","stderr":""}`
 - ✅ the token pushes to its source only: refused in the daemon's words — `{"code":1,"stdout":"","stderr":"This token can only push to 'web-form'.\n"}`
 - ✅ the signal appears in the Intake tab, filed — `{"fingerprint":"custom:web-form:form-18","title":"Export to CSV drops accents","source":"custom","status":"Filed as GAR-6","text":"Export to CSV drops accents\ncustom\nFiled as GAR-6\njust now"}`
-- ✅ tandemise intake closures lists its closure, pending — `"clo_01m6805zc26h5t001fqr custom:web-form:form-18 pending\n"`
-- ✅ --ack closes it — `{"code":0,"stdout":"clo_01m6805zc26h5t001fqr custom:web-form:form-18 closed\n","stderr":""}`
+- ✅ tandemise intake closures lists its closure, pending — `"clo_01m681e3bma59vfn3gts custom:web-form:form-18 pending\n"`
+- ✅ --ack closes it — `{"code":0,"stdout":"clo_01m681e3bma59vfn3gts custom:web-form:form-18 closed\n","stderr":""}`
 - ✅ Intake: "Closed" — `{"fingerprint":"custom:web-form:form-18","title":"Export to CSV drops accents","source":"custom","status":"Closed","text":"Export to CSV drops accents\ncustom\nClosed\njust now"}`
 - screenshot: `I9-settings-token.png`
 - screenshot: `I9-intake-custom.png`
