@@ -161,7 +161,81 @@ const tokenInQuery = await new Promise((resolve) => {
 });
 check('a token in the query is not accepted on the stream', tokenInQuery !== 'open', tokenInQuery);
 
-// ---- (Task 9 adds the mailbox, Task 10 the CLI, above this line)
+section('5. a webhook is stored, leased to one device, acked by the lease holder');
+const inviteC = await call('POST', '/relay/v1/invites', { token: A, body: { role: 'member', displayName: 'Cy' } });
+const C = (await call('POST', '/relay/v1/invites/redeem', { body: { code: inviteC.body.code, displayName: 'Cy', deviceLabel: 'Cy laptop' } })).body.deviceToken;
+const ep = await call('POST', '/relay/v1/endpoints', { token: A, body: { projectKey: 'p', name: 'Sentry', source: 'sentry', handshake: 'none' } });
+check('the admin creates an endpoint with a public URL', ep.status === 200 && ep.body.url === `http://127.0.0.1/hooks/${ep.body.slug}`, ep.body);
+const notAdmin = await call('POST', '/relay/v1/endpoints', { token: C, body: { projectKey: 'p', name: 'x', source: 'x', handshake: 'none' } });
+check('a member may not create one: 403 admin_only', notAdmin.status === 403 && reason(notAdmin) === 'admin_only', notAdmin.body);
+const hint = await openStream(C);
+hint.ws.send(JSON.stringify({ type: 'watch', projects: ['p'] }));
+await sleep(50);
+const posted = await fetch(`${base}/hooks/${ep.body.slug}?a=1`, { method: 'POST', headers: { 'content-type': 'application/json', 'sentry-hook-signature': 's', cookie: 'secret', authorization: 'Bearer nope' }, body: '{"x":1}' });
+check('POST /hooks/<slug> answers 202, empty', posted.status === 202 && (await posted.text()) === '', posted.status);
+check('…and connected daemons get a mailbox hint, never the payload', Boolean(await until(() => hint.frames.find((f) => f.type === 'mailbox' && f.project === 'p' && f.pending === 1 && !('body' in f)))), hint.frames.filter((f) => f.type === 'mailbox'));
+hint.ws.close();
+const pullA = await call('POST', '/relay/v1/mailbox/pull', { token: A, body: { project: 'p', max: 10, leaseSeconds: 30 } });
+const msg = pullA.body?.[0];
+check('device A leases it: the body as sent, the signature header kept', pullA.status === 200 && pullA.body.length === 1 && Buffer.from(msg.bodyBase64, 'base64').toString() === '{"x":1}' && msg.headers['sentry-hook-signature'] === 's' && msg.query === 'a=1', pullA.body);
+check('…cookie and authorization were dropped', msg && !('cookie' in msg.headers) && !('authorization' in msg.headers), msg?.headers);
+const pullC = await call('POST', '/relay/v1/mailbox/pull', { token: C, body: { project: 'p', max: 10, leaseSeconds: 30 } });
+check('device C gets nothing while A holds the lease', pullC.status === 200 && pullC.body.length === 0, pullC.body);
+await call('POST', '/relay/v1/test/advance-clock', { token: A, body: { ms: 31_000 } });
+const pullC2 = await call('POST', '/relay/v1/mailbox/pull', { token: C, body: { project: 'p', max: 10, leaseSeconds: 30 } });
+check('after the lease runs out, C gets it', pullC2.body.length === 1 && pullC2.body[0].id === msg.id && pullC2.body[0].attempts === 2, pullC2.body);
+const ackA = await call('POST', '/relay/v1/mailbox/ack', { token: A, body: { ids: [msg.id] } });
+check('A\'s ack is ignored (its lease is gone)', ackA.status === 200 && ackA.body.ignored[0] === msg.id && ackA.body.acked.length === 0, ackA.body);
+const ackC = await call('POST', '/relay/v1/mailbox/ack', { token: C, body: { ids: [msg.id] } });
+check('C\'s ack lands', ackC.status === 200 && ackC.body.acked[0] === msg.id, ackC.body);
+
+section('6. the Meta hub handshake');
+const hub = await call('POST', '/relay/v1/endpoints', { token: A, body: { projectKey: 'p', name: 'WhatsApp', source: 'whatsapp', handshake: 'meta_hub', handshakeSecret: 'vt' } });
+const okHub = await fetch(`${base}/hooks/${hub.body.slug}?hub.mode=subscribe&hub.verify_token=vt&hub.challenge=42`);
+check('the right verify token: 200 and the challenge', okHub.status === 200 && (await okHub.text()) === '42');
+const badHub = await fetch(`${base}/hooks/${hub.body.slug}?hub.mode=subscribe&hub.verify_token=no&hub.challenge=42`);
+check('a wrong one: 403', badHub.status === 403);
+const echo = await call('POST', '/relay/v1/endpoints', { token: A, body: { projectKey: 'p', name: 'Slack', source: 'slack', handshake: 'echo_challenge' } });
+const echoed = await fetch(`${base}/hooks/${echo.body.slug}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"type":"url_verification","challenge":"abc"}' });
+check('an echo challenge is answered and not stored', echoed.status === 200 && (await echoed.text()) === 'abc' && (await call('POST', '/relay/v1/mailbox/pull', { token: A, body: { project: 'p', max: 10, leaseSeconds: 5 } })).body.length === 0);
+const getPlain = await fetch(`${base}/hooks/${ep.body.slug}`);
+check('a GET that is no handshake: 405', getPlain.status === 405, getPlain.status);
+
+section('7. limits');
+const big = await fetch(`${base}/hooks/${ep.body.slug}`, { method: 'POST', body: Buffer.alloc(1_048_577, 97) });
+check('1 MiB + 1 byte: 413', big.status === 413, big.status);
+const burst = await Promise.all(Array.from({ length: 121 }, () => fetch(`${base}/hooks/${ep.body.slug}`, { method: 'POST', body: 'x' }).then((r) => r.status)));
+check('121 rapid posts: some 429', burst.includes(429) && burst.filter((s) => s === 202).length <= 120, burst.filter((s) => s === 429).length);
+const disabling = await call('POST', `/relay/v1/endpoints/${hub.body.id}/disable`, { token: A });
+check('the admin disables the Meta endpoint', disabling.status === 204, disabling.status);
+const unknown = await fetch(`${base}/hooks/AAAAAAAAAAAAAAAAAAAAAA`, { method: 'POST', body: 'x' });
+const disabled = await fetch(`${base}/hooks/${hub.body.slug}`, { method: 'POST', body: 'x' });
+const ub = await unknown.text();
+const db = await disabled.text();
+check('an unknown slug and a disabled slug answer the same 404, byte for byte', unknown.status === 404 && disabled.status === 404 && ub === db && unknown.headers.get('content-type') === disabled.headers.get('content-type'), { ub, db });
+
+section('import');
+const fresh = await startRelay(loadRelayConfig(env({ RELAY_DB: join(tmp, 'fresh.db') })));
+const freshBase = `http://127.0.0.1:${fresh.port}`;
+const fcall = (method, path, opts) => fetch(`${freshBase}${path}`, { method, headers: { 'x-tandemise-relay-api': '1', 'content-type': 'application/json', ...(opts?.token ? { authorization: `Bearer ${opts.token}` } : {}) }, ...(opts?.body ? { body: JSON.stringify(opts.body) } : {}) })
+  .then(async (r) => ({ status: r.status, body: await r.json().catch(() => null) }));
+const admin = (await fcall('POST', '/relay/v1/invites/redeem', { body: { code: fresh.bootstrapInvite, displayName: 'Dee', deviceLabel: 'Dee laptop' } })).body.deviceToken;
+const lines = [
+  JSON.stringify({ kind: 'meta', schemaVersion: 1, teamName: 'Solo' }),
+  JSON.stringify({ kind: 'member', id: 'local', displayName: 'Dee', handles: {}, role: 'admin', status: 'active', createdAt: '2026-10-30T09:00:00.000Z' }),
+  JSON.stringify({ kind: 'claim', id: 'c1', projectKey: 'p', itemRef: 'github:acme/app#7', itemTitle: 'Fix it', itemUrl: null, memberId: 'local', memberName: 'Dee', localRef: 'msn_1', startedAt: '2026-10-30T09:30:00.000Z' }),
+  JSON.stringify({ kind: 'endpoint', id: 'e1', projectKey: 'p', slug: 'importedslug0000000000', name: 'Sentry', source: 'sentry', handshake: 'none', handshakeSecret: null, createdAt: '2026-10-30T09:00:00.000Z', disabledAt: null }),
+  JSON.stringify({ kind: 'message', id: '1', endpointId: 'e1', receivedAt: '2026-10-30T09:40:00.000Z', method: 'POST', query: '', headers: {}, contentType: 'application/json', bodyBase64: Buffer.from('{"y":2}').toString('base64'), attempts: 0 }),
+];
+const imported = await fcall('POST', '/relay/v1/import', { token: admin, body: { lines } });
+check('import into a fresh relay: 200, one claim, one endpoint, one message', imported.status === 200 && imported.body.claims.length === 1 && imported.body.claims[0].result === 'claimed' && imported.body.endpoints === 1 && imported.body.messages === 1, imported.body);
+const fsnap = await fcall('GET', '/relay/v1/snapshot', { token: admin });
+check('the claim is in the snapshot, the importer\'s', fsnap.body.claims.length === 1 && fsnap.body.claims[0].memberName === 'Dee' && fsnap.body.claims[0].localRef === 'msn_1', fsnap.body.claims);
+const twice = await fcall('POST', '/relay/v1/import', { token: admin, body: { lines } });
+check('a second import is 409 relay_not_empty', twice.status === 409 && twice.body.error.details.reason === 'relay_not_empty', twice.body);
+await fresh.close();
+
+// ---- (Task 10 adds the CLI above this line)
 
 section('failed auth is rate-limited per IP (last: it locks this client out)');
 // Earlier refusals in this run (a used invite, a token in a query) age out of the one-minute window first.

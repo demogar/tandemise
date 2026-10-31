@@ -4,11 +4,12 @@ import { CoordinationStore } from '@tandemise/coordination';
 import { loadRelayConfig, type RelayConfig } from './config.js';
 import { openRelayDb } from './db.js';
 import { createLog } from './log.js';
-import { FailedAuthLimiter } from './rate-limit.js';
+import { FailedAuthLimiter, TokenBuckets } from './rate-limit.js';
 import { coreRoutes } from './routes.js';
 import { RelayStreamHub } from './stream.js';
 import { createRelayServer, listen } from './server.js';
-import { RelayError, sendError } from './http.js';
+import { ingressHandler, mailboxRoutes } from './ingress.js';
+import { startSweep } from './sweep.js';
 
 export { loadRelayConfig } from './config.js';
 export type { RelayConfig } from './config.js';
@@ -49,6 +50,8 @@ export async function startRelay(config: RelayConfig): Promise<RunningRelay> {
   const now = (): number => clock().getTime();
   const limiter = new FailedAuthLimiter(now);
   const hub = new RelayStreamHub(store, limiter, log);
+  // Per webhook endpoint: 60 a minute, bursts of 120 (spec §The webhook mailbox, "Limits").
+  const buckets = new TokenBuckets(now);
   const routes = [
     ...coreRoutes({
       store, hub, staleAfterMs: config.staleAfterMs,
@@ -56,11 +59,11 @@ export async function startRelay(config: RelayConfig): Promise<RunningRelay> {
       onFailedRedeem: (ip) => limiter.fail(ip),
       redeemLocked: (ip) => limiter.locked(ip),
     }),
+    ...mailboxRoutes({ store, hub }),
   ];
-  const notFound = async (_req: unknown, res: import('node:http').ServerResponse): Promise<void> => sendError(res, new RelayError(404, 'NOT_FOUND', 'Not found'), log);
-  const server = createRelayServer({ store, hub, limiter, routes, ingress: notFound, log });
+  const server = createRelayServer({ store, hub, limiter, routes, ingress: ingressHandler({ store, hub, buckets, log }), log });
   const port = await listen(server, config.port, config.host);
-  const stopSweep = (): void => {};
+  const stopSweep = startSweep(store, config.retention, log);
   log('info', 'relay.listening', { host: config.host, port, publicUrl: config.publicUrl, team: store.team()?.name });
 
   return {
