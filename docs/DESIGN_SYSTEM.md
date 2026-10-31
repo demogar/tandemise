@@ -4,6 +4,11 @@ The contract for how the Tandemise desktop app looks and behaves. If the code
 disagrees with this document, one of them is wrong. `npm run check:design`
 enforces the parts a machine can check, and CI runs it on every pull request.
 
+The tokens, the theme, the logo and the icon set live in their own package,
+[`@tandemise/design`](../packages/design/README.md) (`packages/design`), so the
+website and any other Tandemise surface can share them. The desktop app is its
+first consumer.
+
 ## Principles
 
 - **Colour is a role, never a hue at the call site.** A screen asks for
@@ -22,17 +27,24 @@ enforces the parts a machine can check, and CI runs it on every pull request.
 ## Layers
 
 ```
-palette.css   hues        --brand-mint, --ink-900, --signal-red-bright …
-     │          only theme.css may read these
+packages/design/src/tokens.ts      the source: palette + roles + scales, authored once
+     │  emitted (npm run -w @tandemise/design emit) as
      ▼
-theme.css     roles       --canvas, --text, --accent, --status-failed …
-     │          everything else reads only these
+@tandemise/design/tokens.css
+   palette   hues     --brand-mint, --ink-900, --signal-red-bright …
+     │         only the roles read these
      ▼
-components    shell.css, controls.css, surfaces.css, features.css, *.tsx
+   roles     roles    --canvas, --text, --accent, --status-failed …
+     │         everything else reads only these
+     ▼
+@tandemise/design/base.css         reset and type defaults, roles only
+     ▼
+components   apps/desktop/src/renderer/src/styles/{base,shell,controls,surfaces,features}.css, *.tsx
 ```
 
-All of them live in `apps/desktop/src/renderer/src/styles/`, and `main.tsx`
-imports them in that order.
+`main.tsx` imports them in that order: the two package stylesheets, then the
+desktop's own. The desktop's `styles/base.css` keeps only what is app policy
+(full-height root, no window scroll, the user-select rules).
 
 ## Palette
 
@@ -63,7 +75,8 @@ neutrals keep the brand's hue instead of turning flat grey.
   `-deep` is for paper surfaces.
 
 Palette values are 6-digit hex only. Add a colour here only when no existing
-step can do the job, and give it a role in `theme.css` in the same change.
+step can do the job, and give it a role in `colorRoles` (`tokens.ts`) in the
+same change.
 
 ## Semantic roles
 
@@ -98,9 +111,9 @@ with the accent colour, and never style a primary action in the success colour.
 |---|---|
 | Spacing (4pt) | `--s1` 4 · `--s2` 8 · `--s3` 12 · `--s4` 16 · `--s5` 20 · `--s6` 24 · `--s7` 28 · `--s8` 32 · `--s10` 40 · `--s12` 48 · `--s16` 64 |
 | Radius | `--radius-xs` 4 · `--radius-sm` 6 · `--radius-md` 9 · `--radius-lg` 13 · `--radius-full` |
-| Type | `--font-sans` (system UI) · `--font-mono` · `--fs-micro` 10.5 · `--fs-xs` 11.5 · `--fs-sm` 12.5 · `--fs-base` 13.5 · `--fs-md` 15 · `--fs-lg` 18 · `--fs-xl` 23 · `--fs-2xl` 30 |
+| Type | `--font-sans` (system UI) · `--font-mono` · `--fs-micro` 10.5 · `--fs-xs` 11.5 · `--fs-sm` 12.5 · `--fs-base` 13.5 · `--fs-md` 15 · `--fs-lg` 18 · `--fs-xl` 23 · `--fs-2xl` 30 · `--lh-base` 1.5 |
 | Motion | `--duration-fast` 120ms · `--duration` 160ms · `--ease`. `prefers-reduced-motion` turns all motion off. |
-| Layout | `--sidebar-width` 232 |
+| Layout | `--sidebar-width` 232 (desktop-only, in the desktop's `styles/base.css`, not the package) |
 
 ## Theming
 
@@ -117,9 +130,13 @@ by theme, mix inside each branch:
 `light-dark(color-mix(… 8% …), color-mix(… 12% …))`. Chromium silently drops a
 declaration that breaks this rule, and the check catches it.
 
+`data-theme` works on any element: the roles are declared on `:root` and on
+every `[data-theme]` element, so a subtree can take the other theme even when a
+bundler has lowered `light-dark()`.
+
 The main process paints the window before any CSS loads, so
 `src/shared/brand.ts` repeats the two `--canvas` values. The check fails if they
-drift from `palette.css`.
+drift from the palette.
 
 ## Logo
 
@@ -131,15 +148,16 @@ There is one mark, drawn at three optical sizes:
 
 | Drawing | File | Used for | Colour |
 |---|---|---|---|
-| App icon | `apps/desktop/build/icon.svg` → `icon.icns`, `icon.png` | Dock, About panel, installers | Indigo tile; mint→sage lead wheel, sage→lichen trailing wheel, lichen axle |
-| In-app mark | `components/Logo.tsx` | Sidebar, onboarding, daemon-down | `--logo-lead` / `--logo-trail` / `--logo-axle` |
-| Menu bar | `apps/desktop/build/tray.svg` → `resources/trayTemplate*.png` | macOS menu bar | Pure black. macOS recolours template images, so the palette does not apply here. |
+| App icon | `packages/design/assets/app-icon.svg` → `apps/desktop/build/icon.icns`, `icon.png` | Dock, About panel, installers | Indigo tile; mint→sage lead wheel, sage→lichen trailing wheel, lichen axle |
+| Small mark | `LOGO` in `packages/design/src/logo.ts`, drawn by `components/Logo.tsx` and emitted as `assets/logo-mark*.svg` | Sidebar, onboarding, daemon-down, the website | `--logo-lead` / `--logo-trail` / `--logo-axle` |
+| Menu bar | `packages/design/assets/logo-mark-template.svg` (emitted from `LOGO`) → `resources/trayTemplate*.png` | macOS menu bar | Pure black. macOS recolours template images, so the palette does not apply here. |
 
 Rules:
 
-- **Change the geometry in all three drawings or in none.** The in-app mark uses
-  the menu-bar geometry because both are drawn at about 20px.
-- **Colour comes from the palette only.** `icon.svg` may contain only palette
+- **Change the geometry in both drawings or in neither.** The in-app mark and
+  the menu-bar mark are one geometry (`LOGO`), because both are drawn at about
+  20px; the app icon is the same mark redrawn for 1024px.
+- **Colour comes from the palette only.** `app-icon.svg` may contain only palette
   hex values, and the check rejects anything else. `Logo.tsx` uses the
   `--logo-*` roles, never `currentColor`.
 - **Muted state.** `<Logo muted />` draws every part in `--text-tertiary`. It
@@ -168,35 +186,41 @@ roles only.
 | Values | `.chip`, `.idchip` (copyable id), `.mono`, `.stat`, `.meter` |
 | Identity | `.monogram[data-tint=1..5]` for things with no icon of their own |
 | Empty and error | `.empty`, `.errorstate`, `.skeleton` |
-| Icons | `components/Icon.tsx`: stroke icons drawn in `currentColor` at 1.7 weight on a 24px grid |
+| Icons | `components/Icon.tsx`, drawing `ICON_PATHS` from `@tandemise/design/icons`: stroke icons in `currentColor` at 1.7 weight on a 24px grid |
 
 Status always maps through `Tone` (`lib/format.ts`):
 `running | blocked | failed | succeeded | pending`. Add a tone there and in
-`theme.css` together.
+`tokens.ts` together.
 
 ## Enforced rules
 
 `npm run check:design` (`scripts/check-design-system.mjs`) fails the build when:
 
-1. A colour literal (hex, `rgb()`, `hsl()`, `oklch()` …) appears anywhere in the
-   desktop source outside `palette.css` and `src/shared/brand.ts`. Inline
+0. A file emitted from `tokens.ts` (`tokens.css`, `tailwind.css`, the logo
+   SVGs) is stale, or a pairing in `CONTRAST_PAIRS` drops below its ratio in
+   either theme.
+1. A colour literal (hex, `rgb()`, `hsl()`, `oklch()` …) appears in the desktop
+   source or the design package outside `packages/design/src/tokens.ts` (and
+   the files emitted from it) and `src/shared/brand.ts`. Inline
    `style={{ color: … }}` counts.
-2. A palette primitive is read outside `theme.css`.
+2. A palette primitive is read outside the package's `tokens.css`.
 3. `var(--token)` names a token that nothing defines.
 4. A `var()` has a fallback. Tokens are always defined, so a fallback only
    hides a typo.
 5. `light-dark()` is given something other than colours.
-6. `icon.svg` uses a colour outside the palette, or `tray.svg` uses anything
-   but black.
+6. `app-icon.svg` uses a colour outside the palette, or
+   `logo-mark-template.svg` uses anything but black.
 7. `src/shared/brand.ts` drifts from the palette.
 
 ## Changing the system
 
-- **New role:** add it to `theme.css` with both schemes, then use it. Name it
-  for its purpose (`--surface-overlay`), not its look (`--dark-grey`).
-- **New colour:** add the hue to `palette.css`, derived from an anchor in OKLCH,
-  and check its contrast against the surfaces it will sit on.
-- **New brand anchor:** update this document, `palette.css`, the logo roles and
+- **New role:** add it to `colorRoles` in `packages/design/src/tokens.ts` with
+  both schemes, run `npm run build && npm run -w @tandemise/design emit`, then
+  use it. Name it for its purpose (`--surface-overlay`), not its look
+  (`--dark-grey`).
+- **New colour:** add the hue to `palette` in `tokens.ts`, derived from an
+  anchor in OKLCH, and add any pairing it must hold to `CONTRAST_PAIRS`.
+- **New brand anchor:** update this document, `tokens.ts`, the logo roles and
   the identity tints in one change.
 - **Verify in the real app.** Walk every screen in both themes with a real
   mission, not only the mock, and regenerate `apps/desktop/screenshots/` from

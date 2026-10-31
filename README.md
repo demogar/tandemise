@@ -266,6 +266,7 @@ Task-oriented, one per concept:
 | Path | What lives there |
 |---|---|
 | `packages/shared` | Branded ids, errors, `Result`, clock, structured logging, secret redaction, path scoping |
+| `packages/design` | `@tandemise/design`, the design system as a publishable package: tokens (CSS, TypeScript, Tailwind), theme, logo and icons ([README](packages/design/README.md)) |
 | `packages/kernel` | Typed service tokens, the IoC container, composable modules, the capability registry |
 | `packages/domain` | Entities, event vocabulary, gate language, plan validation, **all ports** |
 | `packages/application` | Mission engine — planning, scheduling, execution, gates, remediation, recovery |
