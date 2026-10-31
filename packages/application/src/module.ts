@@ -7,7 +7,7 @@ import { OutcomeRecorder } from './engine/outcomes.js';
 import { MergeWatch } from './engine/merge-watch.js';
 import { ShipRevert } from './engine/ship-revert.js';
 import { ProposalService } from './services/proposal-service.js';
-import { MergePolicyService } from './services/merge-policy-service.js';
+import { MergePolicyService, autoMergeAuthorized } from './services/merge-policy-service.js';
 import { actorFor } from './support/identity.js';
 import type { PullRequestPort } from '@tandemise/domain';
 
@@ -440,7 +440,8 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
         outcomes: () => r.tryResolve(t.OUTCOME_RECORDER),
         factory: async (workspaceId) => {
           const config = await r.resolve(t.PLANNER_SERVICE).config(asId(workspaceId));
-          return { planner: config.planner, merge: config.merge, policyRef: policyRef(config) };
+          const decisions = r.resolve(t.DECISION_REPOSITORY).listByWorkspace(asId(workspaceId));
+          return { planner: config.planner, merge: config.merge, policyRef: policyRef(config), autoMergeAuthorized: config.origins.merge === 'brain' && autoMergeAuthorized(decisions) };
         },
         pollMs: shipPollMs,
         timeoutMs: SHIP_CI_TIMEOUT_MS,
@@ -1142,6 +1143,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       recorder: r.resolve(t.EVENT_RECORDER),
       clock: clock(r),
       wake: () => r.resolve(t.SCHEDULER).wake(),
+      brainLinked: (workspaceId) => r.tryResolve(BRAIN_SERVICE)?.linkOf(workspaceId) !== undefined,
     }), { source: SOURCE });
 
     bind(t.TANDEMISE_SERVICES, (r): TandemiseServices => ({

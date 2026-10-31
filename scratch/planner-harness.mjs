@@ -94,7 +94,7 @@ export async function engineHarness(HOME, { factory, tiebreak, pullRequests, com
 }
 
 /** A factory source over an in-memory map: `{ planner?, routing?, merge? }` raw objects, else shipped. */
-export async function memoryFactory(files = {}) {
+export async function memoryFactory(files = {}, origin = 'project') {
   const app = await import('@tandemise/application');
   const written = {};
   return {
@@ -102,7 +102,7 @@ export async function memoryFactory(files = {}) {
     files,
     read: async (name) => (files[name] === undefined
       ? { name, origin: 'shipped', path: null, raw: app.SHIPPED_FILES[name], error: null, ref: 'shipped' }
-      : { name, origin: 'project', path: `/mem/${name}.yaml`, raw: files[name], error: null, ref: `sha256:${'0'.repeat(11)}${Object.keys(written).length}` }),
+      : { name, origin, path: `/mem/${name}.yaml`, raw: files[name], error: null, ref: `sha256:${'0'.repeat(11)}${Object.keys(written).length}` }),
     write: async (name, repositoryPath, raw) => { files[name] = raw; written[name] = { repositoryPath, raw }; return { path: `${repositoryPath}/.tandemise/factory/${name}.yaml`, ref: 'sha256:000000000001' }; },
   };
 }
@@ -127,7 +127,7 @@ export const git = (cwd, ...args) => execFileSync('git', ['-C', cwd, '-c', 'user
 export const REPO = 'acme/web';
 
 /** A world: a checkout with a bare origin, the fake gh, and the engine. */
-export async function world({ factory = {}, scripts = {} } = {}) {
+export async function world({ factory = {}, scripts = {}, brain = false } = {}) {
   const base = mkdtempSync(join(tmpdir(), 'tdm-merge-'));
   const ghDir = join(base, 'gh');
   const fake = await import('./fake-gh.mjs');
@@ -144,8 +144,17 @@ export async function world({ factory = {}, scripts = {} } = {}) {
   git(checkout, 'remote', 'add', 'origin', origin);
   git(checkout, 'push', '-q', 'origin', 'main');
   const exec = realExecutor(bin);
-  const files = await memoryFactory(factory);
-  const h = await engineHarness(join(base, 'home'), { factory: files, commandExecutor: exec, pullRequests: new GH.GhPullRequestFlow(exec) });
+  // With `brain`, the factory files come from a brain kept on this machine, which auto-merge requires.
+  const files = await memoryFactory(factory, brain ? 'brain' : 'project');
+  let brainRepo;
+  if (brain) {
+    const EL = await import('@tandemise/execution-local');
+    const { nullLogger } = await import('@tandemise/shared');
+    const gitconfig = join(base, 'gitconfig');
+    writeFileSync(gitconfig, '[user]\n\tname = Check\n\temail = check@example.com\n[init]\n\tdefaultBranch = main\n[commit]\n\tgpgsign = false\n');
+    brainRepo = new EL.GitBrainRepo(new EL.NodeProcessSupervisor(nullLogger), nullLogger, () => ({ GIT_CONFIG_GLOBAL: gitconfig }));
+  }
+  const h = await engineHarness(join(base, 'home'), { factory: files, commandExecutor: exec, pullRequests: new GH.GhPullRequestFlow(exec), ...(brainRepo === undefined ? {} : { brainRepo }) });
   git(h.paths.root, 'init', '-q', '-b', 'main');
   git(h.paths.root, 'commit', '-q', '--allow-empty', '-m', 'init');
   const { systemClock, ids } = await import('@tandemise/shared');
@@ -177,5 +186,8 @@ export async function world({ factory = {}, scripts = {} } = {}) {
     await h.services.planning.plan(m.id);
     return m;
   };
-  return { h, ghDir, origin, checkout, ws, caller, mission, files };
+  if (brain) await h.container.resolve(h.app.BRAIN_SERVICE).link(caller, ws, { mode: 'local' });
+  /** A person turns auto-merge on in the app: the brain's policy plus a recorded Decision. */
+  const authorize = async () => h.services.mergePolicy.update(ws, { ...(files.files.merge ?? h.app.SHIPPED_MERGE), autoMerge: 'on' }, caller);
+  return { h, ghDir, origin, checkout, ws, caller, mission, files, authorize };
 }

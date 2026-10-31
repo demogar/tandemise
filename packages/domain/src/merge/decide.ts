@@ -51,6 +51,9 @@ export const NO_CI = 'This repository has no CI checks, so Tandemise never merge
 export const CI_NOT_GREEN = 'CI is not green on this commit.';
 export const REVIEW_REQUIRED = 'This repository requires an approving review, so Tandemise can\'t merge it on its own.';
 export const REVIEW_UNKNOWN = 'Tandemise couldn\'t tell whether this repository requires an approving review, so it asks.';
+/** Changes to Tandemise's own rules: never merged on its own, whatever the policy says (a PR must not loosen it). */
+export const OWN_RULES_GLOBS = ['.tandemise/**', '**/.tandemise/**', 'factory/**'];
+export const ownRulesReason = (path: string): string => `Touches ${path} — a change to Tandemise's own rules always asks for a person.`;
 export const malformedPolicy = (error: string): string => `The merge policy can't be read (${error}), so every pull request asks.`;
 
 const undef = <T>(v: T | null): T | undefined => (v === null ? undefined : v);
@@ -133,6 +136,9 @@ export function decideMerge(f: MergeFacts, policy: MergePolicyOrError): MergeDec
   const blocking: string[] = [];
 
   // Hard rules, enforced by code whatever the file says.
+  const own = [...f.changedPaths, ...f.deletedPaths].find((p) => OWN_RULES_GLOBS.some((g) => matchGlob(g, p)));
+  factors.push({ rule: 'never: Tandemise\'s own rules', kind: 'hard', matched: own !== undefined, points: 0, unmeasured: [], paths: own === undefined ? [] : [own] });
+  if (own !== undefined) blocking.push(ownRulesReason(own));
   const ciRule = f.ci.state === 'NONE' ? NO_CI : f.ci.state !== 'PASS' ? CI_NOT_GREEN : null;
   factors.push({ rule: 'ci.state == PASS', kind: 'hard', matched: ciRule !== null, points: 0, unmeasured: [], paths: [] });
   if (ciRule !== null) blocking.push(ciRule);

@@ -29,6 +29,17 @@ export interface MergePolicyServiceDeps {
   readonly recorder: EventRecorder;
   readonly clock: Clock;
   readonly wake: () => void;
+  /** Whether the project has a brain: auto-merge is only ever turned on for one (#53 §8.4). */
+  readonly brainLinked?: (workspaceId: WorkspaceId) => boolean;
+}
+
+/** The title of the Decision that records a person turning auto-merge on. */
+export const AUTO_MERGE_DECISION_PREFIX = 'Auto-merge low-risk pull requests in';
+export const NEEDS_BRAIN = 'Auto-merge needs a brain: link one in Project settings first, so the policy and who turned it on are shared and reviewed.';
+
+/** Whether a person turned auto-merge on in the app and nobody has turned it off since. */
+export function autoMergeAuthorized(decisions: readonly { readonly title: string; readonly status: string }[]): boolean {
+  return decisions.some((d) => d.status === 'accepted' && d.title.startsWith(AUTO_MERGE_DECISION_PREFIX));
 }
 
 export const ONLY_A_PERSON = 'Only a person can change the merge policy.';
@@ -71,7 +82,8 @@ export class MergePolicyService {
     const before = await this.get(workspaceId);
     const repository = this.deps.planner.repositories(workspaceId)[0];
     if (repository === undefined) throw new TandemiseError('PRECONDITION_FAILED', 'This project has no repository to write the merge policy into.');
-    const turningOn = before.policy.autoMerge === 'off' && policy.autoMerge === 'on';
+    const turningOn = policy.autoMerge === 'on' && !(before.policy.autoMerge === 'on' && autoMergeAuthorized(this.deps.decisions.listByWorkspace(workspaceId)));
+    if (turningOn && this.deps.brainLinked?.(workspaceId) !== true) throw new TandemiseError('PRECONDITION_FAILED', NEEDS_BRAIN);
     const tested = turningOn ? await this.backtest(workspaceId, policy) : null;
     await this.deps.factorySource.write('merge', repository.path, policy, workspaceId);
     if (turningOn) {
@@ -79,7 +91,7 @@ export class MergePolicyService {
       const now = this.deps.clock.now();
       this.deps.decisions.create({
         id: ids.decision(), workspaceId, missionId: null,
-        title: `Auto-merge low-risk pull requests in ${workspace?.name ?? 'this project'}`,
+        title: `${AUTO_MERGE_DECISION_PREFIX} ${workspace?.name ?? 'this project'}`,
         context: 'The factory decides each pull request\'s merge from measured facts and this project\'s merge policy (#53).',
         decision: `Tandemise merges a pull request on its own when CI is green on its head commit and its risk score is at most ${policy.autoMergeAtMost}; everything else asks.`,
         rationale: tested?.sentence ?? 'Turned on by a person.',
@@ -89,7 +101,13 @@ export class MergePolicyService {
       this.deps.recorder.invalidate('decisions');
     }
     this.deps.recorder.invalidate('workspaces');
-    if (policy.autoMerge === 'off') this.#redecideWaiting(workspaceId);
+    if (policy.autoMerge === 'off') {
+      // Off is off: the standing approval ends here, so a file saying "on" later doesn't revive it.
+      for (const d of this.deps.decisions.listByWorkspace(workspaceId)) {
+        if (d.status === 'accepted' && d.title.startsWith(AUTO_MERGE_DECISION_PREFIX)) this.deps.decisions.update(d.id, { status: 'superseded' });
+      }
+      this.#redecideWaiting(workspaceId);
+    }
     return this.get(workspaceId);
   }
 

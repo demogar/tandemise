@@ -86,7 +86,8 @@ export interface ShipDecideDeps {
   readonly rounds: () => FeedbackRounds;
   readonly outcomes: () => OutcomeRecorder | undefined;
   /** The project's planner and merge policy, read fresh, with the files' refs. */
-  readonly factory: (workspaceId: string) => Promise<{ planner: PlannerConfig; merge: MergePolicyOrError; policyRef: string }>;
+  /** `autoMergeAuthorized`: the merge policy came from the brain and a person turned auto-merge on in the app (a Decision). */
+  readonly factory: (workspaceId: string) => Promise<{ planner: PlannerConfig; merge: MergePolicyOrError; policyRef: string; autoMergeAuthorized: boolean }>;
   readonly pollMs: number;
   readonly timeoutMs: number;
 }
@@ -223,7 +224,10 @@ export class ShipService {
       stats: foldOutcomes(d.outcomeRows.listByWorkspace(mission.workspaceId, new Date(this.deps.clock.epochMs() - 90 * 86_400_000).toISOString())),
       now: this.deps.clock.epochMs(),
     });
-    const decided: MergeDecision = decideMerge(facts, factory.merge);
+    // Auto-merge counts only when the policy came from the brain and a person turned it on in the app (#53 §8.4);
+    // a merge.yaml in a repository or on this computer saying "on" is not that.
+    const policy = 'error' in factory.merge || factory.autoMergeAuthorized ? factory.merge : { ...factory.merge, autoMerge: 'off' as const, revertAutoMerge: 'off' as const };
+    const decided: MergeDecision = decideMerge(facts, policy);
     const record: MergeDecisionRecord = {
       id: ids.mergeDecision(), workspaceId: mission.workspaceId, missionId: mission.id, repo: pr.repo, prNumber: pr.number, headSha: pr.headSha,
       policyRef: factory.policyRef, verdict: decided.verdict, score: decided.score, allowed: decided.allowed, wouldMerge: decided.wouldMerge,

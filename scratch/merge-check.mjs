@@ -233,7 +233,7 @@ await attempt('backtest and switch', async () => {
   check('…and says one of those was later reverted', result.changedThenReverted === 1 && result.changed.find((c) => c.decisionId === 'mrg_3')?.revertedOrBroke === true, result.changed);
 
   section('switch');
-  const w = await world();
+  const w = await world({ brain: true });
   const service = w.h.services.mergePolicy;
   const before = await service.get(w.ws);
   check('the policy starts off, built in', before.policy.autoMerge === 'off' && before.origin === 'shipped', before);
@@ -259,7 +259,8 @@ await attempt('backtest and switch', async () => {
 await attempt('reviewed commit', async () => {
   section('reviewed commit');
   const fake = await import('./fake-gh.mjs');
-  const w = await world({ factory: { merge: { ...app.SHIPPED_MERGE, autoMerge: 'on' } } });
+  const w = await world({ factory: { merge: { ...app.SHIPPED_MERGE, autoMerge: 'on' } }, brain: true });
+  await w.authorize();
   fake.setRepo(w.ghDir, REPO, { defaultChecks: [{ name: 'unit', conclusion: 'success' }] });
   const m = await w.mission('fix: typo in the settings title');
   const ship = () => w.h.repo.tasks.listByMission(m.id).find((t) => t.key === 'ship');
@@ -295,7 +296,8 @@ await attempt('reviewed commit', async () => {
 await attempt('revert and watch', async () => {
   section('revert and watch');
   const fake = await import('./fake-gh.mjs');
-  const w = await world({ factory: { merge: { ...app.SHIPPED_MERGE, autoMerge: 'on' } } });
+  const w = await world({ factory: { merge: { ...app.SHIPPED_MERGE, autoMerge: 'on' } }, brain: true });
+  await w.authorize();
   fake.setRepo(w.ghDir, REPO, { defaultChecks: [{ name: 'unit', conclusion: 'success' }] });
   const m = await w.mission('fix: typo in the settings title');
   await w.h.until(() => w.h.repo.missions.get(m.id).status === 'COMPLETE', 60000);
@@ -404,6 +406,42 @@ await attempt('learning never loosens', async () => {
   walk(dist);
   const writers = files.filter((f) => /factorySource\.write\(|factory\.write\(/.test(readFileSync(f, 'utf8'))).map((f) => f.slice(dist.length + 1)).sort();
   check('only merge-policy-service and factory-service call the factory source\'s write', JSON.stringify(writers) === JSON.stringify(['services/factory-service.js', 'services/merge-policy-service.js']), writers);
+});
+
+await attempt('review: auto-merge needs the brain and your decision', async () => {
+  section('review: auto-merge needs the brain and your decision');
+  const fake = await import('./fake-gh.mjs');
+  const on = { ...app.SHIPPED_MERGE, autoMerge: 'on' };
+  // Hard rule: a change to Tandemise's own rules always asks.
+  const base = {
+    changedPaths: ['src/a.ts'], deletedPaths: [], files: 1, linesAdded: 1, linesRemoved: 0, binaryFiles: 0, repos: 1, areas: [], testsTouched: 1,
+    dependenciesChanged: false, lockfileOnly: false, coverageChangedLines: null, ci: { state: 'PASS', requiredPresent: true }, reviewRequired: false,
+    checksTests: 'PASS', review: { blocking: 0, major: 0, independent: true }, criteria: { unverified: 0, implicit: false },
+    process: { lane: 'quick', lightenedByPerson: false, stepsSkipped: 0, holds: 0, changesRequested: 0, escalations: 0, gateRetries: 0, personCommits: 0, revertOfAuto: false },
+    history: { areaReverts90d: 0, areaRecentRevert: false },
+  };
+  const policy = D.parseMergePolicy(on);
+  for (const path of ['.tandemise/factory/merge.yaml', 'factory/merge.yaml', 'apps/web/.tandemise/workflows/x.yaml']) {
+    const d = D.decideMerge({ ...base, changedPaths: [path] }, policy);
+    check(`a change to ${path} always asks`, d.verdict === 'ask' && d.reasons.some((r) => r.includes(path) && r.includes('always asks')), d.reasons);
+  }
+  // A merge.yaml saying "on" from the repository or this computer is not your decision: it asks.
+  const w = await world({ factory: { merge: on } });
+  fake.setRepo(w.ghDir, REPO, { defaultChecks: [{ name: 'unit', conclusion: 'success' }] });
+  const m = await w.mission('fix: typo in the settings title');
+  await w.h.until(() => w.h.repo.mergeDecisions.listByMission(m.id).length > 0, 60000);
+  const d = w.h.repo.mergeDecisions.listByMission(m.id).at(-1);
+  check('autoMerge: on outside a brain is treated as off', d.verdict === 'ask' && d.reasons[0] === D.AUTO_MERGE_OFF, d.reasons);
+  // From the brain, but nobody turned it on in the app: still off.
+  const w2 = await world({ factory: { merge: on }, brain: true });
+  fake.setRepo(w2.ghDir, REPO, { defaultChecks: [{ name: 'unit', conclusion: 'success' }] });
+  const m2 = await w2.mission('fix: typo in the footer');
+  await w2.h.until(() => w2.h.repo.mergeDecisions.listByMission(m2.id).length > 0, 60000);
+  check('autoMerge: on in the brain with no recorded decision is treated as off', w2.h.repo.mergeDecisions.listByMission(m2.id).at(-1).verdict === 'ask');
+  let refused = null;
+  const w3 = await world();
+  try { await w3.h.services.mergePolicy.update(w3.ws, on, w3.caller); } catch (e) { refused = e.message; }
+  check('turning auto-merge on without a brain is refused', typeof refused === 'string' && refused.includes('brain'), refused);
 });
 
 // @sections
