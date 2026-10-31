@@ -318,6 +318,46 @@
           "type": "json",
           "path": "package-lock.json",
           "jsonpath": "$.packages[\"packages/coordination-relay\"].version"
+        },
+        {
+          "type": "json",
+          "path": "packages/design/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "package-lock.json",
+          "jsonpath": "$.packages[\"packages/design\"].version"
+        },
+        {
+          "type": "json",
+          "path": "packages/intake-runners/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "package-lock.json",
+          "jsonpath": "$.packages[\"packages/intake-runners\"].version"
+        },
+        {
+          "type": "json",
+          "path": "packages/integration-youtrack/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "package-lock.json",
+          "jsonpath": "$.packages[\"packages/integration-youtrack\"].version"
+        },
+        {
+          "type": "json",
+          "path": "packages/terminal/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "package-lock.json",
+          "jsonpath": "$.packages[\"packages/terminal\"].version"
         }
       ]
     }

@@ -71,6 +71,7 @@ export const OFFLINE_CHECKS = [
   'signin-check',
   'staffing-check',
   'trust-boundary-check',
+  'version-check',
   'workflow-check',
 ];
 
