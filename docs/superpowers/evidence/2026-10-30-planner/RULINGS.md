@@ -39,3 +39,20 @@ spec (`docs/superpowers/specs/2026-10-30-planner-and-merge-design.md`).
   lints and means what it says. `routing.yaml` and `merge.yaml` schemas land
   with the factory source (Task 4) because `loadFactoryConfig` returns them; their
   behaviour is tested in Tasks 10 and 12.
+- Ruling: `skipsReadiness` needs the factory files, which are read
+  asynchronously, while `#enterPlanning` is synchronous; `plan()` and `begin()`
+  call `planner.warm(id)` first (two one-line insertions beyond the plan's four).
+- Ruling: the tiebreak runs through a `TIEBREAK_RUNNER` port (bound to a
+  runtime-backed runner using the planner role's runtime and economy model),
+  so the check can count calls and script replies without a real model.
+- Ruling: P14 issue links store no labels, so until #52's tracker item lands
+  a mission's title prefix is the only tracker-side signal.
+- Ruling: `createMissionRequest` gains `lane` in Task 5 (the plan put it in
+  Task 8) because the ceremony check creates a careful mission through it; with
+  `auto` and no careful lane, `planNow` no longer demands a Done-when line.
+- Ruling: the factory validates a plan's graph, roles, repositories and gates,
+  not its capabilities against one runtime, as an authored workflow does;
+  grants are enforced when a step runs.
+- Ruling: a skill an area or module adds that the library lacks is taken off
+  the step and named in the decision's `dropped`, instead of refusing the plan
+  (the shipped `security-review` skill would otherwise block every auth task).

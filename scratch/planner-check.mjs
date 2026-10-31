@@ -325,6 +325,101 @@ await attempt('factory source', async () => {
   check('the quick lane is implement then ship, tests in the gate', eq(quick.value.tasks.map((t) => t.key), ['implement', 'ship']) && quick.value.tasks[0].completionGate.includes('checks.tests == PASS'), quick.value?.tasks.map((t) => [t.key, t.completionGate]));
 });
 
+await attempt('ceremony, speed and tiebreak', async () => {
+  const { mkdtempSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { execFileSync } = await import('node:child_process');
+  const { systemClock, ids } = await import('@tandemise/shared');
+  const { FAKE_ADAPTER_ID } = await import('@tandemise/runtime-generic');
+  const { engineHarness, memoryFactory } = await import('./planner-harness.mjs');
+  const keepAlive = setInterval(() => {}, 1000);
+  const calls = [];
+  let reply = { text: JSON.stringify({ type: 'feature', size: 'm', areas: [], why: 'a table change' }), costUsd: 0.002 };
+  const tiebreak = { run: async (req) => { calls.push(req); return { ...reply, model: req.model }; } };
+  const h = await engineHarness(mkdtempSync(join(tmpdir(), 'tdm-planner-')), { factory: await memoryFactory(), tiebreak });
+  execFileSync('git', ['init', '-q', '-b', 'main', h.paths.root]);
+  execFileSync('git', ['-C', h.paths.root, '-c', 'user.name=check', '-c', 'user.email=check@example.com', 'commit', '-q', '--allow-empty', '-m', 'init']);
+  const now = () => systemClock.now();
+  const tailored = JSON.stringify({ summary: 'Tailored.', tasks: [{
+    key: 'implement', title: 'Implement', objective: 'Do it', roleId: 'development', dependsOn: [], requiredCapabilities: [],
+    inputArtifacts: [], expectedOutputs: ['ChangeSet'], executionPolicy: { isolation: 'worktree', maxWallTimeMs: 60000, capabilities: [] },
+    approvalPolicy: { beforeStart: false, onCompletion: false }, retryPolicy: { maxAttempts: 2, backoffMs: 0, onExhausted: 'block' },
+    completionGate: 'artifact.ChangeSet.exists',
+  }] });
+  const planner = h.repo.profiles.create({
+    id: ids.runtimeProfile(), workspaceId: null, adapterId: FAKE_ADAPTER_ID, name: 'planner', executablePath: null,
+    args: [], settings: { script: { steps: [{ kind: 'message', text: tailored }, { kind: 'complete', summary: 'done' }] } }, capabilities: [], enabled: true, maxConcurrent: 4, createdAt: now(), updatedAt: now(),
+  }).id;
+  const caller = { personId: h.services.identity.localPerson().id };
+  const ws = (await h.services.workspaces.create(caller, { name: 'Factory' })).workspace.id;
+  h.services.workspaces.update(ws, { routing: { architecture: [planner] } });
+  const plannerRuns = (id) => h.repo.events.listByMission(id).filter((e) => e.body.type === 'run.started').length;
+  const make = (title, extra = {}) => h.services.missions.create(caller, { workspaceId: ws, goal: title, title, workflowPreset: 'auto', ...extra });
+
+  section('ceremony');
+  const typo = await make('fix: typo in the settings title');
+  await h.services.planning.plan(typo.id);
+  const after = h.repo.missions.get(typo.id);
+  const tasks = h.repo.tasks.listByMission(typo.id);
+  const criteria = h.repo.criteria.listActive(typo.id);
+  check('a quick auto mission with no criteria plans and starts', after.status === 'EXECUTING' && after.startedAt !== null, [after.status, after.statusReason]);
+  check('with no plan approval', h.repo.approvals.list({ missionId: typo.id, statuses: ['PENDING'] }).filter((a) => a.kind === 'plan').length === 0);
+  check('its steps are implement then ship', eq(tasks.map((t) => t.key), ['implement', 'ship']) && tasks[1].executor === 'ship' && tasks[1].stepClass === 'ship', tasks.map((t) => [t.key, t.executor]));
+  check('it gets one implicit criterion', criteria.length === 1 && criteria[0].source === 'implicit' && criteria[0].statement === D.IMPLICIT_CRITERION, criteria);
+  check('and no planner model ran', plannerRuns(typo.id) === 0);
+  check('nor the tiebreak', calls.length === 0);
+  const decision = h.repo.planDecisions.latest(typo.id);
+  check('a plan decision is recorded', decision?.lane === 'quick' && decision.basis === 'predicted' && decision.profile.type === 'fix' && decision.skipped.length > 0, decision);
+  check('plan.decided is recorded', h.repo.events.listByMission(typo.id).some((e) => e.body.type === 'plan.decided' && e.body.lane === 'quick'));
+  const doc = h.repo.artifacts.latest(typo.id, 'MissionPlan');
+  check('the plan document says its lane', doc !== undefined);
+
+  const careful = await make('fix: typo in the billing title', { lane: 'careful' });
+  let refused = null;
+  try { await h.services.planning.plan(careful.id); } catch (e) { refused = e; }
+  check('a careful mission with no criteria still needs readiness', refused?.code === 'PRECONDITION_FAILED', refused?.message);
+  h.repo.criteria.addUserCriteria(careful.id, ['The billing title reads Billing.']);
+  await h.services.planning.plan(careful.id);
+  check('with one criterion it waits for plan approval', h.repo.missions.get(careful.id).status === 'AWAITING_PLAN_APPROVAL', h.repo.missions.get(careful.id).statusReason);
+  check('after one planner run', plannerRuns(careful.id) === 1, plannerRuns(careful.id));
+  const carefulTasks = h.repo.tasks.listByMission(careful.id);
+  check('the tailored plan keeps the ship step', carefulTasks.at(-1)?.executor === 'ship', carefulTasks.map((t) => t.key));
+
+  const preset = await make('fix: typo in the docs title', { workflowPreset: 'quick-change' });
+  let presetRefused = null;
+  try { await h.services.planning.plan(preset.id); } catch (e) { presetRefused = e; }
+  check('a preset mission with no criteria still throws the readiness error', presetRefused?.code === 'PRECONDITION_FAILED');
+
+  section('speed');
+  const times = [];
+  for (let i = 0; i < 3; i++) {
+    const m = await make(`fix: typo number ${i}`);
+    const t0 = performance.now();
+    await h.services.planning.plan(m.id);
+    await h.scheduler.tick();
+    const implement = h.repo.tasks.listByMission(m.id).find((t) => t.key === 'implement');
+    times.push(implement.status === 'PENDING' ? Infinity : performance.now() - t0);
+  }
+  times.sort((a, b) => a - b);
+  check(`quick planning to a READY step is under ${app.QUICK_PLAN_BUDGET_MS} ms (median ${Math.round(times[1])} ms)`, times[1] < app.QUICK_PLAN_BUDGET_MS, times);
+
+  section('tiebreak');
+  const migrate = await make('Migrate users table', { successCriteria: ['Users move.', 'Nothing is lost.'] });
+  await h.services.planning.plan(migrate.id);
+  const mDecision = h.repo.planDecisions.latest(migrate.id);
+  check('the tiebreak runs when the type is unknown', calls.length === 1 && mDecision.tiebreak?.reason === 'type_unknown' && mDecision.profile.type === 'feature', mDecision?.tiebreak);
+  check('its spend is recorded', mDecision.tiebreak?.costUsd === 0.002);
+  reply = { text: 'not json', costUsd: null };
+  const migrate2 = await make('Migrate users table again', { successCriteria: ['Users move.', 'Nothing is lost.'] });
+  await h.services.planning.plan(migrate2.id);
+  const g = h.repo.planDecisions.latest(migrate2.id);
+  check('garbage gives the conservative default and planning goes on', g.profile.type === 'unknown' && g.profile.size === 'm' && g.profile.risk === 'high' && g.profile.signals.some((s) => s.effect.includes('conservative default')) && h.repo.missions.get(migrate2.id).status !== 'PLANNING', g.profile);
+  check('an unreported cost stays null', g.tiebreak?.costUsd === null && g.tiebreak?.error !== null, g.tiebreak);
+  check('it never ran for the typo', h.repo.planDecisions.latest(typo.id).tiebreak === null);
+  clearInterval(keepAlive);
+});
+
 // @sections
 
 console.log(`\n${passed} passed, ${failures.length} failed`);

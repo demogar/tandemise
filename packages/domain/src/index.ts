@@ -50,3 +50,4 @@ export * from './ports/snapshot.js';
 export * from './ports/eval-blobs.js';
 export * from './planner/routing.js';
 export * from './merge/policy.js';
+export * from './planner/words.js';

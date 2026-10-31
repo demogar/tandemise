@@ -153,8 +153,10 @@ export const createMissionRequest = z.object({
   constraints: z.array(z.string()).max(50).optional(),
   successCriteria: z.array(z.string()).max(50).optional(),
   autonomy: z.enum(AUTONOMY_LEVELS).optional(),
-  /** Workflow id: one of the project's own files, or a built-in preset. */
+  /** Workflow id: one of the project's own files, a built-in preset, or `auto` for the factory (#53). */
   workflowPreset: z.string().optional(),
+  /** For `auto`: you choose the lane instead of the factory (#53 §10). */
+  lane: z.enum(['quick', 'careful']).optional(),
   /** Values for the workflow's declared inputs, e.g. `{ issue: '42' }`. */
   workflowInputs: z.record(z.string(), z.string()).optional(),
   baseBranch: z.string().nullable().optional(),

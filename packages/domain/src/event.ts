@@ -98,6 +98,17 @@ export type OrchestrationEvent =
     readonly produced: readonly { readonly artifactId: ArtifactId; readonly type: ArtifactType }[];
     readonly failed: readonly { readonly evidenceId: ArtifactId; readonly reason: string }[];
   }
+  /** The factory planned the mission (#53 §5.5): its lane, workflow, the modules it applied and the files' refs. */
+  | { readonly type: 'plan.decided'; readonly lane: string; readonly workflowId: string; readonly modules: readonly string[]; readonly policyRef: string }
+  /** The ship step opened (or found) the pull request (#53 §8.1). */
+  | { readonly type: 'ship.pr_opened'; readonly repo: string; readonly number: number; readonly url: string; readonly headSha: string }
+  /** An outcome was recorded for routing and learning (#53 §9.1). */
+  | { readonly type: 'task.outcome'; readonly outcomeId: string; readonly kind: string; readonly stepClass: string | null; readonly model: string | null }
+  /** The merge decision for one head commit (#53 §8.6). */
+  | { readonly type: 'merge.decided'; readonly decisionId: string; readonly verdict: 'merge' | 'ask'; readonly score: number; readonly repo: string; readonly number: number; readonly headSha: string }
+  | { readonly type: 'merge.merged'; readonly decisionId: string; readonly mergeSha: string; readonly by: string }
+  | { readonly type: 'merge.asked'; readonly decisionId: string; readonly reasons: readonly string[] }
+  | { readonly type: 'merge.reverted'; readonly decisionId: string; readonly revertPr: string | null; readonly by: string }
   | { readonly type: 'note'; readonly text: string; readonly level?: 'info' | 'warn' | 'error' };
 
 export type TandemiseEventBody = AgentEvent | OrchestrationEvent;
@@ -135,6 +146,7 @@ export const SEMANTIC_EVENT_TYPES: ReadonlySet<string> = new Set([
   'artifact.tighten_requested', 'artifact.over_budget',
   'feedback.given', 'feedback.addressed', 'feedback.dismissed', 'task.round_started', 'mission.pulled',
   'task.parked_external', 'task.unparked', 'task.handed_back', 'mission.intake_completed',
+  'plan.decided', 'ship.pr_opened', 'task.outcome', 'merge.decided', 'merge.merged', 'merge.asked', 'merge.reverted',
 ]);
 
 export function isSemanticEvent(body: TandemiseEventBody): boolean {

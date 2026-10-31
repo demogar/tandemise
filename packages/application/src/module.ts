@@ -1,5 +1,7 @@
 import { defineModule, type Container, type Resolver, type TandemiseModule } from '@tandemise/kernel';
 import { SHIPPED_FACTORY_SOURCE } from './planning/factory-config.js';
+import { PlannerService } from './planning/planner-service.js';
+import { runtimeTiebreakRunner } from './planning/tiebreak-runner.js';
 import type { Clock, Logger, TandemisePaths } from '@tandemise/shared';
 import { TandemiseError, asId, createPaths, nullLogger, systemClock } from '@tandemise/shared';
 import { APPROVAL_FACTORY, GRANT_BUILDER, POLICY_ENGINE } from '@tandemise/policy';
@@ -566,6 +568,28 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
     // - still gets the built-in presets rather than an unresolved token.
     bind(t.WORKFLOW_SOURCE, () => ({ list: async () => [] }), { source: SOURCE });
     bind(t.FACTORY_CONFIG_SOURCE, () => SHIPPED_FACTORY_SOURCE, { source: SOURCE });
+    bind(t.TIEBREAK_RUNNER, (r) => runtimeTiebreakRunner({
+      runtimeManager: r.resolve(RUNTIME_MANAGER),
+      runtimeProfiles: r.resolve(t.RUNTIME_PROFILE_REPOSITORY),
+      workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
+      paths: paths(r),
+      log: log(r),
+    }), { source: SOURCE });
+    bind(t.PLANNER_SERVICE, (r) => new PlannerService({
+      factory: r.resolve(t.FACTORY_CONFIG_SOURCE),
+      workflows: r.resolve(t.WORKFLOW_SOURCE),
+      workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
+      missions: r.resolve(t.MISSION_REPOSITORY),
+      criteria: r.resolve(t.MISSION_CRITERIA_REPOSITORY),
+      repositories: r.resolve(t.REPO_REPOSITORY),
+      roles: r.resolve(t.ROLE_REPOSITORY),
+      planDecisions: r.resolve(t.PLAN_DECISION_REPOSITORY),
+      recorder: r.resolve(t.EVENT_RECORDER),
+      clock: clock(r),
+      log: log(r).child({ component: 'planner' }),
+      tiebreak: r.resolve(t.TIEBREAK_RUNNER),
+      skills: r.resolve(t.SKILL_SERVICE),
+    }), { source: SOURCE });
 
     bind(t.WORKFLOW_SERVICE, (r) => new WorkflowServiceImpl(
       r.resolve(t.WORKFLOW_SOURCE),
@@ -606,6 +630,8 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       skills: r.resolve(t.SKILL_SERVICE),
       parser: r.resolve(t.ARTIFACT_PARSER),
       templates: r.resolve(t.ARTIFACT_TEMPLATES),
+      planner: r.resolve(t.PLANNER_SERVICE),
+      wake: () => r.resolve(t.SCHEDULER).wake(),
       // Resolved per plan, not at construction: the integration service is
       // composed after planning, and a plan should see what is connected now.
       connectedApps: async (workspaceId) => (await r.resolve(t.INTEGRATION_SERVICE).list(asId(workspaceId)))

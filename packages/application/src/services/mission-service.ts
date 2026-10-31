@@ -1,4 +1,5 @@
 import { relative } from 'node:path';
+import { FACTORY_WORKFLOW_ID } from '@tandemise/domain';
 import type {
   CriteriaTrace, ArtifactHandoff, ArtifactManifest, EventRepositoryPort, ExecutionTargetRepositoryPort, ExternalRef, HandoffLink,
   ApprovalRepositoryPort, ArtifactRepositoryPort, MemberRepositoryPort, Mission, MissionCriteriaRepositoryPort, MissionRepositoryPort, MissionStatus,
@@ -137,7 +138,10 @@ export class MissionServiceImpl implements MissionService {
       throw TandemiseError.notFound('Repository', repositoryId);
     }
 
-    if (request.planNow === true) {
+    // The factory's quick and standard lanes don't ask for Done-when lines (#53 §4);
+    // whether this one is careful is known only once it is profiled, at planning.
+    const factoryLane = request.workflowPreset === FACTORY_WORKFLOW_ID && request.lane !== 'careful';
+    if (request.planNow === true && !factoryLane) {
       // The readiness gate a plan would meet, applied before anything is
       // written: a new mission has no proposals or questions, so it is ready
       // exactly when it has a Done-when line. Creating it and then refusing
@@ -185,6 +189,7 @@ export class MissionServiceImpl implements MissionService {
         ...(origin.routineId === undefined ? {} : { routineId: origin.routineId }),
         // Which GitHub issue it came from (P14): a restart finds it by this rather than making another.
         ...(origin.issueLinkId === undefined ? {} : { issueLinkId: origin.issueLinkId }),
+        ...(request.lane === undefined ? {} : { laneRequest: request.lane }),
       });
       // Numbered in the same transaction as the mission: the ledger is the
       // contract every later role is measured against, so a mission never

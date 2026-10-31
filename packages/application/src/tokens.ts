@@ -109,6 +109,10 @@ export const ARTIFACT_STORE = token<ArtifactStorePort>('port.ArtifactStore');
 export const WORKFLOW_SOURCE = token<WorkflowSourcePort>('port.WorkflowSource');
 /** The factory's planner, routing and merge files (#53). The daemon binds the real one. */
 export const FACTORY_CONFIG_SOURCE = token<import('./ports.js').FactoryConfigSourcePort>('port.FactoryConfigSource');
+/** The factory's cheap classifier pass (#53 §2). Bound to a runtime-backed runner. */
+export const TIEBREAK_RUNNER = token<import('./planning/tiebreak.js').TiebreakRunnerPort>('port.TiebreakRunner');
+/** The factory planner (#53 §5). */
+export const PLANNER_SERVICE = token<import('./planning/planner-service.js').PlannerService>('application.PlannerService');
 /** The `.tandemise` setup folder on disk (P15). The daemon binds the real one. */
 export const SETUP_FOLDER = token<import('./ports.js').SetupFolderPort>('port.SetupFolder');
 export const WORKFLOW_SERVICE = token<WorkflowService>('service.Workflow');
