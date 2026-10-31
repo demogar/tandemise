@@ -1,0 +1,127 @@
+/* Settings → Intake (intake spec §2, §4.1, §6.2; plan Task 14). Colours only from theme.css roles. */
+.intake-settings__fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.intake-settings__brain {
+  margin-bottom: var(--s3);
+}
+
+.intake-settings__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+.intake-settings__subhead {
+  margin: 0;
+  font-size: var(--fs-md);
+  color: var(--text);
+}
+
+.intake-settings__minor {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+}
+
+.intake-settings__lead {
+  margin: 0;
+}
+
+.intake-settings__actions {
+  gap: var(--s2);
+}
+
+.intake-settings__refusal {
+  margin: 0;
+  color: var(--status-failed);
+}
+
+.intake-settings__secret {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--s2);
+}
+
+.intake-settings__secret .field {
+  flex: 1;
+}
+
+.intake-settings__sources {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.intake-settings__source {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  padding: var(--s3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.intake-settings__source-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.intake-settings__source-head .btn {
+  margin-left: auto;
+}
+
+.intake-settings__switches {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.intake-settings__switch {
+  gap: var(--s2);
+}
+
+.intake-settings__filter {
+  align-items: flex-end;
+  gap: var(--s2);
+}
+
+.intake-settings__add {
+  gap: var(--s2);
+  padding-top: var(--s3);
+  border-top: 1px solid var(--border);
+}
+
+.intake-settings__token {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.intake-settings__token-value {
+  flex: 1;
+  min-width: 0;
+  padding: var(--s1) var(--s2);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.intake-settings__token-note {
+  flex-basis: 100%;
+  margin: 0;
+}

@@ -6,9 +6,11 @@ import { useThemePreference, type ThemePreference } from '../lib/theme.js';
 import { dateTime } from '../lib/format.js';
 import { NotificationSettings } from './settings/Notifications.js';
 import { TeamRelay } from './settings/TeamRelay.js';
+import { IntakeSettings } from './settings/Intake.js';
 import { SettingsAbout } from './SettingsAbout.js';
 
-export function Settings(): JSX.Element {
+/** `section` is `/settings/<section>`'s: the Board's "Settings → Intake" link opens the page there. */
+export function Settings({ section = null }: { section?: string | null } = {}): JSX.Element {
   const settings = useSettings();
   const system = useSystem();
   const { status } = useConnection();
@@ -46,6 +48,8 @@ export function Settings(): JSX.Element {
               <NotificationSettings />
 
               <TeamRelay />
+
+              <IntakeSettings focus={section === 'intake'} />
 
               
 

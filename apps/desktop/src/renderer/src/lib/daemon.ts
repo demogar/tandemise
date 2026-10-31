@@ -1,6 +1,8 @@
 import type { CoordDeviceView, CoordMemberView, EndpointView, ImportReport } from '@tandemise/api-contract/relay';
 import type {
   CoordinationClaimRowView, CoordinationStatusView,
+  BoardView, IntakeClosureView, IntakeClosuresView, IntakeConfigView, IntakeDecision, IntakeSignalView,
+  IntakeTokenMintedView, UpdateIntakeConfigRequest,
   IssuesOverview, RepositoryIssuesView, UpdateIssueSettingsRequest,
   ApiErrorBody,
   NotificationPreferencesView,
@@ -91,6 +93,7 @@ import type {
   RoleTemplate,
   RunEventRecord,
   RuntimeProfile,
+  SignalStatus,
   Workspace,
 } from '@tandemise/domain';
 import type { DaemonConnection } from '../../../shared/bridge.js';
@@ -328,6 +331,80 @@ export class DaemonClient {
   /** Checks the repository's issues now and waits for it. */
   checkIssues(repositoryId: string): Promise<RepositoryIssuesView> {
     return this.#request('POST', `/repositories/${repositoryId}/issues/check`);
+  }
+
+  /** Intake spec §10: this repository's GitHub Issues become the project's tracker. */
+  useIssuesAsTracker(repositoryId: string): Promise<unknown> {
+    return this.#request('POST', `/repositories/${repositoryId}/issues/use-as-tracker`);
+  }
+
+  // ---- intake (spec 2026-10-30-intake-design.md; plan Task 14)
+
+  /** The project's board, from the tracker cache. */
+  board(workspaceId: string): Promise<BoardView> {
+    return this.#get(`/workspaces/${workspaceId}/board`);
+  }
+
+  /** Reads the tracker's board query now and answers the refreshed board. */
+  refreshBoard(workspaceId: string): Promise<BoardView> {
+    return this.#request('POST', `/workspaces/${workspaceId}/board/refresh`);
+  }
+
+  /** "Check sources now": every source's poll, waited for, then the refreshed board. */
+  checkSources(workspaceId: string): Promise<BoardView> {
+    return this.#request('POST', `/workspaces/${workspaceId}/intake/check`, undefined, undefined, { timeoutMs: 120_000 });
+  }
+
+  /** Start: one mission from the item, never queued; the tracker moves it to in progress. */
+  startItem(workspaceId: string, key: string): Promise<MissionSummary> {
+    return this.#request('POST', `/workspaces/${workspaceId}/board/start`, { key }, undefined, { timeoutMs: 60_000 });
+  }
+
+  intakeSignals(workspaceId: string, status?: readonly SignalStatus[]): Promise<readonly IntakeSignalView[]> {
+    return this.#get(`/workspaces/${workspaceId}/intake/signals`, { status: status?.join(',') });
+  }
+
+  /** The Inbox card's answer: the same task as the candidate, a new task, or not work. */
+  decideSignal(signalId: string, decision: IntakeDecision): Promise<IntakeSignalView> {
+    return this.#request('POST', `/intake/signals/${signalId}/decide`, { decision });
+  }
+
+  /** Runs a signal that is waiting for the tracker through the pipeline now. */
+  retrySignal(signalId: string): Promise<IntakeSignalView> {
+    return this.#request('POST', `/intake/signals/${signalId}/retry`);
+  }
+
+  /** One source's closures, read with the daemon's own token. */
+  intakeClosures(workspaceId: string, sourceId: string): Promise<IntakeClosuresView> {
+    return this.#get('/intake/closures', { workspace: workspaceId, sourceId });
+  }
+
+  retryClosure(closureId: string): Promise<IntakeClosureView> {
+    return this.#request('POST', `/intake/closures/${closureId}/retry`);
+  }
+
+  intakeConfig(workspaceId: string): Promise<IntakeConfigView> {
+    return this.#get(`/workspaces/${workspaceId}/intake/config`);
+  }
+
+  /** A part left out is kept; `tracker: null` clears it. The daemon checks the mapping against the tracker first. */
+  saveIntakeConfig(workspaceId: string, body: UpdateIntakeConfigRequest): Promise<IntakeConfigView> {
+    return this.#request('PUT', `/workspaces/${workspaceId}/intake/config`, body, undefined, { timeoutMs: 60_000 });
+  }
+
+  /** A push token for one source; the answer is the only time it is shown. */
+  mintIntakeToken(workspaceId: string, sourceId: string): Promise<IntakeTokenMintedView> {
+    return this.#request('POST', `/workspaces/${workspaceId}/intake/tokens`, { sourceId });
+  }
+
+  /** One of a source's named secrets, kept only in the local secret store; empty removes it. */
+  saveSourceSecret(workspaceId: string, sourceId: string, name: string, value: string): Promise<void> {
+    return this.#request('PUT', `/workspaces/${workspaceId}/intake/sources/${encodeURIComponent(sourceId)}/secret`, { name, value });
+  }
+
+  /** The tracker's token, kept only in the local secret store. */
+  saveTrackerSecret(workspaceId: string, value: string): Promise<void> {
+    return this.#request('PUT', `/workspaces/${workspaceId}/intake/tracker/secret`, { value });
   }
 
   /** Runs a routine once now, through the same checks as a scheduled run. */

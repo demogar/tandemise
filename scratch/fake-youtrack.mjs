@@ -26,6 +26,12 @@
 //   POST /api/issues/<key>/comments/<id>
 //   POST /api/issues/<key>/attachments      (multipart; names only)
 //
+// The acceptance run seeds, edits and inspects it over HTTP, never through the token:
+//
+//   POST /_fake/issues          { idReadable?, summary, description, state, type, … }  puts an issue
+//   POST /_fake/issues/<key>    { state?, description?, … }                             a person edits it
+//   GET  /_fake/state                                                                   issues, comments, commands, calls
+//
 // Search: `project: P` scopes, `#Unresolved` drops resolved items, a quoted
 // string is a substring match on summary, description and comments, and the
 // remaining words must all appear in the summary. `sort by: …` is ignored;
@@ -204,6 +210,30 @@ export async function startFakeYouTrack(options = {}) {
   const server = createServer(async (req, res) => {
     const u = new URL(req.url, 'http://127.0.0.1');
     const path = u.pathname;
+    // The acceptance run's own door (plan Task 14): no token, never something the adapter calls.
+    if (path.startsWith('/_fake/')) {
+      const raw = await readBody(req);
+      const body = raw.length === 0 ? {} : JSON.parse(raw.toString('utf8'));
+      const reply = (status, value) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify(value)); };
+      let k;
+      if (req.method === 'POST' && path === '/_fake/issues') return reply(200, putIssue(body));
+      if (req.method === 'POST' && (k = path.match(/^\/_fake\/issues\/([^/]+)$/))) {
+        const issue = issues.get(decodeURIComponent(k[1]));
+        if (!issue) return reply(404, { error: 'no such issue' });
+        const { state, ...rest } = body;
+        Object.assign(issue, rest);
+        issue.updated = now();
+        if (state !== undefined) setState(issue.idReadable, state); else save();
+        return reply(200, issue);
+      }
+      if (req.method === 'GET' && path === '/_fake/state') {
+        return reply(200, {
+          issues: [...issues.values()], comments: Object.fromEntries(comments), commands,
+          calls: calls.map((c) => ({ method: c.method, path: c.path, query: c.query.toString() })),
+        });
+      }
+      return reply(404, { error: `no fake route ${req.method} ${path}` });
+    }
     calls.push({ method: req.method, path, query: u.searchParams, authorization: req.headers.authorization ?? null, accept: req.headers.accept ?? null });
     const send = (status, body) => {
       if (res.destroyed) return;

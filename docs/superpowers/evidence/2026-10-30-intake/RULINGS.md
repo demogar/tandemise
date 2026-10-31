@@ -407,3 +407,36 @@ was ambiguous or wrong, decided against the spec
     intake paths leave it out). The repository port gained `closures.get(id)`.
   - **The CLI** prints `<id> <fingerprint> <state>` per closure, and the acked closure's line after `--ack`;
     `--error` without `--ack` is a usage error.
+- Ruling 20 (the desktop and the real-app proof, Task 14): decided from spec §2, §7, §8 and the acceptance table:
+  - **Ports.** The harness uses `CDP_PORT=9352` and `ACCEPTANCE_LINK=/tmp/tdm-intake`, not the plan's 9351:
+    another feature's harness runs on the ports next to it.
+  - **Configuration.** The brain (#51) is not on main, so `run-all` sets the project's intake through the
+    daemon's own routes (`PUT …/intake/tracker/secret`, `PUT …/intake/config`, `PUT …/sources/:id/secret`), the
+    same path Settings → Intake writes; nothing is written to `settings.json` by hand. The fake YouTrack gained a
+    `/_fake/…` door (seed an issue, a person's edit, the recorded state), like the Sentry and Slack fakes.
+  - **One item for I6–I8.** Sentry's `inCommit` needs the item's mission to have a commit (Ruling 19), so I6
+    starts the item Sentry filed in I2 (and Slack linked in I3), after a person writes its "Done when" in
+    YouTrack, and I7 and I8 complete and close that same item. The project's checkout has its GitHub remote
+    (acme/web) before it is registered, since the remote is read then, and runs an "Intake fix" workflow whose
+    build step works in a worktree, so the mission has a commit. I9's "I8-style completion" is the item set to
+    Fixed in the fake: the trigger is the tracker reaching done, whoever moved it (spec §8).
+  - **Words the plan did not list.** `received` reads "Waiting for the tracker" with **Try now** (the retry
+    route); `closure_pending` reads "Done in <key>; closing at <Label>". A failed closure's reason is already the
+    daemon's "Couldn't close at <Label>: …" (Ruling 19), so it is shown as it is rather than as
+    "Couldn't close: Couldn't close at …". The Board's mission line is "Mission: <status in words>"; a disabled
+    Start's title is the daemon's `startable.reason` ("Has a mission", "Already in progress").
+  - **Retry for a closure.** `IntakeSignalView` carries no closure id, so **Retry** reads the source's closures
+    feed with the daemon token and retries the one for that fingerprint; no route or view was changed.
+  - **Settings → Intake.** It sits in Settings (for the selected project), reached from the Board's empty state
+    at `/settings/intake`, which opens the page scrolled to it. No route switches a source off on this machine
+    or serves `IntakeSourceView`, so a source's switches are its configuration's `closeOnDone` and
+    `closeWontDo`, and its last check and last error are not shown (nor Task 12's open point on socket runners'
+    token errors). Item types to workflows (`tracker.workflows`) are kept on save, not edited. A custom source
+    added there with no instance takes its id, which is what `tandemise intake push` names. The use-as-tracker
+    offer in Repositories → Issues is "once" per repository on this computer (`localStorage`, "Not now").
+  - **The Board** reads `POST …/board/refresh` on open (spec §7 "refreshed … on open") and polls every 10 s;
+    the missions topic now refreshes it too, so a row's mission status follows. Start opens the mission from the
+    mutation itself, not a per-call `onSuccess`: the started row moves to In progress and can unmount before the
+    answer arrives (a run caught it: the mission was made and the window stayed on the Board).
+  - **Real YouTrack (opt-in).** `run-all --real-youtrack` runs I1, I2 and I6 against `TANDEMISE_YOUTRACK_URL`/
+    `_TOKEN`/`_PROJECT` with nothing seeded; it was implemented and not run (no credentials may be used here).

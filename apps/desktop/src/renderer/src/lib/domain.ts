@@ -313,6 +313,31 @@ export function defaultElsewhereTool(outputs: readonly ArtifactType[]): string {
   return 'Google Docs';
 }
 
+/**
+ * Intake (plan Task 14). Mirrors `sourceLabel` in @tandemise/domain
+ * (entities/intake.ts): a shipped kind's words, a custom runner's slug as itself.
+ */
+const INTAKE_SOURCE_LABELS: Readonly<Record<string, string>> = { github: 'GitHub', sentry: 'Sentry', posthog: 'PostHog', slack: 'Slack', discord: 'Discord' };
+export function intakeSourceLabel(kind: string): string {
+  return INTAKE_SOURCE_LABELS[kind] ?? kind;
+}
+
+/** A shipped kind runs inside the daemon; any other kind is a custom runner that pushes with a token. */
+export function isShippedIntakeKind(kind: string): boolean {
+  return kind in INTAKE_SOURCE_LABELS;
+}
+
+/**
+ * The secrets each shipped runner reads by name (intake-runners, RULINGS 17 and 18),
+ * with the words Settings → Intake asks for them in. Kept only in the local secret store.
+ */
+export const INTAKE_SOURCE_SECRETS: Readonly<Record<string, readonly { readonly name: string; readonly label: string }[]>> = {
+  sentry: [{ name: 'token', label: 'Auth token' }, { name: 'clientSecret', label: 'Webhook client secret' }],
+  posthog: [{ name: 'apiKey', label: 'Personal API key' }, { name: 'webhookSecret', label: 'Webhook secret' }],
+  slack: [{ name: 'appToken', label: 'App-level token' }, { name: 'botToken', label: 'Bot token' }],
+  discord: [{ name: 'botToken', label: 'Bot token' }],
+};
+
 export const API_VERSION = 'v1';
 export const API_VERSION_HEADER = 'x-tandemise-api-version';
 export const STREAM_PATH = '/v1/stream';
