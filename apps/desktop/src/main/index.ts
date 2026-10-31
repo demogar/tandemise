@@ -15,7 +15,7 @@ const devServerUrl = process.env['ELECTRON_RENDERER_URL'];
 const APP_NAME = 'Tandemise';
 /** Real-app suites only: exposes the About panel options to the renderer (see `TandemiseTestBridge`). */
 const testHooks = process.env['TANDEMISE_TEST_HOOKS'] === '1';
-/** Built from `build/icon.svg` by `npm run icons`. */
+/** Built from `@tandemise/design`'s `assets/app-icon.svg` by `npm run icons`. */
 const appIconPath = join(here, '../../build/icon.png');
 
 /**

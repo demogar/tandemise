@@ -4,8 +4,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { App } from './App.js';
 import { ConnectionProvider } from './lib/connection.js';
 import { DaemonError } from './lib/daemon.js';
-import './styles/palette.css';
-import './styles/theme.css';
+// The design system: tokens (palette + roles, both themes) and the brand reset.
+import '@tandemise/design/tokens.css';
+import '@tandemise/design/base.css';
 import './styles/base.css';
 import './styles/shell.css';
 import './styles/controls.css';

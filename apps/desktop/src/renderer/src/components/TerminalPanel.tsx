@@ -372,7 +372,7 @@ function parseControl(data: unknown): Control | null {
 }
 
 /**
- * The terminal roles from theme.css, resolved to the colours the current theme
+ * The terminal roles from @tandemise/design (tokens.css), resolved to the colours the current theme
  * gives them. A custom property reads back as the `light-dark()` text it was
  * written with, so each role is set on a probe's `color` and read from there.
  */

@@ -2,6 +2,10 @@
 // dependency direction. `scripts/check-boundaries.mjs` enforces it mechanically
 // (MVP.md §26.1 - dependency direction).
 export const LAYERS = {
+  // The design system (tokens, theme, logo, icons). A leaf like shared, but
+  // the only package the desktop renderer may import at runtime: it has no
+  // imports at all, so nothing Node-only can reach the browser bundle.
+  design: 0,
   shared: 0,
   kernel: 1,
   domain: 1,
@@ -68,6 +72,17 @@ export const PACKAGES = {
     deps: ['shared', 'kernel', 'domain', 'api-contract', 'policy', 'runtimes-core', 'execution-core', 'integrations-core', 'context', 'evaluation', 'coordination'],
     ext: { zod: '^3.24.1', yaml: '^2.9.1' },
   },
+};
+
+/**
+ * Packages built for the UI rather than the daemon, and published on their own
+ * (`@tandemise/design`). They depend on nothing - no `@tandemise/*`, no
+ * third-party module, no `node:*` - which check-boundaries enforces, and the
+ * desktop renderer may value-import them. Not in PACKAGES, so the daemon's
+ * dependency list and the scaffold leave them alone.
+ */
+export const UI_PACKAGES = {
+  design: { deps: [], ext: {} },
 };
 
 export const APPS = {

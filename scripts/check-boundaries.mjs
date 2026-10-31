@@ -3,7 +3,7 @@
 // boundary rule (domain/application must not import provider-specific modules).
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { LAYERS, PACKAGES, PROVIDER_PACKAGES } from './packages.mjs';
+import { LAYERS, PACKAGES, PROVIDER_PACKAGES, UI_PACKAGES } from './packages.mjs';
 
 const FORBIDDEN_IN_CORE = [
   /^electron$/, /^playwright/, /^better-sqlite3$/, /^@octokit/, /^ws$/,
@@ -64,6 +64,25 @@ for (const [name, spec] of Object.entries(PACKAGES)) {
   }
 }
 
+// UI packages (`@tandemise/design`) import nothing outside themselves: no
+// `@tandemise/*`, no third-party module, no `node:*`. That is what lets the
+// renderer value-import them below, and what lets one be split into its own
+// repository and published with no dependency to bring along.
+const ANY_SPECIFIER_RE = /^\s*(?:import|export)\b[^;]*?\bfrom\s+['"]([^'"]+)['"]|^\s*import\s+['"]([^'"]+)['"]|\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)|\brequire\s*\(/gm;
+for (const name of Object.keys(UI_PACKAGES)) {
+  let files;
+  try { files = walk(`packages/${name}/src`); } catch { errors.push(`packages/${name}/src: listed in UI_PACKAGES but missing`); continue; }
+  for (const file of files) {
+    const src = readFileSync(file, 'utf8');
+    for (const m of src.matchAll(ANY_SPECIFIER_RE)) {
+      const mod = m[1] ?? m[2] ?? m[3];
+      if (mod?.startsWith('./') || mod?.startsWith('../')) continue;
+      errors.push(`${file}: UI package '${name}' may import only its own modules (found ${mod ? `'${mod}'` : 'require()'})`);
+    }
+  }
+}
+const UI_PACKAGE_NAMES = new Set(Object.keys(UI_PACKAGES).map((n) => `@tandemise/${n}`));
+
 // The renderer is a sandboxed browser context (MVP.md §7.1). Every
 // `@tandemise/*` package's runtime entry reaches `@tandemise/shared`, which
 // imports `node:os` and `node:path`, so a single value import blanks the whole
@@ -112,6 +131,8 @@ for (const [name, spec] of Object.entries(PACKAGES)) {
     const src = readFileSync(file, 'utf8');
     for (const match of src.matchAll(STATEMENT_RE)) {
       if (TYPE_ONLY_RE.test(match[0]) || PURE_SUBPATHS.has(match[1])) continue;
+      // A UI package has no imports of its own (checked above), so any entry of it is safe in the browser.
+      if (UI_PACKAGE_NAMES.has(match[1].split('/').slice(0, 2).join('/'))) continue;
       errors.push(`${file}: renderer value-imports ${match[1]}, which pulls Node built-ins into the browser bundle; use \`import type\` or lib/domain.ts`);
     }
   }

@@ -17,6 +17,7 @@
   "dependencies": {
     "@tandemise/api-contract": "*",
     "@tandemise/artifacts": "*",
+    "@tandemise/design": "*",
     "@tandemise/domain": "*",
     "@tandemise/shared": "*",
     "@tanstack/react-query": "^5.104.0",

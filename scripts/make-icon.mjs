@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 /**
- * Builds every app icon artefact from `apps/desktop/build/icon.svg`.
+ * Builds every app icon artefact from the brand assets in `@tandemise/design`:
+ * `packages/design/assets/app-icon.svg` (dock, installers) and
+ * `logo-mark-template.svg` (the macOS menu bar, emitted from src/logo.ts).
  *
  * Electron does the rasterizing because it is already a dependency and it is
  * the same renderer that will draw the app - no image toolchain to install, and
@@ -16,6 +18,7 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const buildDir = join(root, 'apps/desktop/build');
 const work = join(buildDir, '.iconwork');
 const resources = join(root, 'apps/desktop/resources');
+const brandAssets = join(root, 'packages/design/assets');
 
 const run = (cmd, args, opts = {}) =>
   new Promise((resolve, reject) => {
@@ -54,7 +57,7 @@ app.whenReady().then(async () => {
 }
 
 const master = join(work, 'icon-1024.png');
-await rasterize(join(buildDir, 'icon.svg'), 1024, master);
+await rasterize(join(brandAssets, 'app-icon.svg'), 1024, master);
 
 // The sizes macOS actually asks for, each at 1x and 2x.
 const iconset = join(work, 'icon.iconset');
@@ -67,10 +70,12 @@ await run('iconutil', ['-c', 'icns', iconset, '-o', join(buildDir, 'icon.icns')]
 
 // A plain PNG too: Linux/Windows builds and the dev dock icon use it.
 await run('sips', ['-z', '512', '512', master, '--out', join(buildDir, 'icon.png')], { stdio: 'ignore' });
+// The same PNG ships in the design package, for sites and docs that need a raster.
+await run('sips', ['-z', '512', '512', master, '--out', join(brandAssets, 'app-icon.png')], { stdio: 'ignore' });
 // The menu-bar mark. Rendered at its real pixel sizes rather than downscaled,
 // because a 22px template image has no pixels to spare.
-await rasterize(join(buildDir, 'tray.svg'), 22, join(resources, 'trayTemplate.png'));
-await rasterize(join(buildDir, 'tray.svg'), 44, join(resources, 'trayTemplate@2x.png'));
+await rasterize(join(brandAssets, 'logo-mark-template.svg'), 22, join(resources, 'trayTemplate.png'));
+await rasterize(join(brandAssets, 'logo-mark-template.svg'), 44, join(resources, 'trayTemplate@2x.png'));
 
 rmSync(work, { recursive: true, force: true });
-console.log('✓ wrote apps/desktop/build/icon.icns, icon.png, and resources/trayTemplate*.png');
+console.log('✓ wrote apps/desktop/build/icon.icns, icon.png, resources/trayTemplate*.png and packages/design/assets/app-icon.png');
