@@ -105,6 +105,14 @@ live in your repository as `.tandemise/` files: export them, commit them, import
 them on another machine with a preview of every change — see
 [Your setup as code](docs/guides/setup-as-code.md).
 
+Each project can have a **brain**: one git repository (say `garipass/brain`)
+that holds how its factory works and what it has learned. Link it in Project
+settings in one of three ways: create one on GitHub, use one a teammate made, or
+keep it on this machine. When you hold a step or ask for changes, the brain keeps
+a short lesson; the next run on that step loads it and the task shows what it
+knew; a lesson that keeps helping is proposed as a rule through a pull request.
+Sharing is `git pull` and `git push`; secrets and your own settings never go in it.
+
 Label a GitHub issue `tandemise` and it becomes a draft mission (queued when it
 says what "done" means); when the work ships, the issue gets the criteria table
 and, if you want, is closed — see [GitHub issues in and out](docs/guides/github-issues.md).
