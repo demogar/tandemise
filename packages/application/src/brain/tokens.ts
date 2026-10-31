@@ -4,6 +4,7 @@ import type { BrainSyncLoop } from './sync-loop.js';
 import type { BrainContextSupply } from './context-supply.js';
 import type { BrainSignals, WorktreeDiff } from './signals.js';
 import type { PromotionEvalPort } from './eval-gates.js';
+import type { BrainIntakeConfigSource } from './intake-config.js';
 import type { BrainHostPort, BrainRecordRepositoryPort, BrainRepoPort, WorkspaceBrainRepositoryPort } from '@tandemise/domain';
 
 /**
@@ -31,3 +32,8 @@ export const BRAIN_SIGNALS = token<BrainSignals>('application.BrainSignals');
 export const BRAIN_WORKTREE_DIFF = token<WorktreeDiff>('port.BrainWorktreeDiff');
 /** Runs a promotion's eval suites (P3b) against a brain candidate; rebind it to stub evals. */
 export const BRAIN_PROMOTION_EVALS = token<PromotionEvalPort>('application.BrainPromotionEvals');
+/**
+ * The brain's implementation of intake's config port (#52). Brain-owned name:
+ * #52 rebinds its own `INTAKE_CONFIG_SOURCE` to this when it lands.
+ */
+export const BRAIN_INTAKE_CONFIG = token<BrainIntakeConfigSource>('application.BrainIntakeConfig');

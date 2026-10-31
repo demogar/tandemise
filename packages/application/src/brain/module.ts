@@ -9,6 +9,7 @@ import { BrainSyncLoop } from './sync-loop.js';
 import { BrainContextSupply } from './context-supply.js';
 import { BrainSignals } from './signals.js';
 import { ServiceEvalPort } from './eval-gates.js';
+import { BrainIntakeConfigSource } from './intake-config.js';
 import { RUNTIME_MANAGER } from '@tandemise/runtimes-core';
 import { BUILT_IN_TOOLS } from '@tandemise/integrations-core';
 import { createBrainTools } from '../tools/brain-tools.js';
@@ -111,7 +112,14 @@ export function bindBrain(container: Container): void {
     diff: r.tryResolve(b.BRAIN_WORKTREE_DIFF) ?? null,
   }), { source: SOURCE });
 
+  // No local intake source exists until #52 lands; projects without a brain then read intake's defaults.
+  container.bind(b.BRAIN_INTAKE_CONFIG, (r) => new BrainIntakeConfigSource(
+    r.resolve(b.BRAIN_SERVICE), r.resolve(b.BRAIN_REPO), null, log(r).child({ component: 'brain-intake' }),
+  ), { source: SOURCE });
+
   container.bind(b.BRAIN_SYNC_LOOP, (r) => {
+    // Resolved first so its refresh is registered before the first sync.
+    r.resolve(b.BRAIN_INTAKE_CONFIG);
     return new BrainSyncLoop(
       r.resolve(b.BRAIN_SERVICE), r.resolve(b.WORKSPACE_BRAIN_REPOSITORY), log(r).child({ component: 'brain-sync' }),
       r.tryResolve(t.EVENT_BUS) ?? null,

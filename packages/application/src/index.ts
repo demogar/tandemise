@@ -151,3 +151,5 @@ export { NOT_EVALUATED, PROMOTION_REGAIN, Promotions, promotionId } from './brai
 export type { PromotionBundle } from './brain/promotion.js';
 export * from './brain/eval-gates.js';
 export { buildPromoterPrompt, parsePromoterReply, promote } from './brain/promoter.js';
+export { BrainIntakeConfigSource, INTAKE_DEFAULTS, SET_IN_BRAIN, brainIntakeFile, brainTrackerFile } from './brain/intake-config.js';
+export type { BrainIntakeConfig, BrainTrackerConfig, IntakeConfigSourceShape } from './brain/intake-config.js';

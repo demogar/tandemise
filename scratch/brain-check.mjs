@@ -538,6 +538,7 @@ async function brainHarness(name) {
   const realCompiler = ctx.createContextCompiler();
   container.rebind(ctx.CONTEXT_COMPILER, () => ({ compile: (req) => { const c = realCompiler.compile(req); prompts.push({ taskId: req.task.id, prompt: c.prompt, truncated: c.truncated }); return c; } }), { source: 'check' });
   const services = app.createServices(container);
+  container.resolve(app.BRAIN_INTAKE_CONFIG);
   const r = (t) => container.resolve(t);
   const caller = { personId: services.identity.localPerson().id };
   const repoDir = join(home, 'code');
@@ -1275,6 +1276,36 @@ if (H1 !== null && (wants('promotion') || wants('intake'))) {
   const accepted = await s1.brain.acceptProposal(c1, pl.id);
   const localClone = H1.r(app.WORKSPACE_BRAIN_REPOSITORY).get(wsL).clonePath;
   check('accept merges it locally', accepted.state === 'accepted' && git(localClone, 'show', 'main:memory/rules/role-development.md').includes('Small commits.'), accepted);
+}
+
+// ------------------------------------------------------------------ intake config
+if (H1 !== null && wants('intake')) {
+  section("intake config: the brain serves intake's tracker and sources (#52's IntakeConfigSource)");
+  const { services: s1, caller: c1, ws: ws1 } = H1;
+  const source = H1.r(app.BRAIN_INTAKE_CONFIG);
+  const wsNone = (await s1.workspaces.create(c1, { name: 'No brain intake', repositoryPath: H1.repoDir })).workspace.id;
+  check('with no brain it is the local source (defaults here) and says local', JSON.stringify(source.read(wsNone)) === JSON.stringify(app.INTAKE_DEFAULTS) && source.originFor(wsNone) === 'local');
+  const tracker = 'tracker:\n  kind: youtrack\n  url: https://yt.example\n  project: GAR\n  board: "project: GAR"\n  states:\n    ready: [Open]\n    in_progress: In Progress\n    done: [Fixed]\n    wont_do: []\n  onComplete: done\n';
+  scratchEdit({ 'factory/tracker.yaml': tracker });
+  await s1.brain.sync(ws1, 'person');
+  const read = source.read(ws1);
+  check('a pushed tracker.yaml is read after sync', read.tracker?.kind === 'youtrack' && read.tracker.states.in_progress === 'In Progress', read);
+  check('intake defaults when intake.yaml is missing', read.dailyCap === 20 && read.similarity.link === 0.85 && read.sources.length === 0);
+  check('it says brain for a linked project', source.originFor(ws1) === 'brain' && source.origin === 'brain');
+  scratchEdit({ 'factory/tracker.yaml': 'tracker:\n  kind: youtrack\n  board: x\n' });
+  await s1.brain.sync(ws1, 'person');
+  check('a broken tracker.yaml keeps the last good config', source.read(ws1).tracker?.kind === 'youtrack');
+  check('and the Brain section names the file first', s1.brain.view(ws1).problems[0]?.startsWith('factory/tracker.yaml:'), s1.brain.view(ws1).problems);
+  let refused = null;
+  try { source.write(ws1, { tracker: null }); } catch (e) { refused = e.message; }
+  check("writing a linked project's intake is refused in words", refused === "Set in this project's brain.", refused);
+  const reads = [];
+  const realReadAt = s1.brain.readAt.bind(s1.brain);
+  s1.brain.readAt = async (ws, sha, path) => { reads.push(path); return realReadAt(ws, sha, path); };
+  await s1.brain.remember(c1, ws1, { text: 'Only memory changes here.' });
+  await s1.brain.sync(ws1, 'person');
+  s1.brain.readAt = realReadAt;
+  check('a sync that changed only memory/ does not re-read either file', !reads.some((p) => p === 'factory/tracker.yaml' || p === 'factory/intake.yaml'), reads.filter((p) => p.startsWith('factory/')));
 }
 
 // ------------------------------------------------------------------ end

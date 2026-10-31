@@ -495,7 +495,8 @@ export class BrainService {
       lessons: valid.filter((e) => e.state === 'active' || e.state === 'accepted').length,
       candidates: valid.filter((e) => e.state === 'candidate').length,
       mcpsNeeded,
-      problems: [...problems, ...(this.extraProblems.get(workspaceId) ?? [])],
+      // Problems another part of the brain names (a broken tracker.yaml) come first.
+      problems: [...(this.extraProblems.get(workspaceId) ?? []), ...problems],
     });
   }
 
