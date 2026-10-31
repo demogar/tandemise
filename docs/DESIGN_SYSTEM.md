@@ -279,8 +279,10 @@ because it carries product logic or is used in one place.
 6. `app-icon.svg` uses a colour outside the palette, or
    `logo-mark-template.svg` uses anything but black.
 7. `src/shared/brand.ts` drifts from the palette.
-8. The gallery (`packages/design/gallery/index.html`) is stale, or leaves out a
-   component that `@tandemise/design/react` exports (`COMPONENTS`).
+8. A component that `@tandemise/design/react` exports (`COMPONENTS`) has no
+   Storybook story in `packages/design/stories/` (a `*.stories.tsx` naming it
+   as `component` or in `subcomponents`). The stories and
+   `packages/design/.storybook/` are held to rules 1-5 like any other source.
 
 ## Changing the system
 
@@ -293,11 +295,16 @@ because it carries product logic or is used in one place.
 - **New brand anchor:** update this document, `tokens.ts`, the logo roles and
   the identity tints in one change.
 - **New component:** add it under `packages/design/src/react/`, its classes to
-  `css/components.css`, its name to `COMPONENTS`, a demo to
-  `scripts/gallery.mjs`, and assertions to `scratch/design-react-check.mjs`;
-  then `npm run -w @tandemise/design gallery`.
-- **The gallery** (`packages/design/gallery/index.html`, open it from disk) is
-  the visual reference: every token and component in light and dark.
+  `css/components.css`, its name to `COMPONENTS`, a
+  `stories/<Name>.stories.tsx` with a story per variant, size and state (and a
+  play function for its keyboard behaviour), and assertions to
+  `scratch/design-react-check.mjs`.
+- **Storybook** is the visual reference: every component, its states, the
+  components in context and the foundations, in both themes and densities.
+  `npm run -w @tandemise/design storybook` runs it locally; `main` publishes it
+  to GitHub Pages. `npm run -w @tandemise/design storybook:a11y` (after
+  `storybook:build`) runs axe on every story in both themes and fails on a new
+  violation or a failing play function; CI runs it.
 - **Verify in the real app.** Walk every screen in both themes with a real
   mission, not only the mock, and regenerate `apps/desktop/screenshots/` from
   the real app with the scripts in `scratch/docs-screenshots/` (its README has
