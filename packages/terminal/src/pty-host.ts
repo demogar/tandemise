@@ -56,7 +56,7 @@ export class PtyHost implements InteractiveSessionsPort {
     const proc = pty.spawn(inv.file, [...inv.args], {
       name: 'xterm-256color',
       cwd: inv.cwd,
-      env: { ...process.env, ...inv.env },
+      env: { ...inv.env },
       cols: 120,
       rows: 32,
     });

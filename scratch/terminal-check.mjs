@@ -71,5 +71,28 @@ section('pty host');
   rmSync(dir, { recursive: true, force: true });
 }
 
+section('environment: only the invocation env reaches the child');
+{
+  process.env.TANDEMISE_POISON = '1';
+  const host = new T.PtyHost();
+  const dir = mkdtempSync(join(tmpdir(), 'tandemise-terminal-env-'));
+  const out = [];
+  host.open('hold-env', {
+    file: process.execPath,
+    args: ['-e', "console.log('ENV:' + JSON.stringify(Object.keys(process.env)))"],
+    env: { TANDEMISE_MARKER: '1' },
+    cwd: dir,
+    sessionFile: join(dir, 's'),
+  });
+  host.attach('hold-env', { data: (b) => out.push(b), exit: () => {} });
+  await until(() => Buffer.concat(out).toString().includes('ENV:'));
+  const text = Buffer.concat(out).toString();
+  check('the invocation env reaches the child', text.includes('TANDEMISE_MARKER'), text);
+  check('the daemon env does not', !text.includes('TANDEMISE_POISON'), text);
+  await host.end('hold-env', 500);
+  delete process.env.TANDEMISE_POISON;
+  rmSync(dir, { recursive: true, force: true });
+}
+
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) { console.log(failures.join('\n')); process.exit(1); }
