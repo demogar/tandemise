@@ -328,6 +328,74 @@ if (wants('git')) {
   check('the host is available', (await host.available()).ok === true);
 }
 
+// ------------------------------------------------------------------ fold
+if (wants('fold')) {
+  section('fold: a deterministic fold over the memory ledger');
+  const W = ['ana-a1b2c3', 'ben-d4e5f6', 'cy-0a0b0c'];
+  const t = (n) => new Date(Date.UTC(2026, 9, 1, 0, 0, n)).toISOString();
+  const id = (w, n) => `${w}:${String(n).padStart(26, '0')}`;
+  const scope = { role: 'development' };
+  const add = (w, n, text, extra = {}) => ({ op: 'add', id: id(w, n), at: t(n), by: w, entry: { kind: 'lesson', text, scope, source: { signal: 'person', mission: `M${n}` }, state: 'active', ...extra } });
+  const vote = (w, n, target, v, why = 'reflector', mission) => ({ op: 'vote', id: target, at: t(n), by: w, vote: v, why, ...(mission ? { mission } : {}) });
+  const events = [];
+  for (let i = 0; i < 12; i++) events.push(add(W[i % 3], i + 1, `Lesson number ${i} about the build.`));
+  events.push(add(W[0], 20, 'Run npm run ci before a PR.'));
+  events.push(add(W[1], 21, 'run  npm run ci, before a PR'));
+  for (let i = 0; i < 10; i++) events.push(vote(W[i % 3], 30 + i, id(W[i % 3], (i % 12) + 1), i % 4 === 0 ? 'harmful' : 'helpful'));
+  events.push(vote(W[2], 41, id(W[1], 21), 'helpful'));
+  events.push(vote(W[2], 42, id(W[0], 20), 'helpful'));
+  for (let i = 0; i < 12; i++) events.push({ op: 'confirm', id: id(W[(i + 1) % 3], (i % 12) + 1), at: t(50 + i), by: W[(i + 1) % 3], mission: `X${i}` });
+  events.push({ op: 'accept', id: id(W[0], 4), at: t(60), by: W[2] });
+  events.push({ op: 'retire', id: id(W[1], 5), at: t(61), by: W[0], reason: 'Old.' });
+  check('the fixture has 40 events across 3 writers', events.length === 40, events.length);
+
+  let seed = 42;
+  const rand = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+  const shuffle = (a) => { const b = [...a]; for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [b[i], b[j]] = [b[j], b[i]]; } return b; };
+  const now = t(100);
+  const reference = JSON.stringify(D.foldLedger?.(events, [], now));
+  let same = typeof D.foldLedger === 'function';
+  for (let i = 0; i < 100 && same; i++) same = JSON.stringify(D.foldLedger(shuffle(events), [], now)) === reference;
+  check('100 shuffles fold to the same memory', same);
+
+  const memory = D.foldLedger?.(events, [], now);
+  const ci = memory?.entries.filter((e) => D.normaliseText(e.text) === D.normaliseText('Run npm run ci before a PR.'));
+  check('duplicate adds are one entry with the earlier id', ci?.length === 1 && ci[0].id === id(W[0], 20), ci?.map((e) => e.id));
+  check('votes on either id sum on the winner', ci?.[0]?.helpful === 2, ci?.[0]);
+  check('the winner counts both missions', ci?.[0]?.missions.length === 2, ci?.[0]?.missions);
+
+  const pv = D.foldLedger?.([add(W[0], 1, 'Person voted.'), vote(W[1], 2, id(W[0], 1), 'helpful', 'person')], [], now);
+  check('a person vote counts 3', pv?.entries[0]?.net === 3, pv?.entries[0]);
+
+  const sup = D.foldLedger?.([add(W[0], 1, 'Old way.'), add(W[0], 2, 'New way.'), { op: 'supersede', id: id(W[0], 1), at: t(3), by: W[0], successor: id(W[0], 2), invalidAt: t(3) }], [], now);
+  const old = sup?.entries.find((e) => e.id === id(W[0], 1));
+  check('a superseded entry stays, invalid from invalidAt', old?.invalidAt === t(3) && old.supersededBy === id(W[0], 2), old);
+  check('and is not loadable after', old !== undefined && D.isLoadable(old, t(4)) === false);
+
+  const harm = D.foldLedger?.([add(W[0], 1, 'Bad advice.'), ...[2, 3, 4].map((n) => vote(W[1], n, id(W[0], 1), 'harmful'))], [], now);
+  check('3 harmful votes flag it and stop it loading', harm?.entries[0]?.flags.harmful === true && D.isLoadable(harm.entries[0], now) === false, harm?.entries[0]);
+
+  const staleNow = new Date(Date.parse(t(1)) + 91 * 86_400_000).toISOString();
+  const stale = D.foldLedger?.([add(W[0], 1, 'Old but fine.')], [], staleNow);
+  check('91 days unconfirmed is stale but still loads', stale?.entries[0]?.flags.stale === true && D.isLoadable(stale.entries[0], staleNow) === true, stale?.entries[0]?.flags);
+
+  const cand = (extra) => D.foldLedger([add(W[0], 1, 'Maybe this.', { state: 'candidate', source: { signal: 'agent', mission: 'M1' } }), ...extra], [], now).entries[0];
+  check('a candidate does not load alone', D.isLoadable?.(cand([]), now) === false);
+  check('a confirm from the same mission is not enough', D.isLoadable?.(cand([{ op: 'confirm', id: id(W[0], 1), at: t(2), by: W[1], mission: 'M1' }]), now) === false);
+  check('a confirm from another mission makes it load', D.isLoadable?.(cand([{ op: 'confirm', id: id(W[0], 1), at: t(2), by: W[1], mission: 'M2' }]), now) === true);
+  check('accept makes it load', D.isLoadable?.(cand([{ op: 'accept', id: id(W[0], 1), at: t(2), by: W[1] }]), now) === true);
+  check('reject never loads', D.isLoadable?.(cand([{ op: 'reject', id: id(W[0], 1), at: t(2), by: W[1] }, { op: 'confirm', id: id(W[0], 1), at: t(3), by: W[1], mission: 'M2' }]), now) === false);
+
+  const lines = [JSON.stringify(add(W[0], 1, 'Good line.')), '{not json', '{"op":"explode"}', JSON.stringify(vote(W[0], 2, id(W[2], 9), 'helpful'))];
+  const parsed = lines.map((l, i) => D.parseLedgerLine?.(l, 'memory/ledger/2026/10/ana-a1b2c3.jsonl', i + 1));
+  const evs = parsed.filter((p) => p && !('problem' in p));
+  const probs = parsed.filter((p) => p && 'problem' in p);
+  const folded = D.foldLedger?.(evs, probs, now);
+  check('bad lines are three problems naming file and line', folded?.problems.length === 3 && folded.problems.every((p) => p.problem.startsWith('memory/ledger/2026/10/ana-a1b2c3.jsonl line ')), folded?.problems);
+  check('an unknown id is named in words', folded?.problems.some((p) => p.problem === "memory/ledger/2026/10/ana-a1b2c3.jsonl line 4: refers to an entry this brain doesn't have."), folded?.problems);
+  check('the good entry is intact', folded?.entries.length === 1 && folded.entries[0].text === 'Good line.');
+}
+
 // ------------------------------------------------------------------ harness
 // The application composed over a real database, with the daemon's disk
 // adapters and the brain's git and gh adapters, as bootstrap binds them.
