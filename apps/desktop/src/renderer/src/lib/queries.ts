@@ -226,6 +226,29 @@ export function useRoutines() {
   });
 }
 
+/** Where coordination stands: local only, or with a team relay. Polled: "Offline since" is the daemon's word. */
+export function useCoordinationStatus() {
+  const daemon = useDaemon();
+  return useQuery({
+    queryKey: ['coordination', 'status'] as const,
+    queryFn: () => daemon.coordinationStatus(),
+    refetchInterval: 5_000,
+    placeholderData: (previous) => previous,
+  });
+}
+
+/** "Who's working on what" in this project. */
+export function useCoordinationClaims() {
+  const daemon = useDaemon();
+  const workspaceId = useWorkspaceId();
+  return useQuery({
+    queryKey: ['coordination', 'claims', workspaceId ?? ''] as const,
+    queryFn: () => daemon.coordinationClaims(workspaceId ?? ''),
+    enabled: Boolean(workspaceId),
+    placeholderData: (previous) => previous,
+  });
+}
+
 export function useMission(id: string) {
   const daemon = useDaemon();
   return useQuery({ queryKey: keys.mission(id), queryFn: () => daemon.mission(id), enabled: id.length > 0 });

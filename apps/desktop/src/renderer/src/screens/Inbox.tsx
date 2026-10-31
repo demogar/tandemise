@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useLocation } from 'wouter';
+import { Link, useLocation } from 'wouter';
 import type { ApprovalView } from '@tandemise/api-contract';
 import type { Approval } from '@tandemise/domain';
 import { PageHeader } from '../components/PageHeader.js';
@@ -10,7 +10,8 @@ import { Modal } from '../components/Modal.js';
 import { ApprovalCard, pipelinePosition } from './approvals/ApprovalCard.js';
 import { TaskDetail } from './mission/TaskDetail.js';
 import { missionOfItem, useInbox, type InboxItem } from '../lib/inbox.js';
-import { useApprovals, useMission } from '../lib/queries.js';
+import { useApprovals, useInboxView, useMission } from '../lib/queries.js';
+import { ClaimBanner } from '../components/ClaimBanner.js';
 import { actorsLine, useActors, type Actors } from '../lib/team.js';
 import { pluralize, relativeTime, titleCase } from '../lib/format.js';
 import { REQUEST_CHANGES_OPTION, isLimitCard, isPlanFitCard } from '../lib/domain.js';
@@ -35,6 +36,7 @@ export function Inbox({ only }: { only?: 'stalled' } = {}): JSX.Element {
   const [open, setOpen] = useState<string | null>(null);
   const [task, setTask] = useState<Extract<InboxItem, { kind: 'task' }> | null>(null);
   const [, navigate] = useLocation();
+  const unclaimed = useInboxView().data?.unclaimed ?? [];
 
   const mine = filter === 'me' ? inbox.pending.filter((i) => i.forMe) : inbox.pending;
   // Opened from Home's "Stalled" card (P10): only the missions nothing moves.
@@ -73,6 +75,21 @@ export function Inbox({ only }: { only?: 'stalled' } = {}): JSX.Element {
                 Show everything
               </button>
             </div>
+          ) : null}
+
+          {unclaimed.length > 0 && only === undefined ? (
+            // A running mission whose tracker item someone else now holds (relay spec): it keeps running until you decide.
+            <section className="section" aria-label="Unclaimed" style={{ marginBottom: 'var(--s4)' }}>
+              {unclaimed.map((row) => (
+                <div key={row.missionId} className="stack" style={{ gap: 'var(--s1)' }}>
+                  <Link href={`/missions/${row.missionId}`} className="section__meta">{row.missionTitle}</Link>
+                  <ClaimBanner
+                    missionId={row.missionId}
+                    claim={{ claimId: row.claimId, itemKey: row.itemKey, state: 'unclaimed', sentence: row.sentence, mayTakeBack: row.mayTakeBack }}
+                  />
+                </div>
+              ))}
+            </section>
           ) : null}
 
           {inbox.isPending ? (

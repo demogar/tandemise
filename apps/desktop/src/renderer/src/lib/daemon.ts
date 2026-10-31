@@ -1,4 +1,5 @@
 import type {
+  CoordinationClaimRowView, CoordinationStatusView,
   IssuesOverview, RepositoryIssuesView, UpdateIssueSettingsRequest,
   ApiErrorBody,
   NotificationPreferencesView,
@@ -367,6 +368,33 @@ export class DaemonClient {
 
   missionAction(id: string, action: 'plan' | 'replan' | 'start' | 'pause' | 'resume' | 'cancel', body?: unknown): Promise<MissionDetail> {
     return this.#request('POST', `/missions/${id}/${action}`, body ?? {});
+  }
+
+  // ---- coordination (who works on what with the team; relay spec)
+
+  coordinationStatus(): Promise<CoordinationStatusView> {
+    return this.#get('/coordination/status');
+  }
+
+  coordinationClaims(workspaceId: string): Promise<readonly CoordinationClaimRowView[]> {
+    return this.#get('/coordination/claims', { workspaceId });
+  }
+
+  /** "Take over", for the mission on this machine that should hold it. */
+  takeOverClaim(claimId: string, missionId: string | null): Promise<unknown> {
+    return this.#request('POST', `/coordination/claims/${claimId}/take-over`, { missionId });
+  }
+
+  takeBackClaim(missionId: string): Promise<unknown> {
+    return this.#request('POST', `/missions/${missionId}/claim/take-back`, {});
+  }
+
+  keepGoingWithoutClaim(missionId: string): Promise<void> {
+    return this.#request('POST', `/missions/${missionId}/claim/keep-going`, {});
+  }
+
+  stopWorking(missionId: string): Promise<void> {
+    return this.#request('POST', `/missions/${missionId}/claim/stop`, {});
   }
 
   deleteMission(id: string): Promise<void> {

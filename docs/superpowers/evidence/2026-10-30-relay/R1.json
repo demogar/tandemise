@@ -1,0 +1,59 @@
+{
+  "id": "R1",
+  "title": "Solo: who is working on what, and a held item is refused",
+  "ok": true,
+  "checks": [
+    {
+      "label": "approving the plan starts the issue-linked mission",
+      "ok": true
+    },
+    {
+      "label": "Home: \"Who's working on what\" has a row for acme/app#7",
+      "ok": true,
+      "observed": "Who's working on what\nYou\nacme/app#7\nFix the hello page header\nsince 19:32"
+    },
+    {
+      "label": "…and it is yours",
+      "ok": true,
+      "observed": "Who's working on what\nYou\nacme/app#7\nFix the hello page header\nsince 19:32"
+    },
+    {
+      "label": "a second mission on the same issue is refused in a dialog",
+      "ok": true,
+      "observed": "Someone is working on this\n\nYou're already working on this on demogar-ubuntu.\n\nNot now"
+    },
+    {
+      "label": "…in plain words: \"You're already working on this on demogar-ubuntu.\"",
+      "ok": true,
+      "observed": "Someone is working on this\n\nYou're already working on this on demogar-ubuntu.\n\nNot now"
+    },
+    {
+      "label": "…with Not now and no Take over (it is yours)",
+      "ok": true,
+      "observed": [
+        "Not now"
+      ]
+    },
+    {
+      "label": "the second mission did not start; its plan still waits",
+      "ok": true,
+      "observed": "AWAITING_PLAN_APPROVAL"
+    },
+    {
+      "label": "finishing the first mission clears its row within 2 s",
+      "ok": true,
+      "observed": "Who's working on what\n\nNobody is working on a tracker item right now."
+    },
+    {
+      "label": "…and Home says nobody is working on a tracker item",
+      "ok": true,
+      "observed": "Who's working on what\n\nNobody is working on a tracker item right now."
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/home/demogar/projects/tandemise/tandemise/.claude/worktrees/agent-a7a3a08456d2c2555/docs/superpowers/evidence/2026-10-30-relay/R1-home-row.png",
+    "/home/demogar/projects/tandemise/tandemise/.claude/worktrees/agent-a7a3a08456d2c2555/docs/superpowers/evidence/2026-10-30-relay/R1-refused.png",
+    "/home/demogar/projects/tandemise/tandemise/.claude/worktrees/agent-a7a3a08456d2c2555/docs/superpowers/evidence/2026-10-30-relay/R1-home-empty.png"
+  ]
+}
