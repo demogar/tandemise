@@ -557,6 +557,27 @@ export interface IntakeConfigView {
    * switched on here. Not part of the configuration, so it is never saved back.
    */
   readonly enabled: Readonly<Record<string, boolean>>;
+  /**
+   * Saved credentials whose configured address is no longer the one they were
+   * saved for (Ruling 23): `current` is where the configuration points now,
+   * `saved` where the token was saved for (scheme, host, port). Tandemise sends
+   * neither the tracker token nor a source's secrets to `current` until the
+   * person confirms it (`POST …/intake/tracker/confirm-origin`,
+   * `POST …/intake/sources/:sourceId/confirm-origin`).
+   */
+  readonly originMismatch: {
+    readonly tracker: IntakeOriginMismatchView | null;
+    /** By source id; a source whose address did not move is absent. */
+    readonly sources: Readonly<Record<string, IntakeOriginMismatchView>>;
+  };
+}
+
+/** Where a credential's configuration points now, and where it was saved for (Ruling 23). */
+export interface IntakeOriginMismatchView {
+  readonly current: string;
+  readonly saved: string;
+  /** The daemon's refusal, in its own words, as the UI shows it. */
+  readonly message: string;
 }
 
 /**

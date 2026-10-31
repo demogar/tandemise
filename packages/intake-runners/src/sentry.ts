@@ -26,6 +26,8 @@ export const SENTRY_SIGNATURE_MISMATCH = "The Sentry signature doesn't match.";
 export class SentryRunner implements IntakeRunner {
   readonly kind = 'sentry';
   readonly mode = 'poll' as const;
+  /** Where the source's secrets go when it sets no `api` (Ruling 23). */
+  readonly defaultApi = DEFAULT_API;
 
   start(ctx: RunnerContext): RunnerHandle {
     return {

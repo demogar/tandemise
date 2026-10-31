@@ -29,6 +29,8 @@ const ISSUE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
 export class PostHogRunner implements IntakeRunner {
   readonly kind = 'posthog';
   readonly mode = 'poll' as const;
+  /** Where the source's secrets go when it sets no `api` (Ruling 23). */
+  readonly defaultApi = DEFAULT_API;
 
   start(ctx: RunnerContext): RunnerHandle {
     return {

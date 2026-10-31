@@ -482,8 +482,40 @@ try {
     const s102b = d4.repo.findSignal(ws, 'sentry:acme/web:102');
     check('a second poll with 300 events → created', s102b?.status === 'created' && yt2Creates() === 2, { status: s102b?.status, reason: s102b?.reason, creates: yt2Creates() });
 
+    // Ruling 23: the source's token stays with the address it was saved for.
+    section('sentry: a moved api address gets no token until confirmed (Ruling 23)');
+    {
+      const sentryB = await startFakeSentry({ token: 'sntrys_test', org: 'acme', project: 'web', repos: ['acme/web'] });
+      try {
+        const intakeOf = () => d4.config.read(ws);
+        const withSources = (sources) => ({ sources, dailyCap: 20, similarity: { link: 0.85, ask: 0.55 } });
+        const tokenCalls = () => sentryB.calls.filter((c) => c.authorization === 'Bearer sntrys_test').length;
+        const others = intakeOf().sources.filter((s) => s.id !== 'sentry-web');
+        // As a brain would: the configuration changes, no one saved anything here.
+        d4.config.write(ws, { intake: withSources([{ ...SENTRY_SOURCE, api: sentryB.url }, ...others]) });
+        await d4.host.checkNow(d4.caller, ws);
+        await d4.settle();
+        const sentence = `This source now points at ${new URL(sentryB.url).origin}. Confirm the new address in Settings → Intake before Tandemise sends your token there.`;
+        check('no poll with the token reaches the new address', tokenCalls() === 0, sentryB.calls.map((c) => c.path));
+        check("…the source's last error is the refusal", d4.repo.source(ws, 'sentry-web')?.lastError === sentence, d4.repo.source(ws, 'sentry-web')?.lastError);
+        const view = d4.services.intake.config(ws);
+        check('…and the config view names both addresses', view.originMismatch?.sources?.['sentry-web']?.current === new URL(sentryB.url).origin
+          && view.originMismatch?.sources?.['sentry-web']?.saved === new URL(sentry.url).origin, view.originMismatch);
+        const confirmed = d4.services.intake.confirmSourceOrigin(d4.caller, ws, 'sentry-web');
+        check('confirming clears the mismatch and the error', confirmed.originMismatch?.sources?.['sentry-web'] === undefined && d4.repo.source(ws, 'sentry-web')?.lastError === null, confirmed.originMismatch);
+        await d4.host.checkNow(d4.caller, ws);
+        await d4.settle();
+        check('…then the poll goes to the new address with the token', tokenCalls() > 0);
+        // Back to the first fake for the sections that follow.
+        d4.config.write(ws, { intake: withSources([SENTRY_SOURCE, ...others]) });
+        d4.services.intake.confirmSourceOrigin(d4.caller, ws, 'sentry-web');
+      } finally {
+        await sentryB.close();
+      }
+    }
+
     section('sentry: close');
-    const secrets = { token: 'sntrys_test', clientSecret: 'whsec_sentry', apiKey: 'phx_test', webhookSecret: 'whsec_posthog' };
+    const secrets ={ token: 'sntrys_test', clientSecret: 'whsec_sentry', apiKey: 'phx_test', webhookSecret: 'whsec_posthog' };
     const sentryClosure = (id, commit) => ({
       kind: 'done', signal: { fingerprint: `sentry:acme/web:${id}`, key: id, url: `https://acme.sentry.io/issues/${id}/`, instance: 'acme/web', title: 't', reply: null },
       item: { key: 'GAR-1', url: `${yt2.url}/issue/GAR-1` }, prUrl: 'https://github.com/acme/web/pull/7', commit,

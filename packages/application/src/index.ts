@@ -107,6 +107,8 @@ export { TrackerResolver, trackerSecretName } from './intake/tracker-resolver.js
 export type { TrackerResolverDeps } from './intake/tracker-resolver.js';
 export { IntakeRunnerHost, NO_RUNNER_FOR_SOURCE } from './intake/runner-host.js';
 export type { IntakeRunnerHostDeps } from './intake/runner-host.js';
+export { originOf, sourceMovedSentence, trackerMovedSentence } from './intake/credential-origin.js';
+export type { OriginMismatch } from './intake/credential-origin.js';
 export { CLOSURE_MAX_ATTEMPTS, ClosureService, closureBackoffMs } from './services/closure-service.js';
 export type { ClosureServiceDeps } from './services/closure-service.js';
 export { SOURCE_NOT_CONFIGURED } from './intake/runner-host.js';

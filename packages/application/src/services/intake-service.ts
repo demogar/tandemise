@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import type {
-  AttachmentRef, EvalBlobPort, IntakeAttachment, IntakeConfig, IntakeConfigSource, IntakeLink, IntakeLinkedBy, IntakeRepositoryPort,
+  AttachmentRef, EvalBlobPort, IntakeAttachment, IntakeConfig, IntakeConfigSource, IntakeLink, IntakeLinkedBy, IntakeRepositoryPort, IntakeRunner,
   IntakeSignal, IntakeSimilarity, IntakeSourceConfig, MemberRepositoryPort, PrimaryTracker, ProjectionBusPort, SecretStorePort, SignalStatus, TrackerConfig,
   TrackerItem, TrackerItemRepositoryPort, TrackerRef, UnitOfWork, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
@@ -9,7 +9,7 @@ import {
 } from '@tandemise/domain';
 import {
   formatIntakeIssues, intakePushBody, pushedSignals, updateIntakeConfigRequest, validateIntakeSignal,
-  type IngestResultView, type InboxIntakeDecisionView, type IntakeConfigView, type IntakeDecision, type IntakeSignalV1,
+  type IngestResultView, type InboxIntakeDecisionView, type IntakeConfigView, type IntakeDecision, type IntakeOriginMismatchView, type IntakeSignalV1,
   type IntakeSignalView, type IntakeTokenMintedView,
 } from '@tandemise/api-contract';
 import type { Clock, IntakeTokenId, Logger, SignalId, WorkspaceId } from '@tandemise/shared';
@@ -19,6 +19,7 @@ import { SlidingWindowLimit } from '../intake/rate-limit.js';
 import type { TrackerResolver } from '../intake/tracker-resolver.js';
 import { createDraft, sourceEntry } from '../intake/item-text.js';
 import { sourceOnByDefault } from '../intake/runner-host.js';
+import { mismatchOf, sourceCredential, sourceMovedSentence, sourceOrigin, trackerMovedSentence } from '../intake/credential-origin.js';
 
 /**
  * Who a push is for: one project and one of its sources. From an intake token
@@ -39,7 +40,12 @@ export interface IntakeDeps {
    * The project's tracker for the pipeline (plan Task 7), and the check of a
    * tracker's state mapping before it is saved (plan Task 5).
    */
-  readonly trackers: Pick<TrackerResolver, 'problemWith' | 'for' | 'saveCredential'>;
+  readonly trackers: Pick<TrackerResolver, 'problemWith' | 'for' | 'saveCredential' | 'originMismatch' | 'confirmOrigin'>;
+  /**
+   * The shipped runners, read per call: a source with no `api` sends its
+   * secrets to its runner's default base, the address they are bound to (Ruling 23).
+   */
+  readonly runners: () => readonly IntakeRunner[];
   /** Where a source's secrets are kept (plan Task 11): only their refs are in `intake_sources`. */
   readonly secrets: Pick<SecretStorePort, 'store' | 'remove'>;
   /** The board cache: every item the pipeline creates, links or asks about (plan Task 7). */
@@ -622,7 +628,57 @@ export class IntakeService {
     const origin = this.deps.config.originFor?.(workspaceId) ?? this.deps.config.origin;
     // Whether each source runs on this machine (Ruling 22): its row, else the origin's default.
     const enabled = Object.fromEntries(read.sources.map((s) => [s.id, this.deps.intake.source(workspaceId, s.id)?.enabled ?? origin !== 'brain']));
-    return { origin, editable: this.deps.config.write !== undefined && origin === 'local', ...read, enabled };
+    return { origin, editable: this.deps.config.write !== undefined && origin === 'local', ...read, enabled, originMismatch: this.#originMismatch(workspaceId, read.sources) };
+  }
+
+  /**
+   * Every saved credential whose configured address is no longer the one it
+   * was saved for (Ruling 23): Settings → Intake asks to use the new one.
+   */
+  #originMismatch(workspaceId: WorkspaceId, sources: readonly IntakeSourceConfig[]): IntakeConfigView['originMismatch'] {
+    const runners = this.deps.runners();
+    const moved: Record<string, IntakeOriginMismatchView> = {};
+    for (const source of sources) {
+      if (Object.keys(this.deps.intake.source(workspaceId, source.id)?.secretRefs ?? {}).length === 0) continue;
+      const m = mismatchOf(this.deps.intake.credentialOrigins, workspaceId, sourceCredential(source.id), sourceOrigin(source, runners));
+      if (m !== null) moved[source.id] = { ...m, message: sourceMovedSentence(m.current) };
+    }
+    const tracker = this.deps.trackers.originMismatch(workspaceId);
+    return { tracker: tracker === null ? null : { ...tracker, message: trackerMovedSentence(tracker.current) }, sources: moved };
+  }
+
+  /**
+   * "Use the new address" for the tracker (Ruling 23): the saved token is
+   * bound to the tracker's address as configured now. Answers the config view.
+   */
+  confirmTrackerOrigin(caller: Caller, workspaceId: WorkspaceId): IntakeConfigView {
+    this.#requireWorkspace(workspaceId);
+    requireSeat(this.deps, workspaceId, caller);
+    const moved = this.deps.trackers.originMismatch(workspaceId);
+    this.deps.trackers.confirmOrigin(workspaceId);
+    this.deps.log.info('intake.tracker_origin_confirmed', { workspaceId, from: moved?.saved ?? null, to: moved?.current ?? null });
+    return this.config(workspaceId);
+  }
+
+  /**
+   * "Use the new address" for one source (Ruling 23): its saved secrets are
+   * bound to its address as configured now, and the refusal on the source
+   * is cleared. Answers the config view.
+   */
+  confirmSourceOrigin(caller: Caller, workspaceId: WorkspaceId, sourceId: string): IntakeConfigView {
+    this.#requireWorkspace(workspaceId);
+    requireSeat(this.deps, workspaceId, caller);
+    const source = this.deps.config.read(workspaceId).sources.find((s) => s.id === sourceId);
+    if (source === undefined) {
+      throw new TandemiseError('NOT_FOUND', `This project has no intake source '${sourceId}'.`, { details: { sourceId } });
+    }
+    const origin = sourceOrigin(source, this.deps.runners());
+    const from = this.deps.intake.credentialOrigins.get(workspaceId, sourceCredential(sourceId)) ?? null;
+    this.deps.intake.credentialOrigins.set(workspaceId, sourceCredential(sourceId), origin);
+    const row = this.deps.intake.source(workspaceId, sourceId);
+    if (row !== undefined && row.lastError === sourceMovedSentence(origin)) this.deps.intake.saveSource(workspaceId, sourceId, { lastError: null });
+    this.deps.log.info('intake.source_origin_confirmed', { workspaceId, sourceId, from, to: origin });
+    return this.config(workspaceId);
   }
 
   /**
@@ -702,6 +758,9 @@ export class IntakeService {
       ...(row === undefined ? { kind: source.kind, enabled: sourceOnByDefault(this.deps.config, workspaceId), enabledBy: caller.personId } : {}),
       secretRefs: refs,
     });
+    // Ruling 23: the source's secrets go only to the address they were saved for.
+    this.deps.intake.credentialOrigins.set(workspaceId, sourceCredential(sourceId),
+      Object.keys(refs).length === 0 ? null : sourceOrigin(source, this.deps.runners()));
     // After the new ref is recorded, so a failure here leaves a stray secret, never a source without one.
     if (old !== undefined) {
       await this.deps.secrets.remove(old).catch((e: unknown) => {

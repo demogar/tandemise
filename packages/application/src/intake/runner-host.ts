@@ -7,6 +7,7 @@ import type { Clock, Logger, WorkspaceId } from '@tandemise/shared';
 import { TandemiseError, errorMessage } from '@tandemise/shared';
 import { requireSeat, type Caller } from '../support/identity.js';
 import type { IntakeScope } from '../services/intake-service.js';
+import { assertOrigin, sourceCredential, sourceMovedSentence, sourceOrigin } from './credential-origin.js';
 
 export interface IntakeRunnerHostDeps {
   /** The shipped runners (`INTAKE_RUNNERS`), read per pass so the application names none. */
@@ -157,6 +158,12 @@ export class IntakeRunnerHost {
     const runner = this.deps.runners().find((r) => r.kind === source.kind);
     if (runner?.close === undefined) return null;
     if (!this.#on(workspaceId, source.id)) return null;
+    // A moved address waits for its person, like a source switched off (Ruling 23).
+    const moved = this.#originProblem(workspaceId, source);
+    if (moved !== null) {
+      this.#save(workspaceId, source, { lastError: moved });
+      return null;
+    }
     if (!(await this.#claimed(workspaceId, source.id))) return null;
     return runner.close(closure, this.#context(workspaceId, source, new AbortController().signal));
   }
@@ -265,6 +272,7 @@ export class IntakeRunnerHost {
     const run = (async () => {
       if (!(await this.#claimed(workspaceId, source.id))) return;
       try {
+        this.#assertOrigin(workspaceId, source);
         const running = this.#ensure(workspaceId, source, runner);
         await running.handle.poll?.();
         this.#save(workspaceId, source, { lastCheckedAt: this.deps.clock.now(), lastError: null });
@@ -289,6 +297,7 @@ export class IntakeRunnerHost {
         if (this.#running.has(key)) await this.#stop(key);
         return;
       }
+      this.#assertOrigin(workspaceId, source);
       const before = this.#running.get(key);
       const running = this.#ensure(workspaceId, source, runner);
       if (running !== before) this.#save(workspaceId, source, { lastCheckedAt: this.deps.clock.now(), lastError: null });
@@ -351,9 +360,13 @@ export class IntakeRunnerHost {
       clock: this.deps.clock,
       secrets: {
         // By name, through the source's refs: Settings → Intake saves them (plan Task 11).
+        // Never to an address other than the one they were saved for (Ruling 23):
+        // this context's source is the configuration the runner was started with.
         get: async (name) => {
           const ref = this.deps.intake.source(workspaceId, source.id)?.secretRefs[name];
-          return ref === undefined ? undefined : this.deps.secrets.resolve(ref);
+          if (ref === undefined) return undefined;
+          this.#assertOrigin(workspaceId, source);
+          return this.deps.secrets.resolve(ref);
         },
       },
       log: this.deps.log.child({ workspaceId, sourceId: source.id }),
@@ -452,6 +465,26 @@ export class IntakeRunnerHost {
       this.deps.intake.saveSource(workspaceId, source.id, { ...(first ? { kind: source.kind, enabled: sourceOnByDefault(this.deps.config, workspaceId) } : {}), ...patch });
     } catch (e) {
       this.deps.log.warn('intake.source_save_failed', { workspaceId, sourceId: source.id, error: errorMessage(e) });
+    }
+  }
+
+  /**
+   * Refuses, in plain words, to start or run a source whose address moved
+   * since its secrets were saved (Ruling 23). A source with no secrets sends
+   * none, and secrets saved before Ruling 23 adopt the address of first use.
+   */
+  #assertOrigin(workspaceId: WorkspaceId, source: IntakeSourceConfig): void {
+    const refs = this.deps.intake.source(workspaceId, source.id)?.secretRefs ?? {};
+    if (Object.keys(refs).length === 0) return;
+    assertOrigin(this.deps.intake.credentialOrigins, workspaceId, sourceCredential(source.id), sourceOrigin(source, this.deps.runners()), sourceMovedSentence);
+  }
+
+  #originProblem(workspaceId: WorkspaceId, source: IntakeSourceConfig): string | null {
+    try {
+      this.#assertOrigin(workspaceId, source);
+      return null;
+    } catch (e) {
+      return errorMessage(e);
     }
   }
 

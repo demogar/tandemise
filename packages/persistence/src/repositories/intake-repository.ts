@@ -300,6 +300,7 @@ export class SqliteIntakeRepository implements IntakeRepositoryPort {
 
   readonly closures: IntakeRepositoryPort['closures'];
   readonly tokens: IntakeRepositoryPort['tokens'];
+  readonly credentialOrigins: IntakeRepositoryPort['credentialOrigins'];
 
   constructor(db: TandemiseDatabase, clock: Clock) {
     this.#db = db;
@@ -452,6 +453,24 @@ export class SqliteIntakeRepository implements IntakeRepositoryPort {
         this.#revokeToken.run({ id, now: this.#clock.now() });
       },
       list: (ws) => this.#tokensFor.all({ ws }).map(tokenFromRow),
+    };
+    // Ruling 23: where each saved credential may be sent.
+    const selectOrigin = h.prepare<{ ws: string; credential: string }, { origin: string }>(
+      'SELECT origin FROM intake_credential_origins WHERE workspace_id = :ws AND credential = :credential',
+    );
+    const upsertOrigin = h.prepare<{ ws: string; credential: string; origin: string; now: string }>(
+      `INSERT INTO intake_credential_origins (workspace_id, credential, origin, updated_at) VALUES (:ws, :credential, :origin, :now)
+       ON CONFLICT (workspace_id, credential) DO UPDATE SET origin = excluded.origin, updated_at = excluded.updated_at`,
+    );
+    const deleteOrigin = h.prepare<{ ws: string; credential: string }>(
+      'DELETE FROM intake_credential_origins WHERE workspace_id = :ws AND credential = :credential',
+    );
+    this.credentialOrigins = {
+      get: (ws, credential) => selectOrigin.get({ ws, credential })?.origin,
+      set: (ws, credential, origin) => {
+        if (origin === null) deleteOrigin.run({ ws, credential });
+        else upsertOrigin.run({ ws, credential, origin, now: this.#clock.now() });
+      },
     };
   }
 

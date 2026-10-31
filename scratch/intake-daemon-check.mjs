@@ -160,9 +160,10 @@ section('daemon: intake config, tokens, pushes and the CLI');
     fake = await startFakeYouTrack({ project: 'GAR', token: 'perm:test', login: 'tandemise-bot' });
     fake.putIssue({ summary: 'Checkout fails on Safari', description: '## Done when\n- [ ] Checkout works on Safari', state: 'Open' });
     const app = await import('@tandemise/application');
-    await daemon.container.resolve(app.TRACKER_RESOLVER).saveCredential(ws, 'perm:test');
     const toFake = await call('PUT', `/v1/workspaces/${ws}/intake/config`, { tracker: { ...config.tracker, url: fake.url } });
     check('the project now points at the fake YouTrack', toFake.status === 200 && toFake.body?.tracker?.url === fake.url, toFake);
+    // Saved after the URL is set, so the token is bound to the fake's address (Ruling 23).
+    await daemon.container.resolve(app.TRACKER_RESOLVER).saveCredential(ws, 'perm:test');
     const refreshed = await call('POST', `/v1/workspaces/${ws}/board/refresh`);
     check('POST board/refresh answers the board with GAR-1 ready', refreshed.status === 200 && refreshed.body?.trackerLabel === 'YouTrack' && refreshed.body?.groups?.ready?.some((i) => i.key === 'GAR-1' && i.startable.ok === true), refreshed);
     const boardRead = await call('GET', `/v1/workspaces/${ws}/board`);
@@ -191,6 +192,8 @@ section('daemon: secrets over the API and the opt-in webhook listener (plan Task
   let daemon;
   let fake;
   let sentry;
+  let fakeB;
+  let sentryB;
   try {
     // A free port for the listener, named in the local settings before the daemon starts.
     const probe = createServer();
@@ -250,12 +253,47 @@ section('daemon: secrets over the API and the opt-in webhook listener (plan Task
     const apiOnHook = await fetch(`${hookUrl}/v1/health`);
     check('…and serves nothing of the API (GET /v1/health is 404)', apiOnHook.status === 404, apiOnHook.status);
     check('…on its own port, not the API\'s', new URL(daemon.url).port !== String(hookPort));
+
+    // Ruling 23: both addresses move. Neither token goes to the new host until
+    // the person confirms it, through the two confirm-origin routes.
+    fakeB = await startFakeYouTrack({ project: 'GAR', token: 'perm:test', login: 'tandemise-bot' });
+    sentryB = await startFakeSentry({ token: 'sntrys_test', org: 'acme', project: 'web' });
+    sentryB.putIssue({ id: '502', title: 'ReferenceError: cart is not defined', culprit: 'cart.ts', count: '90', userCount: 12 });
+    const before = (await call('GET', `/v1/workspaces/${ws}/intake/config`)).body;
+    const moved = await call('PUT', `/v1/workspaces/${ws}/intake/config`, {
+      tracker: { ...before.tracker, url: fakeB.url },
+      intake: { sources: [{ ...before.sources[0], api: sentryB.url }] },
+    });
+    check('the tracker URL and the Sentry api both move', moved.status === 200, moved);
+    const ytB = new URL(fakeB.url).origin;
+    const snB = new URL(sentryB.url).origin;
+    check('the config view names the moved addresses (originMismatch)',
+      moved.body?.originMismatch?.tracker?.current === ytB && moved.body?.originMismatch?.tracker?.saved === new URL(fake.url).origin
+      && moved.body?.originMismatch?.sources?.['sentry-web']?.current === snB && moved.body?.originMismatch?.sources?.['sentry-web']?.saved === new URL(sentry.url).origin, moved.body?.originMismatch);
+    const board = await call('POST', `/v1/workspaces/${ws}/board/refresh`);
+    check("the board's problem is the refusal", board.body?.problem === `This project's tracker now points at ${ytB}. Confirm the new address in Settings → Intake before Tandemise sends your token there.`, board.body?.problem);
+    await call('POST', `/v1/workspaces/${ws}/intake/check`);
+    check('…no request carrying either token reaches the new hosts',
+      !fakeB.calls.some((c) => c.authorization === 'Bearer perm:test') && !sentryB.calls.some((c) => c.authorization === 'Bearer sntrys_test'),
+      { yt: fakeB.calls.length, sentry: sentryB.calls.length });
+    const noSource = await call('POST', `/v1/workspaces/${ws}/intake/sources/nope/confirm-origin`);
+    check('confirming a source the project does not have is 404', noSource.status === 404, noSource);
+    const trackerOk = await call('POST', `/v1/workspaces/${ws}/intake/tracker/confirm-origin`);
+    check('POST intake/tracker/confirm-origin answers the config view with no tracker mismatch', trackerOk.status === 200 && trackerOk.body?.originMismatch?.tracker === null, trackerOk);
+    const sourceOk = await call('POST', `/v1/workspaces/${ws}/intake/sources/sentry-web/confirm-origin`);
+    check('POST intake/sources/:sourceId/confirm-origin clears that source', sourceOk.status === 200 && sourceOk.body?.originMismatch?.sources?.['sentry-web'] === undefined, sourceOk);
+    const after = await call('POST', `/v1/workspaces/${ws}/board/refresh`);
+    check('after confirming, the board reads the new tracker with the token', after.body?.problem === null && fakeB.calls.some((c) => c.authorization === 'Bearer perm:test'), after.body?.problem);
+    await call('POST', `/v1/workspaces/${ws}/intake/check`);
+    check('…and Sentry is polled at its new address with its token', sentryB.calls.some((c) => c.authorization === 'Bearer sntrys_test'));
   } catch (e) {
     check('the webhook listener section ran', false, String(e?.stack ?? e));
   } finally {
     await daemon?.stop();
     await fake?.close();
     await sentry?.close();
+    await fakeB?.close();
+    await sentryB?.close();
     rmSync(root, { recursive: true, force: true });
   }
 }

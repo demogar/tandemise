@@ -408,6 +408,16 @@ export class DaemonClient {
     return this.#request('PUT', `/workspaces/${workspaceId}/intake/sources/${encodeURIComponent(sourceId)}/enabled`, { enabled });
   }
 
+  /** "Use the new address" (Ruling 23): the saved tracker token may go where the tracker now points. */
+  confirmTrackerOrigin(workspaceId: string): Promise<IntakeConfigView> {
+    return this.#request('POST', `/workspaces/${workspaceId}/intake/tracker/confirm-origin`);
+  }
+
+  /** "Use the new address" (Ruling 23) for one source's saved secrets. */
+  confirmSourceOrigin(workspaceId: string, sourceId: string): Promise<IntakeConfigView> {
+    return this.#request('POST', `/workspaces/${workspaceId}/intake/sources/${encodeURIComponent(sourceId)}/confirm-origin`);
+  }
+
   /** The tracker's token, kept only in the local secret store. */
   saveTrackerSecret(workspaceId: string, value: string): Promise<void> {
     return this.#request('PUT', `/workspaces/${workspaceId}/intake/tracker/secret`, { value });

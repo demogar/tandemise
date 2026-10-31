@@ -52,6 +52,8 @@ function later(a: string, b: string): string {
 export class DiscordRunner implements IntakeRunner {
   readonly kind = 'discord';
   readonly mode = 'socket' as const;
+  /** Where the source's secrets go when it sets no `api` (Ruling 23). */
+  readonly defaultApi = DEFAULT_API;
 
   start(ctx: RunnerContext): RunnerHandle {
     const listener = new DiscordListener(ctx);

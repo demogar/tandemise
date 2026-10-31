@@ -945,6 +945,8 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
     bind(it.TRACKER_RESOLVER, (r) => new TrackerResolver({
       config: r.resolve(it.INTAKE_CONFIG_SOURCE),
       secrets: r.resolve(t.SECRET_STORE),
+      // Ruling 23: the credential is bound to the address it was saved for.
+      origins: r.resolve(it.INTAKE_REPOSITORY).credentialOrigins,
       factories: () => r.resolveAll(PRIMARY_TRACKER_FACTORIES),
       log: log(r).child({ component: 'intake' }),
     }), { source: SOURCE });
@@ -962,6 +964,8 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       intake: r.resolve(it.INTAKE_REPOSITORY),
       config: r.resolve(it.INTAKE_CONFIG_SOURCE),
       trackers: r.resolve(it.TRACKER_RESOLVER),
+      // A source's default API base, where its secrets are bound (Ruling 23).
+      runners: () => r.resolveAll(INTAKE_RUNNERS),
       // A source's secrets (plan Task 11).
       secrets: r.resolve(t.SECRET_STORE),
       items: r.resolve(it.TRACKER_ITEM_REPOSITORY),

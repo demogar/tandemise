@@ -34,6 +34,8 @@ export function IntakeSettings({ focus = false }: { focus?: boolean }): JSX.Elem
       {config.isError ? <Refusal error={config.error} /> : null}
       {view === undefined ? <SkeletonList rows={3} /> : (
         <>
+          {/* Outside the read-only fieldset: a brain moves the address, this computer's person confirms it (Ruling 23). */}
+          <MovedAddresses view={view} />
           {readOnly ? <div className="banner intake-settings__brain">Set in this project's brain.</div> : null}
           <fieldset className="intake-settings__fieldset" disabled={readOnly}>
             <TrackerCard view={view} />
@@ -45,6 +47,44 @@ export function IntakeSettings({ focus = false }: { focus?: boolean }): JSX.Elem
         </>
       )}
     </section>
+  );
+}
+
+/**
+ * A saved token whose tracker or source now points somewhere else (Ruling 23):
+ * the daemon sends it nowhere until the person here says so. The daemon's own
+ * sentence, the address it was saved for, and **Use the new address**.
+ */
+function MovedAddresses({ view }: { view: IntakeConfigView }): JSX.Element | null {
+  const workspaceId = useWorkspaceId() ?? '';
+  const confirm = useDaemonMutation(
+    (d, sourceId: string | null) => (sourceId === null ? d.confirmTrackerOrigin(workspaceId) : d.confirmSourceOrigin(workspaceId, sourceId)),
+    ['intake'],
+  );
+  const moved = [
+    ...(view.originMismatch.tracker === null ? [] : [{ sourceId: null, label: 'Tracker', ...view.originMismatch.tracker }]),
+    ...Object.entries(view.originMismatch.sources).map(([sourceId, m]) => ({ sourceId, label: sourceId, ...m })),
+  ];
+  if (moved.length === 0) return null;
+  return (
+    <div className="intake-settings__moved" aria-label="Moved addresses">
+      {moved.map((m) => (
+        <div key={m.sourceId ?? 'tracker'} className="banner banner--warn intake-settings__moved-item" role="alert" data-intake-moved={m.sourceId ?? 'tracker'}>
+          <p className="intake-settings__moved-text">
+            {m.sourceId === null ? null : <span className="mono">{m.label}: </span>}
+            {m.message}
+          </p>
+          <p className="muted intake-settings__moved-saved">Saved for <span className="mono">{m.saved}</span>.</p>
+          <div className="row intake-settings__actions">
+            <button type="button" className="btn btn--primary" disabled={confirm.isPending}
+              onClick={() => confirm.mutate(m.sourceId, { onSuccess: () => showFlash('Using the new address.') })}>
+              Use the new address
+            </button>
+          </div>
+        </div>
+      ))}
+      {confirm.isError ? <Refusal error={confirm.error} /> : null}
+    </div>
   );
 }
 

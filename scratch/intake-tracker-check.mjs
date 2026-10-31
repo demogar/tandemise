@@ -343,7 +343,9 @@ try {
   const secrets = memorySecrets();
   const factories = K.compose(new K.Container(), Y.youtrackIntegrationModule, G.githubIntegrationModule);
   factories.bind(I.COMMAND_EXECUTOR, () => exec, { source: 'check' });
-  const resolver = new app.TrackerResolver({ config: source, secrets, factories: () => factories.resolveAll(I.PRIMARY_TRACKER_FACTORIES), log: { info() {}, warn() {}, error() {}, debug() {}, child() { return this; } } });
+  const origins = new Map();
+  const originStore = { get: (ws, c) => origins.get(`${ws}|${c}`), set: (ws, c, o) => { if (o === null) origins.delete(`${ws}|${c}`); else origins.set(`${ws}|${c}`, o); } };
+  const resolver = new app.TrackerResolver({ config: source, secrets, origins: originStore, factories: () => factories.resolveAll(I.PRIMARY_TRACKER_FACTORIES), log: { info() {}, warn() {}, error() {}, debug() {}, child() { return this; } } });
 
   const none = await refusal(() => resolver.for('ws_none'));
   check("no tracker: Set this project's tracker first.", none?.message === "Set this project's tracker first.", none?.message);
@@ -373,6 +375,75 @@ try {
   check('the resolver section ran', false, String(e?.stack ?? e));
 } finally {
   await fake2.close();
+}
+
+// ------------------------------------------------------------------ origin
+// Ruling 23: a credential is bound to the origin it was saved for. A brain
+// (or anyone editing the configuration) moving the tracker's URL never sends
+// the token to the new host until this machine's person confirms it.
+section('resolver: the tracker token stays with the address it was saved for (Ruling 23)');
+{
+  const ytA = await startFakeYouTrack({ project: 'GAR', states: STATES, types: ['Bug', 'Task'], token: 'perm:test', login: 'tandemise-bot' });
+  const ytB = await startFakeYouTrack({ project: 'GAR', states: STATES, types: ['Bug', 'Task'], token: 'perm:test', login: 'tandemise-bot' });
+  try {
+    const values = new Map();
+    let n = 0;
+    const secrets = {
+      backend: 'memory',
+      store: async (name, value) => { const ref = `memory:${name}:${++n}`; values.set(ref, value); return ref; },
+      resolve: async (ref) => values.get(ref),
+      remove: async (ref) => { values.delete(ref); },
+      list: async () => [...values.keys()],
+    };
+    const origins = new Map();
+    const originStore = {
+      get: (ws, credential) => origins.get(`${ws}|${credential}`),
+      set: (ws, credential, origin) => { if (origin === null) origins.delete(`${ws}|${credential}`); else origins.set(`${ws}|${credential}`, origin); },
+    };
+    const yt = (url) => ({
+      kind: 'youtrack', url, project: 'GAR', board: 'project: GAR #Unresolved', onComplete: 'in_review',
+      states: { ready: ['Open'], in_progress: 'In Progress', in_review: 'In Review', done: ['Fixed', 'Done'], wont_do: ["Won't fix"] },
+    });
+    const configs = new Map();
+    const source = { origin: 'brain', read: (ws) => ({ tracker: configs.get(ws) ?? null, sources: [], dailyCap: 20, similarity: { link: 0.85, ask: 0.55 } }) };
+    const factories = K.compose(new K.Container(), Y.youtrackIntegrationModule);
+    const resolver = new app.TrackerResolver({
+      config: source, secrets, origins: originStore, factories: () => factories.resolveAll(I.PRIMARY_TRACKER_FACTORIES),
+      log: { info() {}, warn() {}, error() {}, debug() {}, child() { return this; } },
+    });
+    const withToken = (fake) => fake.calls.filter((c) => c.authorization === 'Bearer perm:test').length;
+
+    configs.set('ws_o', yt(ytA.url));
+    await resolver.saveCredential('ws_o', 'perm:test');
+    check('saving the token records the origin it was saved for', originStore.get('ws_o', 'tracker') === new URL(ytA.url).origin, originStore.get('ws_o', 'tracker'));
+    await (await resolver.for('ws_o')).tracker.viewer();
+    check('…and the tracker at that address gets it', withToken(ytA) > 0);
+
+    // The brain moves the tracker to B.
+    configs.set('ws_o', yt(ytB.url));
+    const moved = await refusal(() => resolver.for('ws_o'));
+    const sentence = `This project's tracker now points at ${new URL(ytB.url).origin}. Confirm the new address in Settings → Intake before Tandemise sends your token there.`;
+    check('a moved tracker URL is refused in plain words', moved?.message === sentence, moved?.message);
+    check('…no request carrying the token reaches the new address', withToken(ytB) === 0, ytB.calls.length);
+    const mismatch = resolver.originMismatch('ws_o');
+    check('…originMismatch names the current and the saved address', mismatch?.current === new URL(ytB.url).origin && mismatch?.saved === new URL(ytA.url).origin, mismatch);
+    check('problemWith() on the moved URL sends nothing either', (await resolver.problemWith('ws_o', yt(ytB.url))) === null && withToken(ytB) === 0);
+
+    resolver.confirmOrigin('ws_o');
+    check('after confirming, there is no mismatch', resolver.originMismatch('ws_o') === null);
+    check('…and the tracker at the new address gets the token', (await (await resolver.for('ws_o')).tracker.viewer()) === 'tandemise-bot' && withToken(ytB) > 0);
+
+    // A token saved before origins were recorded adopts the address on first use.
+    configs.set('ws_legacy', yt(ytA.url));
+    await secrets.store(app.trackerSecretName('ws_legacy'), 'perm:test');
+    check('a token with no recorded origin is used…', (await (await resolver.for('ws_legacy')).tracker.viewer()) === 'tandemise-bot');
+    check('…and adopts the address of its first use', originStore.get('ws_legacy', 'tracker') === new URL(ytA.url).origin, originStore.get('ws_legacy', 'tracker'));
+  } catch (e) {
+    check('the origin section ran', false, String(e?.stack ?? e));
+  } finally {
+    await ytA.close();
+    await ytB.close();
+  }
 }
 
 // ------------------------------------------------------------------ daemon

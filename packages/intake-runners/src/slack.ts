@@ -104,6 +104,8 @@ function channelOf(ctx: RunnerContext): string {
 export class SlackRunner implements IntakeRunner {
   readonly kind = 'slack';
   readonly mode = 'socket' as const;
+  /** Where the source's secrets go when it sets no `api` (Ruling 23). */
+  readonly defaultApi = DEFAULT_API;
 
   start(ctx: RunnerContext): RunnerHandle {
     const listener = new SlackListener(ctx);

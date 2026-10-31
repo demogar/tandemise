@@ -197,6 +197,10 @@ export function buildRouter(services: TandemiseServices, options: {
   // A source runs on this machine, or not (Ruling 22): a brain's source is off here until switched on.
   r.put('/v1/workspaces/:id/intake/sources/:sourceId/enabled', async (ctx) =>
     services.intake.setSourceEnabled(ctx.caller, asId(ctx.params.id!), ctx.params.sourceId!, (await ctx.body(setIntakeSourceEnabledRequest)).enabled));
+  // "Use the new address" (Ruling 23): a saved token follows a moved address only once its person confirms it.
+  r.post('/v1/workspaces/:id/intake/tracker/confirm-origin', (ctx) => services.intake.confirmTrackerOrigin(ctx.caller, asId(ctx.params.id!)));
+  r.post('/v1/workspaces/:id/intake/sources/:sourceId/confirm-origin', (ctx) =>
+    services.intake.confirmSourceOrigin(ctx.caller, asId(ctx.params.id!), ctx.params.sourceId!));
   // The Inbox card's answer, and "try now" for a signal the tracker could not take (plan Task 7).
   r.post('/v1/intake/signals/:id/decide', async (ctx) =>
     services.intake.decide(ctx.caller, asId(ctx.params.id!), (await ctx.body(decideIntakeSignalRequest)).decision));

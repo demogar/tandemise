@@ -169,5 +169,15 @@ CREATE TABLE intake_webhook_inbox (
 CREATE INDEX ix_intake_webhook_inbox_open ON intake_webhook_inbox(done_at, claimed_at, received_at);
 ALTER TABLE missions ADD COLUMN tracker_item_id TEXT REFERENCES tracker_items(id) ON DELETE SET NULL;
 CREATE INDEX ix_missions_tracker_item ON missions(tracker_item_id);
+-- Each locally saved credential is bound to the origin (scheme, host, port) it
+-- was saved for, so a changed address never takes the token with it until the
+-- person confirms (Ruling 23). credential: 'tracker' or 'source:<sourceId>'.
+CREATE TABLE intake_credential_origins (
+  workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  credential   TEXT NOT NULL,
+  origin       TEXT NOT NULL,
+  updated_at   TEXT NOT NULL,
+  PRIMARY KEY (workspace_id, credential)
+);
 `,
 };

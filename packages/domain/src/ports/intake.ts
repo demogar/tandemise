@@ -94,6 +94,9 @@ export interface IntakeRepositoryPort {
     listForSource(workspaceId: WorkspaceId, sourceId: string, afterId?: string): readonly IntakeClosure[];
   };
 
+  /** The origin each locally saved credential is bound to (Ruling 23). */
+  readonly credentialOrigins: CredentialOriginPort;
+
   readonly tokens: {
     create(workspaceId: WorkspaceId, sourceId: string, tokenHash: string, createdBy: string | null): IntakeTokenRow;
     /** Revoked tokens are returned too, with `revokedAt` set: the caller refuses them. */
@@ -101,6 +104,19 @@ export interface IntakeRepositoryPort {
     revoke(id: IntakeTokenId): void;
     list(workspaceId: WorkspaceId): readonly IntakeTokenRow[];
   };
+}
+
+/**
+ * Where each of a project's locally saved credentials may be sent (Ruling 23):
+ * the origin (scheme, host, port) of the tracker URL or the source's API base
+ * it was saved for. A project linked to a brain reads those addresses from
+ * the brain's files, so a changed address must never take a person's token
+ * with it until that person confirms it. `credential` is `tracker` or
+ * `source:<sourceId>`; a null origin forgets the binding.
+ */
+export interface CredentialOriginPort {
+  get(workspaceId: WorkspaceId, credential: string): string | undefined;
+  set(workspaceId: WorkspaceId, credential: string, origin: string | null): void;
 }
 
 /**
@@ -344,6 +360,11 @@ export interface RunnerWebhookRequest {
 export interface IntakeRunner {
   readonly kind: string;
   readonly mode: 'poll' | 'socket' | 'webhook';
+  /**
+   * The API base the runner calls when the source sets no `api`: with the
+   * source's `api`, the address its secrets are bound to (Ruling 23).
+   */
+  readonly defaultApi?: string;
   start(ctx: RunnerContext): RunnerHandle;
   fromWebhook?(req: RunnerWebhookRequest, ctx: RunnerContext): Promise<readonly RunnerSignal[]> | readonly RunnerSignal[];
   close?(closure: Closure, ctx: RunnerContext): Promise<ClosureResult>;

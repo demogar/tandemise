@@ -487,3 +487,43 @@ was ambiguous or wrong, decided against the spec
     `scratch/shared-coordination.mjs`: refused with Ana's words before any mission exists, granted after her
     mission ends); intake-runners-check "sources from the brain" and "source leases" (refused while live, granted
     after it lapses); relay-check "source leases" (the HTTP route); intake-daemon-check (the enabled route).
+- Ruling 23 (a credential stays with the address it was saved for, review fix on PR #73): decided from spec §2 and
+  §6 ("a permanent token per person, never in the brain repo") and Ruling 21:
+  - **The threat.** A project linked to a brain reads `tracker.url` and each source's `api` from the brain's files.
+    A teammate, or a compromised brain, could change that address, and this machine would send the person's
+    locally stored token (`intake:<ws>:tracker`, the refs in `intake_sources.secret_refs`) to the new host.
+  - **Binding.** Each credential is bound to the origin (scheme, host and port, `new URL(..).origin`) it was saved
+    for, in a new table `intake_credential_origins (workspace_id, credential, origin)`; `credential` is `tracker`
+    or `source:<sourceId>`. The table is part of intake's one unreleased migration, 024, rather than a migration
+    of its own, so the numbering stays one slot per feature for integration (no shipped database has 024). The port is
+    `IntakeRepositoryPort.credentialOrigins` (`CredentialOriginPort`).
+  - **What the origin is.** The tracker's is its `url` (YouTrack); a tracker with no URL (GitHub Issues, signed in
+    through `gh`) is named by its kind. A source's is its `api`, else its runner's new `IntakeRunner.defaultApi`
+    (Sentry, PostHog, Slack, Discord export theirs), else its kind.
+  - **Saving binds.** Saving the tracker token records the tracker's address as configured then; with no tracker
+    set yet nothing is recorded. Saving a source secret records the source's address; removing its last secret
+    forgets the binding.
+  - **Using checks.** Just before a credential is used it is compared with the configured address:
+    `TrackerResolver` when it builds a tracker (board, Start, write-back, the pipeline), and the runner host
+    before a poll, a socket start, a closure, and in `ctx.secrets.get` (so webhooks and anything a runner reads
+    later are covered too). A different address is refused, the token is not read, with
+    "This project's tracker now points at <origin>. Confirm the new address in Settings → Intake before Tandemise
+    sends your token there." (the board's `problem`, verbatim, not "Couldn't reach …") or "This source now points
+    at <origin>. Confirm the new address in Settings → Intake before Tandemise sends your token there." (the
+    source's `last_error`). A closure for a moved source waits (the host answers null), it is not failed; a webhook
+    delivery for one is acked with the refusal as `last_error`, like any delivery a runner refuses (Ruling 17).
+    `problemWith` (the mapping check of `PUT …/intake/config`) never asks an address the token is not bound to.
+  - **Credentials saved before this fix** have no recorded origin: they adopt the configured address on first use
+    (it is recorded then). The same holds for a tracker token saved before any tracker was set.
+  - **Every move is confirmed, local ones too.** A person who changes the URL in their own local Settings is asked
+    as well: the rule is about where a token goes, not who moved the address, and it keeps one path. `POST
+    /v1/workspaces/:id/intake/tracker/confirm-origin` and `POST …/intake/sources/:sourceId/confirm-origin` (a
+    seat; 404 for a source the project does not have) re-bind the saved credential to the address configured
+    now, clear the source's refusal, and answer the config view.
+  - **The view.** `IntakeConfigView.originMismatch = { tracker: { current, saved, message } | null, sources: {
+    [id]: { current, saved, message } } }`, `message` being the daemon's sentence. Settings → Intake shows each
+    one above the (possibly read-only) form, with "Saved for <saved>." and **Use the new address**.
+  - **Proof.** intake-tracker-check "the tracker token stays with the address it was saved for" (two fake
+    YouTracks: nothing carrying the token reaches B, the sentence, confirm, then B; and the first-use adoption);
+    intake-runners-check "a moved api address gets no token until confirmed" (two fake Sentries); intake-daemon-check
+    (both addresses moved over the API, the board's problem, both confirm routes).

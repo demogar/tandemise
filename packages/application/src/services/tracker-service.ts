@@ -17,6 +17,7 @@ import type { EventRecorder } from '../support/event-recorder.js';
 import { requireSeat, type Caller } from '../support/identity.js';
 import type { TrackerResolver } from '../intake/tracker-resolver.js';
 import { impactWords, sourceEntry } from '../intake/item-text.js';
+import { isOriginChanged } from '../intake/credential-origin.js';
 
 export interface TrackerServiceDeps {
   readonly config: IntakeConfigSource;
@@ -215,7 +216,9 @@ export class TrackerService {
     } catch (e) {
       const message = errorMessage(e).replace(/[.\s]+$/, '');
       const previous = this.#refreshes.get(workspaceId);
-      this.#refreshes.set(workspaceId, { at: previous?.at ?? null, problem: `Couldn't reach ${trackerLabel(kind)}: ${message}. Tandemise will try again.` });
+      // A moved tracker address is not a reach failure: its own sentence says what to do (Ruling 23).
+      const problem = isOriginChanged(e) ? e.message : `Couldn't reach ${trackerLabel(kind)}: ${message}. Tandemise will try again.`;
+      this.#refreshes.set(workspaceId, { at: previous?.at ?? null, problem });
       this.deps.log.warn('tracker.board_refresh_failed', { workspaceId, error: errorMessage(e) });
     }
     this.#invalidate();
