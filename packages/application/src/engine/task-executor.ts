@@ -82,9 +82,19 @@ export interface HoldPreparation {
   readonly allowedRoots: readonly string[];
   /** The task's normal prompt, for a session that starts fresh; `tools` are the hold gateway's. */
   prompt(tools: readonly string[]): Promise<string>;
-  /** Gives the target back the way an attempt does; a worktree stays on disk. */
+  /** Gives the target back the way an attempt does, skills and all; a worktree stays on disk. */
   release(): Promise<void>;
 }
+
+/** The checkout leases a hold keeps for as long as it lasts, as an attempt keeps them for its run. */
+export interface HoldLeases {
+  /** Extends them; false when one was lost (it expired and someone else took it). */
+  renew(): boolean;
+  release(): void;
+}
+
+/** How often a hold renews its leases: well inside their TTL. */
+export const HOLD_LEASE_RENEW_MS = 10 * 60_000;
 
 export type TaskAttemptOutcome =
   /** Admission failed for a reason that will resolve on its own. Try again shortly. */
@@ -325,12 +335,47 @@ export class TaskExecutor {
   }
 
   /**
+   * Why a hold may not start a step that has not run, in the words the
+   * attempt would use: a pinned skill missing from the library. Unlike the
+   * attempt, nothing is blocked and no card is raised; the hold is refused.
+   */
+  async holdStartRefusal(taskId: TaskId): Promise<string | null> {
+    const task = this.#requireTask(taskId);
+    const mission = this.#require(this.deps.missions.get(task.missionId), 'Mission', task.missionId);
+    const workspace = this.#require(this.deps.workspaces.get(mission.workspaceId), 'Workspace', mission.workspaceId);
+    const role = this.deps.roles.get(task.roleId, workspace.id);
+    if (role === undefined) return `No role template '${task.roleId}' exists in this workspace.`;
+    return (await this.#missingSkills(task, workspace, role))?.reason ?? null;
+  }
+
+  /**
+   * The leases an attempt on this task would take, taken for a hold: a person
+   * working in a shared checkout takes turns with the agents that do. Refused
+   * in the attempt's own words when another task holds one.
+   */
+  acquireHoldLeases(taskId: TaskId): { ok: true; value: HoldLeases } | { ok: false; reason: string } {
+    const task = this.#requireTask(taskId);
+    const mission = this.#require(this.deps.missions.get(task.missionId), 'Mission', task.missionId);
+    const leases = this.#acquireLeases(task, mission, this.#repositoryFor(task, mission));
+    if (!leases.ok) return { ok: false, reason: leases.reason };
+    const { held } = leases;
+    return {
+      ok: true,
+      value: {
+        renew: () => held.every((lease) => this.deps.leases.renew(lease.id, LEASE_TTL_MS)),
+        release: () => { for (const lease of held) this.deps.leases.release(lease.id); },
+      },
+    };
+  }
+
+  /**
    * The target and grants a held task's terminal works with, made the way an
    * attempt makes them, so the person's session sees what a run would: the
    * same checkout (a worktree converges on the one already there), the same
-   * out folder (kept, as a continuation keeps it) and the same vetted grants.
+   * out folder (kept, as a continuation keeps it), the same pinned skills on
+   * `profile`, and the same vetted grants.
    */
-  async prepareHold(taskId: TaskId): Promise<{ ok: true; value: HoldPreparation } | { ok: false; reason: string }> {
+  async prepareHold(taskId: TaskId, profile: RuntimeProfile): Promise<{ ok: true; value: HoldPreparation } | { ok: false; reason: string }> {
     const task = this.#requireTask(taskId);
     const mission = this.#require(this.deps.missions.get(task.missionId), 'Mission', task.missionId);
     const workspace = this.#require(this.deps.workspaces.get(mission.workspaceId), 'Workspace', mission.workspaceId);
@@ -344,16 +389,25 @@ export class TaskExecutor {
     );
     if (!provisioned.ok) return provisioned;
     const { target } = provisioned;
-    const release = (): Promise<void> => this.#releaseTarget(target, kind);
+    let installed: InstalledSkills = NO_SKILLS;
+    const release = async (): Promise<void> => {
+      // As after a run: a worktree keeps its skills, anywhere else is someone's own folder.
+      if (kind !== 'worktree' && installed.written.length > 0) await this.deps.skillInstaller?.remove(target, scope, installed);
+      await this.#releaseTarget(target, kind);
+    };
     try {
       await this.deps.harvester.prepare(target, scope, task, { keepOwn: true });
+      const adapter = this.deps.runtimeManager.registry.tryAdapter(profile.adapterId) ?? {};
+      installed = await this.#installSkills(this.#requireTask(task.id), target, profile, adapter, scope);
       const vetted = this.#vet(this.#requestedGrants(role, task, workspace, repository, target), task, workspace, scope);
       if (vetted.blockedOn !== null) {
         await release();
         return { ok: false, reason: vetted.blockedOn };
       }
       const grants = vetted.grants.filter((g) => g.capability !== CORE_CAPABILITIES.humanAsk);
-      const ctx: AttemptContext = { task, mission, workspace, repository, role, trial: null, scope, signal: new AbortController().signal };
+      const ctx: AttemptContext = {
+        task, mission, workspace, repository, role, trial: null, scope, signal: new AbortController().signal, skills: installed,
+      };
       return {
         ok: true,
         value: {
@@ -979,21 +1033,9 @@ export class TaskExecutor {
     role: RoleTemplate,
     scope: EventScope,
   ): Promise<TaskAttemptOutcome | null> {
-    if (this.deps.skills === undefined) return null;
-    const pinned = this.#pinSkills(task, workspace, role);
-    let reason: string | null = null;
-    let named: string[] = [];
-    if (pinned.problems.length > 0) {
-      reason = `${pinned.problems.join(' ')} Import it on the Skills screen or change the pin, then choose Retry.`;
-      named = pinned.problems.map((p) => /skill '([^']+)'/.exec(p)?.[1] ?? '?');
-    } else {
-      const missing = await this.deps.skills.missing(pinned.task.skills ?? []);
-      if (missing.length > 0) {
-        reason = missingSkillReason(missing);
-        named = missing.map((m) => `${m.name} v${m.version}`);
-      }
-    }
-    if (reason === null) return null;
+    const refused = await this.#missingSkills(task, workspace, role);
+    if (refused === null) return null;
+    const { reason, named } = refused;
     const current = this.#requireTask(task.id);
     // Nobody reads a card raised by an eval trial: the trial ends blocked, naming the skill.
     if (isTrialMission(mission)) return this.#block(current, scope, `Missing skill: ${named.join(', ')}`);
@@ -1030,6 +1072,23 @@ export class TaskExecutor {
    * Gives this attempt its pinned skills (P13): verified content, written into
    * the runtime's skills folder when it has one, else into the prompt.
    */
+  /** A pinned skill that cannot be given to the step, and why; null when every pin is in the library. */
+  async #missingSkills(
+    task: MissionTask, workspace: Workspace, role: RoleTemplate,
+  ): Promise<{ readonly reason: string; readonly named: readonly string[] } | null> {
+    if (this.deps.skills === undefined) return null;
+    const pinned = this.#pinSkills(task, workspace, role);
+    if (pinned.problems.length > 0) {
+      return {
+        reason: `${pinned.problems.join(' ')} Import it on the Skills screen or change the pin, then choose Retry.`,
+        named: pinned.problems.map((p) => /skill '([^']+)'/.exec(p)?.[1] ?? '?'),
+      };
+    }
+    const missing = await this.deps.skills.missing(pinned.task.skills ?? []);
+    if (missing.length === 0) return null;
+    return { reason: missingSkillReason(missing), named: missing.map((m) => `${m.name} v${m.version}`) };
+  }
+
   async #installSkills(
     task: MissionTask,
     target: ExecutionTarget,

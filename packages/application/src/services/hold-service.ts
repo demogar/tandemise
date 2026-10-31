@@ -14,8 +14,8 @@ import type { Clock, Logger, MemberId, TandemisePaths, TaskHoldId, TaskId } from
 import { TandemiseError, asId, errorMessage, ids } from '@tandemise/shared';
 import type { HoldService, ProjectionService } from '../services.js';
 import type { SchedulerService } from '../engine/scheduler.js';
-import type { FeedbackRounds } from '../engine/feedback-rounds.js';
-import type { TaskExecutor } from '../engine/task-executor.js';
+import type { FeedbackRounds, RoundBegun } from '../engine/feedback-rounds.js';
+import { HOLD_LEASE_RENEW_MS, type HoldLeases, type TaskExecutor } from '../engine/task-executor.js';
 import { NO_TOOL_SURFACE, type McpGatewayProvisioner, type RunToolSurface } from '../engine/mcp-gateway.js';
 import type { EventRecorder, EventScope } from '../support/event-recorder.js';
 import { isOutputApproval } from '../support/approval-view.js';
@@ -40,7 +40,7 @@ export interface HoldDeps {
   readonly runtimeProfiles: RuntimeProfileRepositoryPort;
   readonly runtimeManager: Pick<RuntimeManager, 'capabilities' | 'interactive' | 'occupy'>;
   /** The attempt's own routing, target and grants, so a held session works where a run would. */
-  readonly executor: Pick<TaskExecutor, 'holdProfiles' | 'prepareHold'>;
+  readonly executor: Pick<TaskExecutor, 'holdProfiles' | 'prepareHold' | 'holdStartRefusal' | 'acquireHoldLeases'>;
   /** The factory a run's tool surface comes from; a hold gets its own. */
   readonly mcpGateway: McpGatewayProvisioner;
   /** Absent when the daemon has no terminal host; every hold is then refused. */
@@ -55,6 +55,14 @@ export interface HoldDeps {
   readonly paths: TandemisePaths;
   readonly clock: Clock;
   readonly log: Logger;
+  /** How long a hold waits for the run it stopped; 10 s unless a check shortens it. */
+  readonly stopWaitMs?: number;
+}
+
+/** The checkout leases a hold keeps from start to end, renewed while it lasts. */
+interface KeptLeases {
+  readonly leases: HoldLeases;
+  readonly timer: ReturnType<typeof setInterval>;
 }
 
 /** What an open terminal holds on to, given back when it ends however it ends. */
@@ -88,6 +96,8 @@ interface HoldSource {
  */
 export class HoldServiceImpl implements HoldService {
   readonly #live = new Map<TaskHoldId, LiveHold>();
+  readonly #leases = new Map<TaskHoldId, KeptLeases>();
+  readonly #tearing = new Map<TaskHoldId, Promise<void>>();
   readonly #unsubscribe: () => void;
 
   constructor(private readonly deps: HoldDeps) {
@@ -111,9 +121,18 @@ export class HoldServiceImpl implements HoldService {
     });
     if (refusal !== null) refuse(refusal, task);
     if (source.profile === null) refuse(`No runtime is routed to '${task.title}', so there is nothing to hold it in.`, task);
-    if (task.status === 'READY') this.#assertMayStart(task, mission);
+    if (task.status === 'READY') await this.#assertMayStart(task, mission);
     assertMayTake(deps, task, mission, actorId, 'hold');
     this.#assertTerminal();
+    // A step that has not started takes its checkout now, as its start would,
+    // and is refused in the start's words when another task has it. A running
+    // step's leases are its run's until that run has stopped.
+    let leases: HoldLeases | null = null;
+    if (task.status === 'READY') {
+      const taken = deps.executor.acquireHoldLeases(task.id);
+      if (!taken.ok) refuse(taken.reason, task);
+      leases = taken.value;
+    }
 
     const profile = source.profile;
     const name = this.#nameOf(actorId);
@@ -127,59 +146,57 @@ export class HoldServiceImpl implements HoldService {
       dir: join(deps.paths.mission(mission.workspaceId, mission.id), 'holds', holdId),
     };
     const scope = this.#scope(task, mission, actorId);
-    const begun = deps.recorder.deferred(() => deps.unitOfWork.transaction(() => {
-      // Read again inside the unit: a run may have started, or someone else held it, since the checks.
-      const current = this.#task(task.id);
-      if (current.status !== task.status || deps.holds.openFor(task.id) !== undefined) {
-        refuse(`'${task.title}' changed while you asked; try holding it again.`, task);
-      }
-      let from: MissionTask = current;
-      let round = null;
-      if (current.status === 'AWAITING_APPROVAL') {
-        // Request changes, interactively: the output is set aside as a request
-        // for changes sets it aside, and the round reopens the task.
-        const card = deps.approvals.pendingForTask(current.id).find((a) => isOutputApproval(a, current, deps.runs));
-        const roundReason = `Held by ${name} to change it directly.`;
-        if (card !== undefined) deps.rounds.decideReviewCard(card, { actorId, recordedBy, note: roundReason });
-        const impact = deps.rounds.impactOf(current);
-        round = deps.rounds.beginRound({
-          task: current, feedbackIds: [], actorId, reason: roundReason,
-          downstream: impact.consumers.length === 0 ? 'none' : impact.defaultChoice,
-          ...(card === undefined ? {} : { keepCardId: card.id }),
-        });
-        from = round.task;
-      } else {
-        // The person answers in the terminal now; a question card nobody waits on is closed.
-        for (const card of deps.approvals.pendingForTask(current.id)) {
-          if (card.kind === 'choice' || isOutputApproval(card, current, deps.runs)) withdrawApproval(deps, card, reason);
+    let begun: RoundBegun | null;
+    try {
+      begun = deps.recorder.deferred(() => deps.unitOfWork.transaction(() => {
+        // Read again inside the unit: a run may have started, or someone else held it, since the checks.
+        const current = this.#task(task.id);
+        if (current.status !== task.status || deps.holds.openFor(task.id) !== undefined) {
+          refuse(`'${task.title}' changed while you asked; try holding it again.`, task);
         }
-      }
-      deps.holds.create(record);
-      deps.tasks.update(current.id, { status: 'HELD', statusReason: reason, needsAttention: false });
-      deps.recorder.record(scope, { type: 'task.status', from: from.status, to: 'HELD', reason });
-      deps.recorder.record(scope, {
-        type: 'task.held', holdId: record.id, fromStatus: task.status, heldBy: actorId, sessionBefore: record.sessionBefore,
-      });
-      // The output is the person's until the hold ends, so work about to read it waits.
-      deps.rounds.holdDependents({ ...from, status: 'HELD' }, waitingFor(task));
-      return round;
-    }));
+        let from: MissionTask = current;
+        let round = null;
+        if (current.status === 'AWAITING_APPROVAL') {
+          // Request changes, interactively: the output is set aside as a request
+          // for changes sets it aside, and the round reopens the task.
+          const card = deps.approvals.pendingForTask(current.id).find((a) => isOutputApproval(a, current, deps.runs));
+          const roundReason = `Held by ${name} to change it directly.`;
+          if (card !== undefined) deps.rounds.decideReviewCard(card, { actorId, recordedBy, note: roundReason });
+          const impact = deps.rounds.impactOf(current);
+          round = deps.rounds.beginRound({
+            task: current, feedbackIds: [], actorId, reason: roundReason,
+            downstream: impact.consumers.length === 0 ? 'none' : impact.defaultChoice,
+            ...(card === undefined ? {} : { keepCardId: card.id }),
+          });
+          from = round.task;
+        } else {
+          // The person answers in the terminal now; a question card nobody waits on is closed.
+          for (const card of deps.approvals.pendingForTask(current.id)) {
+            if (card.kind === 'choice' || isOutputApproval(card, current, deps.runs)) withdrawApproval(deps, card, reason);
+          }
+        }
+        deps.holds.create(record);
+        deps.tasks.update(current.id, { status: 'HELD', statusReason: reason, needsAttention: false });
+        deps.recorder.record(scope, { type: 'task.status', from: from.status, to: 'HELD', reason });
+        deps.recorder.record(scope, {
+          type: 'task.held', holdId: record.id, fromStatus: task.status, heldBy: actorId, sessionBefore: record.sessionBefore,
+        });
+        // The output is the person's until the hold ends, so work about to read it waits.
+        deps.rounds.holdDependents({ ...from, status: 'HELD' }, waitingFor(task));
+        return round;
+      }));
+    } catch (e) {
+      leases?.release();
+      throw e;
+    }
+    if (leases !== null) this.#keepLeases(record.id, leases);
     if (begun !== null) deps.rounds.stopOvertaken(begun);
     deps.recorder.invalidate('tasks', mission.id);
     deps.recorder.invalidate('approvals', mission.id);
 
-    // Only after the commit: the run ends with HELD on its row, so the executor keeps it.
-    deps.scheduler.cancelTask(task.id, new TaskHeld());
-    if (!(await this.#stopped(task.id))) {
-      this.#failed(record, "The agent's run did not stop in time. Open the terminal again in a moment.");
-      return this.#view(task.id);
-    }
-    // The run that was stopped may have learned its session as it ended.
-    const stoppedRun = source.runId === null ? undefined : deps.runs.get(asId<'RunId'>(source.runId));
-    if (stoppedRun?.externalSessionId != null && stoppedRun.externalSessionId !== record.sessionBefore) {
-      deps.holds.update(record.id, { sessionBefore: stoppedRun.externalSessionId });
-    }
-    await this.#openTerminal(record.id, false);
+    // Only after the commit: the terminal stops the run first, which then ends
+    // with HELD on its row, so the executor keeps it.
+    await this.#openTerminal(record.id, false, source.runId);
     return this.#view(task.id);
   }
 
@@ -218,7 +235,7 @@ export class HoldServiceImpl implements HoldService {
     this.#assertTerminal();
     if (this.deps.sessions?.isOpen(hold.id) !== true) {
       await this.#teardown(hold.id);
-      await this.#openTerminal(hold.id, true);
+      await this.#openTerminal(hold.id, true, null);
     }
     return this.#view(task.id);
   }
@@ -230,6 +247,7 @@ export class HoldServiceImpl implements HoldService {
 
   dispose(): void {
     this.#unsubscribe();
+    for (const kept of this.#leases.values()) clearInterval(kept.timer);
   }
 
   // ------------------------------------------------------------------ internals
@@ -241,10 +259,26 @@ export class HoldServiceImpl implements HoldService {
    * session. A failure is the task's status line, in the daemon's words; the
    * task stays HELD.
    */
-  async #openTerminal(holdId: TaskHoldId, reopening: boolean): Promise<void> {
+  async #openTerminal(holdId: TaskHoldId, reopening: boolean, stoppedRunId: string | null): Promise<void> {
     const { deps } = this;
+    // A terminal never opens beside a live run of the step: whatever is still
+    // running is stopped as the hold stopped it (a no-op when nothing runs),
+    // and waited for. Resuming alongside it would fork the session.
+    const taskId = deps.holds.get(holdId)!.taskId;
+    deps.scheduler.cancelTask(taskId, new TaskHeld());
+    if (!(await this.#stopped(taskId))) {
+      this.#failed(deps.holds.get(holdId)!, "The agent's run did not stop in time. Open the terminal again in a moment.");
+      return;
+    }
+    this.#refreshSessionBefore(holdId, stoppedRunId);
     const hold = deps.holds.get(holdId)!;
     const task = this.#task(hold.taskId);
+    // The checkout is the person's for the whole hold; taken again after a restart released it.
+    const leased = this.#ensureLeases(hold);
+    if (leased !== null) {
+      this.#failed(hold, leased);
+      return;
+    }
     const mission = this.#mission(task);
     const sessions = deps.sessions!;
     const profile = deps.runtimeProfiles.get(asId<'RuntimeProfileId'>(hold.runtimeProfileId));
@@ -252,7 +286,7 @@ export class HoldServiceImpl implements HoldService {
       this.#failed(hold, "The runtime this hold's session is on no longer exists. Release the hold to hand it back.");
       return;
     }
-    const prepared = await deps.executor.prepareHold(task.id).catch((e: unknown) => ({ ok: false as const, reason: errorMessage(e) }));
+    const prepared = await deps.executor.prepareHold(task.id, profile).catch((e: unknown) => ({ ok: false as const, reason: errorMessage(e) }));
     if (!prepared.ok) {
       this.#failed(hold, prepared.reason);
       return;
@@ -333,6 +367,7 @@ export class HoldServiceImpl implements HoldService {
       await deps.sessions.end(hold.id).catch((e: unknown) => deps.log.warn('hold.end_failed', { holdId: hold.id, error: errorMessage(e) }));
     }
     await this.#teardown(hold.id);
+    this.#releaseLeases(hold.id);
     deps.scheduler.wake();
     return this.#view(task.id);
   }
@@ -355,12 +390,17 @@ export class HoldServiceImpl implements HoldService {
   /** Gives back what an open terminal held: its gateway, its slot and its target. Idempotent. */
   async #teardown(holdId: TaskHoldId): Promise<void> {
     const live = this.#live.get(holdId);
-    if (live === undefined) return;
+    // A teardown under way (the exit a `sessions.end` fires) is waited for, not skipped.
+    if (live === undefined) return this.#tearing.get(holdId);
     this.#live.delete(holdId);
     live.slot.release();
     live.controller.abort();
-    await live.gateway.dispose().catch(() => undefined);
-    await live.releaseTarget().catch(() => undefined);
+    const done = (async () => {
+      await live.gateway.dispose().catch(() => undefined);
+      await live.releaseTarget().catch(() => undefined);
+    })();
+    this.#tearing.set(holdId, done);
+    try { await done; } finally { this.#tearing.delete(holdId); }
   }
 
   /**
@@ -388,7 +428,9 @@ export class HoldServiceImpl implements HoldService {
     let target = this.#live.get(hold.id)?.target;
     let release: (() => Promise<void>) | null = null;
     if (target === undefined) {
-      const prepared = await deps.executor.prepareHold(hold.taskId).catch(() => null);
+      const profile = deps.runtimeProfiles.get(asId<'RuntimeProfileId'>(hold.runtimeProfileId));
+      if (profile === undefined) return null;
+      const prepared = await deps.executor.prepareHold(hold.taskId, profile).catch(() => null);
       if (prepared === null || !prepared.ok) return null;
       target = prepared.value.target;
       release = prepared.value.release;
@@ -397,6 +439,9 @@ export class HoldServiceImpl implements HoldService {
     const env = { GIT_INDEX_FILE: index };
     try {
       await rm(index, { force: true });
+      // Seeded from HEAD, so the throwaway index starts where the checkout's own does.
+      const seeded = await target.exec({ command: 'git', args: ['read-tree', 'HEAD'], env });
+      if (seeded.exitCode !== 0) return null;
       // The hold's own folder may sit inside the checkout (a mission with no repository); it is not the person's work.
       const added = await target.exec({ command: 'git', args: ['add', '-A', '--', '.', ':(exclude)holds'], env });
       if (added.exitCode !== 0) return null;
@@ -413,7 +458,7 @@ export class HoldServiceImpl implements HoldService {
 
   /** Waits for the stopped run to end; false when it did not in time. */
   async #stopped(taskId: TaskId): Promise<boolean> {
-    const end = Date.now() + STOP_WAIT_MS;
+    const end = Date.now() + (this.deps.stopWaitMs ?? STOP_WAIT_MS);
     const live = (): boolean => this.deps.scheduler.activeTaskIds().includes(taskId)
       || this.deps.runs.listByTask(taskId).some((r) => LIVE_RUN.includes(r.status));
     while (live()) {
@@ -450,7 +495,7 @@ export class HoldServiceImpl implements HoldService {
   }
 
   /** A hold on a step that has not started is its start, so the start's own checks apply (spec "Where a hold can start"). */
-  #assertMayStart(task: MissionTask, mission: Mission): void {
+  async #assertMayStart(task: MissionTask, mission: Mission): Promise<void> {
     const { deps } = this;
     if (task.approvalPolicy.beforeStart) {
       const approved = deps.approvals.list({ missionId: mission.id, statuses: ['APPROVED'] })
@@ -459,6 +504,52 @@ export class HoldServiceImpl implements HoldService {
     }
     const limit = deps.limitRefusal?.(mission.id) ?? null;
     if (limit !== null) refuse(limit, task);
+    const skills = await deps.executor.holdStartRefusal(task.id);
+    if (skills !== null) refuse(skills, task);
+  }
+
+  /**
+   * A hold that stopped a run starts from that run's session, which the run
+   * may only have learned as it ended. Only then: a hold from an earlier
+   * hold's session must not be sent back to the older one a run left.
+   */
+  #refreshSessionBefore(holdId: TaskHoldId, stoppedRunId: string | null): void {
+    const { deps } = this;
+    const hold = deps.holds.get(holdId)!;
+    if (hold.fromStatus !== 'RUNNING' && hold.fromStatus !== 'AWAITING_INPUT') return;
+    const stopped = stoppedRunId !== null
+      ? deps.runs.get(asId<'RunId'>(stoppedRunId))
+      : [...deps.runs.listByTask(hold.taskId)]
+        .filter((r) => r.runtimeProfileId === hold.runtimeProfileId && r.startedAt <= hold.startedAt && r.externalSessionId !== null)
+        .sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0];
+    if (stopped?.externalSessionId != null && stopped.externalSessionId !== hold.sessionBefore) {
+      deps.holds.update(holdId, { sessionBefore: stopped.externalSessionId });
+    }
+  }
+
+  /** Null when the hold has its checkout's leases (taking them if a restart let them go); else why not. */
+  #ensureLeases(hold: TaskHold): string | null {
+    if (this.#leases.has(hold.id)) return null;
+    const taken = this.deps.executor.acquireHoldLeases(hold.taskId);
+    if (!taken.ok) return taken.reason;
+    this.#keepLeases(hold.id, taken.value);
+    return null;
+  }
+
+  #keepLeases(holdId: TaskHoldId, leases: HoldLeases): void {
+    const timer = setInterval(() => {
+      if (!leases.renew()) this.deps.log.warn('hold.lease_lost', { holdId });
+    }, HOLD_LEASE_RENEW_MS);
+    timer.unref?.();
+    this.#leases.set(holdId, { leases, timer });
+  }
+
+  #releaseLeases(holdId: TaskHoldId): void {
+    const kept = this.#leases.get(holdId);
+    if (kept === undefined) return;
+    this.#leases.delete(holdId);
+    clearInterval(kept.timer);
+    kept.leases.release();
   }
 
   #assertTerminal(): void {

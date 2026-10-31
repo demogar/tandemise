@@ -200,7 +200,7 @@ section('runtime: interactive invocations');
 }
 
 // ------------------------------------------------------------------ engine
-async function engineHarness(HOME, bindExtra = () => {}) {
+async function engineHarness(HOME, bindExtra = () => {}, moduleOptions = {}) {
   const { mkdirSync } = await import('node:fs');
   const app = await import('@tandemise/application');
   const { Container, compose } = await import('@tandemise/kernel');
@@ -225,7 +225,7 @@ async function engineHarness(HOME, bindExtra = () => {}) {
     persistenceTokens.persistenceModule({ path: paths.db, logger: log }),
     A.createArtifactsModule({ paths }),
     policyModule, contextModule, createEvaluationModule(), runtimesCoreModule, genericRuntimeModule,
-    executionCoreModule, executionLocalModule, integrationsCoreModule, app.createApplicationModule({ localPersonName: 'Demo' }),
+    executionCoreModule, executionLocalModule, integrationsCoreModule, app.createApplicationModule({ localPersonName: 'Demo', ...moduleOptions }),
   );
   container.bind(EXEC_CLOCK, () => systemClock, { source: 'check' });
   container.bind(EXEC_LOGGER, () => log, { source: 'check' });
@@ -580,9 +580,17 @@ section('service: hold, continue and release');
     ended(holdId) { return this.calls.some((c) => c.op === 'end' && c.holdId === holdId); }
   }
   const sessions = new RecordingSessions();
+  // The skills store, in memory: what a pin's hash reads back.
+  const skillStore = new Map();
+  const skillFiles = {
+    discoverRoot: () => '', discover: async () => ({ exists: false, folders: [] }),
+    scan: async (folder) => ({ folder, files: [], sizeBytes: 0, problem: 'unused' }), fetchGit: async () => { throw new Error('unused'); },
+    store: async (hash, files) => { skillStore.set(hash, files); }, read: async (hash) => skillStore.get(hash) ?? null, drop: async () => undefined,
+  };
   const h = await engineHarness(mkdtempSync(join(tmpdir(), 'thold-svc-')), (container, app) => {
     container.bind(app.INTERACTIVE_SESSIONS, () => sessions, { source: 'check' });
-  });
+    container.rebind(app.SKILL_FILES, () => skillFiles, { source: 'check' });
+  }, { holdStopWaitMs: 400 });
   const { app } = h;
   const now = () => systemClock.now();
   const manager = h.container.resolve(RUNTIME_MANAGER);
@@ -604,9 +612,13 @@ section('service: hold, continue and release');
   const P = {
     slow: profile('slow', [session('sess-slow'), write, { kind: 'delay', ms: 30000 }, done]),
     quick: profile('quick', [session('sess-quick'), write, done]),
+    stuck: profile('stuck', [session('sess-stuck'), write, { kind: 'delay', ms: 30000 }, done]),
+    lone: profile('lone', [session('sess-lone'), write, done]),
   };
   const caller = { personId: h.services.identity.localPerson().id };
   const ws = (await h.services.workspaces.create(caller, { name: 'Hold service' })).workspace.id;
+  // Room for every step this section leaves running, so a sibling waits on its lease, not on the ceiling.
+  h.container.resolve(app.WORKSPACE_REPOSITORY).update(ws, { concurrency: { maxTotalWorkers: 50, perRuntime: {} } });
   const owner = h.services.team.me(caller).memberships.find((m) => m.workspaceId === ws).memberId;
   const ownerName = h.container.resolve(app.MEMBER_REPOSITORY).get(owner).name;
   const anaPerson = h.services.team.createPerson(caller, { displayName: 'Ana' });
@@ -617,7 +629,10 @@ section('service: hold, continue and release');
   const boCaller = { personId: boPerson.id };
   const agent = (name, profileIds, reportsTo = owner) => h.services.team.addMember(caller, ws, { kind: 'agent', name, reportsTo, roleIds: ['design'], runtimeProfileIds: profileIds }).id;
   // Ana answers for this one, so she may take it; Bo answers for nothing of it.
-  const AG = { slow: agent('Slow', [P.slow]), quick: agent('Quick', [P.quick]), anas: agent('Ana\'s', [P.slow], ana) };
+  const AG = {
+    slow: agent('Slow', [P.slow]), quick: agent('Quick', [P.quick]), anas: agent('Ana\'s', [P.slow], ana),
+    stuck: agent('Stuck', [P.stuck]), lone: agent('Lone', [P.lone]),
+  };
 
   let seq = 0;
   const addTask = async (agentId, extra = {}) => {
@@ -777,6 +792,130 @@ section('service: hold, continue and release');
     const h2 = openHold(r2);
     await h.services.holds.release(r2.id, caller);
     check('no session file: the hold ends on the session it started from', h.repo.holds.get(h2.id).sessionAfter === 'sess-slow', h.repo.holds.get(h2.id));
+  }
+
+
+  // ---- Leases: a hold keeps its checkout from the in-place work that shares it, until it ends
+  const leaseRepo = h.container.resolve(app.LEASE_REPOSITORY);
+  const repoDir = mkdtempSync(join(tmpdir(), 'thold-repo-'));
+  execFileSync('git', ['init', '-q', '-b', 'main', repoDir]);
+  writeFileSync(join(repoDir, 'README.md'), 'repo\n');
+  execFileSync('git', ['-C', repoDir, 'add', 'README.md']);
+  execFileSync('git', ['-C', repoDir, '-c', 'user.name=check', '-c', 'user.email=check@example.com', 'commit', '-q', '-m', 'init']);
+  const repo = h.container.resolve(app.REPO_REPOSITORY).create({
+    id: ids.repository(), workspaceId: ws, name: 'shared', path: repoDir, defaultBranch: 'main', remoteUrl: null,
+    checks: { install: null, typecheck: null, lint: null, test: null, build: null, devServer: null, devServerUrl: null },
+  });
+  const inPlace = { repositoryId: repo.id, executionPolicy: { isolation: 'none', maxWallTimeMs: 60000, capabilities: ['filesystem.write'] } };
+  const leasesOf = (id) => leaseRepo.listAll().filter((l) => l.holderTaskId === id);
+  const QUEUED = 'Queued: another task is working directly in this repository checkout, and tasks that run in place take turns.';
+  const leaseA = await addTask(AG.quick, inPlace);
+  const leaseB = await addTask(AG.quick, inPlace);
+  await h.services.holds.hold(leaseA.id, caller);
+  check('leases: a READY hold takes the checkout lease and works in the repository', leasesOf(leaseA.id).some((l) => l.resourceKey === `repository:${repo.id}:worktree`)
+    && sessions.opened(openHold(leaseA)?.id)[0]?.inv.cwd === repoDir, { leases: leaseRepo.listAll(), cwd: sessions.opened(openHold(leaseA)?.id)[0]?.inv.cwd });
+  await h.until(() => task(leaseB.id).statusReason === QUEUED, 3000);
+  check('leases: an in-place sibling waits while the hold lasts', task(leaseB.id).status === 'READY' && runsOf(leaseB.id).length === 0
+    && task(leaseB.id).statusReason === QUEUED, { s: task(leaseB.id).status, r: task(leaseB.id).statusReason });
+  const leaseRefused = await refusal(() => h.services.holds.hold(leaseB.id, caller));
+  check('leases: holding the sibling is refused in the queued words, taking nothing', leaseRefused?.code === 'CONFLICT' && leaseRefused.message === QUEUED
+    && openHold(leaseB) === undefined && leasesOf(leaseB.id).length === 0, leaseRefused?.message);
+  sessions.exit(openHold(leaseA).id, 0);
+  await new Promise((r) => setTimeout(r, 50));
+  check('leases: the terminal exiting keeps the lease (the hold is not over)', leasesOf(leaseA.id).length === 1);
+  await h.services.holds.continue(leaseA.id, caller);
+  check('leases: continue gives the lease back', leasesOf(leaseA.id).length === 0, leaseRepo.listAll());
+  await h.until(() => task(leaseA.id).status !== 'READY' || task(leaseB.id).status !== 'READY', 5000);
+  await h.until(() => idle(leaseA.id) && idle(leaseB.id) && !['READY', 'RUNNING'].includes(task(leaseA.id).status) && !['READY', 'RUNNING'].includes(task(leaseB.id).status), 20000);
+  const leaseC = await addTask(AG.quick, inPlace);
+  await h.services.holds.hold(leaseC.id, caller);
+  const cHeld = leasesOf(leaseC.id).length;
+  await h.services.holds.release(leaseC.id, caller);
+  check('leases: release gives the lease back', cHeld === 1 && leasesOf(leaseC.id).length === 0, { cHeld, now: leaseRepo.listAll() });
+
+  // ---- Skills: a missing pin refuses a READY hold; a present one is installed for the session
+  {
+    const D = await import('@tandemise/domain');
+    const ghost = [{ name: 'ghost', version: 1, hash: '0'.repeat(64) }];
+    const missingTask = await addTask(AG.quick, { skills: ghost });
+    const missingRefused = await refusal(() => h.services.holds.hold(missingTask.id, caller));
+    check('skills: a missing pinned skill refuses the hold in the attempt\'s words', missingRefused?.code === 'CONFLICT'
+      && missingRefused.message === D.missingSkillReason(ghost) && task(missingTask.id).status === 'READY' && openHold(missingTask) === undefined, missingRefused?.message);
+
+    const md = new TextEncoder().encode('---\nname: house-style\ndescription: Write in the house style ZX-SKILL.\n---\n\n# House style\nShort sentences.\n');
+    const files = [{ path: 'SKILL.md', size: md.length, bytes: md }];
+    const hash = D.hashSkillFiles(files);
+    skillStore.set(hash, files);
+    const pin = { name: 'house-style', version: 1, hash };
+    const fakeAdapter = manager.registry.tryAdapter(FAKE_ADAPTER_ID);
+    fakeAdapter.skillsFolder = () => '.claude/skills';
+    const withSkill = await addTask(AG.quick, { skills: [pin] });
+    await h.services.holds.hold(withSkill.id, caller);
+    const installedAt = join(withSkill.dir, '.claude', 'skills', 'house-style', 'SKILL.md');
+    check('skills: the pinned skill is installed in the hold\'s checkout', task(withSkill.id).status === 'HELD' && existsSync(installedAt)
+      && readFileSync(installedAt, 'utf8').includes('ZX-SKILL') && sessions.opened(openHold(withSkill)?.id).length === 1, { s: task(withSkill.id).status, r: task(withSkill.id).statusReason });
+    check('skills: the fresh session\'s prompt names it', (interactiveCalls.at(-1)?.opts.initialPrompt ?? '').includes('house-style'));
+    await h.services.holds.release(withSkill.id, caller);
+    check('skills: removed again from a checkout that is not a worktree once the hold ends', !existsSync(installedAt));
+    delete fakeAdapter.skillsFolder;
+  }
+
+  // ---- Failures after the commit leave the task HELD, in the daemon's words, giving back what was taken
+  {
+    // The run will not stop: the hold waits, gives up, and opens nothing.
+    const stuck = await addTask(AG.stuck);
+    await h.until(() => runsOf(stuck.id).some((r) => r.status === 'RUNNING' && r.externalSessionId === 'sess-stuck'));
+    const slotsBefore = manager.inFlight(P.stuck);
+    const cancel = h.scheduler.cancelTask;
+    h.scheduler.cancelTask = () => {};
+    await h.services.holds.hold(stuck.id, caller);
+    const hStuck = openHold(stuck);
+    const TIMEOUT = "The agent's run did not stop in time. Open the terminal again in a moment.";
+    check('stop timeout: HELD, with the daemon\'s sentence, no terminal and no slot taken', task(stuck.id).status === 'HELD' && task(stuck.id).statusReason === TIMEOUT
+      && sessions.opened(hStuck.id).length === 0 && manager.inFlight(P.stuck) === slotsBefore && liveRun(stuck.id), { r: task(stuck.id).statusReason, slots: [slotsBefore, manager.inFlight(P.stuck)] });
+    await h.services.holds.reopen(stuck.id, caller);
+    check('reopen beside a live run waits for it, and opens nothing while it lives', sessions.opened(hStuck.id).length === 0
+      && task(stuck.id).statusReason === TIMEOUT && liveRun(stuck.id));
+    h.scheduler.cancelTask = cancel;
+    // The run learns a later session as it ends; the terminal must resume that one.
+    const live = runsOf(stuck.id).at(-1);
+    h.repo.runs.update(live.id, { externalSessionId: 'sess-stuck-later' });
+    await h.services.holds.reopen(stuck.id, caller);
+    check('reopen: the run is stopped first, then the terminal resumes the session it ended on', sessions.opened(hStuck.id).length === 1
+      && sessions.opened(hStuck.id)[0].at.live === false && interactiveCalls.at(-1)?.sessionRef === 'sess-stuck-later'
+      && h.repo.holds.get(hStuck.id).sessionBefore === 'sess-stuck-later' && task(stuck.id).statusReason === `Held by ${ownerName}.`,
+      { opened: sessions.opened(hStuck.id).map((c) => c.at), ref: interactiveCalls.at(-1)?.sessionRef, hold: h.repo.holds.get(hStuck.id) });
+    await h.services.holds.release(stuck.id, caller);
+
+    // The target cannot be made: nothing is spawned and no slot is held.
+    const executor = h.container.resolve(app.TASK_EXECUTOR);
+    const prepare = executor.prepareHold;
+    executor.prepareHold = async () => ({ ok: false, reason: 'Target provisioning failed: the disk is full.' });
+    const noTarget = await addTask(AG.lone);
+    const loneBefore = manager.inFlight(P.lone);
+    await h.services.holds.hold(noTarget.id, caller);
+    executor.prepareHold = prepare;
+    check('prepare fails: HELD, with its sentence, nothing opened, no slot', task(noTarget.id).status === 'HELD'
+      && task(noTarget.id).statusReason === 'Target provisioning failed: the disk is full.' && sessions.opened(openHold(noTarget).id).length === 0
+      && manager.inFlight(P.lone) === loneBefore, task(noTarget.id).statusReason);
+    await h.services.holds.release(noTarget.id, caller);
+
+    // The terminal host throws: the slot and the target are given back.
+    const open = sessions.open;
+    sessions.open = () => { throw new Error('The terminal could not start: no pty.'); };
+    const noPty = await addTask(AG.lone);
+    await h.services.holds.hold(noPty.id, caller);
+    sessions.open = open;
+    const targetsOf = h.container.resolve(app.EXECUTION_TARGET_REPOSITORY).listByMission(noPty.mission.id).filter((t) => t.taskId === noPty.id);
+    check('open throws: HELD, with its sentence, slot and target given back', task(noPty.id).status === 'HELD'
+      && task(noPty.id).statusReason === 'The terminal could not start: no pty.' && manager.inFlight(P.lone) === loneBefore
+      && targetsOf.length > 0 && targetsOf.every((t) => t.status !== 'IN_USE') && openHold(noPty).ptyPid === null,
+      { r: task(noPty.id).statusReason, slots: manager.inFlight(P.lone), targets: targetsOf.map((t) => t.status) });
+    await h.services.holds.reopen(noPty.id, caller);
+    check('open throws, then reopen works and takes one slot', sessions.opened(openHold(noPty).id).length === 1 && manager.inFlight(P.lone) === loneBefore + 1
+      && task(noPty.id).statusReason === `Held by ${ownerName}.`);
+    await h.services.holds.release(noPty.id, caller);
+    check('the slot is given back when the hold ends', manager.inFlight(P.lone) === loneBefore);
   }
 
   // ---- A trial mission is refused

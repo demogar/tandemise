@@ -85,6 +85,8 @@ export interface ApplicationModuleOptions {
   readonly localPersonName?: string;
   /** A run is quiet after this long without an agent event (P9). The daemon passes TANDEMISE_QUIET_MS. */
   readonly quietAfterMs?: number;
+  /** How long a hold waits for the run it stopped (10 s by default); a check shortens it. */
+  readonly holdStopWaitMs?: number;
 }
 
 /**
@@ -713,6 +715,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       paths: paths(r),
       clock: clock(r),
       log: log(r).child({ component: 'holds' }),
+      ...(options.holdStopWaitMs === undefined ? {} : { stopWaitMs: options.holdStopWaitMs }),
     }), { source: SOURCE, dispose: (service) => { if (service instanceof HoldServiceImpl) service.dispose(); } });
 
     bind(t.REFINEMENT_SERVICE, (r) => new RefinementServiceImpl({
