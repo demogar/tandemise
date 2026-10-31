@@ -40,8 +40,9 @@ export function IntakeSettings({ focus = false }: { focus?: boolean }): JSX.Elem
           <fieldset className="intake-settings__fieldset" disabled={readOnly}>
             <TrackerCard view={view} />
             <SourcesCard view={view} />
-            <CustomSources view={view} />
           </fieldset>
+          {/* Outside the read-only fieldset: a push token is this computer's, even when the brain sets the source. */}
+          <CustomSources view={view} />
           {/* Outside the read-only fieldset: running a source here is this computer's choice, even when the brain sets it. */}
           <ThisComputerCard view={view} readOnly={readOnly} />
         </>
