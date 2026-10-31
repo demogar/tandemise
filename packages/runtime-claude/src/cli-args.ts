@@ -1,5 +1,5 @@
 import { ARTIFACT_OUT_DIR, CORE_CAPABILITIES, anyCapabilityMatches } from '@tandemise/domain';
-import type { Capability } from '@tandemise/domain';
+import type { Capability, InteractiveInvocation } from '@tandemise/domain';
 import type { RunRequest } from '@tandemise/runtimes-core';
 import { isPathInside } from '@tandemise/shared';
 import { realpathSync } from 'node:fs';
@@ -141,19 +141,13 @@ export interface ClaudeInvocation {
 }
 
 /**
- * Builds the full argv for one run. Pure, so the flag mapping can be asserted
- * without spawning anything.
+ * The flags both modes share: model, permissions, tool rules, extra roots and
+ * the strict MCP config. Headless and interactive each add their own framing
+ * around this one list, so the two cannot drift apart.
  */
-export function buildInvocation(request: RunRequest, resumeSessionRef: string | null): ClaudeInvocation {
+function sharedFlags(request: RunRequest): string[] {
   const settings = request.profile.settings;
-  const viaStdin = request.prompt.length > MAX_PROMPT_ARG_CHARS;
-
-  // The prompt sits immediately after `-p`. It cannot be appended at the end:
-  // `--allowed-tools`/`--disallowed-tools`/`--add-dir` are variadic, so a
-  // trailing positional is silently absorbed as one more of their values and
-  // the CLI then exits complaining that no prompt was given.
-  const args: string[] = viaStdin ? ['-p'] : ['-p', request.prompt];
-  args.push('--output-format', 'stream-json', '--verbose');
+  const args: string[] = [];
 
   // The engine resolves the model per run (P12); an older caller leaves it to the profile.
   const model = request.model !== undefined ? request.model : settings['model'];
@@ -212,10 +206,70 @@ export function buildInvocation(request: RunRequest, resumeSessionRef: string | 
     args.push('--mcp-config', EMPTY_MCP_CONFIG, '--strict-mcp-config');
   }
 
+  return args;
+}
+
+/**
+ * Builds the full argv for one run. Pure, so the flag mapping can be asserted
+ * without spawning anything.
+ */
+export function buildInvocation(request: RunRequest, resumeSessionRef: string | null): ClaudeInvocation {
+  const viaStdin = request.prompt.length > MAX_PROMPT_ARG_CHARS;
+
+  // The prompt sits immediately after `-p`. It cannot be appended at the end:
+  // `--allowed-tools`/`--disallowed-tools`/`--add-dir` are variadic, so a
+  // trailing positional is silently absorbed as one more of their values and
+  // the CLI then exits complaining that no prompt was given.
+  const args: string[] = viaStdin ? ['-p'] : ['-p', request.prompt];
+  args.push('--output-format', 'stream-json', '--verbose');
+  args.push(...sharedFlags(request));
+
   if (resumeSessionRef !== null) args.push('--resume', resumeSessionRef);
   args.push(...stringList(request.profile.args));
 
   return { args, stdin: viaStdin ? request.prompt : null };
+}
+
+/**
+ * The script a SessionStart hook runs: read the hook's JSON from stdin and
+ * write its `session_id` to the session file, so the engine can learn the
+ * session id after a person has been driving it. It runs on the daemon's own
+ * runtime, never a `node` looked up on PATH: a packaged app has none, and its
+ * Electron binary acts as Node under ELECTRON_RUN_AS_NODE (plain Node ignores
+ * the variable). The path is a JSON string literal inside the script, and the
+ * script uses double quotes only, so wrapping it in single quotes for the shell
+ * needs just the one escape for a single quote in the path.
+ */
+function sessionHookCommand(sessionFile: string): string {
+  const script = `let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{try{require("fs").writeFileSync(${JSON.stringify(sessionFile)},String(JSON.parse(d).session_id))}catch{}})`;
+  return `ELECTRON_RUN_AS_NODE=1 ${shellQuote(process.execPath)} -e ${shellQuote(script)}`;
+}
+
+/** One word for a POSIX shell: single-quoted, with each single quote closed, escaped and reopened. */
+function shellQuote(word: string): string {
+  return `'${word.replaceAll("'", "'\\''")}'`;
+}
+
+/**
+ * The argv, env and cwd to start Claude Code's own interactive CLI for a hold:
+ * the same flags as a headless run, minus the stream framing, plus a hook that
+ * records the session id. The caller supplies the env base because only the
+ * adapter knows which variables the CLI may inherit.
+ */
+export function buildInteractiveInvocation(
+  request: RunRequest,
+  sessionRef: string | null,
+  opts: { readonly sessionFile: string; readonly initialPrompt: string | null },
+): Pick<InteractiveInvocation, 'args' | 'sessionFile'> {
+  const args = sharedFlags(request);
+  args.push('--settings', JSON.stringify({
+    hooks: { SessionStart: [{ hooks: [{ type: 'command', command: sessionHookCommand(opts.sessionFile) }] }] },
+  }));
+  if (sessionRef !== null) args.push('--resume', sessionRef);
+  args.push(...stringList(request.profile.args));
+  // After `--`, so the variadic flags above cannot absorb the prompt.
+  if (sessionRef === null && opts.initialPrompt !== null) args.push('--', opts.initialPrompt);
+  return { args, sessionFile: opts.sessionFile };
 }
 
 function stringList(value: unknown): string[] {

@@ -218,6 +218,15 @@ members and per-computer tokens, and holds webhooks for a daemon to pick up.
 It runs no agents and stores no work; losing it never stops local work. See
 [apps/relay/README.md](apps/relay/README.md).
 
+### Hold and interact
+
+When you want to steer an agent's step yourself, **Hold** it in the task
+panel. Tandemise stops the run cleanly and opens the agent's own session in an
+in-app terminal, in the same checkout, so you can work with it directly. When
+you hand it back, the pipeline continues from the work as it now stands; a
+**Release** ends the hold and keeps what you did. See the
+[evidence](docs/superpowers/evidence/2026-10-30-hold/).
+
 ## Guides
 
 Task-oriented, one per concept:

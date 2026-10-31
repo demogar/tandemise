@@ -5,7 +5,8 @@ import type {
   MemberRepositoryPort, PlanValidationIssue, RepoRepositoryPort, RoleRepositoryPort, RunEventRecord, RunRepositoryPort,
   RuntimeProfileRepositoryPort, Run, TaskRepositoryPort, TaskStatus, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
-import { PENDING_FEEDBACK_STATUSES, RUNTIME_ACTOR, isTrialMission, planLevels } from '@tandemise/domain';
+import { LIVE_RUN_STATUSES, PENDING_FEEDBACK_STATUSES, RUNTIME_ACTOR, isTrialMission, nowLine, planLevels } from '@tandemise/domain';
+import type { AgentEvent } from '@tandemise/domain';
 import type {
   ActorRef, FeedCard, HomeView, InboxView, MissionDetail, MissionFeedView, MissionLimitsView, MissionSummary, RuntimeView, TaskView,
 } from '@tandemise/api-contract';
@@ -13,7 +14,7 @@ import { humanActionForMember, isApprovalForMember, planStanding } from '@tandem
 import type { InboxIntakeDecisionView } from '@tandemise/api-contract';
 import type { MissionId, TaskId, WorkspaceId } from '@tandemise/shared';
 import { TandemiseError, asId } from '@tandemise/shared';
-import type { ProjectionService, RuntimeService } from '../services.js';
+import type { HoldService, HoldStanding, ProjectionService, RuntimeService } from '../services.js';
 import type { GateService } from '../engine/gates.js';
 import type { ReadinessService } from './readiness.js';
 import type { LimitService } from './limit-service.js';
@@ -83,12 +84,20 @@ export interface ProjectionDeps {
   readonly desk?: Pick<DeskService, 'metrics' | 'banners'>;
   /** Intake signals waiting on a person (intake plan Task 7); optional for harnesses built before it. */
   readonly intakeDecisions?: (workspaceId: WorkspaceId) => readonly InboxIntakeDecisionView[];
+  /** A step's open hold and whether it can be held; optional for harnesses built before holds. */
+  readonly holds?: Pick<HoldService, 'standing'>;
   /** The claim banner and the Unclaimed Inbox rows (relay spec); optional for harnesses built before it. */
   readonly coordination?: {
     missionClaim(missionId: string): MissionDetail['claim'];
     inboxUnclaimed(workspaceId: string): NonNullable<InboxView['unclaimed']>;
   };
 }
+
+/** The run events a "Now" line is read from: what the agent is doing, not its bookkeeping. */
+const NOW_EVENT_TYPES: readonly AgentEvent['type'][] = ['tool.started', 'message', 'thinking_summary', 'file.changed'];
+const NO_HOLDS: HoldStanding = {
+  hold: null, holdable: { ok: false, reason: 'This daemon has no terminal to hold a step in.' },
+};
 
 /**
  * Read models (MVP.md §7.2).
@@ -602,8 +611,17 @@ export class ProjectionServiceImpl implements ProjectionService {
         watch: this.deps.liveness?.watchOf(task, latestRun) ?? null,
         coveredBy: this.#coveredBy(task, intakeByType),
         parkedExternal: parkedView(parkedExternalOf(task, parkLog)),
+        now: this.#now(task, latestRun, target?.workingDirectory ?? null),
+        ...(this.deps.holds?.standing(task, mission) ?? NO_HOLDS),
       };
     });
+  }
+
+  /** One indexed read per live agent step; every other step has no "Now". */
+  #now(task: MissionTask, run: Run | null, workingDirectory: string | null): string | null {
+    if (task.executor !== 'agent' || task.status !== 'RUNNING' || run === null || !LIVE_RUN_STATUSES.includes(run.status)) return null;
+    const latest = this.deps.events.latestByRun(run.id, NOW_EVENT_TYPES);
+    return nowLine(latest === undefined ? null : latest.body as AgentEvent, workingDirectory);
   }
 
   /**

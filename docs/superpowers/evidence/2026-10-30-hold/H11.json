@@ -1,0 +1,60 @@
+{
+  "id": "H11",
+  "title": "Profile pinning: Continue resumes on the profile the hold was made on",
+  "ok": true,
+  "checks": [
+    {
+      "label": "proof (API): it runs on one of the two",
+      "ok": true,
+      "observed": {
+        "on": "rt_01m683zcchat16txxdka",
+        "a": "rt_01m683zcchat16txxdka",
+        "b": "rt_01m683zccq79asxdggwp"
+      }
+    },
+    {
+      "label": "proof (DB): the hold is pinned to that profile",
+      "ok": true,
+      "observed": {
+        "id": "hld_01m683zkcdn00mcmph8a",
+        "heldBy": "mem_01m683jx1kvrs3wj5c7r",
+        "fromStatus": "RUNNING",
+        "profileId": "rt_01m683zcchat16txxdka",
+        "sessionBefore": "sess-hold-run_01m683zhhte6eqd1w4ed",
+        "sessionAfter": null,
+        "endedAt": null,
+        "ending": null,
+        "consumedAt": null,
+        "diffStat": null,
+        "dir": "/tmp/tdm-hold/home/workspaces/ws_01m683jx1kvrs3wj5c7q/missions/msn_01m683zef1mh7y6m7tnm/holds/hld_01m683zkcdn00mcmph8a"
+      }
+    },
+    {
+      "label": "setup: the Design agent now lists the other profile first",
+      "ok": true
+    },
+    {
+      "label": "the continuation finishes",
+      "ok": true,
+      "observed": {
+        "status": "SUCCEEDED",
+        "reason": null
+      }
+    },
+    {
+      "label": "proof (DB): Continue resumed on the hold's profile, not the one routing would pick now",
+      "ok": true,
+      "observed": {
+        "pass": "rt_01m683zcchat16txxdka",
+        "pinned": "rt_01m683zcchat16txxdka",
+        "other": "rt_01m683zccq79asxdggwp"
+      }
+    }
+  ],
+  "notes": [
+    "setup: the Design agent runs on two runtime profiles, A then B"
+  ],
+  "shots": [
+    "/home/demogar/projects/tandemise/tandemise/docs/superpowers/evidence/2026-10-30-hold/H11-continued.png"
+  ]
+}

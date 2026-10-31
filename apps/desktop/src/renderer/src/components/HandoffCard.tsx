@@ -16,6 +16,7 @@ import { describeError } from '../lib/daemon.js';
 import { showFlash } from '../lib/notices.js';
 import { actorLabel, type Actors } from '../lib/team.js';
 import { SaveCaseDialog } from '../screens/evals/SaveCaseDialog.js';
+import { HoldButton, NowLine } from './TerminalPanel.js';
 
 /** What changed, at most: the handoff contract caps `changed` at three, and a card shows all of them. */
 const CHANGED_SHOWN = 3;
@@ -78,6 +79,10 @@ export function HandoffCard({
   // another tool, which nothing downstream has run on yet. The daemon still decides, and says why in the dialog.
   const canContinue = task !== undefined && parked === null && task.executor === 'agent' && !usedDownstream
     && PARKABLE_TASK_STATUSES.includes(task.status) && task.expectedOutputs.some((type) => LINKABLE_OUTPUT_TYPES.includes(type));
+  // Hold sits with "Continue elsewhere" on a step in progress: offered while an agent is on it, or to reopen its terminal.
+  // A running step that cannot be held right now (it is checking its work) shows Hold disabled, with why.
+  const canHold = task !== undefined && card.section === 'in_progress' && task.executor === 'agent'
+    && (task.holdable.ok || task.hold !== null || task.status === 'RUNNING');
   const waiting = isWaiting(card);
   // A waiting card says what it is waiting on; an older headline would describe work that is not the current state.
   // A step that is mine has nothing written yet, and "Waiting for <me>" tells me nothing; what it asks for does.
@@ -151,6 +156,7 @@ export function HandoffCard({
               Continue elsewhere
             </button>
           ) : null}
+          {canHold && task !== undefined ? <HoldButton task={task} missionId={missionId} className="btn btn--ghost feedcard__link" /> : null}
           {canSaveCase ? (
             <button type="button" className="btn btn--ghost feedcard__link" onClick={() => setSavingCase(true)}>
               <Icon name="target" size={12} />
@@ -175,6 +181,9 @@ export function HandoffCard({
           {lead}
         </p>
       ) : null}
+
+      {/* What a live agent is doing this moment, under the headline. */}
+      {task?.now ? <NowLine now={task.now} /> : null}
 
       {parked !== null && card.taskId !== null ? (
         // The step waits on the person who took it elsewhere, whichever section the card is in: say so, with the way back.
@@ -365,6 +374,7 @@ const STATUS_LABELS: Readonly<Record<TaskStatus, string>> = {
   AWAITING_HUMAN: 'Person step',
   AWAITING_EXTERNAL: 'Waiting',
   AWAITING_APPROVAL: 'In review',
+  HELD: 'Held',
   BLOCKED: 'Blocked',
   SUCCEEDED: 'Done',
   FAILED: 'Failed',

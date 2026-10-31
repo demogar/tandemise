@@ -716,6 +716,38 @@ export class DaemonClient {
     return this.#request('POST', `/tasks/${taskId}/hand-back`, body, undefined, { timeoutMs: CONTRIBUTION_TIMEOUT_MS });
   }
 
+  /**
+   * "Hold": stops the agent and opens its session in a terminal you work in.
+   * Holding a running step waits for its run to stop first, so it has the long timeout.
+   */
+  holdTask(taskId: string): Promise<TaskView> {
+    return this.#request('POST', `/tasks/${taskId}/hold`, {}, undefined, { timeoutMs: CONTRIBUTION_TIMEOUT_MS });
+  }
+
+  /** "Continue": ends your hold and lets the agent pick the work up from where you left it. */
+  continueTask(taskId: string): Promise<TaskView> {
+    return this.#request('POST', `/tasks/${taskId}/continue`, {});
+  }
+
+  /** "Release": ends the hold without handing the agent a continuation; the step goes back to ready. */
+  releaseTask(taskId: string): Promise<TaskView> {
+    return this.#request('POST', `/tasks/${taskId}/release`, {});
+  }
+
+  /** "Open the terminal again": starts a new terminal on the hold's captured session. */
+  reopenTerminal(taskId: string): Promise<TaskView> {
+    return this.#request('POST', `/tasks/${taskId}/terminal/reopen`, {}, undefined, { timeoutMs: CONTRIBUTION_TIMEOUT_MS });
+  }
+
+  /** The held step's terminal socket, authenticated the way the stream is. */
+  terminalUrl(taskId: string): string {
+    const base = new URL(this.connection.url);
+    base.protocol = base.protocol === 'https:' ? 'wss:' : 'ws:';
+    base.pathname = `/v1/tasks/${encodeURIComponent(taskId)}/terminal`;
+    base.searchParams.set('token', this.connection.token);
+    return base.toString();
+  }
+
   // ---------------------------------------------------------- feedback and rounds
 
   /**

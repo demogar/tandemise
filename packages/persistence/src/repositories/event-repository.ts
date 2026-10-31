@@ -71,6 +71,7 @@ export class SqliteEventRepository implements EventRepositoryPort {
   readonly #latestSequence;
   readonly #byMission;
   readonly #byRun;
+  readonly #latestByRun;
   /** JSON array of the semantic types, bound as one parameter. */
   readonly #semanticTypes = toJson([...SEMANTIC_EVENT_TYPES]);
 
@@ -106,6 +107,13 @@ export class SqliteEventRepository implements EventRepositoryPort {
        WHERE run_id = :runId AND sequence > :after
        ORDER BY sequence
        LIMIT COALESCE(:limit, -1)`,
+    );
+    // Walks `ix_run_events_run` backwards, so a long run costs one row, not its whole log.
+    this.#latestByRun = db.handle.prepare<{ runId: string; types: string }, EventRow>(
+      `SELECT ${COLUMNS} FROM run_events
+       WHERE run_id = :runId AND type IN (SELECT value FROM json_each(:types))
+       ORDER BY sequence DESC
+       LIMIT 1`,
     );
   }
 
@@ -175,6 +183,11 @@ export class SqliteEventRepository implements EventRepositoryPort {
     return this.#byRun
       .all({ runId, after: opts?.afterSequence ?? 0, limit: opts?.limit ?? null })
       .map(fromRow);
+  }
+
+  latestByRun(runId: RunId, types: readonly string[]): RunEventRecord | undefined {
+    const row = this.#latestByRun.get({ runId, types: toJson([...types]) });
+    return row === undefined ? undefined : fromRow(row);
   }
 
   latestSequence(missionId: MissionId): number {

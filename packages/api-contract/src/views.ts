@@ -486,6 +486,18 @@ export interface TaskView extends MissionTask {
    * (spec A2); null otherwise. Optional for the same reason as `parkedExternal`.
    */
   readonly coveredBy?: { readonly artifactId: string; readonly filename: string } | null;
+  /** What a live agent step is doing, in plain words, from its latest run event; null unless it is running. */
+  readonly now: string | null;
+  /** The open hold on this step; null when nobody holds it. `terminalOpen` is false once its terminal exited. */
+  readonly hold: {
+    readonly holdId: string;
+    readonly heldBy: string;
+    readonly heldByName: string;
+    readonly startedAt: string;
+    readonly terminalOpen: boolean;
+  } | null;
+  /** Whether Hold is offered, and if not, why, in the daemon's own words. */
+  readonly holdable: { readonly ok: true } | { readonly ok: false; readonly reason: string };
 }
 
 export interface MissionSummary {

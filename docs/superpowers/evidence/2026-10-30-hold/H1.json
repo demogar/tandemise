@@ -1,0 +1,107 @@
+{
+  "id": "H1",
+  "title": "Hold a running step: the panel shows its resumed session and takes your typing",
+  "ok": true,
+  "checks": [
+    {
+      "label": "proof (API): the step is running, and the view offers a hold",
+      "ok": true,
+      "observed": {
+        "ok": true
+      }
+    },
+    {
+      "label": "its in-progress card offers Hold, next to its other actions",
+      "ok": true,
+      "observed": {
+        "text": "Hold",
+        "disabled": false,
+        "title": "Stop the agent and work with it in its own terminal"
+      }
+    },
+    {
+      "label": "Hold opens the terminal panel, named for the step",
+      "ok": true,
+      "observed": "Terminal: design"
+    },
+    {
+      "label": "the panel says who holds it: \"Held by You\"",
+      "ok": true,
+      "observed": "designHeld by YouContinueReleaseClose terminalClaude Code may ask whether to trust this folder — choose “Yes, I trust this folder”. Tandemise created it for this task."
+    },
+    {
+      "label": "it offers Continue, Release and Close terminal",
+      "ok": true,
+      "observed": "designHeld by YouContinueReleaseClose terminalClaude Code may ask whether to trust this folder — choose “Yes, I trust this folder”. Tandemise created it for this task."
+    },
+    {
+      "label": "proof (API): the step is HELD, its terminal open",
+      "ok": true,
+      "observed": {
+        "status": "HELD",
+        "hold": {
+          "holdId": "hld_01m683mn8m0anj0dx3cm",
+          "heldBy": "mem_01m683jx1kvrs3wj5c7r",
+          "heldByName": "Demostenes Garcia",
+          "startedAt": "2026-10-31T04:31:44.404Z",
+          "terminalOpen": true
+        }
+      }
+    },
+    {
+      "label": "proof (DB): the run it stopped ended RESUMABLE",
+      "ok": true,
+      "observed": {
+        "id": "run_01m683k4hn2g22fmd5mc",
+        "attempt": 1,
+        "status": "RESUMABLE",
+        "round": 1,
+        "purpose": "round",
+        "sessionId": "sess-hold-run_01m683k4hn2g22fmd5mc",
+        "profileId": "rt_01m683jzc9cvj4yeb3jw",
+        "startedAt": "2026-10-31T04:30:54.535Z",
+        "errorCode": "CANCELLED",
+        "errorMessage": "Run cancelled"
+      }
+    },
+    {
+      "label": "proof (DB): the hold started from that run's session",
+      "ok": true,
+      "observed": {
+        "hold": {
+          "id": "hld_01m683mn8m0anj0dx3cm",
+          "heldBy": "mem_01m683jx1kvrs3wj5c7r",
+          "fromStatus": "RUNNING",
+          "profileId": "rt_01m683jzc9cvj4yeb3jw",
+          "sessionBefore": "sess-hold-run_01m683k4hn2g22fmd5mc",
+          "sessionAfter": null,
+          "endedAt": null,
+          "ending": null,
+          "consumedAt": null,
+          "diffStat": null,
+          "dir": "/tmp/tdm-hold/home/workspaces/ws_01m683jx1kvrs3wj5c7q/missions/msn_01m683k1ervfvq7vaxj6/holds/hld_01m683mn8m0anj0dx3cm"
+        },
+        "session": "sess-hold-run_01m683k4hn2g22fmd5mc"
+      }
+    },
+    {
+      "label": "the terminal shows the session it resumed",
+      "ok": true,
+      "observed": "Fake session sess-hold-run_01m683k4hn2g22fmd5mc\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
+    },
+    {
+      "label": "what you type reaches the session (it echoes it back)",
+      "ok": true,
+      "observed": "Fake session sess-hold-run_01m683k4hn2g22fmd5mc\nhello from the panel\n> hello from the panel\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
+    }
+  ],
+  "notes": [
+    "dark: terminal background rgb(9, 9, 23), text rgb(238, 249, 236)",
+    "light: terminal background rgb(255, 255, 255), text rgb(32, 30, 80)"
+  ],
+  "shots": [
+    "/home/demogar/projects/tandemise/tandemise/docs/superpowers/evidence/2026-10-30-hold/H1-card-hold.png",
+    "/home/demogar/projects/tandemise/tandemise/docs/superpowers/evidence/2026-10-30-hold/H1-panel-dark.png",
+    "/home/demogar/projects/tandemise/tandemise/docs/superpowers/evidence/2026-10-30-hold/H1-panel-light.png"
+  ]
+}

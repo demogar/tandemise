@@ -1,17 +1,19 @@
 import { mkdirSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { TandemiseError, asId, errorMessage } from '@tandemise/shared';
-import { API_VERSION } from '@tandemise/api-contract';
+import { API_VERSION, STREAM_PATH } from '@tandemise/api-contract';
 import { loadConfig } from './config.js';
 import { COORDINATION_SWITCH, bootstrap } from './bootstrap.js';
 import { buildRouter } from './routes.js';
 import { HttpServer } from './http/server.js';
 import { StreamServer } from './http/stream.js';
+import { TerminalSocketServer } from './http/terminal-socket.js';
 import {
   InstanceLock, loadOrCreateToken, removeConnectionFile, writeConnectionFile,
 } from './http/identity.js';
 import { installShutdownHandlers } from './lifecycle.js';
 import { adoptGitName, gitUserName } from './local-person.js';
+import { TERMINAL_HOST } from '@tandemise/terminal';
 import { EVAL_RUNNER, EVENT_RECORDER, MISSION_REPOSITORY, RECOVERY_SERVICE } from '@tandemise/application';
 import type { TandemiseEventBody } from '@tandemise/domain';
 import type { Container } from '@tandemise/kernel';
@@ -59,6 +61,8 @@ export async function startDaemon(overrides: Parameters<typeof loadConfig>[0] = 
   // Recovery reconciles whatever the last daemon left behind, and must complete
   // before the scheduler can dispatch anything (MVP.md §21.2).
   await container.resolve(RECOVERY_SERVICE).run();
+  // Recovery kept the checkout leases of every open hold; the holds take them up again before anything dispatches.
+  services.holds.resume();
   // An eval run the last daemon stopped mid-way is failed, never resumed, and its trial cleaned up (P3b).
   await container.resolve(EVAL_RUNNER).recoverInterrupted();
 
@@ -98,6 +102,7 @@ export async function startDaemon(overrides: Parameters<typeof loadConfig>[0] = 
   const router = buildRouter(services, { testClock, testEvents, coordination });
 
   let stream: StreamServer | undefined;
+  const terminal = new TerminalSocketServer({ holds: services.holds, host: container.resolve(TERMINAL_HOST), log });
   const http = new HttpServer({
     token,
     router,
@@ -108,7 +113,10 @@ export async function startDaemon(overrides: Parameters<typeof loadConfig>[0] = 
     port: config.port,
     // An intake token pushes for its one source only (spec 2026-10-30-intake-design.md §2).
     intakeTokenResolver: (bearer) => services.intake.resolveToken(bearer),
-    onUpgrade: (req, socket, head) => stream?.handleUpgrade(req, socket, head),
+    onUpgrade: (req, socket, head, path) => {
+      if (path === STREAM_PATH) stream?.handleUpgrade(req, socket, head);
+      else terminal.handleUpgrade(req, socket, head, path);
+    },
   });
 
   const url = await http.listen();
@@ -138,6 +146,7 @@ export async function startDaemon(overrides: Parameters<typeof loadConfig>[0] = 
     stopped = true;
     coordination.close();
     stream?.close();
+    terminal.close();
     await http.close();
     await lifecycle.stop();
     await container.dispose();

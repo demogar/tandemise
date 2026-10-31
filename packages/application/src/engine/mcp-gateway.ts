@@ -54,7 +54,10 @@ export interface McpGatewayProvisionerDeps {
 }
 
 export interface ProvisionToolSurfaceRequest {
-  readonly runId: RunId;
+  /** Null for a surface that is not a run's - a held task's terminal - which names its `owner` instead. */
+  readonly runId: RunId | null;
+  /** Where a surface that is not a run's keeps its config, and the short name its socket is keyed by. */
+  readonly owner?: { readonly key: string; readonly dir: string };
   readonly workspaceId: WorkspaceId;
   readonly missionId: MissionId;
   readonly assignment: WorkerAssignment;
@@ -75,13 +78,15 @@ export class McpGatewayProvisioner {
     // empty one: an MCP server that publishes nothing is pure startup cost.
     if (toolNames.length === 0) return NO_TOOL_SURFACE;
 
-    const runtimeDir = join(paths.mission(request.workspaceId, request.missionId), 'runs', request.runId);
+    const key = request.owner?.key ?? request.runId;
+    if (key === null) throw new Error('A tool surface needs a run or an owner.');
+    const runtimeDir = request.owner?.dir ?? join(paths.mission(request.workspaceId, request.missionId), 'runs', key);
     await mkdir(runtimeDir, { recursive: true, mode: 0o700 });
 
     // Unix socket paths are capped near 104 bytes on macOS, well below what a
     // mission directory can reach, so the socket lives in a short-named
     // sibling keyed by the run id rather than under the mission tree.
-    const socketPath = join(paths.root, 'sockets', `${request.runId}.sock`);
+    const socketPath = join(paths.root, 'sockets', `${key}.sock`);
     await mkdir(join(paths.root, 'sockets'), { recursive: true, mode: 0o700 });
 
     const token = randomBytes(24).toString('hex');
@@ -95,7 +100,7 @@ export class McpGatewayProvisioner {
       assignmentId: request.assignment.id,
       runId: request.runId,
       workingDirectory: request.workingDirectory,
-      logger: log.child({ runId: request.runId, component: 'tools' }),
+      logger: log.child({ runId: key, component: 'tools' }),
       exec: this.deps.exec(),
       signal: AbortSignal.any([request.signal, run.signal]),
     };
@@ -103,7 +108,7 @@ export class McpGatewayProvisioner {
     const bridge = new ToolBridgeServer(gatewayBridgeHandler(gateway, ctx), {
       socketPath,
       token,
-      log: log.child({ runId: request.runId, component: 'tool-bridge' }),
+      log: log.child({ runId: key, component: 'tool-bridge' }),
     });
     await bridge.start();
 
@@ -122,7 +127,7 @@ export class McpGatewayProvisioner {
     }
 
     log.debug('mcp.gateway_ready', {
-      runId: request.runId,
+      runId: key,
       tools: toolNames.length,
       configPath: handle.configPath,
     });

@@ -6,7 +6,7 @@ import type {
   ArtifactStorePort,
 } from '@tandemise/domain';
 import {
-  ISSUE_CRITERIA_AUTHOR, TRACKER_CRITERIA_AUTHOR, canTransition, escalationChain, evaluateReadiness, indexTeam, isTaskFinished, isTerminalMissionStatus, normalizeLimits,
+  ISSUE_CRITERIA_AUTHOR, TRACKER_CRITERIA_AUTHOR, canTransition, evaluateReadiness, indexTeam, isTaskFinished, isTerminalMissionStatus, normalizeLimits,
   responsibleFor,
 } from '@tandemise/domain';
 import type {
@@ -29,6 +29,7 @@ import type { ArtifactMeasurePort } from '../ports.js';
 import { feedbackEffectFor } from '../support/feedback-rules.js';
 import { assertStaffing, mergeRoleStaffing } from '../support/staffing-edit.js';
 import { assertReadiness } from './readiness.js';
+import { assertMayTake, type TakeAction } from '../support/take-rule.js';
 import { criteriaSummary } from '../support/criteria-summary.js';
 import {
   COVERED_MESSAGE, LINKABLE_OUTPUT_TYPES, continuedIn, isCoveredPlaceholder, parkedExternalOf, type ParkedExternal,
@@ -1010,35 +1011,9 @@ export class MissionServiceImpl implements MissionService {
     this.deps.recorder.note(scope, `${this.#nameOf(actorId)} took '${task.title}'.`);
   }
 
-  /**
-   * The assignee may act on their task; on an unassigned one, anyone the
-   * staffing made claimable. A task resolved before staffing existed names no
-   * one, and stays open to whoever the workspace lets act at all.
-   *
-   * An agent's step is taken by a person only to continue it elsewhere (spec
-   * A4), and nobody can claim it: the person who answers for it may, and so
-   * may anyone they answer to, up to the owners.
-   */
-  #assertMayTake(task: MissionTask, mission: Mission, actorId: string, action: 'claim' | 'complete' | 'continue' | 'hand back' | 'take back'): void {
-    if (task.executor === 'agent') {
-      if (task.staffing == null || task.responsibleId == null) return;
-      const team = indexTeam(this.deps.members.listByWorkspace(mission.workspaceId, { includeRemoved: true }));
-      if (team.owners.length === 0 || escalationChain(team, task.responsibleId).includes(actorId)) return;
-      const what = action === 'continue' ? `continue '${task.title}' elsewhere` : `${action} '${task.title}'`;
-      throw new TandemiseError('CONFLICT', `This member cannot ${what}: only the person who answers for it, or someone they answer to, can.`, {
-        details: { taskId: task.id, actorId, responsibleId: task.responsibleId },
-      });
-    }
-    const allowed = task.assigneeId != null
-      ? task.assigneeId === actorId || reachedByEscalation(task, actorId)
-      : task.staffing == null || task.staffing.claimable.includes(actorId);
-    if (allowed) return;
-    const whose = task.assigneeId != null
-      ? `it is assigned to ${this.deps.members.get(asId<'MemberId'>(task.assigneeId))?.name ?? 'someone else'}`
-      : 'they are not one of the people who can take it';
-    throw new TandemiseError('CONFLICT', `This member cannot ${action} '${task.title}': ${whose}.`, {
-      details: { taskId: task.id, actorId, assigneeId: task.assigneeId ?? null },
-    });
+  /** The take rule (`support/take-rule.ts`), shared with the hold service. */
+  #assertMayTake(task: MissionTask, mission: Mission, actorId: string, action: TakeAction): void {
+    assertMayTake(this.deps, task, mission, actorId, action);
   }
 
   /** The assignment a person taking a task gets, with responsibility re-derived for them. */
@@ -1132,13 +1107,3 @@ export function titleFromGoal(goal: string): string {
 
 /** The handoff contract's title budget (collaboration roadmap). */
 const TITLE_MAX = 60;
-
-/**
- * Whether the member was reached by an escalation, and so may take a task
- * from its assignee. Only what `ReviewPipeline#escalatePool` recorded counts:
- * the other people of a pool someone already claimed - two owners of a
- * fallback pool included - came from the staffing, and a claim is not taken twice.
- */
-function reachedByEscalation(task: MissionTask, actorId: string): boolean {
-  return task.assigneeId != null && (task.staffing?.escalatedTo ?? []).includes(actorId);
-}

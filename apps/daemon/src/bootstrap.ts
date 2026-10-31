@@ -33,6 +33,7 @@ import { mcpIntegrationModule } from '@tandemise/integration-mcp';
 import { youtrackIntegrationModule } from '@tandemise/integration-youtrack';
 import { intakeRunnersModule } from '@tandemise/intake-runners';
 import { browserIntegrationModule } from '@tandemise/browser';
+import { terminalModule, TERMINAL_HOST } from '@tandemise/terminal';
 import { createApplicationModule, createServices, EVAL_RUNNER, SCHEDULER, type TandemiseServices,
   WORKFLOW_SOURCE,
   SKILL_FILES,
@@ -120,6 +121,7 @@ export function bootstrap(config: DaemonConfig, options: { readonly localPersonN
     intakeRunnersModule,
     mcpIntegrationModule,
     browserIntegrationModule,
+    terminalModule,
     // The name reaches a fresh database's first person; this layer may run git, the application may not.
     createApplicationModule({
       ...(options.localPersonName === undefined ? {} : { localPersonName: options.localPersonName }),
@@ -316,6 +318,9 @@ function aliasPorts(container: Container, log: Logger): void {
   bindDirect('SYSTEM_ENVIRONMENT', (r) => createSystemEnvironment(r.resolve(CONFIG), SCHEMA_VERSION));
   bindDirect('PROCESS_LIVENESS', () => processLiveness);
   bindDirect('OAUTH_CALLBACK', () => oauthCallbacks);
+  // The hold service and the terminal socket must share one PTY host: the
+  // service opens the sessions the socket's windows attach to.
+  bindDirect('INTERACTIVE_SESSIONS', (r) => r.resolve(TERMINAL_HOST));
 
   log.debug('bootstrap.ports_bound', { aliased, missing });
 }

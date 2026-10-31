@@ -27,6 +27,11 @@ export class RuntimeOverrides {
     return found;
   }
 
+  /** Reads without clearing, for a look ahead that is not the dispatch. */
+  peek(taskId: TaskId): RuntimeProfileId | undefined {
+    return this.#byTask.get(taskId);
+  }
+
   clear(taskId: TaskId): void {
     this.#byTask.delete(taskId);
   }

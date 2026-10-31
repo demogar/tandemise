@@ -47,6 +47,7 @@ import { WorkflowServiceImpl } from './services/workflow-service.js';
 import { Waiter } from './engine/waiter.js';
 import { IntegrationServiceImpl } from './services/integration-service.js';
 import { MissionServiceImpl } from './services/mission-service.js';
+import { HoldServiceImpl } from './services/hold-service.js';
 import { FeedbackServiceImpl } from './services/feedback-service.js';
 import { CriteriaServiceImpl } from './services/criteria-service.js';
 import { ReadinessService } from './services/readiness.js';
@@ -99,6 +100,10 @@ export interface ApplicationModuleOptions {
   readonly localPersonName?: string;
   /** A run is quiet after this long without an agent event (P9). The daemon passes TANDEMISE_QUIET_MS. */
   readonly quietAfterMs?: number;
+  /** How long a hold waits for the run it stopped (10 s by default); a check shortens it. */
+  readonly holdStopWaitMs?: number;
+  /** How often a hold renews its checkout leases (every 10 minutes by default); a check shortens it. */
+  readonly holdLeaseRenewMs?: number;
 }
 
 /**
@@ -276,13 +281,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       grantBuilder: r.resolve(GRANT_BUILDER),
       policy: r.resolve(POLICY_ENGINE),
       approvalFactory: r.resolve(APPROVAL_FACTORY),
-      mcpGateway: new McpGatewayProvisioner({
-        broker: r.tryResolve(TOOL_BROKER) ?? null,
-        exec: () => r.resolve(INTEGRATION_COMMAND_EXECUTOR),
-        paths: paths(r),
-        clock: clock(r),
-        log: log(r).child({ component: 'mcp-gateway' }),
-      }),
+      mcpGateway: mcpGateway(r),
       toolBroker: r.tryResolve(TOOL_BROKER) ?? null,
       overrides: r.resolve(t.RUNTIME_OVERRIDES),
       templates: r.resolve(t.ARTIFACT_TEMPLATES),
@@ -295,6 +294,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       reviews: r.resolve(t.REVIEW_PIPELINE),
       rounds: r.resolve(t.FEEDBACK_ROUNDS),
       runInputs: r.resolve(t.RUN_INPUT_REPOSITORY),
+      holds: r.resolve(t.TASK_HOLD_REPOSITORY),
       recorder: r.resolve(t.EVENT_RECORDER),
       deadlines: r.resolve(t.RUN_DEADLINES),
       limits: r.resolve(t.LIMIT_SERVICE),
@@ -419,6 +419,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       clock(r),
       log(r).child({ component: 'recovery' }),
       r.resolve(t.APPROVAL_REPOSITORY),
+      r.resolve(t.TASK_HOLD_REPOSITORY),
     ), { source: SOURCE });
 
     // ---------------------------------------------------------- API services
@@ -582,6 +583,8 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       },
       // Resolved per call: intake is composed after the projections (plan Task 7).
       intakeDecisions: (workspaceId) => r.resolve(it.INTAKE_SERVICE).decisions(workspaceId),
+      // Resolved per call for the same reason: a hold answers with a task view.
+      holds: { standing: (task, mission) => r.resolve(t.HOLD_SERVICE).standing(task, mission) },
       // Resolved per call: the claim banner and the Unclaimed rows (relay spec).
       coordination: {
         missionClaim: (missionId) => r.resolve(t.COORDINATION_SERVICE).missionClaim(missionId),
@@ -731,6 +734,33 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
         abandonStart: (mission) => r.resolve(t.COORDINATION_SERVICE).abandonStart(mission),
       },
     }), { source: SOURCE });
+
+    bind(t.HOLD_SERVICE, (r) => new HoldServiceImpl({
+      missions: r.resolve(t.MISSION_REPOSITORY),
+      tasks: r.resolve(t.TASK_REPOSITORY),
+      runs: r.resolve(t.RUN_REPOSITORY),
+      approvals: r.resolve(t.APPROVAL_REPOSITORY),
+      members: r.resolve(t.MEMBER_REPOSITORY),
+      assignments: r.resolve(t.ASSIGNMENT_REPOSITORY),
+      holds: r.resolve(t.TASK_HOLD_REPOSITORY),
+      runtimeProfiles: r.resolve(t.RUNTIME_PROFILE_REPOSITORY),
+      runtimeManager: r.resolve(RUNTIME_MANAGER),
+      executor: r.resolve(t.TASK_EXECUTOR),
+      mcpGateway: mcpGateway(r),
+      // Bound by the daemon when its terminal host loads; without it every hold is refused.
+      ...(r.tryResolve(t.INTERACTIVE_SESSIONS) === undefined ? {} : { sessions: r.resolve(t.INTERACTIVE_SESSIONS) }),
+      rounds: r.resolve(t.FEEDBACK_ROUNDS),
+      scheduler: r.resolve(t.SCHEDULER),
+      projections: r.resolve(t.PROJECTION_SERVICE),
+      limitRefusal: (missionId) => r.resolve(t.LIMIT_SERVICE).refusal(missionId),
+      unitOfWork: r.resolve(t.UNIT_OF_WORK),
+      recorder: r.resolve(t.EVENT_RECORDER),
+      paths: paths(r),
+      clock: clock(r),
+      log: log(r).child({ component: 'holds' }),
+      ...(options.holdStopWaitMs === undefined ? {} : { stopWaitMs: options.holdStopWaitMs }),
+      ...(options.holdLeaseRenewMs === undefined ? {} : { leaseRenewMs: options.holdLeaseRenewMs }),
+    }), { source: SOURCE, dispose: (service) => (service instanceof HoldServiceImpl ? service.dispose() : undefined) });
 
     // Who works on what with the team (relay spec). The ports are optional: a
     // composition with no coordination gets a service that does nothing.
@@ -1152,6 +1182,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       tracker: r.resolve(it.TRACKER_SERVICE),
       intakeRunners: r.resolve(it.INTAKE_RUNNER_HOST),
       closures: r.resolve(it.CLOSURE_SERVICE),
+      holds: r.resolve(t.HOLD_SERVICE),
       brain: r.resolve(BRAIN_SERVICE),
       coordination: r.resolve(t.COORDINATION_SERVICE),
     }), { source: SOURCE });
@@ -1173,6 +1204,15 @@ export const applicationModule: TandemiseModule = createApplicationModule();
 export function createServices(container: Container): TandemiseServices {
   return container.resolve(t.TANDEMISE_SERVICES);
 }
+
+/** The factory a run's tool surface comes from; a held task's terminal gets its surface from the same one. */
+const mcpGateway = (r: Resolver): McpGatewayProvisioner => new McpGatewayProvisioner({
+  broker: r.tryResolve(TOOL_BROKER) ?? null,
+  exec: () => r.resolve(INTEGRATION_COMMAND_EXECUTOR),
+  paths: paths(r),
+  clock: clock(r),
+  log: log(r).child({ component: 'mcp-gateway' }),
+});
 
 const log = (r: Resolver): Logger => r.tryResolve(EXECUTION_LOGGER) ?? nullLogger;
 const clock = (r: Resolver): Clock => r.tryResolve(EXECUTION_CLOCK) ?? systemClock;

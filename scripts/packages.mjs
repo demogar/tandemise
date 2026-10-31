@@ -19,6 +19,7 @@ export const LAYERS = {
   'runtime-codex': 4,
   'runtime-generic': 4,
   'execution-local': 4,
+  terminal: 4,
   'integration-github': 4,
   'integration-youtrack': 4,
   'intake-runners': 4,
@@ -32,7 +33,7 @@ export const LAYERS = {
 /** Packages that may reference a concrete third-party provider/SDK. */
 export const PROVIDER_PACKAGES = new Set([
   'runtime-claude', 'runtime-codex', 'runtime-generic',
-  'execution-local', 'integration-github', 'integration-mcp', 'browser', 'desktop-control',
+  'execution-local', 'terminal', 'integration-github', 'integration-mcp', 'browser', 'desktop-control',
   'persistence', 'artifacts', 'integration-youtrack', 'intake-runners', 'coordination-relay',
 ]);
 
@@ -54,6 +55,7 @@ export const PACKAGES = {
   'runtime-codex': { deps: ['shared', 'kernel', 'domain', 'runtimes-core'], ext: {} },
   'runtime-generic': { deps: ['shared', 'domain', 'runtimes-core'], ext: {} },
   'execution-local': { deps: ['shared', 'domain', 'kernel', 'execution-core'], ext: {} },
+  terminal: { deps: ['shared', 'domain', 'kernel'], ext: { 'node-pty': '1.1.0' } },
   'integration-github': { deps: ['shared', 'kernel', 'domain', 'integrations-core', 'execution-core'], ext: {} },
   'integration-youtrack': { deps: ['shared', 'kernel', 'domain', 'integrations-core'], ext: { zod: '^3.24.1' } },
   'intake-runners': { deps: ['shared', 'kernel', 'domain', 'integrations-core'], ext: {} },
