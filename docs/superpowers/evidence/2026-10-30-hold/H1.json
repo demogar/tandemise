@@ -40,10 +40,10 @@
       "observed": {
         "status": "HELD",
         "hold": {
-          "holdId": "hld_01m680ycmft9s5tbt076",
-          "heldBy": "mem_01m680wmdtfqmdfsv8bf",
+          "holdId": "hld_01m683mn8m0anj0dx3cm",
+          "heldBy": "mem_01m683jx1kvrs3wj5c7r",
           "heldByName": "Demostenes Garcia",
-          "startedAt": "2026-10-31T03:44:37.519Z",
+          "startedAt": "2026-10-31T04:31:44.404Z",
           "terminalOpen": true
         }
       }
@@ -52,14 +52,14 @@
       "label": "proof (DB): the run it stopped ended RESUMABLE",
       "ok": true,
       "observed": {
-        "id": "run_01m680wvxz9cng3kzsay",
+        "id": "run_01m683k4hn2g22fmd5mc",
         "attempt": 1,
         "status": "RESUMABLE",
         "round": 1,
         "purpose": "round",
-        "sessionId": "sess-hold-run_01m680wvxz9cng3kzsay",
-        "profileId": "rt_01m680wprhc7fm4xb5bg",
-        "startedAt": "2026-10-31T03:43:47.668Z",
+        "sessionId": "sess-hold-run_01m683k4hn2g22fmd5mc",
+        "profileId": "rt_01m683jzc9cvj4yeb3jw",
+        "startedAt": "2026-10-31T04:30:54.535Z",
         "errorCode": "CANCELLED",
         "errorMessage": "Run cancelled"
       }
@@ -69,30 +69,30 @@
       "ok": true,
       "observed": {
         "hold": {
-          "id": "hld_01m680ycmft9s5tbt076",
-          "heldBy": "mem_01m680wmdtfqmdfsv8bf",
+          "id": "hld_01m683mn8m0anj0dx3cm",
+          "heldBy": "mem_01m683jx1kvrs3wj5c7r",
           "fromStatus": "RUNNING",
-          "profileId": "rt_01m680wprhc7fm4xb5bg",
-          "sessionBefore": "sess-hold-run_01m680wvxz9cng3kzsay",
+          "profileId": "rt_01m683jzc9cvj4yeb3jw",
+          "sessionBefore": "sess-hold-run_01m683k4hn2g22fmd5mc",
           "sessionAfter": null,
           "endedAt": null,
           "ending": null,
           "consumedAt": null,
           "diffStat": null,
-          "dir": "/tmp/tdm-hold/home/workspaces/ws_01m680wmds6apb951q0w/missions/msn_01m680wrv2wfebmygyyz/holds/hld_01m680ycmft9s5tbt076"
+          "dir": "/tmp/tdm-hold/home/workspaces/ws_01m683jx1kvrs3wj5c7q/missions/msn_01m683k1ervfvq7vaxj6/holds/hld_01m683mn8m0anj0dx3cm"
         },
-        "session": "sess-hold-run_01m680wvxz9cng3kzsay"
+        "session": "sess-hold-run_01m683k4hn2g22fmd5mc"
       }
     },
     {
       "label": "the terminal shows the session it resumed",
       "ok": true,
-      "observed": "Fake session sess-hold-run_01m680wvxz9cng3kzsay\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
+      "observed": "Fake session sess-hold-run_01m683k4hn2g22fmd5mc\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
     },
     {
       "label": "what you type reaches the session (it echoes it back)",
       "ok": true,
-      "observed": "Fake session sess-hold-run_01m680wvxz9cng3kzsay\nhello from the panel\n> hello from the panel\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
+      "observed": "Fake session sess-hold-run_01m683k4hn2g22fmd5mc\nhello from the panel\n> hello from the panel\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
     }
   ],
   "notes": [

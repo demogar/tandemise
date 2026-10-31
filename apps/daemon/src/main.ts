@@ -61,6 +61,8 @@ export async function startDaemon(overrides: Parameters<typeof loadConfig>[0] = 
   // Recovery reconciles whatever the last daemon left behind, and must complete
   // before the scheduler can dispatch anything (MVP.md §21.2).
   await container.resolve(RECOVERY_SERVICE).run();
+  // Recovery kept the checkout leases of every open hold; the holds take them up again before anything dispatches.
+  services.holds.resume();
   // An eval run the last daemon stopped mid-way is failed, never resumed, and its trial cleaned up (P3b).
   await container.resolve(EVAL_RUNNER).recoverInterrupted();
 

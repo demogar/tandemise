@@ -9,6 +9,7 @@ import { asId, type Clock, type Logger, type MissionId, type RunId } from '@tand
 import type { ProcessLivenessPort } from '../ports.js';
 import type { EventRecorder } from '../support/event-recorder.js';
 import { withdrawApproval } from '../support/withdraw.js';
+import { heldWaitingReason } from '../support/held.js';
 
 export interface RecoveryReport {
   readonly adopted: readonly string[];
@@ -127,6 +128,23 @@ export class RecoveryService {
     // that pid; reopening the terminal resumes the captured session.
     for (const task of this.tasks.listByStatus(['HELD'])) {
       const hold = this.holds.openFor(task.id);
+      if (hold === undefined) {
+        // The hold ended but the daemon died before the task went back to the
+        // queue (a hold ends before its terminal does, and the task follows).
+        this.tasks.update(task.id, { status: 'READY', statusReason: null, needsAttention: false, finishedAt: null });
+        const mission = this.missions.get(task.missionId);
+        if (mission !== undefined) {
+          this.recorder.record({ workspaceId: mission.workspaceId, missionId: mission.id, taskId: task.id }, {
+            type: 'task.status', from: 'HELD', to: 'READY', reason: 'Its hold had ended; returned to the queue.',
+          });
+        }
+        for (const waiting of this.tasks.listByMission(task.missionId)) {
+          if (waiting.status === 'PENDING' && waiting.statusReason === heldWaitingReason(task)) this.tasks.update(waiting.id, { statusReason: null });
+        }
+        touched.add(task.missionId);
+        tasksRequeued += 1;
+        continue;
+      }
       if (hold !== undefined && hold.ptyPid !== null && !this.liveness.isAlive(hold.ptyPid)) {
         this.holds.update(hold.id, { ptyPid: null });
       }
@@ -226,6 +244,9 @@ export class RecoveryService {
         && this.liveness.isAlive(holder.pid);
 
       if (holderAlive) continue;
+      // A held checkout is the person's for as long as the hold is open, across
+      // restarts: the hold service takes the lease up again once recovery is done.
+      if (lease.holderRunId === null && lease.holderTaskId !== null && this.#heldOpen(lease.holderTaskId)) continue;
       if (lease.holderRunId === null && !expired.has(lease.id)
         && lease.holderTaskId !== null && adoptedTasks.has(lease.holderTaskId)) {
         // Held by a task whose worker outlived the last daemon and was adopted
@@ -240,6 +261,11 @@ export class RecoveryService {
       released += 1;
     }
     return released;
+  }
+
+  #heldOpen(taskId: string): boolean {
+    const task = this.tasks.get(asId<'TaskId'>(taskId));
+    return task?.status === 'HELD' && this.holds.openFor(task.id) !== undefined;
   }
 
   #failOrphanedTargets(touched: Set<MissionId>): number {

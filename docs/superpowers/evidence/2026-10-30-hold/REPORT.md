@@ -1,6 +1,6 @@
 # Hold and interact: acceptance report
 
-Run: 2026-10-31T03:53:03.427Z · build dcd494b · fresh install at /tmp/tdm-hold-run-mvvuwidt
+Run: 2026-10-31T04:39:43.769Z · build b378875 · fresh install at /tmp/tdm-hold-run-mvvwl3lw
 Result: **ALL PASS** (12/12 scenarios)
 
 | Scenario | Result | Checks |
@@ -27,11 +27,11 @@ Result: **ALL PASS** (12/12 scenarios)
 - ✅ Hold opens the terminal panel, named for the step — `"Terminal: design"`
 - ✅ the panel says who holds it: "Held by You" — `"designHeld by YouContinueReleaseClose terminalClaude Code may ask whether to trust this folder — choose “Yes, I trust this folder”. Tandemise created it for this task."`
 - ✅ it offers Continue, Release and Close terminal — `"designHeld by YouContinueReleaseClose terminalClaude Code may ask whether to trust this folder — choose “Yes, I trust this folder”. Tandemise created it for this task."`
-- ✅ proof (API): the step is HELD, its terminal open — `{"status":"HELD","hold":{"holdId":"hld_01m680ycmft9s5tbt076","heldBy":"mem_01m680wmdtfqmdfsv8bf","heldByName":"Demostenes Garcia","startedAt":"2026-10-31T03:44:37.519Z","terminalOpen":true}}`
-- ✅ proof (DB): the run it stopped ended RESUMABLE — `{"id":"run_01m680wvxz9cng3kzsay","attempt":1,"status":"RESUMABLE","round":1,"purpose":"round","sessionId":"sess-hold-run_01m680wvxz9cng3kzsay","profileId":"rt_01m680wprhc7fm4xb5bg","startedAt":"2026-10-31T03:43:47.668Z",`
-- ✅ proof (DB): the hold started from that run's session — `{"hold":{"id":"hld_01m680ycmft9s5tbt076","heldBy":"mem_01m680wmdtfqmdfsv8bf","fromStatus":"RUNNING","profileId":"rt_01m680wprhc7fm4xb5bg","sessionBefore":"sess-hold-run_01m680wvxz9cng3kzsay","sessionAfter":null,"endedAt"`
-- ✅ the terminal shows the session it resumed — `"Fake session sess-hold-run_01m680wvxz9cng3kzsay\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"`
-- ✅ what you type reaches the session (it echoes it back) — `"Fake session sess-hold-run_01m680wvxz9cng3kzsay\nhello from the panel\n> hello from the panel\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"`
+- ✅ proof (API): the step is HELD, its terminal open — `{"status":"HELD","hold":{"holdId":"hld_01m683mn8m0anj0dx3cm","heldBy":"mem_01m683jx1kvrs3wj5c7r","heldByName":"Demostenes Garcia","startedAt":"2026-10-31T04:31:44.404Z","terminalOpen":true}}`
+- ✅ proof (DB): the run it stopped ended RESUMABLE — `{"id":"run_01m683k4hn2g22fmd5mc","attempt":1,"status":"RESUMABLE","round":1,"purpose":"round","sessionId":"sess-hold-run_01m683k4hn2g22fmd5mc","profileId":"rt_01m683jzc9cvj4yeb3jw","startedAt":"2026-10-31T04:30:54.535Z",`
+- ✅ proof (DB): the hold started from that run's session — `{"hold":{"id":"hld_01m683mn8m0anj0dx3cm","heldBy":"mem_01m683jx1kvrs3wj5c7r","fromStatus":"RUNNING","profileId":"rt_01m683jzc9cvj4yeb3jw","sessionBefore":"sess-hold-run_01m683k4hn2g22fmd5mc","sessionAfter":null,"endedAt"`
+- ✅ the terminal shows the session it resumed — `"Fake session sess-hold-run_01m683k4hn2g22fmd5mc\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"`
+- ✅ what you type reaches the session (it echoes it back) — `"Fake session sess-hold-run_01m683k4hn2g22fmd5mc\nhello from the panel\n> hello from the panel\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"`
 - screenshot: `H1-card-hold.png`
 - screenshot: `H1-panel-dark.png`
 - screenshot: `H1-panel-light.png`
@@ -39,8 +39,8 @@ Result: **ALL PASS** (12/12 scenarios)
 ## H2 — Iterate: what you make in the terminal lands in the step's worktree
 
 - ✅ the panel is still open on the held step — `"Terminal: design"`
-- ✅ the session reports the file written — `"Fake session sess-hold-run_01m680wvxz9cng3kzsay\nhello from the panel\n> hello from the panel\nwrite d.txt\n> write d.txt\nwrote d.txt\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"`
-- ✅ proof (disk): d.txt is in the step's worktree — `"/tmp/tdm-hold/home/workspaces/ws_01m680wmds6apb951q0w/missions/msn_01m680wrv2wfebmygyyz/worktrees/onboarding-hold-slow-now-mvvuwkrc-design-xqf4chf9/d.txt"`
+- ✅ the session reports the file written — `"Fake session sess-hold-run_01m683k4hn2g22fmd5mc\nhello from the panel\n> hello from the panel\nwrite d.txt\n> write d.txt\nwrote d.txt\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"`
+- ✅ proof (disk): d.txt is in the step's worktree — `"/tmp/tdm-hold/home/workspaces/ws_01m683jx1kvrs3wj5c7q/missions/msn_01m683k1ervfvq7vaxj6/worktrees/onboarding-hold-slow-now-mvvwl5zk-design-ra6excpx/d.txt"`
 - ✅ proof (disk): with what the session wrote
 - screenshot: `H2-wrote-file.png`
 
@@ -50,12 +50,12 @@ Result: **ALL PASS** (12/12 scenarios)
 - ✅ Continue ends the hold and the panel closes
 - ✅ the step finishes — `{"status":"SUCCEEDED","reason":null}`
 - ✅ proof (API): continuing spent no attempt — `{"before":1,"after":1}`
-- ✅ proof (DB): the hold ended as continued, and its continuation was taken — `{"id":"hld_01m680ycmft9s5tbt076","heldBy":"mem_01m680wmdtfqmdfsv8bf","fromStatus":"RUNNING","profileId":"rt_01m680wprhc7fm4xb5bg","sessionBefore":"sess-hold-run_01m680wvxz9cng3kzsay","sessionAfter":"fake-session-17934183`
-- ✅ proof (DB): one new pass ran — `{"id":"run_01m6812kkxj2djq4bm9f","attempt":2,"status":"SUCCEEDED","round":1,"purpose":"retry","sessionId":"sess-hold-run_01m6812kkxj2djq4bm9f","profileId":"rt_01m680wprhc7fm4xb5bg","startedAt":"2026-10-31T03:46:55.760Z",`
-- ✅ proof (DB): that pass resumed the session the terminal captured — `{"sessionAfter":"fake-session-1793418384536","resumedOn":[{"type":"checkpoint","externalSessionId":"fake-session-1793418384536","label":"session.resumed"}]}`
+- ✅ proof (DB): the hold ended as continued, and its continuation was taken — `{"id":"hld_01m683mn8m0anj0dx3cm","heldBy":"mem_01m683jx1kvrs3wj5c7r","fromStatus":"RUNNING","profileId":"rt_01m683jzc9cvj4yeb3jw","sessionBefore":"sess-hold-run_01m683k4hn2g22fmd5mc","sessionAfter":"fake-session-17934212`
+- ✅ proof (DB): one new pass ran — `{"id":"run_01m683rwagbpp58b6cpk","attempt":2,"status":"SUCCEEDED","round":1,"purpose":"retry","sessionId":"sess-hold-run_01m683rwagbpp58b6cpk","profileId":"rt_01m683jzc9cvj4yeb3jw","startedAt":"2026-10-31T04:34:02.724Z",`
+- ✅ proof (DB): that pass resumed the session the terminal captured — `{"sessionAfter":"fake-session-1793421211510","resumedOn":[{"type":"checkpoint","externalSessionId":"fake-session-1793421211510","label":"session.resumed"}]}`
 - ✅ proof (API): task.hold_ended carries the diff stat (d.txt added) — `{"files":1,"insertions":1,"deletions":0}`
-- ✅ proof (API): and who held it, from where, the sessions and how long — `{"type":"task.hold_ended","holdId":"hld_01m680ycmft9s5tbt076","ending":"continued","endedBy":"mem_01m680wmdtfqmdfsv8bf","sessionAfter":"fake-session-1793418384536","durationMs":138182,"diffStat":{"files":1,"insertions":1`
-- ✅ proof (API): the continuation's DesignBrief was harvested — `[{"type":"DesignBrief","run":"run_01m6812kkxj2djq4bm9f"}]`
+- ✅ proof (API): and who held it, from where, the sessions and how long — `{"type":"task.hold_ended","holdId":"hld_01m683mn8m0anj0dx3cm","ending":"continued","endedBy":"mem_01m683jx1kvrs3wj5c7r","sessionAfter":"fake-session-1793421211510","durationMs":138259,"diffStat":{"files":1,"insertions":1`
+- ✅ proof (API): the continuation's DesignBrief was harvested — `[{"type":"DesignBrief","run":"run_01m683rwagbpp58b6cpk"}]`
 - ✅ proof (API): and gated as usual — `null`
 - ✅ proof (API): a finished step is no longer holdable, in words — `{"ok":false,"reason":"This step is done; request changes instead."}`
 - screenshot: `H3-done.png`
@@ -63,17 +63,17 @@ Result: **ALL PASS** (12/12 scenarios)
 ## H3-claude — Continue on the real Claude Code: its own session in the panel, then a resumed pass
 
 - note: setup: the Design agent runs on Claude Code
-- note: session before 7bf5278d-f908-416d-b45c-581b65056641, captured 7bf5278d-f908-416d-b45c-581b65056641 (kept by --resume)
-- ✅ proof (DB): the Claude run ended RESUMABLE and the hold starts from its session — `{"run":"RESUMABLE","hold":{"id":"hld_01m681aj9x496r0fvj02","heldBy":"mem_01m680wmdtfqmdfsv8bf","fromStatus":"RUNNING","profileId":"rt_01m681aba682qn2yex86","sessionBefore":"7bf5278d-f908-416d-b45c-581b65056641","sessionA`
+- note: session before 27115a2a-7ef0-4469-9e32-7ca0d3987c3b, captured 27115a2a-7ef0-4469-9e32-7ca0d3987c3b (kept by --resume)
+- ✅ proof (DB): the Claude run ended RESUMABLE and the hold starts from its session — `{"run":"RESUMABLE","hold":{"id":"hld_01m6840sf3n33bxy18d6","heldBy":"mem_01m683jx1kvrs3wj5c7r","fromStatus":"RUNNING","profileId":"rt_01m6840jf6j1xhewa09b","sessionBefore":"27115a2a-7ef0-4469-9e32-7ca0d3987c3b","sessionA`
 - ✅ while Claude asks to trust the folder, the panel says how to answer — `"designHeld by YouContinueReleaseClose terminalClaude Code may ask whether to trust this folder — choose “Yes, I trust this folder”. Tandemise created it for this task."`
 - ✅ Enter on "No, exit": the panel says "The session ended." and repeats how to answer, next to "Open the terminal again" — `"designHeld by YouContinueReleaseClose terminalThe session ended.Claude Code may ask whether to trust this folder — choose “Yes, I trust this folder”. Tandemise created it for this task.Open the terminal again"`
-- ✅ the panel shows Claude Code's own session, ready for you ("? for shortcuts") — `"─────────────────────────────────────────────────────────────────────────────────\n❯\n─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────`
-- ✅ proof (DB): the terminal's session was captured — `{"id":"hld_01m681aj9x496r0fvj02","heldBy":"mem_01m680wmdtfqmdfsv8bf","fromStatus":"RUNNING","profileId":"rt_01m681aba682qn2yex86","sessionBefore":"7bf5278d-f908-416d-b45c-581b65056641","sessionAfter":"7bf5278d-f908-416d-`
+- ✅ the panel shows Claude Code's own session, ready for you ("? for shortcuts") — `"          ◐ medium · /effort\n──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯\n──────────────────────────`
+- ✅ proof (DB): the terminal's session was captured — `{"id":"hld_01m6840sf3n33bxy18d6","heldBy":"mem_01m683jx1kvrs3wj5c7r","fromStatus":"RUNNING","profileId":"rt_01m6840jf6j1xhewa09b","sessionBefore":"27115a2a-7ef0-4469-9e32-7ca0d3987c3b","sessionAfter":"27115a2a-7ef0-4469-`
 - ✅ the step finishes — `{"status":"SUCCEEDED","reason":null}`
-- ✅ proof (DB): the continuation ran on Claude Code and took the hold — `{"id":"run_01m681aw3rggca8r3kad","attempt":2,"status":"SUCCEEDED","round":1,"purpose":"retry","sessionId":"7bf5278d-f908-416d-b45c-581b65056641","profileId":"rt_01m681aba682qn2yex86","startedAt":"2026-10-31T03:51:26.601Z`
+- ✅ proof (DB): the continuation ran on Claude Code and took the hold — `{"id":"run_01m68412gc5dvgx6djf4","attempt":2,"status":"SUCCEEDED","round":1,"purpose":"retry","sessionId":"27115a2a-7ef0-4469-9e32-7ca0d3987c3b","profileId":"rt_01m6840jf6j1xhewa09b","startedAt":"2026-10-31T04:38:31.197Z`
 - ✅ proof (DB): the continuation spent no attempt (it ran as the attempt the hold stopped) — `{"before":1,"continuation":1}`
-- ✅ proof (DB): it resumed the captured session — `{"pass":"7bf5278d-f908-416d-b45c-581b65056641","captured":"7bf5278d-f908-416d-b45c-581b65056641"}`
-- ✅ proof (API): its DesignBrief was harvested — `"First-run onboarding note introducing Claude"`
+- ✅ proof (DB): it resumed the captured session — `{"pass":"27115a2a-7ef0-4469-9e32-7ca0d3987c3b","captured":"27115a2a-7ef0-4469-9e32-7ca0d3987c3b"}`
+- ✅ proof (API): its DesignBrief was harvested — `"First-run onboarding note about Claude"`
 - screenshot: `H3-claude-claude-trust.png`
 - screenshot: `H3-claude-claude-exited-at-trust.png`
 - screenshot: `H3-claude-claude-in-panel.png`
@@ -82,28 +82,28 @@ Result: **ALL PASS** (12/12 scenarios)
 ## H4 — Close the panel mid-hold: the terminal keeps going, and reopening repaints it
 
 - ✅ Close terminal closes the panel
-- ✅ proof (API): the step is still HELD, its terminal still open — `{"holdId":"hld_01m680ycmft9s5tbt076","heldBy":"mem_01m680wmdtfqmdfsv8bf","heldByName":"Demostenes Garcia","startedAt":"2026-10-31T03:44:37.519Z","terminalOpen":true}`
-- ✅ proof (OS): the terminal process is still running — `{"pid":3818872,"alive":true}`
+- ✅ proof (API): the step is still HELD, its terminal still open — `{"holdId":"hld_01m683mn8m0anj0dx3cm","heldBy":"mem_01m683jx1kvrs3wj5c7r","heldByName":"Demostenes Garcia","startedAt":"2026-10-31T04:31:44.404Z","terminalOpen":true}`
+- ✅ proof (OS): the terminal process is still running — `{"pid":4097323,"alive":true}`
 - ✅ the held step's drawer offers Open terminal, Release and Continue — `["Details","Open terminal","Continue","Release","Request changes","Close"]`
 - ✅ and no Hold — `{"text":"Open terminal","disabled":false,"title":""}`
 - ✅ the drawer steps aside for the panel
-- ✅ the reopened panel repaints the scrollback: the greeting, your typing, the file — `"Fake session sess-hold-run_01m680wvxz9cng3kzsay\nhello from the panel\n> hello from the panel\nwrite d.txt\n> write d.txt\nwrote d.txt\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"`
+- ✅ the reopened panel repaints the scrollback: the greeting, your typing, the file — `"Fake session sess-hold-run_01m683k4hn2g22fmd5mc\nhello from the panel\n> hello from the panel\nwrite d.txt\n> write d.txt\nwrote d.txt\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"`
 - ✅ proof (DB): still the same hold
 - screenshot: `H4-drawer-held.png`
 - screenshot: `H4-reopened.png`
 
 ## H5 — Restart the daemon mid-hold: still HELD, and reopening resumes the captured session
 
-- note: daemon 3817088 stopped
+- note: daemon 4094207 stopped
 - ✅ the panel is open on the held step
-- ✅ the window says the daemon is gone — `"The Tandemise daemon is not running"`
-- ✅ proof: a new daemon is up — `{"old":3817088,"now":3821933}`
+- ✅ the window says the daemon is gone — `"Reconnecting…"`
+- ✅ proof: a new daemon is up — `{"old":4094207,"now":4107106}`
 - ✅ proof (API): after the restart the step is still HELD — `{"status":"HELD","reason":"Held by Demostenes Garcia."}`
-- ✅ proof (API): its terminal is not open — `{"holdId":"hld_01m680ycmft9s5tbt076","heldBy":"mem_01m680wmdtfqmdfsv8bf","heldByName":"Demostenes Garcia","startedAt":"2026-10-31T03:44:37.519Z","terminalOpen":false}`
+- ✅ proof (API): its terminal is not open — `{"holdId":"hld_01m683mn8m0anj0dx3cm","heldBy":"mem_01m683jx1kvrs3wj5c7r","heldByName":"Demostenes Garcia","startedAt":"2026-10-31T04:31:44.404Z","terminalOpen":false}`
 - ✅ back on the mission, the panel says "The session ended." and offers "Open the terminal again" — `"designHeld by YouContinueReleaseClose terminalThe session ended.This step has no open terminal. Hold it, or open its terminal again.Open the terminal again"`
 - ✅ with the daemon's own words for why: there is no terminal open for this step — `"designHeld by YouContinueReleaseClose terminalThe session ended.This step has no open terminal. Hold it, or open its terminal again.Open the terminal again"`
-- ✅ the terminal opens again on the session the first terminal captured, not the run's — `{"resumed":"Fake session fake-session-1793418277681\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n","before":"sess-hold-run_01m680wvxz9cng3kzsay"}`
-- ✅ proof (API): its terminal is open again, same hold — `{"holdId":"hld_01m680ycmft9s5tbt076","heldBy":"mem_01m680wmdtfqmdfsv8bf","heldByName":"Demostenes Garcia","startedAt":"2026-10-31T03:44:37.519Z","terminalOpen":true}`
+- ✅ the terminal opens again on the session the first terminal captured, not the run's — `{"resumed":"Fake session fake-session-1793421104564\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n","before":"sess-hold-run_01m683k4hn2g22fmd5mc"}`
+- ✅ proof (API): its terminal is open again, same hold — `{"holdId":"hld_01m683mn8m0anj0dx3cm","heldBy":"mem_01m683jx1kvrs3wj5c7r","heldByName":"Demostenes Garcia","startedAt":"2026-10-31T04:31:44.404Z","terminalOpen":true}`
 - screenshot: `H5-daemon-gone.png`
 - screenshot: `H5-session-ended.png`
 - screenshot: `H5-reopened.png`
@@ -111,14 +111,14 @@ Result: **ALL PASS** (12/12 scenarios)
 ## H6 — Hold a step waiting on ask_human: its question leaves the Inbox
 
 - ✅ setup: the run's MCP gateway config is on disk
-- ✅ proof (API): the step waits on its question, a question card pending — `{"status":"AWAITING_INPUT","card":"Which layout should onboarding use (mvvv2m5b)?"}`
-- ✅ the question waits on you in the Inbox — `"Inbox\nWhat is waiting on a person.\nWhich layout should onboarding use (mvvv2m5b)?\nFor you·Ask about onboarding mvvv2hhd\nQuestion\njust now"`
+- ✅ proof (API): the step waits on its question, a question card pending — `{"status":"AWAITING_INPUT","card":"Which layout should onboarding use (mvvwr7cb)?"}`
+- ✅ the question waits on you in the Inbox — `"Inbox\nWhat is waiting on a person.\nWhich layout should onboarding use (mvvwr7cb)?\nFor you·Ask about onboarding mvvwr2od\nQuestion\njust now"`
 - ✅ Hold from its drawer opens the terminal panel
-- ✅ the session is resumed in the terminal, to answer there — `"Fake session sess-hold-run_01m681594vc01vp965eq\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"`
+- ✅ the session is resumed in the terminal, to answer there — `"Fake session sess-hold-run_01m683vhq55ja5sdnvm8\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"`
 - ✅ proof (API): the step is HELD — `"HELD"`
 - ✅ proof (API): the question card was withdrawn — `"CANCELLED"`
 - ✅ the question no longer waits on you in the Inbox — `"Inbox\nWhat is waiting on a person.\nNothing is waiting on you\n\nApprovals, questions, tasks for a person, work to hand back, stalled missions and quiet agents land here, one line each.\n"`
-- ✅ it is listed as decided: withdrawn because the work moved on — `"2m5b)?\nWithdrawn — the work ended first · “Held by Demostenes Garcia.”\nAsk about onboarding mvvv2hhd\nApprove the plan fo"`
+- ✅ it is listed as decided: withdrawn because the work moved on — `"r7cb)?\nWithdrawn — the work ended first · “Held by Demostenes Garcia.”\nAsk about onboarding mvvwr2od\nApprove the plan fo"`
 - ✅ Release in the drawer ends the hold
 - screenshot: `H6-inbox-question.png`
 - screenshot: `H6-inbox-after.png`
@@ -131,8 +131,8 @@ Result: **ALL PASS** (12/12 scenarios)
 - ✅ its card offers Hold — `{"text":"Hold","disabled":false,"title":"Stop the agent and work with it in its own terminal"}`
 - ✅ Hold opens the terminal panel on it
 - ✅ a fresh session starts (nothing to resume) — `"Fake session new\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"`
-- ✅ proof (DB): a hold from READY, with no session before it — `{"id":"hld_01m6816tvy3ae5ffzbz1","heldBy":"mem_01m680wmdtfqmdfsv8bf","fromStatus":"READY","profileId":"rt_01m6816gbgxx2ktzz1g4","sessionBefore":null,"sessionAfter":null,"endedAt":null,"ending":null,"consumedAt":null,"dif`
-- ✅ proof (API): its worktree was provisioned — `"/tmp/tdm-hold/home/workspaces/ws_01m680wmds6apb951q0w/missions/msn_01m6816jdsywntabs82b/worktrees/two-pages-mvvv3gja-settings-a6t0e33k"`
+- ✅ proof (DB): a hold from READY, with no session before it — `{"id":"hld_01m683x3a2d26aqym2ky","heldBy":"mem_01m683jx1kvrs3wj5c7r","fromStatus":"READY","profileId":"rt_01m683wrsjscrs5gjga6","sessionBefore":null,"sessionAfter":null,"endedAt":null,"ending":null,"consumedAt":null,"dif`
+- ✅ proof (API): its worktree was provisioned — `"/tmp/tdm-hold/home/workspaces/ws_01m683jx1kvrs3wj5c7q/missions/msn_01m683wtvvvrcyvzmxas/worktrees/two-pages-mvvws1mg-settings-r359gen3"`
 - ✅ proof (disk): the session works in that worktree
 - ✅ Release ends the hold and the panel closes
 - screenshot: `H7-fresh-session.png`
@@ -172,10 +172,10 @@ Result: **ALL PASS** (12/12 scenarios)
 
 - ✅ proof (API): its output waits for your review — `{"card":"Approve the output of design?","briefs":1,"holdable":{"ok":true}}`
 - ✅ Hold from its drawer opens the terminal panel
-- ✅ the step's last session is resumed — `"Fake session sess-quick-run_01m6817z5kmvnvmc52hr\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"`
+- ✅ the step's last session is resumed — `"Fake session sess-quick-run_01m683y7jqcnzw6xs9rh\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"`
 - ✅ proof (API): HELD, in a new round — `{"status":"HELD","round":2}`
 - ✅ proof (API): the review card is no longer waiting — `"REJECTED"`
-- ✅ Continue produces a new version of the output, replacing the reviewed one — `[{"id":"art_01m68184gwk58w106anm","supersedes":"art_01m6817z6h14rewge6yr"}]`
+- ✅ Continue produces a new version of the output, replacing the reviewed one — `[{"id":"art_01m683ycw3a6pzcpj01g","supersedes":"art_01m683y7kpakrxpn3wqf"}]`
 - ✅ which goes through review again: a new review card waits for you — `{"status":"AWAITING_APPROVAL","card":"Approve the output of design?"}`
 - ✅ its card reads Round 2, in review — `"PRODUCT DESIGNER\ndesign\nIn review\nRound 2\njust now\nby\nDesign agent\n·\nresponsible\nYou\nFull doc\n\nOnboarding designed\n\nNeeds Approve the output of design?\nApplies immediately.\nReject without changes\nRequ"`
 - screenshot: `H10-held-for-changes.png`
@@ -184,9 +184,9 @@ Result: **ALL PASS** (12/12 scenarios)
 ## H11 — Profile pinning: Continue resumes on the profile the hold was made on
 
 - note: setup: the Design agent runs on two runtime profiles, A then B
-- ✅ proof (API): it runs on one of the two — `{"on":"rt_01m681941hqhjjqaek1t","a":"rt_01m681941hqhjjqaek1t","b":"rt_01m681941p4tdxbnk6w7"}`
-- ✅ proof (DB): the hold is pinned to that profile — `{"id":"hld_01m6819b1a8n6bkyc1kq","heldBy":"mem_01m680wmdtfqmdfsv8bf","fromStatus":"RUNNING","profileId":"rt_01m681941hqhjjqaek1t","sessionBefore":"sess-hold-run_01m681996r3p3vyg1gp5","sessionAfter":null,"endedAt":null,"e`
+- ✅ proof (API): it runs on one of the two — `{"on":"rt_01m683zcchat16txxdka","a":"rt_01m683zcchat16txxdka","b":"rt_01m683zccq79asxdggwp"}`
+- ✅ proof (DB): the hold is pinned to that profile — `{"id":"hld_01m683zkcdn00mcmph8a","heldBy":"mem_01m683jx1kvrs3wj5c7r","fromStatus":"RUNNING","profileId":"rt_01m683zcchat16txxdka","sessionBefore":"sess-hold-run_01m683zhhte6eqd1w4ed","sessionAfter":null,"endedAt":null,"e`
 - ✅ setup: the Design agent now lists the other profile first
 - ✅ the continuation finishes — `{"status":"SUCCEEDED","reason":null}`
-- ✅ proof (DB): Continue resumed on the hold's profile, not the one routing would pick now — `{"pass":"rt_01m681941hqhjjqaek1t","pinned":"rt_01m681941hqhjjqaek1t","other":"rt_01m681941p4tdxbnk6w7"}`
+- ✅ proof (DB): Continue resumed on the hold's profile, not the one routing would pick now — `{"pass":"rt_01m683zcchat16txxdka","pinned":"rt_01m683zcchat16txxdka","other":"rt_01m683zccq79asxdggwp"}`
 - screenshot: `H11-continued.png`

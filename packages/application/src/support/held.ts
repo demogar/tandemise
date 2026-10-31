@@ -17,3 +17,8 @@ export class TaskHeld extends Error {
 export function isTaskHeld(signal: AbortSignal): boolean {
   return signal.aborted && signal.reason instanceof TaskHeld;
 }
+
+/** What the work downstream of a held step waits on; the same words hold it and let it go, recovery's included. */
+export function heldWaitingReason(task: { readonly key: string }): string {
+  return `Waiting for '${task.key}' while it is held.`;
+}

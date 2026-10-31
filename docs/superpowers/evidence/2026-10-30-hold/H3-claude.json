@@ -9,17 +9,17 @@
       "observed": {
         "run": "RESUMABLE",
         "hold": {
-          "id": "hld_01m681aj9x496r0fvj02",
-          "heldBy": "mem_01m680wmdtfqmdfsv8bf",
+          "id": "hld_01m6840sf3n33bxy18d6",
+          "heldBy": "mem_01m683jx1kvrs3wj5c7r",
           "fromStatus": "RUNNING",
-          "profileId": "rt_01m681aba682qn2yex86",
-          "sessionBefore": "7bf5278d-f908-416d-b45c-581b65056641",
+          "profileId": "rt_01m6840jf6j1xhewa09b",
+          "sessionBefore": "27115a2a-7ef0-4469-9e32-7ca0d3987c3b",
           "sessionAfter": null,
           "endedAt": null,
           "ending": null,
           "consumedAt": null,
           "diffStat": null,
-          "dir": "/tmp/tdm-hold/home/workspaces/ws_01m680wmds6apb951q0w/missions/msn_01m681adcgq4kjtdjtz3/holds/hld_01m681aj9x496r0fvj02"
+          "dir": "/tmp/tdm-hold/home/workspaces/ws_01m683jx1kvrs3wj5c7q/missions/msn_01m6840mhh5df4fjd9nh/holds/hld_01m6840sf3n33bxy18d6"
         }
       }
     },
@@ -36,23 +36,23 @@
     {
       "label": "the panel shows Claude Code's own session, ready for you (\"? for shortcuts\")",
       "ok": true,
-      "observed": "─────────────────────────────────────────────────────────────────────────────────\n❯\n──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  ⏸ manual mode on · ? for shortcuts · ← for agents                                                                                       ◐ medium · /effort\n"
+      "observed": "          ◐ medium · /effort\n──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯\n──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  ⏸ manual mode on · ? for shortcuts · ← for agents"
     },
     {
       "label": "proof (DB): the terminal's session was captured",
       "ok": true,
       "observed": {
-        "id": "hld_01m681aj9x496r0fvj02",
-        "heldBy": "mem_01m680wmdtfqmdfsv8bf",
+        "id": "hld_01m6840sf3n33bxy18d6",
+        "heldBy": "mem_01m683jx1kvrs3wj5c7r",
         "fromStatus": "RUNNING",
-        "profileId": "rt_01m681aba682qn2yex86",
-        "sessionBefore": "7bf5278d-f908-416d-b45c-581b65056641",
-        "sessionAfter": "7bf5278d-f908-416d-b45c-581b65056641",
-        "endedAt": "2026-10-31T03:51:24.963Z",
+        "profileId": "rt_01m6840jf6j1xhewa09b",
+        "sessionBefore": "27115a2a-7ef0-4469-9e32-7ca0d3987c3b",
+        "sessionAfter": "27115a2a-7ef0-4469-9e32-7ca0d3987c3b",
+        "endedAt": "2026-10-31T04:38:30.384Z",
         "ending": "continued",
         "consumedAt": null,
         "diffStat": "{\"files\":0,\"insertions\":0,\"deletions\":0}",
-        "dir": "/tmp/tdm-hold/home/workspaces/ws_01m680wmds6apb951q0w/missions/msn_01m681adcgq4kjtdjtz3/holds/hld_01m681aj9x496r0fvj02"
+        "dir": "/tmp/tdm-hold/home/workspaces/ws_01m683jx1kvrs3wj5c7q/missions/msn_01m6840mhh5df4fjd9nh/holds/hld_01m6840sf3n33bxy18d6"
       }
     },
     {
@@ -67,14 +67,14 @@
       "label": "proof (DB): the continuation ran on Claude Code and took the hold",
       "ok": true,
       "observed": {
-        "id": "run_01m681aw3rggca8r3kad",
+        "id": "run_01m68412gc5dvgx6djf4",
         "attempt": 2,
         "status": "SUCCEEDED",
         "round": 1,
         "purpose": "retry",
-        "sessionId": "7bf5278d-f908-416d-b45c-581b65056641",
-        "profileId": "rt_01m681aba682qn2yex86",
-        "startedAt": "2026-10-31T03:51:26.601Z",
+        "sessionId": "27115a2a-7ef0-4469-9e32-7ca0d3987c3b",
+        "profileId": "rt_01m6840jf6j1xhewa09b",
+        "startedAt": "2026-10-31T04:38:31.197Z",
         "errorCode": null,
         "errorMessage": null
       }
@@ -91,19 +91,19 @@
       "label": "proof (DB): it resumed the captured session",
       "ok": true,
       "observed": {
-        "pass": "7bf5278d-f908-416d-b45c-581b65056641",
-        "captured": "7bf5278d-f908-416d-b45c-581b65056641"
+        "pass": "27115a2a-7ef0-4469-9e32-7ca0d3987c3b",
+        "captured": "27115a2a-7ef0-4469-9e32-7ca0d3987c3b"
       }
     },
     {
       "label": "proof (API): its DesignBrief was harvested",
       "ok": true,
-      "observed": "First-run onboarding note introducing Claude"
+      "observed": "First-run onboarding note about Claude"
     }
   ],
   "notes": [
     "setup: the Design agent runs on Claude Code",
-    "session before 7bf5278d-f908-416d-b45c-581b65056641, captured 7bf5278d-f908-416d-b45c-581b65056641 (kept by --resume)"
+    "session before 27115a2a-7ef0-4469-9e32-7ca0d3987c3b, captured 27115a2a-7ef0-4469-9e32-7ca0d3987c3b (kept by --resume)"
   ],
   "shots": [
     "/home/demogar/projects/tandemise/tandemise/docs/superpowers/evidence/2026-10-30-hold/H3-claude-claude-trust.png",

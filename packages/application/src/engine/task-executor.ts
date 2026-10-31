@@ -360,7 +360,7 @@ export class TaskExecutor {
   acquireHoldLeases(taskId: TaskId): { ok: true; value: HoldLeases } | { ok: false; reason: string } {
     const task = this.#requireTask(taskId);
     const mission = this.#require(this.deps.missions.get(task.missionId), 'Mission', task.missionId);
-    const leases = this.#acquireLeases(task, mission, this.#repositoryFor(task, mission));
+    const leases = this.#acquireLeases(task, mission, this.#repositoryFor(task, mission), true);
     if (!leases.ok) return { ok: false, reason: leases.reason };
     const { held } = leases;
     return {
@@ -1073,10 +1073,6 @@ export class TaskExecutor {
     return this.#block(current, scope, reason);
   }
 
-  /**
-   * Gives this attempt its pinned skills (P13): verified content, written into
-   * the runtime's skills folder when it has one, else into the prompt.
-   */
   /** A pinned skill that cannot be given to the step, and why; null when every pin is in the library. */
   async #missingSkills(
     task: MissionTask, workspace: Workspace, role: RoleTemplate,
@@ -1094,6 +1090,10 @@ export class TaskExecutor {
     return { reason: missingSkillReason(missing), named: missing.map((m) => `${m.name} v${m.version}`) };
   }
 
+  /**
+   * Gives this attempt its pinned skills (P13): verified content, written into
+   * the runtime's skills folder when it has one, else into the prompt.
+   */
   async #installSkills(
     task: MissionTask,
     target: ExecutionTarget,
@@ -1792,22 +1792,7 @@ export class TaskExecutor {
 
   // -------------------------------------------------------------------- policy
 
-  /**
-   * Runs every grant the builder produced through the policy engine before the
-   * worker is launched (MVP.md §19.2).
-   *
-   * The grant builder answers "what did the role and the task ask for?". That
-   * is a *description*. The policy engine answers "what does this workspace
-   * permit, at this risk class, right now?" - and that is the decision. Without
-   * this step the engine's shell classification and autonomy dials are computed
-   * and discarded, and a worker is handed whatever its role template listed.
-   *
-   * A denied capability is dropped from the grant set and recorded as
-   * `policy.denied`, so the worker is launched strictly narrower rather than
-   * failing later for a reason nobody can see. A denied capability the task
-   * declared as *required* is different: running without it would produce work
-   * that silently does not do what the plan said, so the task blocks.
-   */
+  /** What the role and the task ask for, scoped to this target; `#vet` decides what of it is granted. */
   #requestedGrants(
     role: RoleTemplate, task: MissionTask, workspace: Workspace, repository: Repository | null, target: ExecutionTarget,
   ): readonly CapabilityGrant[] {
@@ -1832,6 +1817,22 @@ export class TaskExecutor {
     });
   }
 
+  /**
+   * Runs every grant the builder produced through the policy engine before the
+   * worker is launched (MVP.md §19.2).
+   *
+   * The grant builder answers "what did the role and the task ask for?". That
+   * is a *description*. The policy engine answers "what does this workspace
+   * permit, at this risk class, right now?" - and that is the decision. Without
+   * this step the engine's shell classification and autonomy dials are computed
+   * and discarded, and a worker is handed whatever its role template listed.
+   *
+   * A denied capability is dropped from the grant set and recorded as
+   * `policy.denied`, so the worker is launched strictly narrower rather than
+   * failing later for a reason nobody can see. A denied capability the task
+   * declared as *required* is different: running without it would produce work
+   * that silently does not do what the plan said, so the task blocks.
+   */
   #vet(
     grants: readonly CapabilityGrant[],
     task: MissionTask,
@@ -2242,10 +2243,20 @@ export class TaskExecutor {
     task: MissionTask,
     mission: Mission,
     repository: Repository | null,
+    /**
+     * For a hold: a lease this task already holds with no run (an open hold's,
+     * kept across a restart) is taken up and renewed, not acquired again,
+     * which would refuse it as held by someone.
+     */
+    adoptOwn = false,
   ): { ok: true; held: readonly ResourceLease[] } | { ok: false; reason: string; held: readonly ResourceLease[] } {
     const held: ResourceLease[] = [];
+    const own = adoptOwn ? this.deps.leases.listAll().filter((l) => l.holderTaskId === task.id && l.holderRunId === null) : [];
     for (const key of resourceKeysFor(task, mission, repository)) {
-      const lease = this.deps.leases.acquire(key, { taskId: task.id }, LEASE_TTL_MS);
+      const kept = own.find((l) => l.resourceKey === key);
+      const lease = kept !== undefined && this.deps.leases.renew(kept.id, LEASE_TTL_MS)
+        ? kept
+        : this.deps.leases.acquire(key, { taskId: task.id }, LEASE_TTL_MS);
       if (lease === undefined) {
         for (const acquired of held) this.deps.leases.release(acquired.id);
         return {

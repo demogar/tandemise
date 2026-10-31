@@ -227,6 +227,8 @@ export interface HoldService {
   terminalFor(taskId: TaskId): import('@tandemise/shared').TaskHoldId | null;
   /** The step's open hold and whether Hold is offered, for its task view. */
   standing(task: MissionTask, mission: Mission): HoldStanding;
+  /** After recovery, before dispatch: every open hold takes up its checkout leases again and keeps them renewed. */
+  resume(): void;
 }
 
 /** What a task view says about holding the step. */

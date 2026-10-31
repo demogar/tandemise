@@ -32,6 +32,10 @@ interface Session {
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
+function guarded(call: () => void): void {
+  try { call(); } catch { /* a watcher's failure is its own */ }
+}
+
 /**
  * Owns the pseudo-terminals behind held tasks. The byte stream is deliberately
  * not part of the domain port: windows attach to it through the daemon socket.
@@ -62,18 +66,20 @@ export class PtyHost implements InteractiveSessionsPort {
     });
     const session: Session = { pty: proc, scrollback: new Scrollback(), sinks: new Set(), exited: false, exitWaiters: [] };
     this.#sessions.set(holdId, session);
+    // Each watcher is called on its own: one that throws (a window gone mid-write)
+    // must not keep the bytes or the exit from the others, or from the hold service.
     proc.onData((text) => {
       const chunk = Buffer.from(text, 'utf8');
       session.scrollback.push(chunk);
-      for (const sink of [...session.sinks]) sink.data(chunk);
+      for (const sink of [...session.sinks]) guarded(() => sink.data(chunk));
     });
     proc.onExit(({ exitCode }) => {
       session.exited = true;
       this.#sessions.delete(holdId);
-      for (const sink of [...session.sinks]) sink.exit(exitCode);
+      for (const sink of [...session.sinks]) guarded(() => sink.exit(exitCode));
       session.sinks.clear();
       for (const w of session.exitWaiters) w();
-      for (const cb of [...this.#exitListeners]) cb(holdId, exitCode);
+      for (const cb of [...this.#exitListeners]) guarded(() => cb(holdId, exitCode));
     });
     return { pid: proc.pid };
   }
@@ -111,7 +117,7 @@ export class PtyHost implements InteractiveSessionsPort {
     }
   }
 
-  /** Ask politely with `/exit`, then SIGTERM after `graceMs`, then SIGKILL after another `graceMs`. */
+  /** Ask politely with `/exit` and EOF, then SIGTERM after `graceMs`, then SIGKILL after another `graceMs`. */
   async end(holdId: TaskHoldId, graceMs = 3000): Promise<void> {
     const session = this.#sessions.get(holdId);
     if (!session) return;
@@ -120,6 +126,8 @@ export class PtyHost implements InteractiveSessionsPort {
       Promise.race([gone.then(() => true), sleep(ms).then(() => session.exited)]);
     try {
       session.pty.write('/exit\r');
+      // Ctrl-D at the start of the next line: EOF for whatever is reading the terminal, if `/exit` meant nothing to it.
+      session.pty.write('\x04');
     } catch {
       // Already gone; fall through to the kills.
     }

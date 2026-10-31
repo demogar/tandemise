@@ -233,14 +233,21 @@ export function buildInvocation(request: RunRequest, resumeSessionRef: string | 
 /**
  * The script a SessionStart hook runs: read the hook's JSON from stdin and
  * write its `session_id` to the session file, so the engine can learn the
- * session id after a person has been driving it. Only Node is needed. The path
- * is a JSON string literal inside the script, and the script uses double quotes
- * only, so wrapping it in single quotes for the shell needs just the one escape
- * for a single quote in the path.
+ * session id after a person has been driving it. It runs on the daemon's own
+ * runtime, never a `node` looked up on PATH: a packaged app has none, and its
+ * Electron binary acts as Node under ELECTRON_RUN_AS_NODE (plain Node ignores
+ * the variable). The path is a JSON string literal inside the script, and the
+ * script uses double quotes only, so wrapping it in single quotes for the shell
+ * needs just the one escape for a single quote in the path.
  */
 function sessionHookCommand(sessionFile: string): string {
   const script = `let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{try{require("fs").writeFileSync(${JSON.stringify(sessionFile)},String(JSON.parse(d).session_id))}catch{}})`;
-  return `node -e '${script.replaceAll("'", "'\\''")}'`;
+  return `ELECTRON_RUN_AS_NODE=1 ${shellQuote(process.execPath)} -e ${shellQuote(script)}`;
+}
+
+/** One word for a POSIX shell: single-quoted, with each single quote closed, escaped and reopened. */
+function shellQuote(word: string): string {
+  return `'${word.replaceAll("'", "'\\''")}'`;
 }
 
 /**

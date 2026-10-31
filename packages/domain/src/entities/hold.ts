@@ -71,6 +71,8 @@ export function holdRefusal(input: HoldRefusalInput): string | null {
   if (task.status === 'RUNNING' && !input.liveRun) return "It's checking its work. You can hold it once that's done.";
   if (!input.runtimeHasInteractive) return 'Only Claude Code steps can be held for now.';
   if (input.openHold !== null) return `Held by ${input.holderName ?? 'someone'} since ${clock(input.openHold.startedAt)}.`;
+  // Between a hold ending and its terminal closing, the step is still HELD with no open hold.
+  if (task.status === 'HELD') return 'Its hold is ending; it goes back to the queue in a moment.';
   if (task.status === 'AWAITING_APPROVAL' && !input.outputUnderReview) return 'Approve the start first, then you can hold it.';
   if (!HOLDABLE_TASK_STATUSES.includes(task.status)) {
     return isTaskFinished(task.status) ? 'This step has ended and cannot be held.' : `It can't be held while it is ${task.status.toLowerCase().replace(/_/g, ' ')}.`;

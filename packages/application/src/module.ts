@@ -90,6 +90,8 @@ export interface ApplicationModuleOptions {
   readonly quietAfterMs?: number;
   /** How long a hold waits for the run it stopped (10 s by default); a check shortens it. */
   readonly holdStopWaitMs?: number;
+  /** How often a hold renews its checkout leases (every 10 minutes by default); a check shortens it. */
+  readonly holdLeaseRenewMs?: number;
 }
 
 /**
@@ -740,7 +742,8 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       clock: clock(r),
       log: log(r).child({ component: 'holds' }),
       ...(options.holdStopWaitMs === undefined ? {} : { stopWaitMs: options.holdStopWaitMs }),
-    }), { source: SOURCE, dispose: (service) => { if (service instanceof HoldServiceImpl) service.dispose(); } });
+      ...(options.holdLeaseRenewMs === undefined ? {} : { leaseRenewMs: options.holdLeaseRenewMs }),
+    }), { source: SOURCE, dispose: (service) => (service instanceof HoldServiceImpl ? service.dispose() : undefined) });
 
     // Who works on what with the team (relay spec). The ports are optional: a
     // composition with no coordination gets a service that does nothing.

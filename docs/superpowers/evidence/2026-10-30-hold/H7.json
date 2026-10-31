@@ -40,23 +40,23 @@
       "label": "proof (DB): a hold from READY, with no session before it",
       "ok": true,
       "observed": {
-        "id": "hld_01m6816tvy3ae5ffzbz1",
-        "heldBy": "mem_01m680wmdtfqmdfsv8bf",
+        "id": "hld_01m683x3a2d26aqym2ky",
+        "heldBy": "mem_01m683jx1kvrs3wj5c7r",
         "fromStatus": "READY",
-        "profileId": "rt_01m6816gbgxx2ktzz1g4",
+        "profileId": "rt_01m683wrsjscrs5gjga6",
         "sessionBefore": null,
         "sessionAfter": null,
         "endedAt": null,
         "ending": null,
         "consumedAt": null,
         "diffStat": null,
-        "dir": "/tmp/tdm-hold/home/workspaces/ws_01m680wmds6apb951q0w/missions/msn_01m6816jdsywntabs82b/holds/hld_01m6816tvy3ae5ffzbz1"
+        "dir": "/tmp/tdm-hold/home/workspaces/ws_01m683jx1kvrs3wj5c7q/missions/msn_01m683wtvvvrcyvzmxas/holds/hld_01m683x3a2d26aqym2ky"
       }
     },
     {
       "label": "proof (API): its worktree was provisioned",
       "ok": true,
-      "observed": "/tmp/tdm-hold/home/workspaces/ws_01m680wmds6apb951q0w/missions/msn_01m6816jdsywntabs82b/worktrees/two-pages-mvvv3gja-settings-a6t0e33k"
+      "observed": "/tmp/tdm-hold/home/workspaces/ws_01m683jx1kvrs3wj5c7q/missions/msn_01m683wtvvvrcyvzmxas/worktrees/two-pages-mvvws1mg-settings-r359gen3"
     },
     {
       "label": "proof (disk): the session works in that worktree",

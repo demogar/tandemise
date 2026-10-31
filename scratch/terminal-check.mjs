@@ -71,6 +71,53 @@ section('pty host');
   rmSync(dir, { recursive: true, force: true });
 }
 
+section('fan-out: one throwing listener does not stop the others');
+{
+  const host = new T.PtyHost();
+  const dir = mkdtempSync(join(tmpdir(), 'tandemise-terminal-fan-'));
+  const exits = [];
+  host.onExit(() => { throw new Error('listener boom'); });
+  host.onExit((id, code) => exits.push([id, code]));
+  host.open('hold-fan', {
+    file: process.execPath,
+    args: ['-e', "process.stdout.write('READY-FAN\\n'); process.stdin.on('data', (d) => { if (String(d).includes('go')) { process.stdout.write('AFTER-FAN\\n'); setTimeout(() => process.exit(0), 50); } })"],
+    env: {}, cwd: dir, sessionFile: join(dir, 's'),
+  });
+  const good = [];
+  let goodExit;
+  let thrown = 0;
+  host.attach('hold-fan', { data: () => { thrown++; throw new Error('sink boom'); }, exit: () => { throw new Error('sink exit boom'); } });
+  host.attach('hold-fan', { data: (b) => good.push(b), exit: (code) => { goodExit = code; } });
+  await until(() => Buffer.concat(good).toString().includes('READY-FAN'));
+  host.write('hold-fan', 'go\r');
+  const arrived = await until(() => Buffer.concat(good).toString().includes('AFTER-FAN'));
+  check('data still reaches a sink after one before it threw', arrived && thrown > 0, Buffer.concat(good).toString());
+  await until(() => !host.isOpen('hold-fan'));
+  check('exit still reaches the other sink and the later exit listener', goodExit === 0 && exits.some(([id]) => id === 'hold-fan'), { goodExit, exits });
+  rmSync(dir, { recursive: true, force: true });
+}
+
+section('end: /exit, then EOF, before any signal');
+{
+  const host = new T.PtyHost();
+  const dir = mkdtempSync(join(tmpdir(), 'tandemise-terminal-eof-'));
+  // Deaf to `/exit` and to SIGTERM: only EOF (or SIGKILL) ends it.
+  host.open('hold-eof', {
+    file: process.execPath,
+    args: ['-e', "process.on('SIGTERM', () => {}); process.stdin.on('data', () => {}); process.stdin.on('end', () => process.exit(7)); process.stdout.write('READY-EOF\\n')"],
+    env: {}, cwd: dir, sessionFile: join(dir, 's'),
+  });
+  const out = [];
+  let code;
+  host.attach('hold-eof', { data: (b) => out.push(b), exit: (c) => { code = c; } });
+  await until(() => Buffer.concat(out).toString().includes('READY-EOF'));
+  const t0 = Date.now();
+  await host.end('hold-eof', 1500);
+  const took = Date.now() - t0;
+  check('a session that only answers EOF ends on it, within the first grace', code === 7 && took < 1500, { code, took });
+  rmSync(dir, { recursive: true, force: true });
+}
+
 section('environment: only the invocation env reaches the child');
 {
   process.env.TANDEMISE_POISON = '1';

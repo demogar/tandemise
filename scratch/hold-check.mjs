@@ -40,6 +40,7 @@ section('pure: holdRefusal');
   const at = new Date(2026, 9, 30, 9, 5, 0).toISOString();
   const hold = { id: 'hld_x', startedAt: at, endedAt: null };
   check('already held, by name and time', r({ openHold: hold, holderName: 'Ana' }, { status: 'HELD' }) === 'Held by Ana since 09:05.', r({ openHold: hold, holderName: 'Ana' }, { status: 'HELD' }));
+  check('a held step whose hold is ending says so', r({}, { status: 'HELD' }) === 'Its hold is ending; it goes back to the queue in a moment.', r({}, { status: 'HELD' }));
   check('a start approval comes first', r({ outputUnderReview: false }, { status: 'AWAITING_APPROVAL' }) === 'Approve the start first, then you can hold it.');
   for (const status of D.HOLDABLE_TASK_STATUSES) check(`${status} is holdable`, r({}, { status }) === null, r({}, { status }));
   check('output under review is holdable', r({ outputUnderReview: true }, { status: 'AWAITING_APPROVAL' }) === null);
@@ -157,19 +158,20 @@ section('runtime: interactive invocations');
   check('--strict-mcp-config is present', a.includes('--strict-mcp-config'));
   const settings = JSON.parse(after(a, '--settings'));
   const hook = settings.hooks.SessionStart[0].hooks[0];
-  check('SessionStart hook is a node -e command naming the session file',
-    hook.type === 'command' && hook.command.startsWith("node -e '") && hook.command.includes('/tmp/some dir/it'), hook);
+  check('SessionStart hook runs the daemon\'s own runtime as Node, never a node off PATH, naming the session file',
+    hook.type === 'command' && hook.command.startsWith(`ELECTRON_RUN_AS_NODE=1 '${process.execPath}' -e '`) && hook.command.includes('/tmp/some dir/it'), hook);
   // The hook command really works through a shell, quotes and spaces in the path included.
   const dir = mkdtempSync(join(tmpdir(), 'hold-rt-'));
   const sf = join(dir, "it's here.session");
   const hookCmd = JSON.parse(after(buildInteractiveInvocation(r, null, { sessionFile: sf, initialPrompt: null }).args, '--settings'))
     .hooks.SessionStart[0].hooks[0].command;
   await new Promise((done) => {
-    const sh = spawn('sh', ['-c', hookCmd], { stdio: ['pipe', 'ignore', 'ignore'] });
+    // With no PATH at all: a packaged app may have no `node` to find.
+    const sh = spawn('/bin/sh', ['-c', hookCmd], { stdio: ['pipe', 'ignore', 'ignore'], env: { PATH: '' } });
     sh.stdin.end(JSON.stringify({ session_id: 'sess_hook', hook_event_name: 'SessionStart' }));
     sh.on('close', done);
   });
-  check('the hook writes session_id to the session file', existsSync(sf) && readFileSync(sf, 'utf8') === 'sess_hook');
+  check('the hook writes session_id to the session file, with nothing on PATH', existsSync(sf) && readFileSync(sf, 'utf8') === 'sess_hook');
   const whole = new ClaudeCodeAdapter().interactive('sess_1', req({ ...p, executablePath: process.execPath }), opts);
   check('env carries CLAUDE_CONFIG_DIR and TERM', whole.env.CLAUDE_CONFIG_DIR === '/tmp/cfg-x' && whole.env.TERM === 'xterm-256color', whole.env);
   check('cwd is the worktree and sessionFile is passed through',
@@ -550,6 +552,11 @@ section('engine: stopping into a hold and continuing from it');
     check('7: recovery leaves the HELD task HELD', task(one.id).status === 'HELD' && task(live.id).status === 'HELD', { s: task(one.id).status, report });
     check('7: a dead terminal pid is cleared on the open hold', h.repo.holds.get(h7.id)?.ptyPid === null, h.repo.holds.get(h7.id));
     check('7: a live terminal pid is kept', h.repo.holds.get(h7b.id)?.ptyPid === process.pid, h.repo.holds.get(h7b.id));
+    // The daemon died between ending a hold and putting its task back in the queue.
+    const between = await addTask(AG.slow, { status: 'HELD' });
+    hold(between);
+    await h.container.resolve(app.RECOVERY_SERVICE).run();
+    check('7: a HELD task whose hold has ended goes back to the queue', task(between.id).status === 'READY', task(between.id));
   }
 
   clearInterval(keepAlive);
@@ -576,9 +583,24 @@ section('service: hold, continue and release');
     #open = new Set();
     #listeners = new Set();
     available() { return { ok: true }; }
-    open(holdId, inv) { this.calls.push({ op: 'open', holdId, inv, at: this.snapshot(holdId) }); this.#open.add(holdId); return { pid: 4242 }; }
+    /** How long `end` takes before the process is gone, and what the check looks at just before it goes. */
+    endDelayMs = 0;
+    beforeExit = null;
+    /** An `end` that throws, as a host whose process will not die might. */
+    endFails = false;
+    open(holdId, inv) {
+      // As the PTY host: a second session for the same hold is an error.
+      if (this.#open.has(holdId)) throw new Error(`Session ${holdId} is already open`);
+      this.calls.push({ op: 'open', holdId, inv, at: this.snapshot(holdId) }); this.#open.add(holdId); return { pid: 4242 };
+    }
     isOpen(holdId) { return this.#open.has(holdId); }
-    async end(holdId) { this.calls.push({ op: 'end', holdId }); this.exit(holdId, 0); }
+    async end(holdId) {
+      this.calls.push({ op: 'end', holdId });
+      if (this.endDelayMs > 0) await new Promise((r) => setTimeout(r, this.endDelayMs));
+      if (this.endFails) throw new Error('the terminal would not end');
+      this.beforeExit?.(holdId);
+      this.exit(holdId, 0);
+    }
     onExit(cb) { this.#listeners.add(cb); return () => this.#listeners.delete(cb); }
     exit(holdId, code = 0) { this.#open.delete(holdId); for (const cb of this.#listeners) cb(holdId, code); }
     opened(holdId) { return this.calls.filter((c) => c.op === 'open' && c.holdId === holdId); }
@@ -592,10 +614,12 @@ section('service: hold, continue and release');
     scan: async (folder) => ({ folder, files: [], sizeBytes: 0, problem: 'unused' }), fetchGit: async () => { throw new Error('unused'); },
     store: async (hash, files) => { skillStore.set(hash, files); }, read: async (hash) => skillStore.get(hash) ?? null, drop: async () => undefined,
   };
-  const h = await engineHarness(mkdtempSync(join(tmpdir(), 'thold-svc-')), (container, app) => {
-    container.bind(app.INTERACTIVE_SESSIONS, () => sessions, { source: 'check' });
+  const HOME = mkdtempSync(join(tmpdir(), 'thold-svc-'));
+  const binder = (into) => (container, app) => {
+    container.bind(app.INTERACTIVE_SESSIONS, () => into, { source: 'check' });
     container.rebind(app.SKILL_FILES, () => skillFiles, { source: 'check' });
-  }, { holdStopWaitMs: 400 });
+  };
+  const h = await engineHarness(HOME, binder(sessions), { holdStopWaitMs: 400 });
   const { app } = h;
   const now = () => systemClock.now();
   const manager = h.container.resolve(RUNTIME_MANAGER);
@@ -923,6 +947,77 @@ section('service: hold, continue and release');
     check('the slot is given back when the hold ends', manager.inFlight(P.lone) === loneBefore);
   }
 
+  // ---- Continue: the next pass never starts beside the terminal (the hold ends first, READY only once it is gone)
+  {
+    const slow = await addTask(AG.lone);
+    await h.services.holds.hold(slow.id, caller);
+    const hSlow = openHold(slow);
+    let atExit = null;
+    sessions.endDelayMs = 600;
+    sessions.beforeExit = (id) => {
+      if (id === hSlow.id) atExit = { runs: runsOf(slow.id).length, status: task(slow.id).status, ended: h.repo.holds.get(hSlow.id).endedAt !== null };
+    };
+    let ticking = true;
+    const ticker = (async () => { while (ticking) { await h.scheduler.tick(); await new Promise((r) => setTimeout(r, 40)); } })();
+    await h.services.holds.continue(slow.id, caller);
+    ticking = false;
+    await ticker;
+    sessions.endDelayMs = 0;
+    sessions.beforeExit = null;
+    check('continue: while the terminal is still exiting the hold has ended, the task is still HELD, and no run exists',
+      atExit?.runs === 0 && atExit.status === 'HELD' && atExit.ended, atExit);
+    check('continue: once the terminal is gone the task leaves HELD, with task.status HELD -> READY',
+      task(slow.id).status !== 'HELD' && eventsOf(slow, 'task.status').some((e) => e.from === 'HELD' && e.to === 'READY'), task(slow.id).status);
+    await h.until(() => runsOf(slow.id).length > 0 && idle(slow.id), 10000);
+    check('continue: then the continuation runs', runsOf(slow.id).length === 1 && task(slow.id).status === 'SUCCEEDED', { runs: runsOf(slow.id).length, s: task(slow.id).status });
+  }
+
+  // ---- A terminal that will not end still lets the step go back to the queue
+  {
+    const stubborn = await addTask(AG.lone);
+    await h.services.holds.hold(stubborn.id, caller);
+    const hStub = openHold(stubborn);
+    sessions.endFails = true;
+    const thrown = await refusal(() => h.services.holds.release(stubborn.id, caller));
+    sessions.endFails = false;
+    check('end fails: release still ends the hold and the task is READY, never stuck HELD', thrown === null
+      && h.repo.holds.get(hStub.id).ending === 'released' && task(stubborn.id).status === 'READY', { thrown: thrown?.message, s: task(stubborn.id).status });
+    sessions.exit(hStub.id, 0);
+  }
+
+  // ---- Hold operations on one hold take turns
+  {
+    // Continue while the hold still waits for its run to stop: no terminal is left open for the ended hold.
+    const racing = await addTask(AG.stuck);
+    await h.until(() => runsOf(racing.id).some((r) => r.status === 'RUNNING' && r.externalSessionId === 'sess-stuck'));
+    const cancel = h.scheduler.cancelTask;
+    h.scheduler.cancelTask = () => {};
+    const holding = h.services.holds.hold(racing.id, caller).catch((e) => e);
+    await h.until(() => task(racing.id).status === 'HELD', 3000);
+    const hRace = openHold(racing);
+    const continuing = h.services.holds.continue(racing.id, caller).catch((e) => e);
+    await new Promise((r) => setTimeout(r, 50));
+    h.scheduler.cancelTask = cancel;
+    h.scheduler.cancelTask(racing.id, new app.TaskHeld());
+    const [held, continued] = await Promise.all([holding, continuing]);
+    check('race: continue during the stop wait leaves no terminal open for the ended hold',
+      !(held instanceof Error) && !(continued instanceof Error) && h.repo.holds.get(hRace.id).endedAt !== null && !sessions.isOpen(hRace.id)
+      && task(racing.id).status === 'READY', { held: held?.message, continued: continued?.message, open: sessions.isOpen(hRace.id), s: task(racing.id).status });
+    await h.until(() => idle(racing.id), 5000);
+
+    // Two reopen calls at once open exactly one terminal, and neither leaves an error behind.
+    const twin = await addTask(AG.lone);
+    await h.services.holds.hold(twin.id, caller);
+    const hTwin = openHold(twin);
+    sessions.exit(hTwin.id, 0);
+    await new Promise((r) => setTimeout(r, 50));
+    const results = await Promise.all([h.services.holds.reopen(twin.id, caller).catch((e) => e), h.services.holds.reopen(twin.id, caller).catch((e) => e)]);
+    check('race: two reopens open one terminal and say nothing went wrong', sessions.opened(hTwin.id).length === 2 && sessions.isOpen(hTwin.id)
+      && results.every((r) => !(r instanceof Error)) && task(twin.id).statusReason === `Held by ${ownerName}.`,
+      { opened: sessions.opened(hTwin.id).length, results: results.map((r) => r?.message ?? 'ok'), r: task(twin.id).statusReason });
+    await h.services.holds.release(twin.id, caller);
+  }
+
   // ---- A trial mission is refused
   {
     const trial = await addTask(AG.quick);
@@ -934,8 +1029,46 @@ section('service: hold, continue and release');
       && task(trial.id).status === 'READY' && openHold(trial) === undefined && sessions.calls.length === before, refused?.message);
   }
 
+  // ---- A daemon restart mid-hold: the held checkout stays the person's
+  {
+    const keeper = await addTask(AG.quick, inPlace);
+    const sibling = await addTask(AG.quick, inPlace);
+    await h.services.holds.hold(keeper.id, caller);
+    const hKeep = openHold(keeper);
+    await h.until(() => task(sibling.id).statusReason === QUEUED, 3000);
+    const leaseBefore = leasesOf(keeper.id).map((l) => l.id);
+    // Shutdown: the application's own teardown ends the terminal it opened.
+    const live = sessions.isOpen(hKeep.id);
+    await h.container.dispose();
+    check('shutdown: disposing the application ends the hold\'s open terminal', live && sessions.ended(hKeep.id) && !sessions.isOpen(hKeep.id));
+
+    const sessions2 = new RecordingSessions();
+    const h2 = await engineHarness(HOME, binder(sessions2), { holdStopWaitMs: 400, holdLeaseRenewMs: 100 });
+    const leases2 = h2.container.resolve(h2.app.LEASE_REPOSITORY);
+    const held2 = () => leases2.listAll().filter((l) => l.holderTaskId === keeper.id);
+    await h2.container.resolve(h2.app.RECOVERY_SERVICE).run();
+    const afterRecovery = held2().map((l) => l.id);
+    h2.services.holds.resume();
+    for (let i = 0; i < 6; i++) { await h2.scheduler.tick(); await new Promise((r) => setTimeout(r, 40)); }
+    const t2 = (id) => h2.repo.tasks.get(id);
+    check('restart: recovery leaves the open hold\'s checkout lease alone', leaseBefore.length === 1 && afterRecovery.join() === leaseBefore.join(), { before: leaseBefore, afterRecovery });
+    check('restart: the hold takes up that same lease again, not a new one', held2().map((l) => l.id).join() === leaseBefore.join()
+      && t2(keeper.id).statusReason === `Held by ${ownerName}.`, { before: leaseBefore, after: leases2.listAll(), r: t2(keeper.id).statusReason });
+    check('restart: an in-place sibling stays queued', t2(sibling.id).status === 'READY' && h2.repo.runs.listByTask(sibling.id).length === 0
+      && t2(sibling.id).statusReason === QUEUED, { s: t2(sibling.id).status, r: t2(sibling.id).statusReason });
+
+    // Losing the claim afterwards (it lapsed and someone took it) is said on the step, not only logged.
+    for (const l of held2()) leases2.release(l.id);
+    await h2.until(() => t2(keeper.id).statusReason !== `Held by ${ownerName}.`, 3000);
+    check('lease lost: the held step says so', t2(keeper.id).status === 'HELD'
+      && t2(keeper.id).statusReason === 'Your hold lost its claim on this checkout, so other work may start in it. Continue or release when you can.',
+      t2(keeper.id).statusReason);
+    await h2.services.holds.release(keeper.id, { personId: h2.services.identity.localPerson().id });
+    check('restart: the hold still ends normally', t2(keeper.id).status === 'READY' && h2.repo.holds.get(hKeep.id).ending === 'released');
+    await h2.container.dispose();
+  }
+
   clearInterval(keepAlive);
-  await h.container.dispose();
 }
 
 console.log(`\n${passed} passed, ${failures.length} failed`);
