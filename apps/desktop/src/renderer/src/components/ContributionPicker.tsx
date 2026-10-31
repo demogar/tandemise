@@ -3,7 +3,7 @@ import type { OutsideContributionInput } from '@tandemise/api-contract';
 import { Icon } from './Icon.js';
 import { bytes } from '../lib/format.js';
 import { CONTRIBUTION_FILE_MESSAGE, CONTRIBUTION_MAX_BYTES, CONTRIBUTION_TOTAL_MESSAGE } from '../lib/domain.js';
-import { Button } from '@tandemise/design/react';
+import { Button, Truncate } from '@tandemise/design/react';
 
 export type Contribution = OutsideContributionInput;
 type FilePayload = { readonly filename: string; readonly mediaType: string; readonly dataBase64: string };
@@ -94,9 +94,7 @@ export function ContributionPicker({
           {value.map((item, index) => (
             <li key={`${index}-${item.kind === 'file' ? item.filename : item.url}`} className="chip contrib__chip">
               <Icon name={item.kind === 'file' ? 'file' : 'link'} size={11} />
-              <span className="truncate" title={item.kind === 'file' ? item.filename : item.url}>
-                {item.kind === 'file' ? item.filename : item.url}
-              </span>
+              <Truncate>{item.kind === 'file' ? item.filename : item.url}</Truncate>
               {item.kind === 'file' ? <span className="contrib__size">{bytes(contributionBytes(item))}</span> : null}
               {item.kind === 'link' && item.export ? <span className="contrib__size">+ {item.export.filename}</span> : null}
               <button type="button" className="contrib__remove" aria-label={`Remove ${item.kind === 'file' ? item.filename : item.url}`} onClick={() => remove(index)}>

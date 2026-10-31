@@ -7,6 +7,7 @@ import { useConnection } from '../lib/connection.js';
 import type { StreamState } from '../lib/stream.js';
 import type { Tone } from '../lib/format.js';
 import { evalsHref } from '../screens/evals/link.js';
+import { Tooltip, Truncate } from '@tandemise/design/react';
 
 interface NavEntry {
   readonly href: string;
@@ -81,9 +82,9 @@ export function Sidebar({ pendingApprovals, stream }: { pendingApprovals: number
             count={entry.href === '/inbox' ? pendingApprovals : 0}
           />
         ))}
-        <div className="sidebar__section truncate" title={projectName ?? undefined}>
+        <Truncate as="div" className="sidebar__section">
           {projectName ?? 'Project'}
-        </div>
+        </Truncate>
         {PROJECT.map((entry) => (
           <NavLink key={entry.href} entry={entry} active={isActive(location, entry.href)} count={0} />
         ))}
@@ -94,16 +95,18 @@ export function Sidebar({ pendingApprovals, stream }: { pendingApprovals: number
       </nav>
 
       <div className="sidebar__footer">
-        <button type="button" className="connection" onClick={reconnect} disabled={reconnecting} title={status.detail}>
-          <span className={`dot dot--${connectionTone}${stream === 'open' ? ' dot--pulse' : ''}`} />
-          <span className="connection__label">
-            {reconnecting ? 'Reconnecting…' : connectionLabel}
-            {status.phase === 'connected' && status.connection ? (
-              <span className="connection__hint"> · {new URL(status.connection.url).port}</span>
-            ) : null}
-          </span>
-          <Icon name="refresh" size={12} />
-        </button>
+        <Tooltip content={status.detail}>
+          <button type="button" className="connection" onClick={reconnect} disabled={reconnecting}>
+            <span className={`dot dot--${connectionTone}${stream === 'open' ? ' dot--pulse' : ''}`} />
+            <span className="connection__label">
+              {reconnecting ? 'Reconnecting…' : connectionLabel}
+              {status.phase === 'connected' && status.connection ? (
+                <span className="connection__hint"> · {new URL(status.connection.url).port}</span>
+              ) : null}
+            </span>
+            <Icon name="refresh" size={12} />
+          </button>
+        </Tooltip>
       </div>
     </aside>
   );

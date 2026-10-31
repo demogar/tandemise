@@ -163,11 +163,11 @@ export async function panelButton(c, label) {
   await c.sleep(400);
 }
 
-/** The Hold-family button on a feed card ("Hold", "Open terminal"), as { text, disabled, title }, or null. */
-export const cardHold = (c, key) => c.page.evaluate(`(() => { const card = document.querySelector('[data-feed-card=${JSON.stringify(key)}]'); const b = card && [...card.querySelectorAll('button')].find((x) => /^(Hold|Holding…|Open terminal)$/.test(x.innerText.trim())); return b ? { text: b.innerText.trim(), disabled: b.disabled, title: b.title } : null; })()`);
+/** The Hold-family button on a feed card ("Hold", "Open terminal"), as { text, disabled, title }, or null; `title` is the reason said beside a disabled Hold. */
+export const cardHold = (c, key) => c.page.evaluate(`(() => { const card = document.querySelector('[data-feed-card=${JSON.stringify(key)}]'); const b = card && [...card.querySelectorAll('button')].find((x) => /^(Hold|Holding…|Open terminal)$/.test(x.innerText.trim())); return b ? { text: b.innerText.trim(), disabled: b.disabled, title: b.parentElement?.querySelector('.hold-reason')?.innerText.trim() ?? '' } : null; })()`);
 
-/** The Hold-family button in the open task drawer's footer, as { text, disabled, title }, or null. */
-export const drawerHold = (c) => c.page.evaluate(`(() => { const d = document.querySelector('.modal'); const b = d && [...d.querySelectorAll('.modal__foot button')].find((x) => /^(Hold|Holding…|Open terminal)$/.test(x.innerText.trim())); return b ? { text: b.innerText.trim(), disabled: b.disabled, title: b.title } : null; })()`);
+/** The Hold-family button in the open task drawer's footer, as { text, disabled, title }, or null; `title` is the reason said beside a disabled Hold. */
+export const drawerHold = (c) => c.page.evaluate(`(() => { const d = document.querySelector('.modal'); const b = d && [...d.querySelectorAll('.modal__foot button')].find((x) => /^(Hold|Holding…|Open terminal)$/.test(x.innerText.trim())); return b ? { text: b.innerText.trim(), disabled: b.disabled, title: b.parentElement?.querySelector('.hold-reason')?.innerText.trim() ?? '' } : null; })()`);
 
 /** Clicks a button in the open task drawer's footer by its text. */
 export async function drawerButton(c, label) {
@@ -178,9 +178,9 @@ export async function drawerButton(c, label) {
 
 /** The "Now" line on a Plan card, on a feed card, and in the open drawer, read as "Now <what>" ('' when none). */
 const NOW = `(el) => el ? [...el.children].map((x) => x.textContent.trim()).join(' ') : ''`;
-export const nowOnPlanCard = (c, title) => c.page.evaluate(`(${NOW})([...document.querySelectorAll('button.taskcard')].find((x) => x.querySelector('.taskcard__title')?.innerText.trim() === ${JSON.stringify(title)})?.querySelector('[aria-label="Now"]'))`);
-export const nowOnFeedCard = (c, key) => c.page.evaluate(`(${NOW})(document.querySelector('[data-feed-card=${JSON.stringify(key)}] [aria-label="Now"]'))`);
-export const nowInDrawer = (c) => c.page.evaluate(`(${NOW})(document.querySelector('.modal [aria-label="Now"]'))`);
+export const nowOnPlanCard = (c, title) => c.page.evaluate(`(${NOW})([...document.querySelectorAll('button.taskcard')].find((x) => x.querySelector('.taskcard__title')?.innerText.trim() === ${JSON.stringify(title)})?.querySelector('.now-line'))`);
+export const nowOnFeedCard = (c, key) => c.page.evaluate(`(${NOW})(document.querySelector('[data-feed-card=${JSON.stringify(key)}] .now-line'))`);
+export const nowInDrawer = (c) => c.page.evaluate(`(${NOW})(document.querySelector('.modal .now-line'))`);
 
 /** Opens a mission's feed and waits for the step's card. */
 export async function openFeed(c, missionId, key = 'design') {

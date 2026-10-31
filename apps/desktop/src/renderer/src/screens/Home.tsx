@@ -14,7 +14,7 @@ import { ParkedRow } from './inbox/ParkedRow.js';
 import { buildTimeline } from '../lib/events.js';
 import { useActors } from '../lib/team.js';
 import { healthTone, missionTone, pluralize, relativeTime } from '../lib/format.js';
-import { Badge, Button, Card } from '@tandemise/design/react';
+import { Badge, Banner, Button, Card, Chip, Tooltip, Truncate } from '@tandemise/design/react';
 
 export function Home(): JSX.Element {
   const home = useHome();
@@ -53,10 +53,12 @@ export function Home(): JSX.Element {
         subtitle={data?.workspace ? `${data.workspace.name} workspace` : 'Your agent workforce at a glance'}
         actions={
           <>
-            <Button disabled={report.isPending || !workspaceId} onClick={writeReport} title="A report of every mission, written from stored facts; no model writes it">
-              <Icon name="artifacts" size={14} />
-              {report.isPending ? 'Writing…' : 'Status report'}
-            </Button>
+            <Tooltip content="A report of every mission, written from stored facts; no model writes it">
+              <Button disabled={report.isPending || !workspaceId} onClick={writeReport}>
+                <Icon name="artifacts" size={14} />
+                {report.isPending ? 'Writing…' : 'Status report'}
+              </Button>
+            </Tooltip>
             <Button variant="primary" onClick={() => navigate('/missions/new')}>
               <Icon name="plus" size={14} />
               New mission
@@ -77,11 +79,17 @@ export function Home(): JSX.Element {
             <section className="section" aria-label="What this means">
               <div className="stack">
                 {(data?.banners ?? []).map((banner) => (
-                  <Link key={banner.kind} href={banner.href} className="banner banner--warn" style={{ textDecoration: 'none', color: 'inherit' }}>
-                    <Icon name="alert" size={15} />
-                    <span style={{ flex: 1 }}>{banner.text}</span>
-                    <span className="btn">{banner.kind === 'wip_full' ? 'See backlog' : 'See limit'}</span>
-                  </Link>
+                  <Banner
+                    as={Link}
+                    key={banner.kind}
+                    href={banner.href}
+                    tone="warn"
+                    style={{ textDecoration: 'none', color: 'inherit' }}
+                    icon={<Icon name="alert" size={15} />}
+                    action={<span className="btn">{banner.kind === 'wip_full' ? 'See backlog' : 'See limit'}</span>}
+                  >
+                    {banner.text}
+                  </Banner>
                 ))}
               </div>
             </section>
@@ -92,18 +100,17 @@ export function Home(): JSX.Element {
             <section className="section" aria-label="Limits">
               <div className="stack">
                 {alerts.map((alert) => (
-                  <Link
+                  <Banner
+                    as={Link}
                     key={`${alert.scope}-${alert.missionId ?? 'project'}`}
                     href={alert.missionId === null ? (alert.level === 'hard' ? '/inbox' : '/project') : `/missions/${alert.missionId}/metrics`}
-                    className="banner banner--warn"
+                    tone="warn"
                     style={{ textDecoration: 'none', color: 'inherit' }}
+                    icon={<Icon name="alert" size={15} />}
+                    action={<span className="btn">{alert.level === 'hard' ? 'Decide' : 'See limit'}</span>}
                   >
-                    <Icon name="alert" size={15} />
-                    <span style={{ flex: 1 }}>
-                      <strong>{alert.missionTitle ?? 'This project'}:</strong> {alert.text}
-                    </span>
-                    <span className="btn">{alert.level === 'hard' ? 'Decide' : 'See limit'}</span>
-                  </Link>
+                    <strong>{alert.missionTitle ?? 'This project'}:</strong> {alert.text}
+                  </Banner>
                 ))}
               </div>
             </section>
@@ -220,11 +227,11 @@ export function Home(): JSX.Element {
                       <StatusDot tone={healthTone(runtime.health.state)} />
                       <div className="list__main">
                         <div className="list__title">{runtime.profile.name}</div>
-                        <div className="list__subtitle truncate" title={runtime.health.detail}>
+                        <Truncate as="div" className="list__subtitle">
                           {runtime.health.version ? `v${runtime.health.version}` : 'version unknown'}
                           <span className="sep">·</span>
                           {runtime.health.detail}
-                        </div>
+                        </Truncate>
                       </div>
                       <div className="list__aside">
                         {runtime.activeRuns > 0 ? (
@@ -232,7 +239,7 @@ export function Home(): JSX.Element {
                             {runtime.activeRuns}/{runtime.profile.maxConcurrent} active
                           </Badge>
                         ) : (
-                          <span className="chip chip--muted">idle</span>
+                          <Chip muted>idle</Chip>
                         )}
                       </div>
                     </div>
@@ -338,7 +345,7 @@ function Desk({ metrics, needsYou }: { metrics: HomeMetricsView; needsYou: numbe
 
 function DeskCard({ label, value, note, href, muted = false }: { label: string; value: string; note: string; href: string; muted?: boolean }): JSX.Element {
   return (
-    <Link href={href} aria-label={label} style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}>
+    <Link href={href} data-desk={label} style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}>
       <Stat label={label} value={value} note={note} muted={muted} />
     </Link>
   );
@@ -354,7 +361,7 @@ function MissionListRow({ summary }: { summary: MissionSummary }): JSX.Element {
       <StatusDot tone={tone} live={tone === 'running'} />
       <div className="list__main">
         <div className="list__title">{summary.mission.title}</div>
-        <div className="list__subtitle truncate" title={summary.currentActivity ?? summary.mission.goal}>
+        <Truncate as="div" className="list__subtitle">
           {summary.currentActivity ?? summary.mission.goal}
           {summary.repositoryName ? (
             <>
@@ -362,7 +369,7 @@ function MissionListRow({ summary }: { summary: MissionSummary }): JSX.Element {
               <span className="dim">{summary.repositoryName}</span>
             </>
           ) : null}
-        </div>
+        </Truncate>
       </div>
       <div className="list__aside">
         {progress.totalTasks > 0 ? (

@@ -38,7 +38,7 @@
 .factory__empty {
   margin: 0;
   padding: var(--s3);
-  border-radius: var(--radius-md);
+  border-radius: var(--tds-radius-md);
   background: var(--surface-sunken);
   font-size: var(--fs-sm);
   color: var(--text-secondary);
@@ -74,6 +74,6 @@
 
 .factory__starts {
   color: var(--accent);
-  font-family: var(--font-sans);
+  font-family: var(--tds-font-sans);
   font-size: var(--fs-xs);
 }

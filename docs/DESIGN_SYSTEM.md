@@ -95,7 +95,7 @@ Each colour role is written once as `light-dark(<light>, <dark>)`.
 | Tooltip | `--tooltip-background` `--tooltip-text` | indigo / white | mint-50 / ink-950 |
 | Brand | `--logo-lead` `--logo-trail` `--logo-axle` | indigo / slate / lichen | mint / sage / lichen |
 | Identity | `--tint-1` … `--tint-5` | shades of the anchors | the anchors |
-| Elevation | `--shadow-sm` `--shadow-md` `--shadow-lg` | indigo at 8–18% | ink-1000 at 45–62% |
+| Elevation | `--tds-shadow-sm` `--tds-shadow-md` `--tds-shadow-lg` | indigo at 8–18% | ink-1000 at 45–62% |
 
 **Contrast.** Body text is above 10:1 in both themes. `--text-tertiary` is at
 least 4.5:1 on every surface it sits on, from `--canvas` to `--surface-hover`
@@ -118,13 +118,23 @@ with the accent colour, and never style a primary action in the success colour.
 | Group | Tokens |
 |---|---|
 | Spacing (4pt) | `--s1` 4 · `--s2` 8 · `--s3` 12 · `--s4` 16 · `--s5` 20 · `--s6` 24 · `--s7` 28 · `--s8` 32 · `--s10` 40 · `--s12` 48 · `--s16` 64 |
-| Radius | `--radius-xs` 4 · `--radius-sm` 6 · `--radius-md` 9 · `--radius-lg` 13 · `--radius-full` |
-| Type | `--font-sans` (system UI) · `--font-mono` · `--fs-micro` 10.5 · `--fs-xs` 11.5 · `--fs-sm` 12.5 · `--fs-base` 13.5 · `--fs-md` 15 · `--fs-lg` 18 · `--fs-xl` 23 · `--fs-2xl` 30 · `--lh-base` 1.5 |
-| Motion | `--duration-fast` 120ms · `--duration` 160ms · `--duration-slow` 240ms · `--duration-shimmer` 1.3s · `--duration-pulse` 1.9s · `--ease` (standard) · `--ease-out` (enter) · `--ease-in` (exit). `prefers-reduced-motion` turns all motion off. |
+| Radius | `--tds-radius-xs` 4 · `--tds-radius-sm` 6 · `--tds-radius-md` 9 · `--tds-radius-lg` 13 · `--tds-radius-full` |
+| Type | `--tds-font-sans` (system UI) · `--tds-font-mono` · `--fs-micro` 10.5 · `--fs-xs` 11.5 · `--fs-sm` 12.5 · `--fs-base` 13.5 · `--fs-md` 15 · `--fs-lg` 18 · `--fs-xl` 23 · `--fs-2xl` 30 · `--lh-base` 1.5 |
+| Motion | `--duration-fast` 120ms · `--duration` 160ms · `--duration-slow` 240ms · `--duration-shimmer` 1.3s · `--duration-pulse` 1.9s · `--tds-ease` (standard) · `--tds-ease-out` (enter) · `--tds-ease-in` (exit). `prefers-reduced-motion` turns all motion off. |
 | Focus | `--focus-ring-width` 2 · `--focus-ring-offset` 2, drawn in `--focus-ring` |
 | Stacking | `--z-raised` 2 · `--z-dropdown` 40 · `--z-overlay` 50 · `--z-overlay-raised` 55 · `--z-toast` 60 · `--z-tooltip` 70. No literal z-index outside this scale. |
-| Density | `--control-h-xs` 20 · `--control-h-sm` 26 · `--control-h` 30 · `--control-h-lg` 36; under `[data-density='compact']` 18 · 22 · 26 · 32 |
+| Density | `--control-h-xs` 20 · `--control-h-sm` 28 · `--control-h` 30 · `--control-h-lg` 36; under `[data-density='compact']` 18 · 24 · 26 · 32. Nothing a person presses is under 24px (`xs` is a badge, not a target). |
 | Layout | `--sidebar-width` 232 (desktop-only, in the desktop's `styles/base.css`, not the package) |
+
+**Why `--tds-`.** Tailwind v4 declares its theme as custom properties
+(`--font-sans`, `--radius-md`, `--shadow-lg`, `--ease-out`, `--color-*` …). A
+token with the same name on `:root` fights it: whichever loads last wins, so
+loading tokens.css changed a Tailwind site's `rounded-sm`, and a site's own
+font silently replaced the app's. The scales that share a Tailwind namespace
+therefore carry the `--tds-` prefix, `@tandemise/design/tailwind.css` maps
+Tailwind's names onto them, and `check:design` fails on a collision. The
+`--text*` colour roles are not Tailwind names (Tailwind's are sizes, `--text-sm`)
+and keep theirs.
 
 ## Theming
 
@@ -188,7 +198,8 @@ Rules:
 Build screens from these before inventing new ones. Where a component exists
 in `@tandemise/design/react`, use it rather than typing the classes: it carries
 the accessibility (`Button`, `Badge`, `StatusPill`, `StatusDot`, `Card`,
-`Icon`, `Logo`, `Field`, `Dialog`, `Tabs`/`Tab`, `Tooltip`, `EmptyState`). The
+`Icon`, `Logo`, `Field`, `Segmented`, `Switch`, `Chip`, `IdChip`, `Stat`,
+`Banner`, `Dialog`, `Tabs`/`Tab`, `Tooltip`, `Truncate`, `EmptyState`). The
 desktop's `components/primitives.tsx` and `components/Modal.tsx` wrap them with
 the app's own vocabulary (`StatusBadge` takes a status string, `ConfirmDialog`
 its copy). A router link that must look like a button takes `buttonClass()`.
@@ -197,16 +208,16 @@ Each class uses roles only; the component classes live in
 
 | Need | Use |
 |---|---|
-| Actions | `Button` / `.btn`, plus `--primary` (at most one per view), `--ghost`, `--danger`, `--lg`, `--icon`, `--block`; `loading` for work in flight |
+| Actions | `Button` / `.btn`, plus `--primary` (at most one per view), `--ghost`, `--danger`, `size` `sm` (28px, a row of actions on a list item) or `lg`, `--icon` (always with an `aria-label`, and a `Tooltip` showing it), `--block`; `loading` for work in flight |
 | Navigation | `Tabs` + `Tab` (`.tabs`, `.tab`, `.tab__count`), rendered as router links |
-| State | `.badge--{running,blocked,failed,succeeded,release,accent}`, `.dot--{tone}`, `.dot--pulse` for live |
-| Inputs | `.field`, `.input`, `.textarea`, `.select`, `.segmented`, `.switch`, `.search` |
-| Containers | `.card`, `.list` / `.list__row`, `.table`, `.banner--{accent,warn}`, `.modal`, `.overlay`, `.palette` |
-| Values | `.chip`, `.idchip` (copyable id), `.mono`, `.stat`, `.meter` |
+| State | `.badge--{pending,running,blocked,failed,succeeded,release,accent}`, `.dot--{tone}`, `.dot--pulse` for live |
+| Inputs | `Field` (`.field`), `.input`, `.textarea`, `.select`, `Segmented` (a radio group), `Switch`, `.search` |
+| Containers | `Card`, `.list` / `.list__row`, `.table`, `Banner` (`neutral`, `accent`, `warn`, `danger`; `live` when it appears while the person is there), `Dialog`, `.overlay`, `.palette` |
+| Values | `Chip`, `IdChip` (copyable id; `interactive={false}` inside a link or button), `.mono`, `Stat`, `.meter` |
 | Identity | `.monogram[data-tint=1..5]` for things with no icon of their own |
 | Empty and error | `.empty`, `.errorstate`, `.skeleton` |
 | Icons | `Icon` (`@tandemise/design/react`, re-exported by `components/Icon.tsx`), drawing `ICON_PATHS`: stroke icons in `currentColor` at 1.7 weight on a 24px grid |
-| Hints | `Tooltip` for a hint a keyboard user must reach too; native `title` is still used for long values that are only truncated |
+| Hints | `Tooltip` for a hint (it is reachable by keyboard, dismissable with Escape, hoverable and persistent: WCAG 1.4.13); `Truncate` for text an ellipsis cuts off. Never a native `title`: a keyboard user never sees it, and `check:design` rejects one in the renderer. |
 
 Status always maps through `Tone` (`lib/format.ts`):
 `running | blocked | failed | succeeded | pending`. Add a tone there and in
@@ -226,7 +237,7 @@ because it carries product logic or is used in one place.
 | Pattern | Today | Count | Finding | Decision |
 |---|---|---|---|---|
 | Button | raw `<button className="btn …">` (also on 13 `<Link>`s and 4 `<span>`s), CSS in `styles/controls.css` | ~275 | Same markup typed by hand everywhere; variant classes composed with template strings in 7 places; the busy state is a label swap (`Working…`, `Holding…`, `Continuing…`) with no `aria-busy`; icon-only buttons rely on each caller remembering `aria-label` | Package `Button` (variants, sizes, `loading`, icon-only requires a label) |
-| `btn--sm` | 15 call sites | 15 | **No rule defines `.btn--sm`**, so those buttons render at the default 30px. | Kept as a no-op so nothing moves; listed under open questions |
+| `btn--sm` | 15 call sites | 15 | **No rule defined `.btn--sm`**, so those buttons rendered at the default 30px. | Done (#80): `size="sm"` is 28px (24px compact); the call sites use it |
 | Status badge / pill | `StatusBadge` + raw `badge badge--{tone}` | 17 + 35 | Two ways to draw the same pill; `badge--pending` is used once but not defined (falls back to the base, which is the pending look); the release badge mixes its own 14% wash | Package `Badge` + `StatusPill`; a `--risk-release-soft` role |
 | Status dot | `StatusDot` + raw `dot dot--{tone}` | 15 + 8 | Pulse animation has a literal 1.9s | Package `StatusDot`; `--duration-pulse` |
 | Card | raw `className="card"`, `card--flush`, `card__head/__title/__body` | ~100 | Structure (head/title/body) is re-typed; no shared component | Package `Card` (`flush`, `title`, `actions`) |
@@ -234,12 +245,12 @@ because it carries product logic or is used in one place.
 | Form field | `Field` in `primitives.tsx` (label wrapper), plus 3 hand-written `<label className="field">` | 108 + 3 | Hint/error are not tied to the control (`aria-describedby`), and an error is not `aria-invalid` | Package `Field`: wrapping mode (unchanged markup) and a render-prop mode that wires `id`, `aria-describedby`, `aria-invalid` |
 | Empty state | `Empty` in `primitives.tsx`, 2 hand-written `.empty` blocks | 36 + 2 | Generic | Package `EmptyState` |
 | Tabs | `.tabs` / `.tab` on route `<Link>`s in Board, Brain, Evals, Team | 4 screens | `role="tablist"` / `role="tab"` set by hand; no arrow-key movement between tabs | Package `Tabs` + `Tab` (renders any element, e.g. a router link; Left/Right/Home/End move focus) |
-| Tooltip | native `title=` | ~150 | No styled tooltip anywhere; `title` is invisible to keyboard users and slow to appear | Package `Tooltip` (hover and focus, `aria-describedby`, Escape). Desktop call sites keep `title` for now: replacing 150 native tooltips is a visible change and its own PR |
+| Tooltip | native `title=` | ~150 | No styled tooltip anywhere; `title` is invisible to keyboard users and slow to appear | Done (#80): `Tooltip` where the text adds information, `Truncate` where an ellipsis cuts text off, an `aria-label` on every icon-only control, and the title dropped where it repeated visible text. None are left |
 | Icon | `components/Icon.tsx` over `ICON_PATHS` | ~200 | Sizes in use: 10, 11, 12, 13 (75×), 14, 15, 16, 18, 22. Decorative only (`aria-hidden`) | Package `Icon` (decorative by default, `label` makes it an image) |
 | Logo | `components/Logo.tsx` over `LOGO` | 3 | Generic | Package `Logo` (`muted`, optional `title`) |
-| Segmented, Switch | `primitives.tsx` | 16, 15 | Generic, but no second consumer yet | App (candidates for the next round) |
-| Chip, IdChip, monogram, kbd, meter, stat | `controls.css`, `primitives.tsx` | 56, 8, 19, 6, –, 19 | Generic values display | App for now |
-| Banner / error state / skeleton | `.banner--{accent,warn}`, `ErrorState`, `Skeleton*` | 35, 132, 55 | `ErrorState` reads the daemon's error shape; the shimmer has a literal 1.3s | App; `--duration-shimmer` token |
+| Segmented, Switch | `primitives.tsx` | 16, 15 | Generic; the segmented control was a group of `aria-pressed` buttons with no name | Done (#80): package `Segmented` (a named radio group, arrow keys) and `Switch` |
+| Chip, IdChip, monogram, kbd, meter, stat | `controls.css`, `primitives.tsx` | 56, 8, 19, 6, –, 19 | Generic values display; the id chip was a `role="button"` span, nested inside links, that hid its focus ring and announced nothing | Done (#80) for `Chip`, `IdChip` (a real button, a live-region result) and `Stat` (a `<dl>`); monogram, kbd and meter stay app |
+| Banner / error state / skeleton | `.banner--{accent,warn}`, `ErrorState`, `Skeleton*` | 35, 132, 55 | `ErrorState` reads the daemon's error shape; the shimmer has a literal 1.3s | `Banner` in the package (#80); `ErrorState` and the skeletons stay app; `--duration-shimmer` token |
 | "Now" line | `NowLine` in `TerminalPanel.tsx`, on HandoffCard, PlanPane, TaskDetail | 3 | Product-specific (a live agent's current action) | App |
 | Terminal panel chrome | `TerminalPanel` + `TerminalPanel.css` | 1 | Its own overlay at z-index 55, a dialog with no focus handling; colours already go through `--terminal-*` | App; z-index from the new scale |
 | Focus ring | `base.css` `:focus-visible` (2px, offset 2px), inputs swap it for a border colour | – | Width and offset are literals | `--focus-ring-width`, `--focus-ring-offset`, `--focus-ring` |
@@ -286,6 +297,10 @@ because it carries product logic or is used in one place.
    Storybook story in `packages/design/stories/` (a `*.stories.tsx` naming it
    as `component` or in `subcomponents`). The stories and
    `packages/design/.storybook/` are held to rules 1-5 like any other source.
+9. `tokens.css` declares a name in a Tailwind v4 theme namespace (`--font-*`,
+   `--radius-*`, `--shadow-*`, `--ease-*`, `--color-*`, `--text-sm` …).
+10. A native `title` attribute appears on an element (or a `Button` or `Link`)
+    in the desktop renderer. Use `Tooltip`, `Truncate` or an `aria-label`.
 
 ## Changing the system
 

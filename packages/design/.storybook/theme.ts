@@ -18,10 +18,16 @@ export function logoDataUrl(on: 'onDark' | 'onLight', size = 22): string {
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
 
+/** The product name, in the sidebar and the browser tab. */
+export const BRAND_NAME = 'Tandemise design system';
+
+/** Where the brand links: the repository the package lives in. */
+export const BRAND_URL = 'https://github.com/tandemise/tandemise';
+
 /** The sidebar's brand: the mark beside the product name. Storybook renders an HTML brandTitle as is. */
 function brandTitle(theme: ThemeName): string {
   const mark = logoDataUrl(theme === 'dark' ? 'onDark' : 'onLight');
-  return `<span style="display:inline-flex;align-items:center;gap:10px;font-weight:650;letter-spacing:-0.01em"><img src="${mark}" width="22" height="22" alt="" /><span>Tandemise design</span></span>`;
+  return `<span style="display:inline-flex;align-items:center;gap:10px;font-weight:650;letter-spacing:-0.01em"><img src="${mark}" width="22" height="22" alt="" /><span>${BRAND_NAME}</span></span>`;
 }
 
 export function tandemiseTheme(theme: ThemeName): ThemeVars {
@@ -29,8 +35,8 @@ export function tandemiseTheme(theme: ThemeName): ThemeVars {
   return create({
     base: theme,
     brandTitle: brandTitle(theme),
-    brandUrl: './',
-    brandTarget: '_self',
+    brandUrl: BRAND_URL,
+    brandTarget: '_blank',
 
     fontBase: fontFamily.sans.join(', '),
     fontCode: fontFamily.mono.join(', '),

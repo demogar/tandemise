@@ -8,7 +8,7 @@ import { Empty, ErrorState, Field, SkeletonList, StatusDot, Switch } from '../co
 import { useDaemonMutation, useRuntimes } from '../lib/queries.js';
 import { useWorkspaceId } from '../lib/workspace.js';
 import { dateTime, healthTone, pluralize, shortenPath, titleCase } from '../lib/format.js';
-import { Badge, Button, Card } from '@tandemise/design/react';
+import { Badge, Banner, Button, Card, Chip, Tooltip } from '@tandemise/design/react';
 
 export function Runtimes(): JSX.Element {
   const runtimes = useRuntimes();
@@ -129,8 +129,8 @@ function RuntimeCard({
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="row" style={{ gap: 'var(--s2)' }}>
             <span style={{ fontWeight: 600, fontSize: 'var(--fs-base)' }}>{profile.name}</span>
-            <span className="chip chip--muted">{view.adapterDisplayName}</span>
-            {health.version ? <span className="chip">{versionLabel(health.version)}</span> : null}
+            <Chip muted>{view.adapterDisplayName}</Chip>
+            {health.version ? <Chip>{versionLabel(health.version)}</Chip> : null}
           </div>
           <div className="dim" style={{ fontSize: 'var(--fs-xs)', marginTop: 2 }}>
             {health.detail} · checked {dateTime(health.checkedAt)}
@@ -144,33 +144,36 @@ function RuntimeCard({
           <Icon name="wrench" size={13} />
           Configure
         </Button>
-        <Button
-          variant="ghost"
-          title={`Add a second ${view.adapterDisplayName} profile starting from this one`}
-          onClick={() => onEdit('duplicate')}
-        >
-          <Icon name="layers" size={13} />
-          Duplicate
-        </Button>
+        <Tooltip content={`Add a second ${view.adapterDisplayName} profile starting from this one`}>
+          <Button variant="ghost" onClick={() => onEdit('duplicate')}>
+            <Icon name="layers" size={13} />
+            Duplicate
+          </Button>
+        </Tooltip>
         <Switch checked={profile.enabled} label={`Enable ${profile.name}`} onChange={(enabled) => update.mutate({ enabled })} />
-        <Button iconOnly variant="ghost" aria-label="Remove runtime" onClick={onRemove}>
-          <Icon name="trash" size={14} />
-        </Button>
+        <Tooltip content="Remove runtime">
+          <Button iconOnly variant="ghost" aria-label="Remove runtime" onClick={onRemove}>
+            <Icon name="trash" size={14} />
+          </Button>
+        </Tooltip>
       </div>
 
       <div className="card__body" style={{ display: 'grid', gap: 'var(--s4)' }}>
         {health.quotaWarning ? (
-          <div className="banner banner--warn">
-            <Icon name="alert" size={14} />
-            <span>{health.quotaWarning}</span>
-          </div>
+          <Banner tone="warn" icon={<Icon name="alert" size={14} />}>
+            {health.quotaWarning}
+          </Banner>
         ) : null}
 
         <div className="grid grid--2">
           <Detail label="Executable">
-            <span className="mono" title={profile.executablePath ?? undefined}>
-              {profile.executablePath ? shortenPath(profile.executablePath, 4) : 'resolved from PATH'}
-            </span>
+            {profile.executablePath ? (
+              <Tooltip content={profile.executablePath}>
+                <span className="mono">{shortenPath(profile.executablePath, 4)}</span>
+              </Tooltip>
+            ) : (
+              <span className="mono">resolved from PATH</span>
+            )}
           </Detail>
           <Detail label="Concurrency">
             <div className="row">
@@ -289,7 +292,7 @@ function DiscoveryModal({ results, onClose }: { results: readonly RuntimeDiscove
           <p>No agent runtimes were found on this machine. Install one, or add a generic CLI runtime by hand.</p>
         ) : (
           results.map((discovery) => (
-            <div key={discovery.adapterId} className="list__row" style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-md)' }}>
+            <div key={discovery.adapterId} className="list__row" style={{ border: '1px solid var(--border)', borderRadius: 'var(--tds-radius-md)' }}>
               <StatusDot tone={discovery.detected ? 'succeeded' : 'pending'} />
               <div className="list__main">
                 <div className="list__title">{discovery.displayName}</div>
@@ -300,7 +303,7 @@ function DiscoveryModal({ results, onClose }: { results: readonly RuntimeDiscove
                 </div>
               </div>
               {!discovery.detected ? (
-                <span className="chip chip--muted">not found</span>
+                <Chip muted>not found</Chip>
               ) : (
                 <div className="row" style={{ gap: 'var(--s2)' }}>
                   {configured(discovery) ? <Badge tone="succeeded">Configured</Badge> : null}

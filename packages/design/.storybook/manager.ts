@@ -1,5 +1,5 @@
 import { addons } from 'storybook/manager-api';
-import { tandemiseTheme } from './theme';
+import { BRAND_NAME, tandemiseTheme } from './theme';
 
 /**
  * The manager (sidebar, toolbar, addon panel) follows the operating system's
@@ -14,3 +14,22 @@ addons.setConfig({
   selectedPanel: 'storybook/a11y/panel',
   sidebar: { showRoots: true },
 });
+
+/**
+ * The browser tab. Storybook titles it "<page> ⋅ Storybook": with an HTML
+ * brandTitle (the mark beside the name) it cannot use the brand. Keep the
+ * page part and put the product name after it.
+ */
+if (typeof document !== 'undefined') {
+  const retitle = (): void => {
+    const suffix = ` ⋅ ${BRAND_NAME}`;
+    let page = document.title.trim();
+    if (page.endsWith(suffix)) page = page.slice(0, -suffix.length);
+    page = page.replace(/\s+[⋅·-]\s+Storybook$/i, '').trim();
+    const next = page === '' || /^storybook$/i.test(page) || page === BRAND_NAME ? BRAND_NAME : `${page}${suffix}`;
+    if (document.title !== next) document.title = next;
+  };
+  retitle();
+  const head = document.querySelector('head');
+  if (head) new MutationObserver(retitle).observe(head, { subtree: true, childList: true, characterData: true });
+}

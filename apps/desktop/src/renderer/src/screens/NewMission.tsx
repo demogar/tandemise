@@ -19,7 +19,7 @@ import { MISSION_PRIORITIES, priorityLabel } from '../lib/domain.js';
 import { LimitFields, limitDraft, limitsFromDraft } from '../components/LimitFields.js';
 import { showFlash } from '../lib/notices.js';
 import { ContributionPicker, type Contribution } from '../components/ContributionPicker.js';
-import { Badge, Button, Card } from '@tandemise/design/react';
+import { Badge, Banner, Button, Card, Tooltip } from '@tandemise/design/react';
 
 /** The request schema's cap on uploads at creation; more can follow later as feedback. */
 const MAX_UPLOADS = 10;
@@ -152,13 +152,11 @@ export function NewMission(): JSX.Element {
             <Button variant="ghost" onClick={() => navigate('/missions')}>
               Cancel
             </Button>
-            <Button
-              onClick={() => submit('backlog')}
-              disabled={!ready || create.isPending}
-              title="Queue it: Tandemise plans it when it is ready and there is room under the project's limit."
-            >
-              Add to backlog
-            </Button>
+            <Tooltip content="Queue it: Tandemise plans it when it is ready and there is room under the project's limit.">
+              <Button onClick={() => submit('backlog')} disabled={!ready || create.isPending}>
+                Add to backlog
+              </Button>
+            </Tooltip>
             <Button variant="primary" onClick={() => submit()} disabled={!ready || create.isPending}>
               {create.isPending ? (hasCriteria ? 'Planning…' : 'Creating…') : hasCriteria ? 'Plan mission' : 'Create and refine'}
               <kbd style={{ marginLeft: 2 }}>⌘↵</kbd>
@@ -214,13 +212,10 @@ export function NewMission(): JSX.Element {
             </div>
 
             {chosen !== null && chosen.issues.length > 0 ? (
-              <div className="banner banner--warn">
-                <Icon name="alert" size={14} />
-                <span>
-                  This workflow cannot run yet — {chosen.issues[0]?.path}: {chosen.issues[0]?.message}
-                  {chosen.path ? ` (${chosen.path})` : ''}
-                </span>
-              </div>
+              <Banner tone="warn" icon={<Icon name="alert" size={14} />}>
+                This workflow cannot run yet — {chosen.issues[0]?.path}: {chosen.issues[0]?.message}
+                {chosen.path ? ` (${chosen.path})` : ''}
+              </Banner>
             ) : null}
 
             {/* A workflow the team wrote can declare what it needs — an issue
@@ -291,12 +286,16 @@ export function NewMission(): JSX.Element {
             />
 
             <Field label="Autonomy" hint={AUTONOMY.find((option) => option.value === autonomy)?.hint}>
-              <Segmented
-                block
-                value={autonomy}
-                onChange={setAutonomy}
-                options={AUTONOMY.map((option) => ({ value: option.value, label: option.label }))}
-              />
+              {(control, label) => (
+                <Segmented
+                  block
+                  aria-labelledby={label.id}
+                  aria-describedby={control['aria-describedby']}
+                  value={autonomy}
+                  onChange={setAutonomy}
+                  options={AUTONOMY.map((option) => ({ value: option.value, label: option.label }))}
+                />
+              )}
             </Field>
 
             <div className="disclosure">
@@ -316,11 +315,15 @@ export function NewMission(): JSX.Element {
                     <input className="input" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Passkey sign-in" />
                   </Field>
                   <Field label="Priority" hint="Orders the backlog and who gets the next free agent. Urgent work is planned first.">
-                    <Segmented
-                      value={priority}
-                      onChange={setPriority}
-                      options={MISSION_PRIORITIES.map((value) => ({ value, label: priorityLabel(value) }))}
-                    />
+                    {(control, label) => (
+                      <Segmented
+                        aria-labelledby={label.id}
+                        aria-describedby={control['aria-describedby']}
+                        value={priority}
+                        onChange={setPriority}
+                        options={MISSION_PRIORITIES.map((value) => ({ value, label: priorityLabel(value) }))}
+                      />
+                    )}
                   </Field>
                   <div className="field">
                     <span className="field__label">Limit</span>
@@ -371,10 +374,9 @@ export function NewMission(): JSX.Element {
             </div>
 
             {!workspace ? (
-              <div className="banner banner--warn">
-                <Icon name="alert" size={14} />
+              <Banner tone="warn" icon={<Icon name="alert" size={14} />}>
                 No project selected. Create one from the project menu at the top of the sidebar.
-              </div>
+              </Banner>
             ) : null}
 
             {create.isError ? <ErrorState error={create.error} /> : null}

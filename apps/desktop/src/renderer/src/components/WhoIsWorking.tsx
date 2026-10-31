@@ -2,6 +2,7 @@ import { Link } from 'wouter';
 import type { CoordinationClaimRowView } from '@tandemise/api-contract';
 import { useCoordinationClaims } from '../lib/queries.js';
 import { ErrorState, SkeletonList } from './primitives.js';
+import { Tooltip } from '@tandemise/design/react';
 import './WhoIsWorking.css';
 
 const PRESENCE_WORDS: Readonly<Record<CoordinationClaimRowView['presence'], string>> = {
@@ -27,12 +28,16 @@ export function WhoIsWorking(): JSX.Element {
     <ul className="who-working" aria-label="Claims">
       {rows.map((row) => (
         <li key={row.claimId} className="who-working__row" data-mine={row.mine} data-stale={row.stale}>
-          <span className="who-working__dot" data-presence={row.presence} title={PRESENCE_WORDS[row.presence]} aria-label={PRESENCE_WORDS[row.presence]} />
+          <Tooltip content={PRESENCE_WORDS[row.presence]}>
+            <span className="who-working__dot" data-presence={row.presence} role="img" aria-label={PRESENCE_WORDS[row.presence]} />
+          </Tooltip>
           <span className="who-working__name">{row.memberName}</span>
           {row.itemUrl ? (
-            <button type="button" className="who-working__key" title={`Open ${row.itemKey}`} onClick={() => void window.tandemise.openExternal(row.itemUrl!)}>
-              {row.itemKey}
-            </button>
+            <Tooltip content={`Open ${row.itemKey}`}>
+              <button type="button" className="who-working__key" onClick={() => void window.tandemise.openExternal(row.itemUrl!)}>
+                {row.itemKey}
+              </button>
+            </Tooltip>
           ) : (
             <span className="who-working__key">{row.itemKey}</span>
           )}

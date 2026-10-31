@@ -32,10 +32,22 @@ export interface FieldProps {
    *         {(control) => <input className="input" {...control} />}
    *       </Field>
    *
+   *     A group of controls (a `Segmented`) is not labelable, so it takes the
+   *     label's id from the second argument instead:
+   *
+   *       <Field label="Theme" hint="…">
+   *         {(control, label) => <Segmented aria-labelledby={label.id} aria-describedby={control['aria-describedby']} … />}
+   *       </Field>
+   *
    * A render prop, not cloneElement: the wiring is visible at the call site
    * and type-checked, and a caller's own `id` is never silently replaced.
    */
-  children: ReactNode | ((control: FieldControlProps) => ReactNode);
+  children: ReactNode | ((control: FieldControlProps, label: FieldLabel) => ReactNode);
+}
+
+/** The visible label's id, for a control a `<label for>` cannot name: a `Segmented` (a radio group) or a `Switch` takes it as `aria-labelledby`. */
+export interface FieldLabel {
+  id: string;
 }
 
 /** Label, control, and a hint or an error: the parts of one form question. */
@@ -68,11 +80,11 @@ export function Field({ label, hint, error, required, className, children }: Fie
     };
     return (
       <div className={cx('field', className)} data-invalid={hasError || undefined}>
-        <label className="field__label" htmlFor={control.id}>
+        <label className="field__label" id={`${id}-label`} htmlFor={control.id}>
           {label}
           {mark}
         </label>
-        {children(control)}
+        {children(control, { id: `${id}-label` })}
         {message}
       </div>
     );

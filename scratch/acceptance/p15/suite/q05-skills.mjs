@@ -97,7 +97,7 @@ await clickInSetup(c, 'Import house-style');
 await c.until(async () => (await previewRow(c, 'house-style v1'))?.[0] === 'house-style v1: Same', { label: 'skill row Same', timeoutMs: 30_000 });
 ev.check('after importing, the folder is read again: "house-style v1: Same"', (await previewRow(c, 'house-style v1'))?.[0] === 'house-style v1: Same');
 const qaAfter = await previewRow(c, 'QA Engineer');
-ev.check('and the QA role can be taken: "QA Engineer: Change", Take theirs', qaAfter?.[0] === 'QA Engineer: Change' && !qaAfter[1].includes('Needs import') && await page.evaluate(`document.querySelector('[aria-label="Choice for QA Engineer"] [aria-pressed="true"]')?.innerText.trim() === 'Take theirs'`), qaAfter);
+ev.check('and the QA role can be taken: "QA Engineer: Change", Take theirs', qaAfter?.[0] === 'QA Engineer: Change' && !qaAfter[1].includes('Needs import') && await page.evaluate(`document.querySelector('[aria-label="Choice for QA Engineer"] [aria-checked="true"]')?.innerText.trim() === 'Take theirs'`), qaAfter);
 ev.check('proof (API): house-style v1 is in the second project\'s library with the same hash', (await c.api.get(`/v1/workspaces/${two}/skills`)).skills.some((s) => s.name === 'house-style' && s.versions.some((v) => v.hash === pv.hash)));
 
 // This project keeps its own name and settings: only what the files add to it is taken.

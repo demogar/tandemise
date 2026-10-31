@@ -18,12 +18,18 @@ export { Badge, StatusPill, StatusDot, type BadgeProps, type StatusPillProps, ty
 export { Card, type CardProps } from './Card.js';
 export { Icon, type IconProps, type IconName } from './Icon.js';
 export { Logo, type LogoProps } from './Logo.js';
-export { Field, type FieldProps, type FieldControlProps } from './Field.js';
+export { Field, type FieldProps, type FieldControlProps, type FieldLabel } from './Field.js';
 export { Dialog, type DialogProps } from './Dialog.js';
 export { useDialogLayer, trapTarget, initialFocusTarget, openLayerCount, FOCUSABLE_SELECTOR, type DialogLayerOptions, type InitialFocus } from './layer.js';
 export { Tabs, Tab, nextTabIndex, type TabsProps, type TabProps } from './Tabs.js';
-export { Tooltip, tooltipPosition, type TooltipProps, type TooltipTriggerProps, type TooltipPlacement } from './Tooltip.js';
+export { Tooltip, tooltipPosition, tooltipFit, useTooltip, type TooltipProps, type TooltipTriggerProps, type TooltipPlacement, type TooltipState } from './Tooltip.js';
+export { Truncate, isClipped, type TruncateProps } from './Truncate.js';
 export { EmptyState, type EmptyStateProps } from './EmptyState.js';
+export { Segmented, nextSegmentIndex, type SegmentedProps, type SegmentedOption } from './Segmented.js';
+export { Switch, type SwitchProps } from './Switch.js';
+export { Chip, IdChip, type ChipProps, type IdChipProps } from './Chip.js';
+export { Stat, type StatProps } from './Stat.js';
+export { Banner, type BannerProps, type BannerTone } from './Banner.js';
 
 /** Every component this subpath exports, by name. Each must have a Storybook story in stories/ (`npm run check:design`). */
-export const COMPONENTS = ['Button', 'Badge', 'StatusPill', 'StatusDot', 'Card', 'Icon', 'Logo', 'Field', 'Dialog', 'Tabs', 'Tab', 'Tooltip', 'EmptyState'] as const;
+export const COMPONENTS = ['Button', 'Badge', 'StatusPill', 'StatusDot', 'Card', 'Icon', 'Logo', 'Field', 'Dialog', 'Tabs', 'Tab', 'Tooltip', 'Truncate', 'EmptyState', 'Segmented', 'Switch', 'Chip', 'IdChip', 'Stat', 'Banner'] as const;

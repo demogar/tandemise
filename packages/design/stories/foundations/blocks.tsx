@@ -195,9 +195,9 @@ export function FontFamilies(): ReactElement {
         {Object.entries(fontFamily).map(([name, stack]) => (
           <tr key={name}>
             <td>
-              <code>--font-{name}</code>
+              <code>--tds-font-{name}</code>
             </td>
-            <td style={{ fontFamily: `var(--font-${name})`, fontSize: 'var(--fs-md)' }}>Tandemise 0123456789 → ✓</td>
+            <td style={{ fontFamily: `var(--tds-font-${name})`, fontSize: 'var(--fs-md)' }}>Tandemise 0123456789 → ✓</td>
             <td style={{ color: 'var(--text-secondary)', fontSize: 'var(--fs-xs)' }}>{stack.join(', ')}</td>
           </tr>
         ))}
@@ -254,8 +254,8 @@ export function RadiusScale(): ReactElement {
     <div className="sb-row" style={{ gap: 'var(--s6)', margin: 'var(--s4) 0' }}>
       {Object.entries(radius).map(([name, px]) => (
         <div key={name} className="sb-stack" style={{ alignItems: 'center', gap: 'var(--s2)' }}>
-          <span className="fd-box" style={{ borderRadius: `var(--radius-${name})` }} />
-          <code>--radius-{name}</code>
+          <span className="fd-box" style={{ borderRadius: `var(--tds-radius-${name})` }} />
+          <code>--tds-radius-{name}</code>
           <span style={{ color: 'var(--text-secondary)', fontSize: 'var(--fs-xs)' }}>{px === 999 ? 'pill' : `${px}px`}</span>
         </div>
       ))}
@@ -270,8 +270,8 @@ export function Elevation(): ReactElement {
         <div className="sb-row" style={{ gap: 'var(--s8)', padding: 'var(--s4) 0' }}>
           {Object.entries(shadows).map(([name, shadow]) => (
             <div key={name} className="sb-stack" style={{ alignItems: 'center', gap: 'var(--s2)' }}>
-              <span className="fd-box" style={{ boxShadow: `var(--shadow-${name})`, borderRadius: 'var(--radius-md)', border: 'none' }} />
-              <code>--shadow-{name}</code>
+              <span className="fd-box" style={{ boxShadow: `var(--tds-shadow-${name})`, borderRadius: 'var(--tds-radius-md)', border: 'none' }} />
+              <code>--tds-shadow-{name}</code>
               <span style={{ color: 'var(--text-secondary)', fontSize: 'var(--fs-xs)' }}>
                 y {shadow.offsetY} · blur {shadow.blur}
               </span>
@@ -374,9 +374,9 @@ export function MotionTokens(): ReactElement {
     ['--duration-pulse', duration.pulse],
   ];
   const easings: [string, string, string][] = [
-    ['--ease', easing.standard, 'most transitions'],
-    ['--ease-out', easing.enter, 'something arriving: a dialog, a toast'],
-    ['--ease-in', easing.exit, 'something leaving'],
+    ['--tds-ease', easing.standard, 'most transitions'],
+    ['--tds-ease-out', easing.enter, 'something arriving: a dialog, a toast'],
+    ['--tds-ease-in', easing.exit, 'something leaving'],
   ];
   return (
     <>
@@ -418,7 +418,7 @@ export function MotionTokens(): ReactElement {
 }
 
 /** Hover or focus the track to play the move. */
-function MotionSample({ duration: d, ease = 'var(--ease)' }: { duration: string; ease?: string }): ReactElement {
+function MotionSample({ duration: d, ease = 'var(--tds-ease)' }: { duration: string; ease?: string }): ReactElement {
   return (
     <button type="button" className="fd-motion-track" aria-label="Play the move (hover or focus)">
       <div className="fd-motion" style={{ transition: `transform ${d} ${ease}` }} />
@@ -458,7 +458,7 @@ export function FocusRingDemo(): ReactElement {
           <div className="sb-stack">
             <div className="sb-row" style={{ gap: 'var(--s5)' }}>
               {(['canvas', 'surface', 'surface-raised', 'surface-sunken'] as const).map((surface) => (
-                <div key={surface} className="sb-stack" style={{ alignItems: 'center', gap: 'var(--s2)', padding: 'var(--s3)', background: `var(--${surface})`, borderRadius: 'var(--radius-md)' }}>
+                <div key={surface} className="sb-stack" style={{ alignItems: 'center', gap: 'var(--s2)', padding: 'var(--s3)', background: `var(--${surface})`, borderRadius: 'var(--tds-radius-md)' }}>
                   <span className="fd-box fd-box--focus" />
                   <code style={{ fontSize: 'var(--fs-micro)' }}>--{surface}</code>
                 </div>

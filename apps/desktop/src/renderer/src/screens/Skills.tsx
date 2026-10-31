@@ -11,7 +11,7 @@ import { useDaemonMutation, useSkillVersion, useSkills } from '../lib/queries.js
 import { dateTime, pluralize } from '../lib/format.js';
 import { ImportSkills } from './skills/ImportSkills.js';
 import { evalsHref } from './evals/link.js';
-import { Badge, Button, Card } from '@tandemise/design/react';
+import { Badge, Button, Card, Chip, Truncate } from '@tandemise/design/react';
 
 /**
  * The skills library (P13): skills the person already has, imported as
@@ -95,14 +95,14 @@ export function Skills(): JSX.Element {
               <Icon name="book" size={16} className="dim" />
               <div className="list__main">
                 <div className="list__title">{skill.name}</div>
-                <div className="list__subtitle truncate" title={skill.description}>{skill.description || 'No description'}</div>
+                <Truncate as="div" className="list__subtitle">{skill.description || 'No description'}</Truncate>
                 <div className="list__subtitle dim" style={{ fontSize: 'var(--fs-xs)' }}>
                   v{skill.latest.version} · {skill.latest.sizeLabel}
                   {skill.usedBy.length > 0 ? ` · Used by ${skill.usedBy.map((u) => `${u.roleName} v${u.version}`).join(', ')}` : ''}
                 </div>
               </div>
               {skill.sourceStatus === 'update_available' ? <Badge tone="blocked">Update available</Badge> : null}
-              {skill.sourceStatus === 'missing' ? <span className="chip chip--muted">Source gone</span> : null}
+              {skill.sourceStatus === 'missing' ? <Chip muted>Source gone</Chip> : null}
             </button>
           ))}
         </div>
@@ -135,15 +135,15 @@ function SkillDetail({ skill, onDeleted }: { skill: SkillView; onDeleted: () => 
       <header className="reader__head">
         <h1 className="reader__title">{skill.name}</h1>
         <div className="reader__meta">
-          <span className="chip">v{skill.latest.version}</span>
-          <span className="chip chip--muted mono">{skill.latest.shortHash}</span>
+          <Chip>v{skill.latest.version}</Chip>
+          <Chip muted className="mono">{skill.latest.shortHash}</Chip>
           <span>{skill.description || 'No description'}</span>
         </div>
       </header>
 
       <section aria-label="Source" className="stack" style={{ gap: 'var(--s2)' }}>
         <h2 className="section__title">Source</h2>
-        <p className="muted truncate" style={{ margin: 0 }} title={skill.sourceLabel}>{skill.sourceLabel}</p>
+        <Truncate as="p" className="muted" style={{ margin: 0 }}>{skill.sourceLabel}</Truncate>
         <SourceLine skill={skill} />
         <div className="row" style={{ gap: 'var(--s2)' }}>
           {skill.sourceStatus === 'update_available' || skill.sourceStatus === 'unchecked' ? (

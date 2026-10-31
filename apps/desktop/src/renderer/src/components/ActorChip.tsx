@@ -11,9 +11,9 @@ import { actorLabel, actorsLine, type Actors } from '../lib/team.js';
 export function ActorChip({ actor, meId, prefix }: { actor: ActorRef | null; meId: string | null; prefix?: string }): JSX.Element | null {
   if (!actor) return null;
   return (
-    <span className="actor" data-kind={actor.kind} title={actor.kind === 'agent' ? `${actor.name} (agent)` : actor.name}>
+    <span className="actor" data-kind={actor.kind}>
       {prefix ? <span className="actor__prefix">{prefix}</span> : null}
-      {actor.kind === 'agent' ? <Icon name="sparkle" size={11} /> : actor.kind === 'system' ? <Icon name="runtimes" size={11} /> : null}
+      {actor.kind === 'agent' ? <Icon name="sparkle" size={11} label="agent" /> : actor.kind === 'system' ? <Icon name="runtimes" size={11} /> : null}
       <span className="actor__name">{actorLabel(actor, meId)}</span>
     </span>
   );

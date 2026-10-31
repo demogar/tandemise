@@ -8,7 +8,7 @@ import { Icon } from '../../components/Icon.js';
 import { Field, Segmented } from '../../components/primitives.js';
 import { ESCALATION_OPTIONS, PRESET_LABELS, STAFFING_PRESET_OPTIONS, builtInAssignees, displayedPreset, staffingSummary } from '../../lib/staffing.js';
 import type { Actors } from '../../lib/team.js';
-import { Button } from '@tandemise/design/react';
+import { Button, Tooltip } from '@tandemise/design/react';
 
 export type StaffingLevel = 'workspace' | 'mission' | 'task';
 
@@ -202,15 +202,19 @@ function CustomFields({ value, onChange, actors }: { value: StaffingPatch; onCha
       </Field>
       <div className="grid grid--2">
         <Field label="Mode">
-          <Segmented
-            block
-            value={value.mode ?? 'first_available'}
-            onChange={(mode) => onChange({ ...value, mode })}
-            options={[
-              { value: 'first_available', label: 'In order' },
-              { value: 'pool', label: 'Pool' },
-            ]}
-          />
+          {(control, label) => (
+            <Segmented
+              block
+              aria-labelledby={label.id}
+              aria-describedby={control['aria-describedby']}
+              value={value.mode ?? 'first_available'}
+              onChange={(mode) => onChange({ ...value, mode })}
+              options={[
+                { value: 'first_available', label: 'In order' },
+                { value: 'pool', label: 'Pool' },
+              ]}
+            />
+          )}
         </Field>
         <Field label="Responsible">
           <select
@@ -261,13 +265,15 @@ function CustomFields({ value, onChange, actors }: { value: StaffingPatch; onCha
               placeholder="always"
               onChange={(event) => setReview(index, { when: event.target.value || 'always' })}
             />
-            <Button
-              iconOnly variant="ghost"
-              aria-label="Remove review"
-              onClick={() => onChange({ ...value, reviews: reviews.filter((_, i) => i !== index) })}
-            >
-              <Icon name="x" size={13} />
-            </Button>
+            <Tooltip content="Remove review">
+              <Button
+                iconOnly variant="ghost"
+                aria-label="Remove review"
+                onClick={() => onChange({ ...value, reviews: reviews.filter((_, i) => i !== index) })}
+              >
+                <Icon name="x" size={13} />
+              </Button>
+            </Tooltip>
           </div>
         ))}
         <div>

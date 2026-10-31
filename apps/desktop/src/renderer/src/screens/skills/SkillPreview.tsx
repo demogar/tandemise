@@ -1,6 +1,7 @@
 import type { SkillPreviewView } from '@tandemise/api-contract';
 import { stripFrontMatter } from '@tandemise/artifacts/strip-front-matter';
 import { Markdown } from '../../components/Markdown.js';
+import { Chip, Truncate } from '@tandemise/design/react';
 
 /**
  * What importing a folder would bring in (P13): its files and its SKILL.md,
@@ -13,11 +14,11 @@ export function SkillPreview({ preview }: { preview: SkillPreviewView }): JSX.El
       <div className="stack" style={{ gap: 'var(--s1)' }}>
         <div className="row row--wrap" style={{ gap: 'var(--s2)' }}>
           <strong>{preview.name ?? 'Not a usable skill'}</strong>
-          {preview.shortHash ? <span className="chip chip--muted mono">{preview.shortHash}</span> : null}
+          {preview.shortHash ? <Chip muted className="mono">{preview.shortHash}</Chip> : null}
           <span className="dim" style={{ fontSize: 'var(--fs-xs)' }}>{preview.sizeLabel}</span>
         </div>
         {preview.description ? <p className="muted" style={{ margin: 0 }}>{preview.description}</p> : null}
-        <p className="dim truncate" style={{ margin: 0, fontSize: 'var(--fs-xs)' }} title={preview.sourceLabel}>From {preview.sourceLabel}</p>
+        <Truncate as="p" className="dim" style={{ margin: 0, fontSize: 'var(--fs-xs)' }}>From {preview.sourceLabel}</Truncate>
       </div>
 
       {preview.problem !== null ? (
@@ -40,7 +41,7 @@ export function SkillPreview({ preview }: { preview: SkillPreviewView }): JSX.El
       {preview.skillMd !== null ? (
         <div className="stack" style={{ gap: 'var(--s1)' }}>
           <span className="field__label">SKILL.md</span>
-          <div aria-label="SKILL.md" style={{ maxHeight: 260, overflow: 'auto', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', padding: 'var(--s3)' }}>
+          <div aria-label="SKILL.md" style={{ maxHeight: 260, overflow: 'auto', border: '1px solid var(--border)', borderRadius: 'var(--tds-radius-md)', padding: 'var(--s3)' }}>
             <Markdown source={stripFrontMatter(preview.skillMd)} />
           </div>
         </div>

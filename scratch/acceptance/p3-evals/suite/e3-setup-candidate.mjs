@@ -56,7 +56,7 @@ await page.screenshot(ev.shot('setup-preview'));
 await press('Try on evals');
 await waitFor('Setup folder');
 const form = await page.evaluate(`document.querySelector('main [aria-label="New run"]')?.innerText ?? ''`);
-ev.check('the Runs form opens on Setup, prefilled with the fixture folder', form.includes(fixture) && await page.evaluate(`(document.querySelector('[aria-label="Candidate kind"] [aria-pressed="true"], [aria-label="Candidate kind"] [aria-checked="true"], [aria-label="Candidate kind"] [data-active="true"]')?.innerText ?? '').trim() === 'Setup'`), form.slice(0, 600));
+ev.check('the Runs form opens on Setup, prefilled with the fixture folder', form.includes(fixture) && await page.evaluate(`(document.querySelector('[data-candidate-kind] [aria-pressed="true"], [data-candidate-kind] [aria-checked="true"], [data-candidate-kind] [data-active="true"]')?.innerText ?? '').trim() === 'Setup'`), form.slice(0, 600));
 ev.check('the form is on E1\'s suite', await page.evaluate(`(document.querySelector('main [aria-label="New run"] select[aria-label="Suite"] option:checked')?.innerText ?? document.querySelector('.evals__listhead')?.innerText ?? '').includes('Runs')`));
 ev.check('the location is the Evals Runs tab', await page.evaluate(`location.hash.startsWith('#/evals') && new URLSearchParams(location.search).get('tab') === 'runs'`), await page.evaluate('location.hash + location.search'));
 await page.screenshot(ev.shot('runs-form-prefilled'));

@@ -19,7 +19,7 @@ await openBacklog(c);
 const wip = await wipText(c);
 ev.check('header: "Working on 0 · no limit · 2 queued"', wip.includes('Working on 0 · no limit · 2 queued'), wip);
 ev.check('the hint: "Limit off: queued missions wait until you plan them yourself or set a limit."', wip.includes('Limit off: queued missions wait until you plan them yourself or set a limit.'), wip);
-const off = await page.evaluate(`[...document.querySelectorAll('section[aria-label="Work in progress"] .segmented__option')].find((b) => b.getAttribute('aria-pressed') === 'true')?.innerText.trim()`);
+const off = await page.evaluate(`[...document.querySelectorAll('section[aria-label="Work in progress"] .segmented__option')].find((b) => b.getAttribute('aria-checked') === 'true')?.innerText.trim()`);
 ev.check('"Work on at most" reads Off', off === 'Off', off);
 const [t1, t2] = await Promise.all([first, second].map(async (id) => (await c.api.get(`/v1/missions/${id}`)).mission.title));
 let rows = await backlogRows(c);

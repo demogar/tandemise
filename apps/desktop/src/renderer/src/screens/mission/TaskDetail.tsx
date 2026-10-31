@@ -24,7 +24,7 @@ import { ShipCard } from '../../components/ShipCard.js';
 import { HoldButton, NowLine, useHoldActions } from '../../components/TerminalPanel.js';
 import { describeError } from '../../lib/daemon.js';
 import { RememberThis, WhatItKnew } from '../../components/WhatItKnew.js';
-import { Badge, Button, Card } from '@tandemise/design/react';
+import { Badge, Banner, Button, Card, Chip, Tooltip } from '@tandemise/design/react';
 
 export function TaskDetail({ task, detail, onClose }: { task: TaskView; detail: MissionDetail; onClose: () => void }): JSX.Element {
   // A note turns the retry into the next round, framed as a request rather than as the failure it follows.
@@ -235,12 +235,12 @@ export function TaskDetail({ task, detail, onClose }: { task: TaskView; detail: 
 
         <div className="row row--wrap">
           <StatusBadge status={task.status} tone={taskTone(task.status)} />
-          <span className="chip">{task.roleName}</span>
-          {task.runtimeName ? <span className="chip">{task.runtimeName}</span> : null}
+          <Chip>{task.roleName}</Chip>
+          {task.runtimeName ? <Chip>{task.runtimeName}</Chip> : null}
           {/* Which model the latest run was given, and why (P12). */}
-          {task.latestRun ? <span className="chip" aria-label="Model">{modelLabel(task.latestRun)}</span> : null}
-          {task.targetName ? <span className="chip">{task.targetName}</span> : null}
-          <span className="chip chip--muted">{task.executionPolicy.isolation} isolation</span>
+          {task.latestRun ? <Chip aria-label="Model">{modelLabel(task.latestRun)}</Chip> : null}
+          {task.targetName ? <Chip>{task.targetName}</Chip> : null}
+          <Chip muted>{task.executionPolicy.isolation} isolation</Chip>
         </div>
         {/* The skills the newest run got, at their pinned versions (P13). */}
         {skillsLine(task) ? (
@@ -258,10 +258,12 @@ export function TaskDetail({ task, detail, onClose }: { task: TaskView; detail: 
           <div className="row" aria-label="Activity">
             <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Last activity {quietFor(task.watch.quietForMs)} ago</span>
             {task.watch.level === 'active' ? null : (
-              <Badge tone="blocked" title={`No output for ${quietFor(task.watch.quietForMs)}; quiet after ${quietFor(task.watch.quietAfterMs)}, asked about after ${quietFor(task.watch.silentAfterMs)}.`}>
-                <span className="dot dot--blocked" />
-                Quiet
-              </Badge>
+              <Tooltip content={`No output for ${quietFor(task.watch.quietForMs)}; quiet after ${quietFor(task.watch.quietAfterMs)}, asked about after ${quietFor(task.watch.silentAfterMs)}.`}>
+                <Badge tone="blocked" tabIndex={0}>
+                  <span className="dot dot--blocked" />
+                  Quiet
+                </Badge>
+              </Tooltip>
             )}
           </div>
         ) : null}
@@ -277,10 +279,9 @@ export function TaskDetail({ task, detail, onClose }: { task: TaskView; detail: 
             const reason = personStepReason(task, actors) ?? task.statusReason;
             const plain = isWaitReason(task, reason);
             return (
-              <div className={plain ? 'banner' : 'banner banner--warn'}>
-                <Icon name={plain ? 'info' : 'alert'} size={14} className={plain ? 'dim' : undefined} />
-                <span>{reason}</span>
-              </div>
+              <Banner tone={plain ? 'neutral' : 'warn'} icon={<Icon name={plain ? 'info' : 'alert'} size={14} className={plain ? 'dim' : undefined} />}>
+                {reason}
+              </Banner>
             );
           })()
         ) : null}
@@ -450,7 +451,7 @@ function StaffingBlock({ task, detail, actors }: { task: TaskView; detail: Missi
           </span>
         ) : null}
         <div className="spacer" />
-        {task.staffingOverride ? <span className="chip chip--muted">override</span> : null}
+        {task.staffingOverride ? <Chip muted>override</Chip> : null}
         {started ? null : (
           <Button variant="ghost" aria-expanded={editing} onClick={() => setEditing((v) => !v)}>
             {editing ? 'Close' : 'Change'}
@@ -509,7 +510,7 @@ function FeedbackThread({ task, missionId, actors }: { task: TaskView; missionId
                 <li key={item.id} className="feedback-thread__item" data-status={item.status}>
                   <div className="feedback-thread__meta">
                     <span className="feedback-thread__author">{actorLabel(item.author, actors.meId)}</span>
-                    <span className="chip chip--muted feedback-thread__status">{feedbackStatusLabel(item, task)}</span>
+                    <Chip muted className="feedback-thread__status">{feedbackStatusLabel(item, task)}</Chip>
                     {item.status === 'open' || item.status === 'queued' ? (
                       <Button
                         variant="ghost" className="feedback-thread__action"

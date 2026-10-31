@@ -9,7 +9,7 @@
 export * from './tokens.js';
 export { resolveColor, resolveTheme } from './resolve.js';
 export { contrast, composite, luminance, pairContrast, CONTRAST_PAIRS, type ContrastPair } from './contrast.js';
-export { cssVariables, roleCss, tokensCss } from './css.js';
+export { cssVariables, roleCss, tokensCss, isTailwindThemeName, TAILWIND_THEME_NAMESPACES, TAILWIND_TEXT_SIZES } from './css.js';
 export { tailwindPreset, tailwindColorName, tailwindThemeCss } from './tailwind.js';
 export { LOGO, LOGO_COLORS, logoSvg } from './logo.js';
 export { ICON_PATHS, ICON_STROKE_WIDTH, ICON_VIEWBOX, type IconName } from './icons.js';

@@ -44,6 +44,8 @@ const has = (markup, ...needles) => needles.every((n) => markup.includes(n));
   ok('Button: loadingLabel replaces the label and draws no spinner', has(label, 'Working…') && !label.includes('Confirm') && !label.includes('btn__spinner'), label);
   ok('Button: a submit type is kept', html(h(ui.Button, { type: 'submit' }, 'Send')).includes('type="submit"'));
   ok('buttonClass: a link can look like a button', ui.buttonClass({ variant: 'danger', className: 'x' }) === 'btn btn--danger x');
+  ok('Button: size sm is .btn--sm (no more no-op btn--sm class)', html(h(ui.Button, { size: 'sm' }, 'Accept')) === '<button type="button" class="btn btn--sm">Accept</button>');
+  ok('buttonClass: a small icon-only link', ui.buttonClass({ size: 'sm', iconOnly: true }) === 'btn btn--sm btn--icon');
 }
 
 // ------------------------------------------------------- Badge, pill, dot
@@ -91,6 +93,9 @@ const has = (markup, ...needles) => needles.every((n) => markup.includes(n));
   ok('Field (render prop): required reaches the control, the mark is hidden', control.required === true && has(wired, 'required=""', 'class="field__required" aria-hidden="true"'), wired);
   let calm;
   html(h(ui.Field, { label: 'x', hint: 'help' }, (c) => { calm = c; return h('input', c); }));
+  let labelArg;
+  const grouped = html(h(ui.Field, { label: 'Theme' }, (c, l) => { labelArg = l; return h('div', { role: 'radiogroup', 'aria-labelledby': l.id }); }));
+  ok('Field (render prop): the label id is handed over for a control <label for> cannot name', labelArg && has(grouped, `id="${labelArg.id}"`, `aria-labelledby="${labelArg.id}"`), grouped);
   ok('Field (render prop): without an error it is described by the hint and valid', calm['aria-invalid'] === undefined && calm['aria-describedby']?.endsWith('-hint'), JSON.stringify(calm));
 }
 
@@ -141,10 +146,67 @@ const has = (markup, ...needles) => needles.every((n) => markup.includes(n));
   const t = html(h(ui.Tooltip, { content: 'Copy' }, (p) => { trigger = p; return h('button', { 'aria-describedby': p['aria-describedby'] }, 'id'); }));
   ok('Tooltip: closed, nothing is drawn and the trigger is not described', !t.includes('role="tooltip"') && trigger['aria-describedby'] === undefined, t);
   ok('Tooltip: the trigger gets hover and focus handlers', ['onMouseEnter', 'onMouseLeave', 'onFocus', 'onBlur'].every((k) => typeof trigger[k] === 'function'));
+  const el = html(h(ui.Tooltip, { content: 'sha256 abc' }, h('span', { className: 'mono' }, 'abc')));
+  ok('Tooltip (element child): plain text is made focusable, so a keyboard can reach the hint', el === '<span class="mono" tabindex="0">abc</span>', el);
+  const btn = html(h(ui.Tooltip, { content: 'Copy' }, h('button', { type: 'button' }, 'id')));
+  ok('Tooltip (element child): a button keeps its own tab order', btn === '<button type="button">id</button>', btn);
+  const fit = ui.tooltipFit({ left: -10, right: 90, top: -2, bottom: 20 }, { width: 800, height: 600 }, 'top');
+  ok('tooltipFit: pushed back inside the window and flipped below when there is no room above', fit.shift === 14 && fit.flip === true, JSON.stringify(fit));
+  const roomy = ui.tooltipFit({ left: 100, right: 200, top: 40, bottom: 60 }, { width: 800, height: 600 }, 'top');
+  ok('tooltipFit: left alone when it fits', roomy.shift === 0 && roomy.flip === false, JSON.stringify(roomy));
   const top = ui.tooltipPosition({ left: 100, top: 50, width: 40, height: 20 }, 'top');
   ok('tooltipPosition: centred above, 6px off', top.left === 120 && top.top === 44 && top.transform === 'translate(-50%, -100%)', JSON.stringify(top));
   const bottom = ui.tooltipPosition({ left: 100, top: 50, width: 40, height: 20 }, 'bottom');
   ok('tooltipPosition: centred below, 6px off', bottom.left === 120 && bottom.top === 76, JSON.stringify(bottom));
+}
+
+// ---------------------------------------------------------------- Truncate
+{
+  const t = html(h(ui.Truncate, { as: 'div', className: 'list__subtitle' }, 'A long goal'));
+  ok('Truncate: an ellipsised element, not focusable until it is measured as cut off', t === '<div class="truncate list__subtitle">A long goal</div>', t);
+  ok('isClipped: wider or taller than its box', ui.isClipped({ scrollWidth: 300, clientWidth: 200, scrollHeight: 20, clientHeight: 20 }) && ui.isClipped({ scrollWidth: 200, clientWidth: 200, scrollHeight: 40, clientHeight: 20 }) && !ui.isClipped({ scrollWidth: 200, clientWidth: 200, scrollHeight: 20, clientHeight: 20 }));
+}
+
+// --------------------------------------------------------------- Segmented
+{
+  const s = html(h(ui.Segmented, { label: 'Theme', value: 'light', onChange: () => {}, options: [{ value: 'system', label: 'System' }, { value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark', disabled: true }] }));
+  ok('Segmented: a named radiogroup of radios', has(s, 'role="radiogroup"', 'aria-label="Theme"', 'class="segmented"') && (s.match(/role="radio"/g) ?? []).length === 3, s);
+  ok('Segmented: the chosen option is checked and the only tab stop', has(s, 'aria-checked="true" tabindex="0">Light<', 'aria-checked="false" tabindex="-1">System<'), s);
+  ok('Segmented: a disabled option is disabled', has(s, 'disabled="">Dark<'), s);
+  ok('nextSegmentIndex: arrows wrap and skip disabled options', ui.nextSegmentIndex('ArrowRight', 1, [false, false, true]) === 0 && ui.nextSegmentIndex('ArrowLeft', 0, [false, false, true]) === 1 && ui.nextSegmentIndex('ArrowDown', 0, [false, true, false]) === 2);
+  ok('nextSegmentIndex: Home and End go to the enabled ends; other keys are not handled', ui.nextSegmentIndex('Home', 2, [true, false, false]) === 1 && ui.nextSegmentIndex('End', 0, [false, false, true]) === 1 && ui.nextSegmentIndex('Enter', 0, [false]) === null);
+}
+
+// ------------------------------------------------------------------ Switch
+{
+  const s = html(h(ui.Switch, { checked: true, onChange: () => {}, label: 'Notify me' }));
+  ok('Switch: a button with role switch, aria-checked and a name', s === '<button type="button" role="switch" aria-checked="true" aria-label="Notify me" class="switch"></button>', s);
+}
+
+// ------------------------------------------------------------- Chip, IdChip
+{
+  ok('Chip: muted modifier and an icon first', html(h(ui.Chip, { muted: true, icon: h('i') }, 'v3')) === '<span class="chip chip--muted"><i></i>v3</span>');
+  const id = html(h(ui.IdChip, { id: 'msn_1', prefix: 'mission' }));
+  ok('IdChip: a button named by the id, with an empty polite status beside it', has(id, '<button type="button" class="idchip">', '<span class="idchip__prefix">mission</span>msn_1</button>', '<span class="visually-hidden" role="status"></span>'), id);
+  const plain = html(h(ui.IdChip, { id: 'msn_1', interactive: false }));
+  ok('IdChip: interactive=false is plain text (no nested control inside a link)', plain.startsWith('<span class="idchip">msn_1</span>') && !plain.includes('<button'), plain);
+}
+
+// -------------------------------------------------------------------- Stat
+{
+  const s = html(h(ui.Stat, { label: 'Agents', value: '4', note: 'of 6' }));
+  ok('Stat: a description list, label as term and value as definition', s === '<dl class="stat"><dt class="stat__label">Agents</dt><dd class="stat__value">4</dd><dd class="stat__note">of 6</dd></dl>', s);
+  ok('Stat: muted value modifier, no empty note', html(h(ui.Stat, { label: 'Cost', value: 'not reported', muted: true })) === '<dl class="stat"><dt class="stat__label">Cost</dt><dd class="stat__value stat__value--muted">not reported</dd></dl>');
+}
+
+// ------------------------------------------------------------------ Banner
+{
+  const b = html(h(ui.Banner, { tone: 'warn', icon: h('i'), action: h('button', null, 'See') }, 'Limit near'));
+  ok('Banner: tone modifier, icon, body and action, and no live role when static', b === '<div class="banner banner--warn"><i></i><div class="banner__body">Limit near</div><button>See</button></div>', b);
+  ok('Banner: live polite is a status, assertive an alert', html(h(ui.Banner, { live: 'polite' }, 'x')).includes('role="status"') && html(h(ui.Banner, { live: 'assertive' }, 'x')).includes('role="alert"'));
+  const d = html(h(ui.Banner, { onDismiss: () => {}, dismissLabel: 'Dismiss the notice' }, 'x'));
+  ok('Banner: a dismiss button with a name and a 24px+ target (btn--sm btn--icon)', has(d, 'aria-label="Dismiss the notice"', 'btn--sm btn--icon banner__dismiss'), d);
+  ok('Banner: as a link', html(h(ui.Banner, { as: 'a', href: '#x' }, 'x')).startsWith('<a class="banner" href="#x">'));
 }
 
 // -------------------------------------------------------------- EmptyState

@@ -27,6 +27,13 @@
   gap: var(--s2);
 }
 
+/* The two lines keep the item's own spacing inside the banner's body. */
+.intake-settings__moved-item .banner__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
 .intake-settings__moved-text,
 .intake-settings__moved-saved {
   margin: 0;
@@ -88,7 +95,7 @@
   gap: var(--s2);
   padding: var(--s3);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: var(--tds-radius-md);
 }
 
 .intake-settings__source-head {
@@ -134,7 +141,7 @@
   flex: 1;
   min-width: 0;
   padding: var(--s1) var(--s2);
-  border-radius: var(--radius-sm);
+  border-radius: var(--tds-radius-sm);
   background: var(--surface-sunken);
   overflow-wrap: anywhere;
   user-select: all;

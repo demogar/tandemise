@@ -1,7 +1,7 @@
 import { Icon } from '../components/Icon.js';
 import { Logo } from '../components/Logo.js';
 import { useConnection } from '../lib/connection.js';
-import { Button } from '@tandemise/design/react';
+import { Banner, Button, Truncate } from '@tandemise/design/react';
 
 /**
  * Shown whenever the daemon is not answering. It is a first-class screen, not
@@ -27,17 +27,14 @@ export function DaemonDown(): JSX.Element {
           </p>
         </div>
 
-        <div className="banner" style={{ textAlign: 'left', width: '100%' }}>
-          <Icon name="folder" size={15} className="dim" />
-          <div style={{ minWidth: 0 }}>
-            <div className="dim" style={{ fontSize: 'var(--fs-xs)' }}>
-              Looking for the handshake file at
-            </div>
-            <div className="mono truncate" title={status.handshakePath}>
-              {status.handshakePath}
-            </div>
+        <Banner style={{ textAlign: 'left', width: '100%' }} icon={<Icon name="folder" size={15} className="dim" />}>
+          <div className="dim" style={{ fontSize: 'var(--fs-xs)' }}>
+            Looking for the handshake file at
           </div>
-        </div>
+          <Truncate as="div" className="mono">
+            {status.handshakePath}
+          </Truncate>
+        </Banner>
 
         <div className="row" style={{ gap: 'var(--s2)' }}>
           <Button variant="primary" size="lg" onClick={reconnect} disabled={busy}>
@@ -48,7 +45,7 @@ export function DaemonDown(): JSX.Element {
 
         <p className="dim" style={{ fontSize: 'var(--fs-xs)', lineHeight: 1.6 }}>
           Tandemise will try to start the daemon for you. If that keeps failing, start it by hand with{' '}
-          <code style={{ fontFamily: 'var(--font-mono)' }}>npm run daemon</code> and press Retry.
+          <code style={{ fontFamily: 'var(--tds-font-mono)' }}>npm run daemon</code> and press Retry.
         </p>
       </div>
     </div>

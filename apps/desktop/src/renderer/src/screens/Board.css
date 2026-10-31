@@ -107,6 +107,13 @@
   cursor: not-allowed;
 }
 
+/* Why an item cannot start, beside its disabled Start (a disabled button takes no focus, so no tooltip). */
+.board__blocked {
+  max-width: 280px;
+  font-size: var(--fs-xs);
+  text-align: right;
+}
+
 .intake-list__line {
   display: flex;
   align-items: baseline;

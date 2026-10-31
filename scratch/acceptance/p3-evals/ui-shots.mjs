@@ -126,18 +126,18 @@ try {
   check('a suite with no runs opens the form', await has('Start run'));
   check('the model is prefilled with the role model', await page.evaluate(`document.querySelector('input[aria-label="Model for Developer"]')?.value === 'bad'`));
   await shot('02-run-form-models');
-  await press('Skills', '[aria-label="Candidate kind"]');
+  await press('Skills', '[data-candidate-kind]');
   check('skills lists the pin with a version select', await page.evaluate(`!!document.querySelector('select[aria-label="Version of house-style for Developer"]')`));
   await shot('03-run-form-skills');
   writeFileSync(PICK, env.project);
-  await press('Setup', '[aria-label="Candidate kind"]');
+  await press('Setup', '[data-candidate-kind]');
   await press('Choose…');
   await waitFor(env.project);
   await shot('04-run-form-setup');
 
   // -------------------------------------------------------------- a run through the window
   log('a run, started in the window');
-  await press('Models', '[aria-label="Candidate kind"]');
+  await press('Models', '[data-candidate-kind]');
   await page.fill('Model for Developer', 'good');
   await page.fill('Repeats', '3');
   // A bad-model baseline trial runs twice at $0.25 a run: 2 cases × 3 repeats come to about $4.50.

@@ -4,6 +4,7 @@ import { Icon } from './Icon.js';
 import { useDaemon } from '../lib/connection.js';
 import { describeError } from '../lib/daemon.js';
 import { showFlash } from '../lib/notices.js';
+import { Tooltip } from '@tandemise/design/react';
 
 /**
  * The links on a handoff that do something when clicked: a web address the
@@ -54,17 +55,21 @@ export function HandoffLinkButton({
       }
     };
     return (
-      <button type="button" className={className} title={link.path} disabled={opening || workspaceId === undefined} onClick={() => void reveal()}>
-        Open workspace ↗
-      </button>
+      <Tooltip content={link.path}>
+        <button type="button" className={className} disabled={opening || workspaceId === undefined} onClick={() => void reveal()}>
+          Open workspace ↗
+        </button>
+      </Tooltip>
     );
   }
 
   const url = link.url ?? '';
   return (
-    <button type="button" className={className} title={url} onClick={() => void window.tandemise.openExternal(url)}>
-      {link.label}
-      {icon ? <Icon name="externalLink" size={12} /> : ' ↗'}
-    </button>
+    <Tooltip content={url}>
+      <button type="button" className={className} onClick={() => void window.tandemise.openExternal(url)}>
+        {link.label}
+        {icon ? <Icon name="externalLink" size={12} /> : ' ↗'}
+      </button>
+    </Tooltip>
   );
 }

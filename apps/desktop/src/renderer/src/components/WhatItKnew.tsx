@@ -50,15 +50,15 @@ export function RememberThis({ taskId, roleId, stepKey }: { taskId: string; role
     (daemon, body: { text: string }) => daemon.remember(workspaceId, { text: body.text, scope: { role: roleId, step: stepKey }, taskId }),
     ['workspaces'],
   );
-  if (!open) return <Button variant="ghost" className="btn--sm" onClick={() => setOpen(true)}>Remember this</Button>;
+  if (!open) return <Button variant="ghost" size="sm" onClick={() => setOpen(true)}>Remember this</Button>;
   return (
     <Card className="stack" aria-label="Remember this on the task">
       <textarea className="input" rows={2} aria-label="Remember this text" value={text} placeholder="What should the next person doing this step know?" onChange={(e) => setText(e.target.value)} />
       <div className="row" style={{ gap: 'var(--s2)' }}>
-        <Button variant="primary" className="btn--sm" disabled={remember.isPending || text.trim() === ''} onClick={() => remember.mutate({ text: text.trim() }, { onSuccess: (v) => { setOpen(false); setText(''); showFlash(v.message); } })}>
+        <Button variant="primary" size="sm" disabled={remember.isPending || text.trim() === ''} onClick={() => remember.mutate({ text: text.trim() }, { onSuccess: (v) => { setOpen(false); setText(''); showFlash(v.message); } })}>
           {remember.isPending ? 'Saving…' : 'Remember'}
         </Button>
-        <Button variant="ghost" className="btn--sm" onClick={() => setOpen(false)}>Cancel</Button>
+        <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>Cancel</Button>
       </div>
       {remember.isError ? <ErrorState error={remember.error} /> : null}
     </Card>

@@ -2,6 +2,7 @@ import type { ArtifactView, MissionArtifactView } from '@tandemise/api-contract'
 import { Icon, type IconName } from '../../components/Icon.js';
 import { useActors } from '../../lib/team.js';
 import { relativeTime, titleCase } from '../../lib/format.js';
+import { Chip, Tooltip } from '@tandemise/design/react';
 
 /** A row may come from a mission list, which knows its version, or from search, which does not. */
 type ListedArtifact = ArtifactView | MissionArtifactView;
@@ -62,19 +63,18 @@ function ArtifactRow({
   // A legacy artifact has no handoff; its summary stands in, as it does in the reader.
   const headline = artifact.handoff?.headline ?? artifact.summary;
   const by = artifact.author ?? actors.ref(artifact.authorId);
-  return (
+  const row = (
     <button
       type="button"
       className={`list__row artifact-row${older ? ' artifact-row--older' : ''}`}
       data-active={active}
       onClick={() => onSelect(artifact.id)}
-      title={older ? `Older version of ${artifact.title}` : undefined}
     >
       <Icon name={older ? 'clock' : iconFor(artifact.type)} size={older ? 13 : 15} className="dim" />
       <div className="list__main">
         <div className="artifact-row__title">
           <span className="list__title">{artifact.title}</span>
-          {version !== null && (older || version > 1) ? <span className="chip artifact-row__version">v{version}</span> : null}
+          {version !== null && (older || version > 1) ? <Chip className="artifact-row__version">v{version}</Chip> : null}
         </div>
         {headline ? <div className="list__subtitle truncate">{headline}</div> : null}
       </div>
@@ -86,6 +86,7 @@ function ArtifactRow({
       </div>
     </button>
   );
+  return older ? <Tooltip content={`Older version of ${artifact.title}`}>{row}</Tooltip> : row;
 }
 
 interface VersionLine {

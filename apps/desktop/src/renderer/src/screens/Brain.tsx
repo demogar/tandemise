@@ -11,7 +11,7 @@ import { showFlash } from '../lib/notices.js';
 import { Factory } from './project/Factory.js';
 import { Merge } from './project/Merge.js';
 import './Brain.css';
-import { Badge, Button, Card, Field, Tab, Tabs } from '@tandemise/design/react';
+import { Badge, Banner, Button, buttonClass, Card, Chip, Field, Segmented, Tab, Tabs } from '@tandemise/design/react';
 
 export type BrainTab = 'sync' | 'lessons' | 'proposals' | 'factory';
 const TABS: readonly { tab: BrainTab; label: string }[] = [
@@ -67,7 +67,7 @@ function SyncTab(): JSX.Element {
           <dt>Last synced</dt><dd>{view.lastSyncAt === null ? 'never' : dateTime(view.lastSyncAt)}</dd>
           <dt>You write as</dt><dd className="mono">{view.writerId}</dd>
         </dl>
-        {view.problems.map((p) => <div key={p} className="banner banner--warn">{p}</div>)}
+        {view.problems.map((p) => <Banner key={p} tone="warn">{p}</Banner>)}
         <div className="row">
           <Button disabled={sync.isPending} onClick={() => sync.mutate(undefined, { onSuccess: (v) => showFlash(v.statusLine) })}>
             <Icon name="refresh" size={13} />
@@ -111,11 +111,7 @@ function LessonsTab(): JSX.Element {
         {remember.isError ? <ErrorState error={remember.error} /> : null}
       </Card>
       <div className="row" style={{ marginTop: 'var(--s3)' }}>
-        <div className="segmented" role="group" aria-label="Lesson filter">
-          {STATE_FILTERS.map((f) => (
-            <button key={f.value} type="button" className="segmented__option" aria-pressed={state === f.value} onClick={() => setState(f.value)}>{f.label}</button>
-          ))}
-        </div>
+        <Segmented label="Lesson filter" value={state} options={STATE_FILTERS} onChange={setState} />
       </div>
       {entries.isPending ? <SkeletonList rows={3} /> : entries.isError ? <ErrorState error={entries.error} /> : live.length === 0 ? (
         <Empty icon="book" title="No lessons yet" body="When you hold a step and fix it, ask for changes, or press Remember this, the brain keeps a short lesson here." />
@@ -148,7 +144,7 @@ export function LessonRow({ entry, readOnly = false, taskId }: { entry: BrainEnt
     <li className="brain__row" aria-label={`Lesson: ${entry.text}`} data-state={entry.state}>
       <div className="brain__text">{entry.text}</div>
       <div className="brain__meta">
-        <span className="chip">{entry.scopeLabel}</span>
+        <Chip>{entry.scopeLabel}</Chip>
         <span>From {entry.sourceLabel}{entry.sourceMission && entry.sourceLabel !== 'you' ? ` · ${entry.sourceMission}` : ''}</span>
         <span aria-label="Counters">+{entry.helpful} / −{entry.harmful}</span>
         {entry.state === 'candidate' ? <Badge tone="pending">Waiting for you</Badge> : null}
@@ -160,19 +156,19 @@ export function LessonRow({ entry, readOnly = false, taskId }: { entry: BrainEnt
       </div>
       {readOnly ? null : (
         <div className="row brain__actions">
-          <Button variant="ghost" className="btn--sm" aria-label="Helpful" disabled={busy} onClick={() => vote.mutate('helpful')}>Helpful</Button>
-          <Button variant="ghost" className="btn--sm" aria-label="Not helpful" disabled={busy} onClick={() => vote.mutate('harmful')}>Not helpful</Button>
+          <Button variant="ghost" size="sm" aria-label="Helpful" disabled={busy} onClick={() => vote.mutate('helpful')}>Helpful</Button>
+          <Button variant="ghost" size="sm" aria-label="Not helpful" disabled={busy} onClick={() => vote.mutate('harmful')}>Not helpful</Button>
           {entry.state === 'candidate' ? (
             <>
-              <Button className="btn--sm" disabled={busy} onClick={() => accept.mutate(undefined)}>Accept</Button>
-              <Button variant="ghost" className="btn--sm" disabled={busy} onClick={() => reject.mutate(undefined)}>Reject</Button>
+              <Button size="sm" disabled={busy} onClick={() => accept.mutate(undefined)}>Accept</Button>
+              <Button variant="ghost" size="sm" disabled={busy} onClick={() => reject.mutate(undefined)}>Reject</Button>
             </>
           ) : null}
           {entry.kind === 'lesson' && entry.promoted === null && entry.state !== 'candidate' ? (
-            <Button className="btn--sm" disabled={busy} onClick={() => promote.mutate(undefined, { onSuccess: () => showFlash('Proposed as a rule. See Proposals.') })}>Make this a rule</Button>
+            <Button size="sm" disabled={busy} onClick={() => promote.mutate(undefined, { onSuccess: () => showFlash('Proposed as a rule. See Proposals.') })}>Make this a rule</Button>
           ) : null}
-          {entry.flags.harmful ? <Button variant="ghost" className="btn--sm" disabled={busy} onClick={() => vote.mutate('helpful')}>Keep</Button> : null}
-          <Button variant="ghost" className="btn--sm" disabled={busy} onClick={() => retire.mutate(undefined)}>Retire</Button>
+          {entry.flags.harmful ? <Button variant="ghost" size="sm" disabled={busy} onClick={() => vote.mutate('helpful')}>Keep</Button> : null}
+          <Button variant="ghost" size="sm" disabled={busy} onClick={() => retire.mutate(undefined)}>Retire</Button>
         </div>
       )}
       {error ? <ErrorState error={error} /> : null}
@@ -214,11 +210,11 @@ function ProposalRow({ proposal }: { proposal: BrainProposalView }): JSX.Element
       <div className="row brain__actions">
         {proposal.canAccept ? (
           <>
-            <Button variant="primary" className="btn--sm" disabled={accept.isPending} onClick={() => accept.mutate(undefined)}>Accept</Button>
-            <Button variant="ghost" className="btn--sm" disabled={decline.isPending} onClick={() => decline.mutate(undefined)}>Decline</Button>
+            <Button variant="primary" size="sm" disabled={accept.isPending} onClick={() => accept.mutate(undefined)}>Accept</Button>
+            <Button variant="ghost" size="sm" disabled={decline.isPending} onClick={() => decline.mutate(undefined)}>Decline</Button>
           </>
         ) : null}
-        {proposal.canRevert ? <Button className="btn--sm" disabled={revert.isPending} onClick={() => revert.mutate(undefined)}>Revert</Button> : null}
+        {proposal.canRevert ? <Button size="sm" disabled={revert.isPending} onClick={() => revert.mutate(undefined)}>Revert</Button> : null}
       </div>
       {error ? <ErrorState error={error} /> : null}
     </li>
@@ -239,12 +235,12 @@ function FactoryTab(): JSX.Element {
           {view.mcpsNeeded.map((m) => (
             <div key={m.name} className="row" style={{ gap: 'var(--s2)' }}>
               <span>{m.detail}</span>
-              <Link href="/integrations" className="btn btn--sm">Connect</Link>
+              <Link href="/integrations" className={buttonClass({ size: 'sm' })}>Connect</Link>
             </div>
           ))}
         </Card>
       ) : null}
-      {view.skillsMissing.length > 0 ? <div className="banner banner--warn">Missing on this machine: {view.skillsMissing.join(', ')}.</div> : null}
+      {view.skillsMissing.length > 0 ? <Banner tone="warn">Missing on this machine: {view.skillsMissing.join(', ')}.</Banner> : null}
       <Card>
         <div className="field__label">Factory files</div>
         <ul className="mono brain__files" aria-label="Factory files">{view.files.map((f) => <li key={f}>{f}</li>)}</ul>
@@ -256,7 +252,7 @@ function FactoryTab(): JSX.Element {
           {view.movable.map((w) => (
             <div key={w.id} className="row" style={{ gap: 'var(--s2)' }}>
               <span className="mono">{w.id}</span>
-              <Button className="btn--sm" disabled={move.isPending} onClick={() => move.mutate(w.id, { onSuccess: () => showFlash(`Moved ${w.id} into the brain.`) })}>Move into the brain</Button>
+              <Button size="sm" disabled={move.isPending} onClick={() => move.mutate(w.id, { onSuccess: () => showFlash(`Moved ${w.id} into the brain.`) })}>Move into the brain</Button>
             </div>
           ))}
           {move.isError ? <ErrorState error={move.error} /> : null}

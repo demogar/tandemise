@@ -5,7 +5,7 @@ import { useDaemonMutation } from '../lib/queries.js';
 import { Icon } from './Icon.js';
 import { Modal } from './Modal.js';
 import { ErrorState } from './primitives.js';
-import { Button } from '@tandemise/design/react';
+import { Banner, Button } from '@tandemise/design/react';
 
 /**
  * A mission's claim with the team, when it needs saying (relay spec):
@@ -24,25 +24,29 @@ export function ClaimBanner({ missionId, claim }: { missionId: string; claim: Mi
   if (claim.state === 'held') return null;
   if (claim.state === 'pending') {
     return (
-      <div className="banner" data-claim="pending" aria-label="Claim">
-        <Icon name="clock" size={15} className="dim" />
-        <span style={{ flex: 1 }}>{claim.sentence}</span>
-      </div>
+      <Banner data-claim="pending" icon={<Icon name="clock" size={15} className="dim" />}>
+        {claim.sentence}
+      </Banner>
     );
   }
   return (
     <div className="stack" style={{ gap: 'var(--s2)' }}>
-      <div className="banner banner--warn" data-claim="unclaimed" aria-label="Claim">
-        <Icon name="alert" size={15} />
-        <span style={{ flex: 1 }}>
-          <strong>Unclaimed.</strong> {claim.sentence} This mission keeps running until you decide.
-        </span>
-        <Button disabled={act.isPending} onClick={() => act.mutate('stop')}>Stop</Button>
-        {claim.mayTakeBack ? (
-          <Button disabled={act.isPending} onClick={() => act.mutate('take-back')}>Take it back</Button>
-        ) : null}
-        <Button variant="primary" disabled={act.isPending} onClick={() => act.mutate('keep-going')}>Keep going without a claim</Button>
-      </div>
+      <Banner
+        tone="warn"
+        data-claim="unclaimed"
+        icon={<Icon name="alert" size={15} />}
+        action={
+          <>
+            <Button disabled={act.isPending} onClick={() => act.mutate('stop')}>Stop</Button>
+            {claim.mayTakeBack ? (
+              <Button disabled={act.isPending} onClick={() => act.mutate('take-back')}>Take it back</Button>
+            ) : null}
+            <Button variant="primary" disabled={act.isPending} onClick={() => act.mutate('keep-going')}>Keep going without a claim</Button>
+          </>
+        }
+      >
+        <strong>Unclaimed.</strong> {claim.sentence} This mission keeps running until you decide.
+      </Banner>
       {act.isError ? <ErrorState error={act.error} /> : null}
     </div>
   );

@@ -8,7 +8,7 @@ import { useCoordinationClaims, useCoordinationStatus, useDaemonMutation } from 
 import { dateTime, relativeTime } from '../../lib/format.js';
 import { showFlash } from '../../lib/notices.js';
 import '../settings/TeamRelay.css';
-import { Button, Card } from '@tandemise/design/react';
+import { Button, Card, Chip, Tooltip } from '@tandemise/design/react';
 
 const PRESENCE_WORDS: Readonly<Record<CoordMemberView['presence'], string>> = { online: 'Online', away: 'Away', offline: 'Offline' };
 
@@ -47,9 +47,11 @@ export function RelayTeam(): JSX.Element | null {
           return (
             <div key={m.id} className="relay-team__member">
               <div className="relay-team__row" data-member={m.displayName}>
-                <span className="team-relay__dot" data-presence={m.presence} title={PRESENCE_WORDS[m.presence]} aria-label={PRESENCE_WORDS[m.presence]} />
+                <Tooltip content={PRESENCE_WORDS[m.presence]}>
+                  <span className="team-relay__dot" data-presence={m.presence} role="img" aria-label={PRESENCE_WORDS[m.presence]} />
+                </Tooltip>
                 <span className="relay-team__name">{m.displayName}</span>
-                {m.role === 'admin' ? <span className="chip chip--muted">admin</span> : null}
+                {m.role === 'admin' ? <Chip muted>admin</Chip> : null}
                 <span className="relay-team__claims">{holding.length ? `Working on ${holding.join(', ')}` : m.presence === 'offline' && m.lastSeenAt ? `Last seen ${relativeTime(m.lastSeenAt)}` : ''}</span>
                 {admin && m.id !== status.memberId ? (
                   <Button variant="ghost" onClick={() => remove.mutate(m.id)}>Remove</Button>

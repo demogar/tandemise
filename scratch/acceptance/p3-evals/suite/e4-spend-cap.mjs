@@ -16,7 +16,7 @@ if (!e1?.suiteId) throw new Error('E4 needs E1 first (the suite)');
 await go(runsHash(e1.suiteId));
 await press('New run');
 await waitFor('Start run');
-await press('Models', '[aria-label="Candidate kind"]');
+await press('Models', '[data-candidate-kind]');
 await page.fill('Model for Developer', 'good');
 await page.fill('Repeats', '2');
 await page.fill('Spend cap', '0.6');

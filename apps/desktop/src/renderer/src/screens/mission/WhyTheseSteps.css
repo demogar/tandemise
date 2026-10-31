@@ -24,13 +24,13 @@
 .why__chip {
   height: 24px;
   padding: 0 var(--s2);
-  border-radius: var(--radius-full);
+  border-radius: var(--tds-radius-full);
   border: 1px solid var(--border);
   background: var(--surface-sunken);
   color: var(--text-secondary);
   font-size: var(--fs-xs);
   cursor: pointer;
-  transition: background var(--duration-fast) var(--ease), border-color var(--duration-fast) var(--ease);
+  transition: background var(--duration-fast) var(--tds-ease), border-color var(--duration-fast) var(--tds-ease);
 }
 
 .why__chip:hover {
@@ -71,14 +71,14 @@
 
 .why__signals {
   padding: var(--s2) var(--s3) var(--s2) var(--s6);
-  border-radius: var(--radius-md);
+  border-radius: var(--tds-radius-md);
   background: var(--surface-sunken);
 }
 
 .why__steps {
   margin: 0;
   padding-left: var(--s5);
-  font-family: var(--font-mono);
+  font-family: var(--tds-font-mono);
   font-size: var(--fs-xs);
   color: var(--text-secondary);
 }

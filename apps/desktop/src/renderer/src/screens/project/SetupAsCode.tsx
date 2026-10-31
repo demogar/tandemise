@@ -8,7 +8,7 @@ import { useDaemonMutation, useSetupStatus } from '../../lib/queries.js';
 import { showFlash } from '../../lib/notices.js';
 import { SkillPreview } from '../skills/SkillPreview.js';
 import { evalsHref } from '../evals/link.js';
-import { Button, Card } from '@tandemise/design/react';
+import { Banner, Button, Card } from '@tandemise/design/react';
 
 type NeedsImport = NonNullable<SetupItemView['needsImport']>;
 
@@ -230,7 +230,7 @@ function ExportResult({ view }: { view: SetupExportView }): JSX.Element {
           ({view.secrets.map((s) => `${s.name} in ${s.file}`).join(', ')}). Put the values back by hand after importing.
         </p>
       ) : null}
-      {view.warnings.map((warning) => <div key={warning} className="banner banner--warn">{warning}</div>)}
+      {view.warnings.map((warning) => <Banner key={warning} tone="warn">{warning}</Banner>)}
     </div>
   );
 }
@@ -252,10 +252,10 @@ function FetchSkill({ wanted, preview, pending, onImport, onCancel }: {
     <div className="stack" style={{ marginTop: 'var(--s3)' }} aria-label="Import a pinned skill">
       <SkillPreview preview={preview} />
       {preview.problem === null && !matches ? (
-        <div className="banner banner--warn">
+        <Banner tone="warn">
           The source now has different files ({preview.shortHash ?? 'unknown'}) from the ones your setup pins ({wanted.hash.slice(0, 12)}).
           Importing them would not supply {wanted.name} v{wanted.version}. Ask for the files it was exported with, or change the pin.
-        </div>
+        </Banner>
       ) : null}
       <div className="row" style={{ gap: 'var(--s2)' }}>
         <Button variant="primary" disabled={!matches || pending} onClick={onImport}>
@@ -313,13 +313,12 @@ function Preview({ view, choices, onChoose, onFetch, fetchingName }: {
                 {item.choice === null ? (
                   <span className="dim">{item.problem !== null ? 'Keep mine' : '—'}</span>
                 ) : (
-                  <div aria-label={`Choice for ${item.name}`}>
-                    <Segmented
-                      value={choices[item.id] ?? item.choice}
-                      options={[{ value: 'mine', label: 'Keep mine' }, { value: 'theirs', label: 'Take theirs' }]}
-                      onChange={(next) => onChoose(item.id, next)}
-                    />
-                  </div>
+                  <Segmented
+                    label={`Choice for ${item.name}`}
+                    value={choices[item.id] ?? item.choice}
+                    options={[{ value: 'mine', label: 'Keep mine' }, { value: 'theirs', label: 'Take theirs' }]}
+                    onChange={(next) => onChoose(item.id, next)}
+                  />
                 )}
               </td>
             </tr>

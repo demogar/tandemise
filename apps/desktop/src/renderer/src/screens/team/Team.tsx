@@ -16,7 +16,7 @@ import { MemberDrawer, memberSubtitle, type MemberTarget } from './MemberForm.js
 import { StaffingEditor, applyPreset, needsPick, presetOf } from './StaffingEditor.js';
 import { RolesPane } from './RolesPane.js';
 import { RelayTeam } from './RelayTeam.js';
-import { Badge, Button, Card, Tab, Tabs } from '@tandemise/design/react';
+import { Badge, Banner, Button, Card, Tab, Tabs, Truncate } from '@tandemise/design/react';
 
 export type TeamTab = 'people' | 'staffing' | 'roles';
 
@@ -111,10 +111,9 @@ function PeoplePane({
   return (
     <div className="stack" style={{ gap: 'var(--s4)' }}>
       {issues.map((issue) => (
-        <div key={issue} className="banner banner--warn">
-          <Icon name="alert" size={14} />
-          <span>{issue}</span>
-        </div>
+        <Banner key={issue} tone="warn" icon={<Icon name="alert" size={14} />}>
+          {issue}
+        </Banner>
       ))}
 
       <Card flush>
@@ -154,18 +153,19 @@ function PeoplePane({
       {/* Solo and agent-less is the default install, not a broken one: say what
           happens today and offer the one step that changes it. */}
       {actors.agents.length === 0 ? (
-        <div className="banner">
-          <Icon name="sparkle" size={15} className="dim" />
-          <span style={{ flex: 1 }}>
-            <span style={{ color: 'var(--text)', fontWeight: 550 }}>No agents yet.</span>{' '}
-            <span className="muted">
-              Every role runs on {enabledRuntimes.length > 0 ? namesOr(enabledRuntimes) : 'your enabled runtimes'}. Add an agent to pick which runtime does which role.
-            </span>
+        <Banner
+          icon={<Icon name="sparkle" size={15} className="dim" />}
+          action={
+            <Button onClick={onAddAgent}>
+              Add agent
+            </Button>
+          }
+        >
+          <span style={{ color: 'var(--text)', fontWeight: 550 }}>No agents yet.</span>{' '}
+          <span className="muted">
+            Every role runs on {enabledRuntimes.length > 0 ? namesOr(enabledRuntimes) : 'your enabled runtimes'}. Add an agent to pick which runtime does which role.
           </span>
-          <Button onClick={onAddAgent}>
-            Add agent
-          </Button>
-        </div>
+        </Banner>
       ) : null}
 
       {removedCount > 0 ? (
@@ -274,9 +274,9 @@ function StaffingPane({ actors }: { actors: Actors }): JSX.Element {
                   </option>
                 ))}
               </select>
-              <span className="muted truncate" style={{ fontSize: 'var(--fs-sm)' }} title={staffingSummary(patch, role.id, actors)}>
+              <Truncate className="muted" style={{ fontSize: 'var(--fs-sm)' }}>
                 {staffingSummary(patch, role.id, actors)}
-              </span>
+              </Truncate>
               <Button variant="ghost" onClick={() => { setStart(null); setStartCustom(false); setEditing(role); }}>
                 Edit
               </Button>

@@ -7,7 +7,7 @@ import { useDaemonMutation } from '../../lib/queries.js';
 import { showFlash } from '../../lib/notices.js';
 import { quietFor } from '../../lib/domain.js';
 import { relativeTime } from '../../lib/format.js';
-import { Button } from '@tandemise/design/react';
+import { Button, Chip, Tooltip, Truncate } from '@tandemise/design/react';
 
 /**
  * A mission nothing moves and nothing asks about (P9): what is stuck, and the
@@ -50,11 +50,11 @@ export function StalledRow({ stalled, bordered = false }: { stalled: InboxStalle
         <div className="list__title truncate">
           <Link href={`/missions/${stalled.missionId}`}>Stalled: {stalled.missionTitle}</Link>
         </div>
-        <div className="list__subtitle truncate" title={stalled.reason}>{stalled.reason}</div>
+        <Truncate as="div" className="list__subtitle">{stalled.reason}</Truncate>
         {act.isError ? <ErrorState error={act.error} /> : null}
       </div>
       <div className="list__aside">
-        <span className="chip chip--muted">Stalled</span>
+        <Chip muted>Stalled</Chip>
         <span className="dim" style={{ fontSize: 'var(--fs-xs)', minWidth: 56, textAlign: 'right' }}>{relativeTime(stalled.since)}</span>
         <Button disabled={act.isPending} onClick={press}>
           {act.isPending ? 'Working…' : stalled.action.label}
@@ -101,7 +101,9 @@ export function QuietRow({ run, bordered = false }: { run: InboxSilentRunView; b
         {wait.isError ? <ErrorState error={wait.error} /> : null}
       </div>
       <div className="list__aside">
-        <span className="chip chip--muted" title={`Tandemise stops it on its own only at its ${quietFor(run.budgetMs)} wall-time budget.`}>Quiet</span>
+        <Tooltip content={`Tandemise stops it on its own only at its ${quietFor(run.budgetMs)} wall-time budget.`}>
+          <Chip muted tabIndex={0}>Quiet</Chip>
+        </Tooltip>
         <Button
           variant="ghost"
           disabled={busy}

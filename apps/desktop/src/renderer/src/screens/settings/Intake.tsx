@@ -8,7 +8,7 @@ import { useWorkspace, useWorkspaceId } from '../../lib/workspace.js';
 import { showFlash } from '../../lib/notices.js';
 import { INTAKE_SOURCE_SECRETS, intakeSourceLabel, isShippedIntakeKind } from '../../lib/domain.js';
 import './Intake.css';
-import { Button, Card } from '@tandemise/design/react';
+import { Banner, Button, Card } from '@tandemise/design/react';
 
 /** The daemon's words for a refusal, as it said them (plan Global Constraints: "the UI shows the daemon's own words"). */
 function Refusal({ error }: { error: unknown }): JSX.Element {
@@ -37,7 +37,7 @@ export function IntakeSettings({ focus = false }: { focus?: boolean }): JSX.Elem
         <>
           {/* Outside the read-only fieldset: a brain moves the address, this computer's person confirms it (Ruling 23). */}
           <MovedAddresses view={view} />
-          {readOnly ? <div className="banner intake-settings__brain">Set in this project's brain.</div> : null}
+          {readOnly ? <Banner className="intake-settings__brain">Set in this project's brain.</Banner> : null}
           {/* The tracker's settings are read-only with a brain; its token, this computer's, never is. */}
           <TrackerCard view={view} readOnly={readOnly} />
           <fieldset className="intake-settings__fieldset" disabled={readOnly}>
@@ -72,19 +72,27 @@ function MovedAddresses({ view }: { view: IntakeConfigView }): JSX.Element | nul
   return (
     <div className="intake-settings__moved" aria-label="Moved addresses">
       {moved.map((m) => (
-        <div key={m.sourceId ?? 'tracker'} className="banner banner--warn intake-settings__moved-item" role="alert" data-intake-moved={m.sourceId ?? 'tracker'}>
+        <Banner
+          key={m.sourceId ?? 'tracker'}
+          tone="warn"
+          live="assertive"
+          className="intake-settings__moved-item"
+          data-intake-moved={m.sourceId ?? 'tracker'}
+          action={
+            <div className="row intake-settings__actions">
+              <Button variant="primary" disabled={confirm.isPending}
+                onClick={() => confirm.mutate(m.sourceId, { onSuccess: () => showFlash('Using the new address.') })}>
+                Use the new address
+              </Button>
+            </div>
+          }
+        >
           <p className="intake-settings__moved-text">
             {m.sourceId === null ? null : <span className="mono">{m.label}: </span>}
             {m.message}
           </p>
           <p className="muted intake-settings__moved-saved">Saved for <span className="mono">{m.saved}</span>.</p>
-          <div className="row intake-settings__actions">
-            <Button variant="primary" disabled={confirm.isPending}
-              onClick={() => confirm.mutate(m.sourceId, { onSuccess: () => showFlash('Using the new address.') })}>
-              Use the new address
-            </Button>
-          </div>
-        </div>
+        </Banner>
       ))}
       {confirm.isError ? <Refusal error={confirm.error} /> : null}
     </div>

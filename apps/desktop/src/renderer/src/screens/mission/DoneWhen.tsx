@@ -5,6 +5,7 @@ import { StatusBadge } from '../../components/primitives.js';
 import type { Tone } from '../../lib/format.js';
 import { useMissionCriteria } from '../../lib/queries.js';
 import { ArtifactReader } from '../artifacts/ArtifactReader.js';
+import { Truncate } from '@tandemise/design/react';
 
 /**
  * The mission's Done-when ledger, at the top of the feed (P5 spec §9).
@@ -41,9 +42,9 @@ export function DoneWhen({ missionId }: { missionId: string }): JSX.Element | nu
             <>
               <span className="mono muted">{row.key}</span>
               <div className="list__main">
-                <div className="list__title" title={row.statement}>
+                <Truncate as="div" className="list__title">
                   {row.statement}
-                </div>
+                </Truncate>
                 <div className="list__subtitle truncate">{traceLine(row)}</div>
               </div>
               <div className="list__aside">
