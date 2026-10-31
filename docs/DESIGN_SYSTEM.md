@@ -192,6 +192,57 @@ Status always maps through `Tone` (`lib/format.ts`):
 `running | blocked | failed | succeeded | pending`. Add a tone there and in
 `tokens.ts` together.
 
+## Renderer audit
+
+An inventory of the presentational patterns in `apps/desktop/src/renderer/src`,
+taken on 2026-10-31 (after #75), to decide what belongs in `@tandemise/design`
+and what stays app code. Counts are occurrences in `.tsx` files. "Package"
+means the pattern becomes a component in `@tandemise/design/react` with its CSS
+in `@tandemise/design/components.css`; "app" means it stays in the desktop
+because it carries product logic or is used in one place.
+
+### What is duplicated or generic
+
+| Pattern | Today | Count | Finding | Decision |
+|---|---|---|---|---|
+| Button | raw `<button className="btn …">` (also on 13 `<Link>`s and 4 `<span>`s), CSS in `styles/controls.css` | ~275 | Same markup typed by hand everywhere; variant classes composed with template strings in 7 places; the busy state is a label swap (`Working…`, `Holding…`, `Continuing…`) with no `aria-busy`; icon-only buttons rely on each caller remembering `aria-label` | Package `Button` (variants, sizes, `loading`, icon-only requires a label) |
+| `btn--sm` | 15 call sites | 15 | **No rule defines `.btn--sm`**, so those buttons render at the default 30px. | Kept as a no-op so nothing moves; listed under open questions |
+| Status badge / pill | `StatusBadge` + raw `badge badge--{tone}` | 17 + 35 | Two ways to draw the same pill; `badge--pending` is used once but not defined (falls back to the base, which is the pending look); the release badge mixes its own 14% wash | Package `Badge` + `StatusPill`; a `--risk-release-soft` role |
+| Status dot | `StatusDot` + raw `dot dot--{tone}` | 15 + 8 | Pulse animation has a literal 1.9s | Package `StatusDot`; `--duration-pulse` |
+| Card | raw `className="card"`, `card--flush`, `card__head/__title/__body` | ~100 | Structure (head/title/body) is re-typed; no shared component | Package `Card` (`flush`, `title`, `actions`) |
+| Dialog | `Modal` / `ConfirmDialog` (`components/Modal.tsx`), `Drawer`, `CommandPalette`, `TerminalPanel` | 18 + 12 + 8 + 1 + 1 | The Escape stack lives in `Modal.tsx` and only Modal/Drawer use it; the palette and terminal have their own key handling. Focus moves in, but Tab can leave the dialog and focus is not returned to the opener on close. The scrim colour, the z-index (50, 55 for the terminal, 60 for the flash) and the enter animations are literals | Package `Dialog` (focus trap, Escape via a shared layer stack, focus return, `aria-labelledby`); the stack hook (`useLayer`) is exported so `Drawer` keeps one stack with it. The terminal keeps its own chrome (it must let Escape through to the agent) |
+| Form field | `Field` in `primitives.tsx` (label wrapper), plus 3 hand-written `<label className="field">` | 108 + 3 | Hint/error are not tied to the control (`aria-describedby`), and an error is not `aria-invalid` | Package `Field`: wrapping mode (unchanged markup) and a render-prop mode that wires `id`, `aria-describedby`, `aria-invalid` |
+| Empty state | `Empty` in `primitives.tsx`, 2 hand-written `.empty` blocks | 36 + 2 | Generic | Package `EmptyState` |
+| Tabs | `.tabs` / `.tab` on route `<Link>`s in Board, Brain, Evals, Team | 4 screens | `role="tablist"` / `role="tab"` set by hand; no arrow-key movement between tabs | Package `Tabs` + `Tab` (renders any element, e.g. a router link; Left/Right/Home/End move focus) |
+| Tooltip | native `title=` | ~150 | No styled tooltip anywhere; `title` is invisible to keyboard users and slow to appear | Package `Tooltip` (hover and focus, `aria-describedby`, Escape). Desktop call sites keep `title` for now: replacing 150 native tooltips is a visible change and its own PR |
+| Icon | `components/Icon.tsx` over `ICON_PATHS` | ~200 | Sizes in use: 10, 11, 12, 13 (75×), 14, 15, 16, 18, 22. Decorative only (`aria-hidden`) | Package `Icon` (decorative by default, `label` makes it an image) |
+| Logo | `components/Logo.tsx` over `LOGO` | 3 | Generic | Package `Logo` (`muted`, optional `title`) |
+| Segmented, Switch | `primitives.tsx` | 16, 15 | Generic, but no second consumer yet | App (candidates for the next round) |
+| Chip, IdChip, monogram, kbd, meter, stat | `controls.css`, `primitives.tsx` | 56, 8, 19, 6, –, 19 | Generic values display | App for now |
+| Banner / error state / skeleton | `.banner--{accent,warn}`, `ErrorState`, `Skeleton*` | 35, 132, 55 | `ErrorState` reads the daemon's error shape; the shimmer has a literal 1.3s | App; `--duration-shimmer` token |
+| "Now" line | `NowLine` in `TerminalPanel.tsx`, on HandoffCard, PlanPane, TaskDetail | 3 | Product-specific (a live agent's current action) | App |
+| Terminal panel chrome | `TerminalPanel` + `TerminalPanel.css` | 1 | Its own overlay at z-index 55, a dialog with no focus handling; colours already go through `--terminal-*` | App; z-index from the new scale |
+| Focus ring | `base.css` `:focus-visible` (2px, offset 2px), inputs swap it for a border colour | – | Width and offset are literals | `--focus-ring-width`, `--focus-ring-offset`, `--focus-ring` |
+| Control heights | `.btn` 30/36px, `.badge` 20px, `.chip` 22px, `.idchip` 18px | – | Literals; no density switch | `--control-h-*` tokens, and `data-density="compact"` |
+| Inline styles | `style={{…}}` | ~450 | Mostly one-off layout (`gap`, `flex`); all colours already go through roles (`check:design`) | Not addressed here |
+
+### Gaps the tokens close
+
+- **Focus:** `--focus-ring-width`, `--focus-ring-offset`, `--focus-ring` (an
+  alias of `--border-focus`).
+- **Stacking:** `--z-raised` 2, `--z-dropdown` 40, `--z-overlay` 50,
+  `--z-overlay-raised` 55, `--z-toast` 60, `--z-tooltip` 70: every literal
+  z-index in the renderer, named.
+- **Density:** `--control-h-xs` 20, `--control-h-sm` 26, `--control-h` 30,
+  `--control-h-lg` 36, scaled down under `[data-density='compact']`.
+- **Motion:** `--duration-slow` 240ms, `--duration-shimmer` 1.3s,
+  `--duration-pulse` 1.9s, `--ease-out` (enter), `--ease-in` (exit), next to
+  the existing `--duration-fast`, `--duration` and `--ease`.
+- **Colour roles:** `--scrim` and `--scrim-light` (the overlay washes),
+  `--status-*-line` (a status border), `--risk-release-soft`,
+  `--tooltip-background` / `--tooltip-text`, each with its contrast pair where
+  it carries text.
+
 ## Enforced rules
 
 `npm run check:design` (`scripts/check-design-system.mjs`) fails the build when:
