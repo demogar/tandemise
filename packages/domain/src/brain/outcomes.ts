@@ -145,8 +145,12 @@ export function foldOutcomes(events: readonly OutcomeEvent[]): OutcomeStats {
       }
     }
   }
+  // One entry per task, at its first result: a round's rerun is the same task, not another one people stepped in on.
+  const counted = new Set<string>();
   for (const s of steps) {
     const id = taskId(s);
+    if (counted.has(id)) continue;
+    counted.add(id);
     const stepped = sorted.some((o) => (o.kind === 'held' || o.kind === 'changes_requested') && taskId(o) === id);
     for (const name of s.profile.areas) (steppedIn[`${s.step!.class}|${name}`] ??= []).push(stepped);
   }

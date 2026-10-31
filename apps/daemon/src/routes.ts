@@ -244,6 +244,10 @@ export function buildRouter(services: TandemiseServices, options: { readonly tes
   r.post('/v1/missions/:id/lane', async (ctx) =>
     services.factory.setLane(asId(ctx.params.id!), (await ctx.body(setLaneRequest)).lane, ctx.caller));
   r.get('/v1/missions/:id/ship', (ctx) => services.factory.ship(asId(ctx.params.id!)));
+  // Project → Factory (#53 §10, §11): where the factory files came from, the routing they give, and writing the defaults.
+  r.get('/v1/workspaces/:id/factory', (ctx) => services.factory.factory(asId(ctx.params.id!)));
+  r.get('/v1/workspaces/:id/routing', (ctx) => services.factory.routing(asId(ctx.params.id!)));
+  r.post('/v1/workspaces/:id/factory/defaults', (ctx) => services.factory.writeDefaults(asId(ctx.params.id!), ctx.caller));
   r.post('/v1/missions/:id/replan', async (ctx) =>
     services.planning.replan(asId(ctx.params.id!), { note: (await ctx.body(replanMissionRequest)).note ?? null }));
   r.post('/v1/missions/:id/start', (ctx) => services.missions.start(asId(ctx.params.id!)));

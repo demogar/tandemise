@@ -1011,6 +1011,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       planDecisions: r.resolve(t.PLAN_DECISION_REPOSITORY),
       events: r.resolve(t.EVENT_REPOSITORY),
       recorder: r.resolve(t.EVENT_RECORDER),
+      factorySource: r.resolve(t.FACTORY_CONFIG_SOURCE),
     }), { source: SOURCE });
 
     bind(t.TANDEMISE_SERVICES, (r): TandemiseServices => ({

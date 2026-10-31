@@ -47,6 +47,8 @@ export interface PlanDecisionView {
   /** Rules that could not apply, and why. */
   readonly dropped: readonly string[];
   readonly steps: readonly PlanStepLineView[];
+  /** Looks from you the plan added, each as its reason: "People stepped in on 3 of the last 3 …, so you'll look at this one before it moves on." */
+  readonly approvals: readonly string[];
   /** "Couldn't tell from the tracker …; asked haiku: fix.", or null when it didn't run. */
   readonly tiebreak: string | null;
   readonly lightenedByPerson: boolean;
@@ -76,4 +78,81 @@ export interface ShipView {
   /** One sentence on where the ship step stands. */
   readonly status: string;
   readonly prs: readonly ShipPullRequestView[];
+}
+
+// ------------------------------------------------------------- routing (#53 §6, §10)
+
+/** One model's measured record in one bucket. */
+export interface RoutingModelView {
+  /** The model name as written on the ladder; "role model" for runs with none. */
+  readonly model: string;
+  readonly onLadder: boolean;
+  /** Similar steps measured. */
+  readonly tasks: number;
+  /** "92%", or "not measured" with no steps. */
+  readonly firstPass: string;
+  readonly success: string;
+  /** "$0.12", or "not reported" when no run reported it (never $0). */
+  readonly medianCost: string;
+  readonly medianTime: string;
+  /** Where a new step in this bucket starts today. */
+  readonly starting: boolean;
+}
+
+export interface RoutingBucketView {
+  readonly key: string;
+  /** "Quick lane · not sensitive". */
+  readonly title: string;
+  readonly models: readonly RoutingModelView[];
+  /** "Starts at sonnet: passed 23 of 25 similar implement steps first time." */
+  readonly startingLine: string;
+}
+
+export interface RoutingClassView {
+  readonly stepClass: string;
+  /** "Implement". */
+  readonly title: string;
+  /** "haiku, then sonnet, then opus; starts at sonnet until enough is measured." */
+  readonly ladderLine: string;
+  readonly buckets: readonly RoutingBucketView[];
+  /** Set when nothing in this class has been measured yet. */
+  readonly empty: string | null;
+}
+
+/** `GET /v1/workspaces/:id/routing`: per step class, per bucket, each model's measured stats and the starting model. */
+export interface RoutingView {
+  readonly workspaceId: string;
+  /** "A model is chosen once its success rate is confidently at least 80%, over at least 8 similar steps." */
+  readonly ruleLine: string;
+  readonly classes: readonly RoutingClassView[];
+  /** Set when no ladder is written: every step uses its role's model. */
+  readonly empty: string | null;
+}
+
+// -------------------------------------------------------------- factory files
+
+export type FactoryFileOrigin = 'project' | 'home' | 'shipped';
+
+export interface FactoryFileView {
+  readonly name: 'planner' | 'routing' | 'merge';
+  /** "Planner rules", "Model routing", "Merge policy". */
+  readonly title: string;
+  readonly origin: FactoryFileOrigin;
+  /** "From this project's repository", "From this computer", "Built in". */
+  readonly originLine: string;
+  readonly path: string | null;
+  /** `shipped`, or `sha256:<12 hex>` of the file read. */
+  readonly ref: string;
+  /** Rules that don't parse, in the daemon's words. */
+  readonly problems: readonly string[];
+}
+
+/** `GET /v1/workspaces/:id/factory`, and the answer to `POST …/factory/defaults`. */
+export interface FactoryView {
+  readonly workspaceId: string;
+  readonly files: readonly FactoryFileView[];
+  /** Where "Write the defaults" writes, or null when the project has no repository. */
+  readonly repositoryName: string | null;
+  /** Whether any file is still built in or from this computer, so writing the defaults would add one. */
+  readonly canWriteDefaults: boolean;
 }

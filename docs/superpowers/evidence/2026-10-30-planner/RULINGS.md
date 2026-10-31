@@ -95,3 +95,8 @@ spec (`docs/superpowers/specs/2026-10-30-planner-and-merge-design.md`).
   `routing.yaml` also adds `review.independent` to that step's gate, as a
   workflow's `independentOf` does. The "continued hold doesn't escalate" check
   waits for #50's hold service. Routing stats look back 180 days.
+- Ruling (Task 11): PM10 drives "people stepped in" with request-changes rounds
+  (holds are #50's), under a project planner.yaml with the desktop-ui area and
+  `holdApproval.minTasks: 3`. The fold counts each task once in `steppedIn`, however
+  many rounds it had. Task 11 was committed after Task 12 because it was
+  delegated and Task 12 is independent of it.

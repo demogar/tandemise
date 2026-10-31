@@ -75,7 +75,7 @@ desktop.unref();
 
 const keepGoing = process.argv.includes('--keep-going');
 const only = process.argv.find((a) => a.startsWith('--only='))?.slice('--only='.length).split(',');
-const scenarios = ['pm01.mjs', 'pm06.mjs', 'pm07.mjs'].filter((file) => !only || only.some((o) => file.includes(o)));
+const scenarios = ['pm01.mjs', 'pm06.mjs', 'pm07.mjs', 'pm10.mjs'].filter((file) => !only || only.some((o) => file.includes(o)));
 
 let failed = null;
 for (const file of scenarios) {
@@ -100,7 +100,7 @@ if (!process.argv.includes('--hold')) {
 
 // ---------------------------------------------------------------- summary
 const results = readdirSync(EVIDENCE).filter((f) => f.endsWith('.json')).map((f) => JSON.parse(readFileSync(join(EVIDENCE, f), 'utf8')));
-const order = ['PM1', 'PM6', 'PM7'];
+const order = ['PM1', 'PM6', 'PM7', 'PM10'];
 results.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
 const lines = [
   '# Planner acceptance (#53, PR 1)',

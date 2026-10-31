@@ -45,6 +45,28 @@ await attempt('fold', async () => {
   const stats = D.foldOutcomes([...five, held]).buckets['implement|quick|none'].sonnet;
   check('n, first pass, success and holds', stats.n === 5 && stats.firstPass === 4 && stats.success === 3 && stats.holds === 1, stats);
   check('an unreported cost is null, never 0', stats.medianCostUsd === null && stats.medianWallTimeMs === null, stats);
+  // A request-changes round reruns the same task: it is one task people stepped in on, not two.
+  const rounds = [1, 2].flatMap((n) => [
+    outcome(n * 10, 'step_result', { mission: `r${n}`, areas: ['desktop-ui'] }),
+    outcome(n * 10 + 1, 'changes_requested', { mission: `r${n}`, areas: ['desktop-ui'], step: { taskKey: 'implement' } }),
+    outcome(n * 10 + 2, 'step_result', { mission: `r${n}`, areas: ['desktop-ui'] }),
+  ]);
+  check('stepped in counts each task once, however many rounds it had', eq(D.foldOutcomes(rounds).steppedIn['implement|desktop-ui'], [true, true]), D.foldOutcomes(rounds).steppedIn);
+});
+
+await attempt('words', async () => {
+  section('words');
+  check('a routed step reads "Implement · sonnet · passed 23 of 25 … · if it fails, opus"',
+    D.stepLine({ key: 'implement', stepClass: 'implement', model: 'sonnet', reason: 'routed: sonnet passed 23 of 25 similar implement steps first time', escalate: ['opus'] })
+      === 'Implement · sonnet · passed 23 of 25 similar implement steps first time · if it fails, opus');
+  check('a step with no routed model keeps "role model"', D.stepLine({ key: 'implement', stepClass: 'implement', model: null, reason: 'role model', escalate: [] }) === 'Implement · role model');
+  check('a default rung says why',
+    D.stepLine({ key: 'implement', stepClass: 'implement', model: 'sonnet', reason: 'default: only 3 similar implement steps measured', escalate: [] })
+      === 'Implement · sonnet · the starting model, since only 3 similar implement steps measured');
+  check('the tiebreak line with its cost', D.tiebreakSentence({ reason: 'type_unknown', model: 'haiku', costUsd: 0.002, answer: { type: 'fix' }, error: null })
+    === "Couldn't tell from the tracker whether this is a fix or a feature; asked haiku (0.2¢): fix.");
+  check('a cost nobody reported is said so', D.tiebreakSentence({ reason: 'type_unknown', model: 'haiku', costUsd: null, answer: { type: 'fix' }, error: null })
+    === "Couldn't tell from the tracker whether this is a fix or a feature; asked haiku (cost not reported): fix.");
 });
 
 await attempt('engine outcomes', async () => {

@@ -88,6 +88,12 @@ export function WhyTheseSteps({ missionId, decision }: { missionId: string; deci
         {decision.steps.map((s) => <li key={s.key} className="why__step">{s.line}</li>)}
       </ol>
 
+      {decision.approvals.length > 0 ? (
+        <ul className="why__list" aria-label="Looks from you">
+          {decision.approvals.map((a) => <li key={a}>{a}</li>)}
+        </ul>
+      ) : null}
+
       {lane.isSuccess && asked === 'quick' ? (
         <p className="why__muted">Making it quick takes steps out, so it waits for you: approve the card in the feed.</p>
       ) : null}

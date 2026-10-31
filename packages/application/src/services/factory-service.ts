@@ -1,10 +1,16 @@
-import type { MissionDetail, PlanChipView, PlanDecisionView, ShipPullRequestView, ShipView } from '@tandemise/api-contract';
+import type {
+  FactoryFileView, FactoryView, MissionDetail, PlanChipView, PlanDecisionView, RoutingBucketView, RoutingClassView, RoutingModelView, RoutingView,
+  ShipPullRequestView, ShipView,
+} from '@tandemise/api-contract';
 import {
-  isTerminalMissionStatus, laneBecauseSentence, laneLine, moduleSentence, profileChips, profileLine, signalSentence, stepLine, tiebreakSentence,
-  type EventRepositoryPort, type MissionRepositoryPort, type MissionTask, type PlanDecision, type PlanDecisionRepositoryPort,
+  bucketWords, chooseRung, isTerminalMissionStatus, laneBecauseSentence, laneLine, moduleSentence, profileChips, profileLine, routeReasonWords,
+  signalSentence, stepClassWords, stepLine, tiebreakSentence, STEP_CLASSES,
+  type BucketModelStats, type EventRepositoryPort, type OutcomeStats, type RoutingConfig, type StepClass, type MissionRepositoryPort, type MissionTask, type PlanDecision, type PlanDecisionRepositoryPort,
   type ProfileSignal, type TaskRepositoryPort,
 } from '@tandemise/domain';
-import { TandemiseError, type MissionId } from '@tandemise/shared';
+import { TandemiseError, type MissionId, type WorkspaceId } from '@tandemise/shared';
+import { FACTORY_FILES, type FactoryConfigSourcePort, type FactoryFileName } from '../ports.js';
+import { SHIPPED_FILES, type FactoryConfig } from '../planning/factory-config.js';
 import type { PlannerService } from '../planning/planner-service.js';
 import type { EventRecorder, EventScope } from '../support/event-recorder.js';
 import type { Caller } from '../support/identity.js';
@@ -21,6 +27,8 @@ export interface FactoryServiceDeps {
   readonly planDecisions: PlanDecisionRepositoryPort;
   readonly events: Pick<EventRepositoryPort, 'listByMission'>;
   readonly recorder: EventRecorder;
+  /** Where "Write the defaults" writes the factory files. */
+  readonly factorySource: Pick<FactoryConfigSourcePort, 'write'>;
 }
 
 const STARTABLE: readonly string[] = ['PENDING', 'READY'];
@@ -87,6 +95,7 @@ export class FactoryService {
       )),
       dropped: decision.dropped.map((d) => `${d.name}: ${d.why}`),
       steps: decision.steps.filter((s) => s.stepClass !== 'ship').map((s) => ({ key: s.key, line: stepLine(s, titles.get(s.key)) })),
+      approvals: [...new Set(decision.approvals.map((a) => a.reason))],
       tiebreak: decision.tiebreak === null ? null : tiebreakSentence(decision.tiebreak),
       lightenedByPerson: decision.lightenedByPerson,
       canMakeQuick: open && decision.lane !== 'quick',
@@ -100,6 +109,60 @@ export class FactoryService {
     await this.deps.planner.switchLane(missionId, lane, caller);
     this.deps.recorder.invalidate('tasks', missionId);
     return this.planDecision(missionId);
+  }
+
+  /** Project → Factory: where each of the three files came from, and the rules in them that don't parse. */
+  async factory(workspaceId: WorkspaceId): Promise<FactoryView> {
+    const config = await this.deps.planner.config(workspaceId);
+    const repository = this.deps.planner.repositories(workspaceId)[0] ?? null;
+    const files: FactoryFileView[] = FACTORY_FILES.map((name) => ({
+      name,
+      title: FILE_TITLES[name],
+      origin: config.origins[name],
+      originLine: ORIGIN_WORDS[config.origins[name]],
+      path: config.paths[name],
+      ref: config.refs[name],
+      problems: config.problems.filter((p) => p.file === name).map((p) => p.message),
+    }));
+    return {
+      workspaceId,
+      files,
+      repositoryName: repository?.name ?? null,
+      canWriteDefaults: repository !== null && files.some((f) => f.origin !== 'project'),
+    };
+  }
+
+  /**
+   * Write the defaults into the repository: the shipped files the project
+   * doesn't have yet go into its default repository's `.tandemise/factory/`.
+   * A file the project already wrote is left as it is.
+   */
+  async writeDefaults(workspaceId: WorkspaceId, caller: Caller): Promise<FactoryView> {
+    void caller;
+    const repository = this.deps.planner.repositories(workspaceId)[0];
+    if (repository === undefined) {
+      throw new TandemiseError('PRECONDITION_FAILED', 'This project has no repository to write the factory files into.', { details: { workspaceId } });
+    }
+    const config = await this.deps.planner.config(workspaceId);
+    for (const name of FACTORY_FILES) {
+      if (config.origins[name] === 'project') continue;
+      await this.deps.factorySource.write(name, repository.path, SHIPPED_FILES[name]);
+    }
+    this.deps.recorder.invalidate('workspaces');
+    return this.factory(workspaceId);
+  }
+
+  /** Project → Factory → Routing: per step class with a ladder, per bucket, each model's record and where a new step starts. */
+  async routing(workspaceId: WorkspaceId): Promise<RoutingView> {
+    const { routing } = await this.deps.planner.config(workspaceId);
+    const stats = this.deps.planner.routingStats(workspaceId);
+    const classes = STEP_CLASSES.filter((cls) => routing.classes[cls] !== undefined).map((cls) => routingClass(cls, routing, stats));
+    return {
+      workspaceId,
+      ruleLine: `A model is chosen once its success rate is confidently at least ${Math.round(routing.target * 100)}%, over at least ${routing.minSamples} similar steps; until then a step starts at its class's default.`,
+      classes,
+      empty: classes.length === 0 ? "No model ladder is written yet, so every step uses its role's model." : null,
+    };
   }
 
   /** The ship step and the pull requests it opened (part 1: no CI or merge yet). */
@@ -151,4 +214,57 @@ function chips(decision: PlanDecision): readonly PlanChipView[] {
   };
   const of = (what: 'type' | 'size' | 'risk') => decision.profile.signals.filter((s) => about(s, what)).map(signalSentence);
   return [{ label: type, signals: of('type') }, { label: size, signals: of('size') }, { label: risk, signals: of('risk') }];
+}
+
+const FILE_TITLES: Readonly<Record<FactoryFileName, string>> = { planner: 'Planner rules', routing: 'Model routing', merge: 'Merge policy' };
+const ORIGIN_WORDS: Readonly<Record<FactoryConfig['origins'][FactoryFileName], string>> = {
+  project: "From this project's repository",
+  home: 'From this computer',
+  shipped: 'Built in',
+};
+
+const percent = (part: number, n: number): string => (n === 0 ? 'not measured' : `${Math.round((part / n) * 100)}%`);
+const usd = (v: number | null): string => (v === null ? 'not reported' : v < 0.01 ? `${(v * 100).toFixed(1)}¢` : `$${v.toFixed(2)}`);
+function duration(ms: number | null): string {
+  if (ms === null) return 'not reported';
+  const s = Math.round(ms / 1000);
+  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`;
+}
+
+/** One step class's routing: its ladder, and each bucket it has measured. */
+function routingClass(cls: StepClass, routing: RoutingConfig, stats: OutcomeStats): RoutingClassView {
+  const ladder = routing.classes[cls]!;
+  const buckets = Object.keys(stats.buckets).filter((b) => b.startsWith(`${cls}|`)).sort();
+  return {
+    stepClass: cls,
+    title: stepClassWords(cls),
+    ladderLine: `${ladder.ladder.join(', then ')}; a step starts at ${ladder.default} until enough similar steps are measured.`,
+    buckets: buckets.map((bucket): RoutingBucketView => {
+      // Risk "medium" never probes, so this is the rung a step in this bucket starts at.
+      const choice = chooseRung({ cls, bucket, risk: 'medium', config: routing, stats, taskOrdinal: 0 });
+      const measured = stats.buckets[bucket] ?? {};
+      const names = [...ladder.ladder, ...Object.keys(measured).filter((m) => !ladder.ladder.includes(m)).sort()];
+      return {
+        key: bucket,
+        title: bucketWords(bucket),
+        models: names.map((model): RoutingModelView => modelRow(model, measured[model], ladder.ladder.includes(model), choice?.model === model)),
+        startingLine: choice === null ? "Uses its role's model." : `Starts at ${choice.model}: ${routeReasonWords(choice.reason)}.`,
+      };
+    }),
+    empty: buckets.length === 0 ? `No similar ${stepClassWords(cls).toLowerCase()} steps measured yet; each starts at ${ladder.default}.` : null,
+  };
+}
+
+function modelRow(model: string, s: BucketModelStats | undefined, onLadder: boolean, starting: boolean): RoutingModelView {
+  const n = s?.n ?? 0;
+  return {
+    model: model === '' ? 'role model' : model,
+    onLadder,
+    tasks: n,
+    firstPass: percent(s?.firstPass ?? 0, n),
+    success: percent(s?.success ?? 0, n),
+    medianCost: n === 0 ? 'not measured' : usd(s?.medianCostUsd ?? null),
+    medianTime: n === 0 ? 'not measured' : duration(s?.medianWallTimeMs ?? null),
+    starting,
+  };
 }

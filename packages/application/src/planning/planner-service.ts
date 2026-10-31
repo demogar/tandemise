@@ -141,6 +141,16 @@ export class PlannerService {
     return this.#config(workspaceId, this.#orderedRepositories(workspaceId), true);
   }
 
+  /** The outcome fold routing reads (the same window the planner routes with), for the Routing view. */
+  routingStats(workspaceId: WorkspaceId): OutcomeStats {
+    return this.#stats(workspaceId);
+  }
+
+  /** The project's repositories, the default one first: where its factory files are read from and written to. */
+  repositories(workspaceId: WorkspaceId): readonly Repository[] {
+    return this.#orderedRepositories(workspaceId);
+  }
+
   async plan(mission: Mission, ctx: PlanContext): Promise<FactoryPlan | null> {
     if (!this.handles(mission)) return null;
     const scope: EventScope = { workspaceId: mission.workspaceId, missionId: mission.id };

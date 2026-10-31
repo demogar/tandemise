@@ -36,6 +36,9 @@ export const keys = {
   skillVersion: (id: string, version: number) => ['workspaces', 'skill-version', id, String(version)] as const,
   // Under 'workspaces': an export or an import changes what it says.
   setup: (ws?: string) => ['workspaces', 'setup', ws ?? 'all'] as const,
+  // Under 'workspaces': writing the defaults changes where the files come from; routing moves as outcomes land.
+  factory: (ws?: string) => ['workspaces', 'factory', ws ?? 'all'] as const,
+  routing: (ws?: string) => ['workspaces', 'routing', ws ?? 'all'] as const,
   mission: (id: string) => ['mission', id] as const,
   // Under 'mission' and scoped by id, so the mission's own invalidations refresh it.
   missionArtifacts: (id: string, all: boolean) => ['mission', id, 'artifacts', all ? 'all' : 'live'] as const,
@@ -153,6 +156,20 @@ export function useSetupStatus() {
     queryFn: () => daemon.setupStatus(workspaceId ?? ''),
     enabled: Boolean(workspaceId),
   });
+}
+
+/** Project → Factory (#53): the factory files and where each came from. */
+export function useFactory() {
+  const daemon = useDaemon();
+  const workspaceId = useWorkspaceId();
+  return useQuery({ queryKey: keys.factory(workspaceId), queryFn: () => daemon.factory(workspaceId ?? ''), enabled: Boolean(workspaceId) });
+}
+
+/** Project → Factory → Routing: measured outcomes per step class and bucket. */
+export function useRouting() {
+  const daemon = useDaemon();
+  const workspaceId = useWorkspaceId();
+  return useQuery({ queryKey: keys.routing(workspaceId), queryFn: () => daemon.routing(workspaceId ?? ''), enabled: Boolean(workspaceId), refetchInterval: 30_000 });
 }
 
 /** The project's backlog and work-in-progress limit (P7). */

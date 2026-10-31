@@ -1,5 +1,5 @@
 import type {
-  PlanDecisionView, SetLaneRequest, ShipView,
+  FactoryView, PlanDecisionView, RoutingView, SetLaneRequest, ShipView,
   IssuesOverview, RepositoryIssuesView, UpdateIssueSettingsRequest,
   ApiErrorBody,
   NotificationPreferencesView,
@@ -383,6 +383,21 @@ export class DaemonClient {
   /** The ship step and the pull requests it opened. */
   ship(id: string): Promise<ShipView> {
     return this.#get(`/missions/${id}/ship`);
+  }
+
+  /** Project → Factory: where the factory files came from, and their problems. */
+  factory(workspaceId: string): Promise<FactoryView> {
+    return this.#get(`/workspaces/${workspaceId}/factory`);
+  }
+
+  /** Writes the built-in factory files the project doesn't have into its repository. */
+  writeFactoryDefaults(workspaceId: string): Promise<FactoryView> {
+    return this.#request('POST', `/workspaces/${workspaceId}/factory/defaults`, {});
+  }
+
+  /** Per step class, per bucket: each model's measured record and where a new step starts. */
+  routing(workspaceId: string): Promise<RoutingView> {
+    return this.#get(`/workspaces/${workspaceId}/routing`);
   }
 
   deleteMission(id: string): Promise<void> {

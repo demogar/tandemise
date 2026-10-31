@@ -98,7 +98,7 @@ export function chooseRung(input: {
   let reason: string;
   if (most < input.config.minSamples) {
     model = cls.default;
-    reason = `default: only ${most} similar ${words} ${most === 1 ? 'step' : 'steps'} measured`;
+    reason = most === 0 ? `default: no similar ${words} steps measured on these models yet` : `default: only ${most} similar ${words} ${most === 1 ? 'step' : 'steps'} measured`;
   } else {
     const good = rows.find((r) => r.s !== undefined && wilsonLowerBound(r.s.success, r.s.n) >= input.config.target);
     if (good !== undefined) {

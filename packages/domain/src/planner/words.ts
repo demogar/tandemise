@@ -45,13 +45,51 @@ const CLASS_WORDS: Readonly<Record<StepClass, string>> = {
   architecture: 'Plan the approach', investigate: 'Investigate', resolve_conflicts: 'Resolve conflicts', ship: 'Ship',
 };
 
+/** A step class in a person's words: "Implement", "Plan the approach". */
+export function stepClassWords(cls: StepClass): string {
+  return CLASS_WORDS[cls];
+}
+
 /**
- * "Implement · role model". A step whose key isn't its class (a module's
- * "Security review") goes by its title. Routing (Task 10) fills in the model.
+ * Why routing chose a model, without the machine prefix: "passed 23 of 25
+ * similar implement steps first time", "the starting model: only 3 similar
+ * implement steps measured". A probe or a person's pin reads as it is.
  */
-export function stepLine(step: { readonly key: string; readonly stepClass: StepClass; readonly model: string | null }, title?: string): string {
+export function routeReasonWords(reason: string): string {
+  const routed = /^routed: \S+ (.*)$/.exec(reason);
+  if (routed !== null) return routed[1]!;
+  const fallback = /^default: (.*)$/.exec(reason);
+  if (fallback !== null) return `the starting model, since ${fallback[1]!}`;
+  if (reason === 'step override') return 'set on the step';
+  return reason;
+}
+
+/**
+ * "Implement · sonnet · passed 23 of 25 similar implement steps first time ·
+ * if it fails, opus". A step whose key isn't its class (a module's "Security
+ * review") goes by its title; a step with no routed model says "role model".
+ */
+export function stepLine(
+  step: { readonly key: string; readonly stepClass: StepClass; readonly model: string | null; readonly reason?: string; readonly escalate?: readonly string[] },
+  title?: string,
+): string {
   const name = step.key === step.stepClass || title === undefined ? CLASS_WORDS[step.stepClass] : title;
-  return `${name} · ${step.model ?? 'role model'}`;
+  if (step.model === null) return `${name} · role model`;
+  const parts = [name, step.model];
+  if (step.reason !== undefined && step.reason !== '' && step.reason !== 'role model') parts.push(routeReasonWords(step.reason));
+  const next = step.escalate?.[0];
+  if (next !== undefined) parts.push(`if it fails, ${next}`);
+  return parts.join(' · ');
+}
+
+const LANE_WORDS: Readonly<Record<Lane, string>> = { quick: 'Quick lane', standard: 'Standard lane', careful: 'Careful lane' };
+const SENSITIVITY_WORDS: Readonly<Record<string, string>> = { none: 'not sensitive', sensitive: 'sensitive areas', critical: 'critical areas' };
+
+/** A routing bucket (`class|lane|sensitivity`) in words: "Quick lane · not sensitive". */
+export function bucketWords(bucket: string): string {
+  const [, lane, sensitivity] = bucket.split('|');
+  const l = LANE_WORDS[lane as Lane] ?? 'Any lane';
+  return `${l} · ${SENSITIVITY_WORDS[sensitivity ?? 'none'] ?? 'not sensitive'}`;
 }
 
 /** Why the lane, in words. `because` is a person's choice, the default, or the rule that matched. */
@@ -63,21 +101,29 @@ export function laneBecauseSentence(because: string): string {
 }
 
 const TIEBREAK_WORDS: Readonly<Record<string, string>> = {
-  type_unknown: 'what kind of task this is',
+  type_unknown: 'from the tracker whether this is a fix or a feature',
   rules_disagree: 'which of its signals to believe',
   no_paths_many_repos: 'which repository it is about',
 };
 
-/** "Couldn't tell what kind of task this is; asked haiku (0.2¢): fix." */
+/** "Couldn't tell from the tracker whether this is a fix or a feature; asked haiku (0.2¢): fix." */
 export function tiebreakSentence(t: {
   readonly reason: string; readonly model: string | null; readonly costUsd: number | null;
   readonly answer: { readonly type: string } | null; readonly error: string | null;
 }): string {
-  const what = TIEBREAK_WORDS[t.reason] ?? 'what kind of task this is';
+  const what = TIEBREAK_WORDS[t.reason] ?? TIEBREAK_WORDS.type_unknown!;
   const who = t.model ?? 'a quick model';
-  const cost = t.costUsd === null ? '' : ` (${(t.costUsd * 100).toFixed(1)}¢)`;
+  // A cost nobody reported is said so, never shown as free.
+  const cost = t.costUsd === null ? ' (cost not reported)' : ` (${formatCents(t.costUsd)})`;
   if (t.answer === null) return `Couldn't tell ${what}; asked ${who}${cost}, got no usable answer, so it plans with careful defaults.`;
-  return `Couldn't tell ${what}; asked ${who}${cost}: ${t.answer.type}.`;
+  return `Couldn't tell ${what}; asked ${who}${cost}: ${TYPE_WORDS[t.answer.type as TaskType]?.toLowerCase() ?? t.answer.type}.`;
+}
+
+/** "0.2¢", or "$1.20" from a dollar up. */
+export function formatCents(usd: number): string {
+  if (usd >= 1) return `$${usd.toFixed(2)}`;
+  const cents = usd * 100;
+  return `${cents < 10 ? cents.toFixed(1).replace(/\.0$/, '') : Math.round(cents).toString()}¢`;
 }
 
 /** What a module adds, as the start of a sentence: "Added a security review". */
