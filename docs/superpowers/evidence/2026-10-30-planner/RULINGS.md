@@ -16,3 +16,14 @@ spec (`docs/superpowers/specs/2026-10-30-planner-and-merge-design.md`).
 - Ruling: `process.revert_of_auto` is added to the ship vocabulary in Task 1,
   because Task 17 names it as a decision fact and the vocabulary is the single
   list of facts.
+- Ruling: the migration is 022, the next free number on this branch's base
+  (origin/main has 001–021). The plan assumed 026 behind #50/#51/#52/#54;
+  the coordinator settled that the number is decided by merge order at
+  integration, so whoever merges later renumbers. All of #53's tables are in
+  this one migration.
+- Ruling: `merge_decisions` also stores `would_merge` and `reasons`, and
+  `plan_decisions` stores `lightened_by_person`: the ship card's "what would
+  have happened" and the `process.lightened_by_person` fact need them, and
+  re-deriving them from `factors` would duplicate decideMerge.
+- Ruling: the three repositories live in one file,
+  `packages/persistence/src/repositories/planner-repositories.ts`.

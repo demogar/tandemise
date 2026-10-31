@@ -43,6 +43,7 @@ export { SqliteMemberRepository } from './repositories/member-repository.js';
 export { SqliteFeedbackRepository } from './repositories/feedback-repository.js';
 export { SqliteRunInputRepository } from './repositories/run-input-repository.js';
 export { SqlitePlanProposalRepository } from './repositories/plan-proposal-repository.js';
+export { SqlitePlanDecisionRepository, SqliteMergeDecisionRepository, SqliteOutcomeRepository } from './repositories/planner-repositories.js';
 export { SqliteMissionCriteriaRepository } from './repositories/mission-criteria-repository.js';
 export { SqliteMissionQuestionRepository } from './repositories/mission-question-repository.js';
 export { SqliteLimitRepository } from './repositories/limit-repository.js';

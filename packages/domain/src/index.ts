@@ -8,6 +8,9 @@ export * from './event.js';
 export * from './staffing.js';
 export * from './staffing-presets.js';
 export * from './planner/index.js';
+export * from './planner/decision.js';
+export * from './merge/types.js';
+export * from './brain/outcomes.js';
 
 export * from './entities/mission.js';
 export * from './entities/member.js';

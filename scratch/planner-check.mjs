@@ -223,6 +223,62 @@ await attempt('modules only add', async () => {
   check('the implicit criterion is a source', D.CRITERION_SOURCES.includes('implicit') && D.IMPLICIT_CRITERION_KEY === 'I1');
 });
 
+await attempt('persistence', async () => {
+  section('persistence');
+  const { mkdtempSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { ids, systemClock } = await import('@tandemise/shared');
+  const { Container, compose } = await import('@tandemise/kernel');
+  const P = await import('@tandemise/persistence');
+  const container = new Container();
+  compose(container, P.persistenceModule({ path: join(mkdtempSync(join(tmpdir(), 'tdm-planner-')), 'db.sqlite'), clock: systemClock }));
+  const db = container.resolve(P.DATABASE);
+  const R = {
+    workspaces: container.resolve(P.WORKSPACE_REPOSITORY), missions: container.resolve(P.MISSION_REPOSITORY),
+    tasks: container.resolve(P.TASK_REPOSITORY), criteria: container.resolve(P.MISSION_CRITERIA_REPOSITORY),
+    plans: container.resolve(P.PLAN_DECISION_REPOSITORY), merges: container.resolve(P.MERGE_DECISION_REPOSITORY),
+    outcomes: container.resolve(P.OUTCOME_REPOSITORY),
+  };
+  check('schema version is the planner migration', P.schemaVersion(db) === P.SCHEMA_VERSION && P.MIGRATIONS.at(-1).name === 'planner_and_merge', P.MIGRATIONS.at(-1)?.name);
+  const ws = R.workspaces.create({ id: ids.workspace(), name: 'W', defaultRepositoryId: null, autonomy: { planApproval: 'ask', localCodeChanges: 'auto', externalWrites: 'policy', productionRelease: 'ask', financialActions: 'deny' }, concurrency: { maxTotalWorkers: 2, perRuntime: {} }, routing: {}, defaultAutonomyLevel: 'balanced', knowledge: { productVision: null, architecturePrinciples: null, codingStandards: null, designSystem: null, glossary: null } });
+  const mission = R.missions.create({ id: ids.mission(), workspaceId: ws.id, repositoryId: null, title: 'fix: typo', goal: 'g', laneRequest: 'quick' });
+  check('a mission keeps its lane request', R.missions.get(mission.id).laneRequest === 'quick');
+  let threw = null;
+  try { db.handle.prepare("UPDATE missions SET lane_request = 'fast' WHERE id = ?").run(mission.id); } catch (e) { threw = e.code; }
+  check('an unknown lane is refused by the schema', threw === 'SQLITE_CONSTRAINT_CHECK', threw);
+  const seeded = R.criteria.seed(mission.id, [{ key: D.IMPLICIT_CRITERION_KEY, statement: D.IMPLICIT_CRITERION, source: 'implicit', covers: [] }]);
+  const ddl = db.handle.prepare("SELECT sql FROM sqlite_master WHERE name = 'mission_criteria'").get().sql;
+  check('an implicit criterion is stored', seeded[0]?.source === 'implicit' && ddl.includes("'implicit'"), ddl);
+  const now = new Date().toISOString();
+  const task = R.tasks.add({ id: ids.task(), missionId: mission.id, repositoryId: null, executor: 'ship', waitPolicy: null, key: 'ship', title: 'Ship', objective: 'o', roleId: 'ship', dependsOn: [], requiredCapabilities: [], inputArtifacts: [], expectedOutputs: [], executionPolicy: { isolation: 'none', maxWallTimeMs: 1000, capabilities: [] }, approvalPolicy: { beforeStart: false, onCompletion: false }, retryPolicy: { maxAttempts: 1, backoffMs: 0, onExhausted: 'block' }, completionGate: null, stepClass: 'ship', status: 'PENDING', statusReason: null, attempts: 0, remediatesTaskId: null, orderHint: 0, createdAt: now, updatedAt: now, startedAt: null, finishedAt: null });
+  const back = R.tasks.get(task.id);
+  check('a ship task round-trips with its class', back.executor === 'ship' && back.stepClass === 'ship', back);
+  const decision = {
+    id: 'pld_1', missionId: mission.id, policyRef: 'shipped', basis: 'predicted',
+    profile: { type: 'fix', size: 'xs', risk: 'low', areas: [], repos: [], signals: [], source: 'rules', basis: 'predicted' },
+    lane: 'quick', laneBecause: 'x', workflowId: 'quick', modules: [], dropped: [], steps: [{ key: 'implement', stepClass: 'implement', model: null, reason: 'role model', escalate: [] }],
+    approvals: [], skipped: ['No plan approval.'], tiebreak: null, lightenedByPerson: false, createdAt: now,
+  };
+  R.plans.create(decision);
+  check('a plan decision round-trips', eq(R.plans.latest(mission.id), decision), R.plans.latest(mission.id));
+  const row = (id, at, extra = {}) => ({ id, workspaceId: ws.id, missionId: mission.id, repo: 'o/r', prNumber: 1, headSha: 'a'.repeat(40), policyRef: 'shipped', verdict: 'ask', score: 1, allowed: 2, wouldMerge: true, factors: [], reasons: ['Auto-merge is off for this project.'], facts: { files: 1 }, decidedAt: at, voidedAt: null, commentId: null, mergedAt: null, mergedBy: null, mergeSha: null, ...extra });
+  R.merges.create(row('mrg_2', '2026-10-30T10:00:01.000Z'));
+  R.merges.create(row('mrg_1', '2026-10-30T10:00:00.000Z'));
+  R.merges.update('mrg_2', { mergeSha: 'abc' });
+  const updated = R.merges.get('mrg_2');
+  check('a merge decision updates only its mutable fields', eq(updated, row('mrg_2', '2026-10-30T10:00:01.000Z', { mergeSha: 'abc' })), updated);
+  check('decisions list oldest first', eq(R.merges.listByWorkspace(ws.id, '1970-01-01').map((d) => d.id), ['mrg_1', 'mrg_2']));
+  check('latest for a repository', R.merges.latestFor(mission.id, 'o/r').id === 'mrg_2');
+  const outcome = (id, at) => ({ op: 'outcome', id, at, by: 'me', mission: mission.id, lane: 'quick', profile: { type: 'fix', size: 'xs', risk: 'low', areas: [] }, kind: 'step_result', step: { class: 'implement', model: null, attempt: 1, gatePassed: true, costUsd: null, wallTimeMs: null } });
+  R.outcomes.append({ ...outcome('out_3', '2026-10-30T10:00:03.000Z'), workspaceId: ws.id });
+  R.outcomes.append({ ...outcome('out_1', '2026-10-30T10:00:01.000Z'), workspaceId: ws.id });
+  R.outcomes.append({ ...outcome('out_2', '2026-10-30T10:00:02.000Z'), workspaceId: ws.id });
+  check('outcomes come back in time order', eq(R.outcomes.listByWorkspace(ws.id, '1970-01-01').map((o) => o.id), ['out_1', 'out_2', 'out_3']));
+  R.missions.remove(mission.id);
+  check('outcomes outlive the mission', R.outcomes.listByWorkspace(ws.id, '1970-01-01').length === 3 && R.merges.listByWorkspace(ws.id, '1970-01-01').length === 0);
+});
+
 // @sections
 
 console.log(`\n${passed} passed, ${failures.length} failed`);

@@ -6,7 +6,7 @@ import type {
   LeaseRepositoryPort, MemberRepositoryPort, MissionCriteriaRepositoryPort, MissionQuestionRepositoryPort, MissionRepositoryPort, LimitRepositoryPort, PersonRepositoryPort, RoutineRepositoryPort, RunScoreRepositoryPort, SkillRepositoryPort, IssueRepositoryPort,
   PlanProposalRepositoryPort, RepoRepositoryPort, RoleRepositoryPort, RunInputRepositoryPort,
   RunRepositoryPort, RuntimeProfileRepositoryPort, TaskRepositoryPort, UnitOfWork,
-  WorkspaceRepositoryPort,
+  WorkspaceRepositoryPort, PlanDecisionRepositoryPort, MergeDecisionRepositoryPort, OutcomeRepositoryPort,
 } from '@tandemise/domain';
 import type { TandemiseDatabase } from './database.js';
 
@@ -53,3 +53,6 @@ export const SKILL_REPOSITORY = token<SkillRepositoryPort>('persistence.SkillRep
 export const ISSUE_REPOSITORY = token<IssueRepositoryPort>('persistence.IssueRepository');
 export const RUN_SCORE_REPOSITORY = token<RunScoreRepositoryPort>('persistence.RunScoreRepository');
 export const EVAL_REPOSITORY = token<EvalRepositoryPort>('persistence.EvalRepository');
+export const PLAN_DECISION_REPOSITORY = token<PlanDecisionRepositoryPort>('persistence.PlanDecisionRepository');
+export const MERGE_DECISION_REPOSITORY = token<MergeDecisionRepositoryPort>('persistence.MergeDecisionRepository');
+export const OUTCOME_REPOSITORY = token<OutcomeRepositoryPort>('persistence.OutcomeRepository');

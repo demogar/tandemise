@@ -5,7 +5,7 @@ import type {
   EventRepositoryPort, ExecutionTargetRepositoryPort, FeedbackRepositoryPort, IntegrationRepositoryPort,
   LeaseRepositoryPort, MemberRepositoryPort, MissionCriteriaRepositoryPort, MissionQuestionRepositoryPort, MissionRepositoryPort, LimitRepositoryPort, RoutineRepositoryPort, RunScoreRepositoryPort, SkillRepositoryPort, IssueRepositoryPort, IssueTrackerPort, PullRequestSnapshotPort, PersonRepositoryPort, ProjectionBusPort, RepoRepositoryPort,
   PlanProposalRepositoryPort, RoleRepositoryPort, RunInputRepositoryPort, RunRepositoryPort, RuntimeProfileRepositoryPort, SecretStorePort,
-  TaskRepositoryPort, UnitOfWork, WorkspaceRepositoryPort,
+  TaskRepositoryPort, UnitOfWork, WorkspaceRepositoryPort, PlanDecisionRepositoryPort, MergeDecisionRepositoryPort, OutcomeRepositoryPort,
 } from '@tandemise/domain';
 import type { ArtifactMeasurePort, ArtifactParserPort, ArtifactTemplatePort, ProcessLivenessPort, SettingsStorePort, SystemEnvironmentPort, WorkflowSourcePort, OAuthCallbackPort, SkillFilesPort } from './ports.js';
 import type {
@@ -89,6 +89,10 @@ export const MEMBER_REPOSITORY = token<MemberRepositoryPort>('port.MemberReposit
 export const FEEDBACK_REPOSITORY = token<FeedbackRepositoryPort>('port.FeedbackRepository');
 export const RUN_INPUT_REPOSITORY = token<RunInputRepositoryPort>('port.RunInputRepository');
 export const PLAN_PROPOSAL_REPOSITORY = token<PlanProposalRepositoryPort>('port.PlanProposalRepository');
+/** The planner and risk-based merge's records (#53). */
+export const PLAN_DECISION_REPOSITORY = token<PlanDecisionRepositoryPort>('port.PlanDecisionRepository');
+export const MERGE_DECISION_REPOSITORY = token<MergeDecisionRepositoryPort>('port.MergeDecisionRepository');
+export const OUTCOME_REPOSITORY = token<OutcomeRepositoryPort>('port.OutcomeRepository');
 export const MISSION_CRITERIA_REPOSITORY = token<MissionCriteriaRepositoryPort>('port.MissionCriteriaRepository');
 export const MISSION_QUESTION_REPOSITORY = token<MissionQuestionRepositoryPort>('port.MissionQuestionRepository');
 export const LIMIT_REPOSITORY = token<LimitRepositoryPort>('port.LimitRepository');

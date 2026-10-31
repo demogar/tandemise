@@ -3,6 +3,9 @@ import type {
   ExecutionTargetId, EvalCaseId, EvalRunId, EvalSuiteId, EvalTrialId, IntegrationId, IssueLinkId, RoutineId, SkillId, TaskId, Timestamp, WorkerAssignmentId, WorkspaceId,
 } from '@tandemise/shared';
 import type { Mission, MissionDraft, MissionProgress, MissionStatus } from '../entities/mission.js';
+import type { PlanDecision } from '../planner/decision.js';
+import type { MergeDecisionPatch, MergeDecisionRecord } from '../merge/types.js';
+import type { OutcomeEvent } from '../brain/outcomes.js';
 import type {
   IssueComment, IssueCommentKind, IssueLink, IssueLinkDraft, IssueLinkPatch, IssueSyncPatch, IssueSyncSettings,
 } from '../entities/issue.js';
@@ -462,4 +465,27 @@ export interface EvalRepositoryPort {
   getTrial(id: EvalTrialId): EvalTrial | undefined;
   updateTrial(id: EvalTrialId, patch: Partial<Pick<EvalTrial, 'status' | 'reason' | 'score' | 'missionId' | 'startedAt' | 'finishedAt'>>): EvalTrial;
   listTrials(runId: EvalRunId): readonly EvalTrial[];
+}
+
+/** One row per planning pass (#53 §5.5). */
+export interface PlanDecisionRepositoryPort {
+  create(d: PlanDecision): void;
+  latest(missionId: MissionId): PlanDecision | undefined;
+  listByMission(missionId: MissionId): readonly PlanDecision[];
+}
+
+/** The merge decision's audit trail (#53 §8.6): append-only but for five fields. */
+export interface MergeDecisionRepositoryPort {
+  create(d: MergeDecisionRecord): void;
+  get(id: string): MergeDecisionRecord | undefined;
+  latestFor(missionId: MissionId, repo: string): MergeDecisionRecord | undefined;
+  listByMission(missionId: MissionId): readonly MergeDecisionRecord[];
+  listByWorkspace(workspaceId: WorkspaceId, sinceIso: string): readonly MergeDecisionRecord[];
+  update(id: string, patch: MergeDecisionPatch): void;
+}
+
+/** Outcomes (#53 §9.1), local until the brain's ledger takes them (#51). */
+export interface OutcomeRepositoryPort {
+  append(o: OutcomeEvent & { readonly workspaceId: WorkspaceId }): void;
+  listByWorkspace(workspaceId: WorkspaceId, sinceIso: string): readonly OutcomeEvent[];
 }
