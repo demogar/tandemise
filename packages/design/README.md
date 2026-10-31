@@ -59,9 +59,11 @@ your CSS / components
    theme, mix inside each branch (`--shadow-*` shows how).
 5. **Contrast is measured, not remembered.** `CONTRAST_PAIRS` lists what the
    system promises (body text >= 10:1 on every surface, secondary and tertiary
-   text and every status colour >= 4.5:1, accent text on accent >= 12:1, tooltip
+   text and every status colour >= 4.5:1, a badge's text on its own `-soft` wash
+   >= 4.5:1 over every surface, accent text on accent >= 12:1, tooltip
    text >= 10:1, the focus ring >= 3:1 on every surface), and the check
-   measures each pairing in both themes.
+   measures each pairing in both themes, a translucent wash as painted over the
+   surface beneath it.
 
 ### Brand anchors
 

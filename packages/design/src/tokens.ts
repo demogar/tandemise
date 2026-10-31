@@ -50,7 +50,7 @@ export const palette = {
   'sage-700': '#4c6d4f',
   'lichen-300': '#b3c6bb',
   'lichen-700': '#526962',
-  'lichen-750': '#536c69',
+  'lichen-750': '#49625f',
   'slate-300': '#a7b0cf',
   'indigo-300': '#999fdc',
   'indigo-500': '#4a4b96',
@@ -75,17 +75,19 @@ export const palette = {
   'paper-200': '#d0ddd5',
   'paper-300': '#bbccc4',
 
-  // signal
+  // signal. The -deep shades are the light theme's status text, which sits on
+  // its own 12-13% wash in a badge: each is darkened in OKLCH lightness only
+  // (hue and chroma kept) until it holds 4.5:1 there on every surface.
   'signal-blue-bright': '#9badf1',
-  'signal-blue-deep': '#4a5bac',
+  'signal-blue-deep': '#4657a7',
   'signal-green-bright': '#7cd591',
-  'signal-green-deep': '#317a45',
+  'signal-green-deep': '#1e6a36',
   'signal-amber-bright': '#efb656',
-  'signal-amber-deep': '#a06306',
+  'signal-amber-deep': '#8a4f00',
   'signal-red-bright': '#f47c6b',
-  'signal-red-deep': '#c13e2e',
+  'signal-red-deep': '#ae2b1c',
   'signal-violet-bright': '#c39dee',
-  'signal-violet-deep': '#7847a6',
+  'signal-violet-deep': '#7443a1',
 } as const;
 
 export type PaletteName = keyof typeof palette;
@@ -144,7 +146,9 @@ export const colorRoles = {
   /* text */
   text: { light: 'brand-indigo', dark: 'mint-50' },
   'text-secondary': { light: 'brand-slate', dark: 'lichen-300' },
-  // The lichen anchor itself on ink; darkened on paper, where it fails 4.5:1.
+  // The lichen anchor itself on ink; darkened on paper, where it fails 4.5:1,
+  // far enough to hold it on --surface-active (a tab count) and on its own wash
+  // (a pending badge) too.
   'text-tertiary': { light: 'lichen-750', dark: 'brand-lichen' },
   'text-inverse': { light: 'paper-0', dark: 'ink-950' },
 
@@ -167,7 +171,8 @@ export const colorRoles = {
   'status-blocked-soft': { wash: 'status-blocked', percent: 13 },
   'status-failed-soft': { wash: 'status-failed', percent: 12 },
   'status-succeeded-soft': { wash: 'status-succeeded', percent: 13 },
-  'status-pending-soft': { wash: 'status-pending', percent: 13 },
+  // Lighter than the others: lichen on ink sits closest to 4.5:1 on its own wash.
+  'status-pending-soft': { wash: 'status-pending', percent: 11 },
 
   /* a status as an edge: the border of a danger button or a status panel */
   'status-running-line': { wash: 'status-running', percent: 40 },

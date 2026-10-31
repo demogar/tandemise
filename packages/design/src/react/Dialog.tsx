@@ -1,6 +1,9 @@
 import { useId, useRef, type ReactElement, type ReactNode } from 'react';
 import { cx } from './cx.js';
-import { useDialogLayer } from './layer.js';
+import { FOCUSABLE_SELECTOR, useDialogLayer, type InitialFocus } from './layer.js';
+
+/** `data-autofocus` wherever it is in the dialog, else the first control. */
+const DIALOG_INITIAL_FOCUS = ['[data-autofocus]', FOCUSABLE_SELECTOR] as const;
 
 export interface DialogProps {
   /** The dialog's heading, and its accessible name. */
@@ -15,12 +18,12 @@ export interface DialogProps {
   /** 760px instead of 520px, for a form or a document. */
   wide?: boolean;
   /**
-   * What takes focus when the dialog opens: the first match inside it. The
-   * default puts it on the element marked `data-autofocus`, else the first
-   * button or field. Put `data-autofocus` on the safe choice, not the
+   * What takes focus when the dialog opens. The default puts it on the
+   * element marked `data-autofocus`, wherever it is in the dialog, else on the
+   * first control. An array ranks selectors: the first with a match wins. Put `data-autofocus` on the safe choice, not the
    * destructive one, unless confirming is the point of the dialog.
    */
-  initialFocus?: string;
+  initialFocus?: InitialFocus;
   /** A press on the scrim closes it. Turn off for a dialog that holds unsaved input. */
   closeOnScrim?: boolean;
   className?: string;
@@ -39,7 +42,7 @@ export function Dialog({
   footer,
   onClose,
   wide = false,
-  initialFocus = '[data-autofocus], button, input, textarea',
+  initialFocus = DIALOG_INITIAL_FOCUS,
   closeOnScrim = true,
   className,
 }: DialogProps): ReactElement {

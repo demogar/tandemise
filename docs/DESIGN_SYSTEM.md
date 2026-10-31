@@ -99,9 +99,12 @@ Each colour role is written once as `light-dark(<light>, <dark>)`.
 
 **Contrast.** Body text is above 10:1 in both themes. `--text-tertiary` is at
 least 4.5:1 on every surface it sits on, from `--canvas` to `--surface-hover`
-(6.6:1 or better in dark, 4.8:1 or better in light). Every `--status-*` colour
-is at least 4.5:1 on `--surface`, so it can be used as text as well as a dot.
-`--accent-text` on `--accent` is 12:1. `--tooltip-text` on
+(5.4:1 or better in dark, 5.5:1 or better in light). Every `--status-*` colour
+is at least 4.5:1 on `--surface`, so it can be used as text as well as a dot,
+and on its own `-soft` wash over every surface, so a badge, a status pill or a
+danger button reads at `--fs-xs` (the wash is measured as painted over the
+surface). `--text-tertiary` also holds 4.5:1 on `--surface-active` (a tab's
+count). `--accent-text` on `--accent` is 12:1. `--tooltip-text` on
 `--tooltip-background` is at least 10:1, and `--focus-ring` is at least 3:1 on
 every surface (WCAG 1.4.11).
 

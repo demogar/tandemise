@@ -146,10 +146,8 @@ export const ConfirmDialog: Story = {
     await userEvent.click(canvas.getByRole('button', { name: 'Cancel mission' }));
     const dialog = await canvas.findByRole('dialog', { name: 'Cancel this mission?' });
     const confirm = within(dialog).getByRole('button', { name: 'Cancel mission' });
-    // Focus moves into the dialog. Known gap: it lands on "Keep it", not on the
-    // `data-autofocus` button, because Dialog's default `initialFocus` is one
-    // selector list and querySelector returns the first match in document order.
-    await waitFor(() => expect(dialog).toContainElement(document.activeElement as HTMLElement));
+    // Focus lands on the `data-autofocus` button, though "Keep it" comes first.
+    await waitFor(() => expect(confirm).toHaveFocus());
     await userEvent.click(confirm);
     await expect(within(dialog).getByRole('button', { name: 'Cancelling…' })).toHaveAttribute('aria-busy', 'true');
     await waitFor(() => expect(canvas.getByText('Cancelled')).toBeInTheDocument(), { timeout: 3000 });

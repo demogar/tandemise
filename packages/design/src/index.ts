@@ -8,7 +8,7 @@
  */
 export * from './tokens.js';
 export { resolveColor, resolveTheme } from './resolve.js';
-export { contrast, luminance, CONTRAST_PAIRS } from './contrast.js';
+export { contrast, composite, luminance, pairContrast, CONTRAST_PAIRS, type ContrastPair } from './contrast.js';
 export { cssVariables, roleCss, tokensCss } from './css.js';
 export { tailwindPreset, tailwindColorName, tailwindThemeCss } from './tailwind.js';
 export { LOGO, LOGO_COLORS, logoSvg } from './logo.js';

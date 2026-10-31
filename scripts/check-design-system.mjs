@@ -94,9 +94,11 @@ const STORIES = join(design, 'stories');
 }
 for (const theme of ['light', 'dark']) {
   const resolved = tokens.resolveTheme(theme);
-  for (const [fg, bg, min] of tokens.CONTRAST_PAIRS) {
-    const ratio = tokens.contrast(resolved[fg], resolved[bg]);
-    if (ratio < min) fail(TOKENS_TS, 0, `--${fg} on --${bg} is ${ratio.toFixed(2)}:1 in ${theme}, below the ${min}:1 it promises`);
+  for (const pair of tokens.CONTRAST_PAIRS) {
+    const [fg, bg, min, on] = pair;
+    const ratio = tokens.pairContrast(resolved, pair);
+    const where = on ? `--${bg} over --${on}` : `--${bg}`;
+    if (ratio < min) fail(TOKENS_TS, 0, `--${fg} on ${where} is ${ratio.toFixed(2)}:1 in ${theme}, below the ${min}:1 it promises`);
   }
 }
 
