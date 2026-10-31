@@ -120,6 +120,23 @@ try {
   const badProposal = await d2.api('POST', '/v1/brain/proposals/nope/revert');
   check('reverting an unknown proposal is 404', badProposal.status === 404, badProposal.status);
 
+  section('daemon: a brain made from a project keeps the intake it had (#52 meets #51)');
+  const withIntake = (await d2.api('POST', '/v1/workspaces', { name: 'With intake', repositoryPath: d2.repoDir })).body?.workspace?.id;
+  const tracker = {
+    kind: 'youtrack', url: 'https://yt.test', project: 'GAR', board: 'project: GAR #Unresolved',
+    states: { ready: ['Open'], in_progress: 'In Progress', in_review: 'In Review', done: ['Done'], wont_do: ["Won't fix"] }, onComplete: 'in_review',
+  };
+  const localPut = await d2.api('PUT', `/v1/workspaces/${withIntake}/intake/config`, { tracker, intake: { sources: [{ id: 'web-form', kind: 'custom', instance: 'web-form' }] } });
+  check('the project has a local tracker and one source', localPut.status === 200 && localPut.body?.origin === 'local' && localPut.body.sources?.length === 1, localPut);
+  const made = await d2.api('POST', `/v1/workspaces/${withIntake}/brain`, { mode: 'local' });
+  check('it gets a brain on this machine', made.body?.status === 'local_only', made);
+  const afterLink = (await d2.api('GET', `/v1/workspaces/${withIntake}/intake/config`)).body;
+  check('intake now reads the brain', afterLink?.origin === 'brain', afterLink?.origin);
+  check('…which has the tracker the project had', afterLink?.tracker?.project === 'GAR' && afterLink.tracker.url === 'https://yt.test' && afterLink.tracker.states?.in_review === 'In Review', afterLink?.tracker);
+  check('…and its source, still on on this computer', afterLink?.sources?.some((s) => s.id === 'web-form') && afterLink.enabled?.['web-form'] === true, { sources: afterLink?.sources, enabled: afterLink?.enabled });
+  const brainTree = git(join(d2.home, 'brains', withIntake), 'ls-tree', '-r', '--name-only', 'HEAD');
+  check("the brain's first commit has factory/tracker.yaml and factory/intake.yaml", brainTree.includes('factory/tracker.yaml') && brainTree.includes('factory/intake.yaml'), brainTree);
+
   const side = (await d2.api('POST', '/v1/workspaces', { name: 'Side', repositoryPath: d2.repoDir })).body?.workspace?.id;
   const local = await d2.api('POST', `/v1/workspaces/${side}/brain`, { mode: 'local' });
   check('local mode is local_only', local.body?.status === 'local_only', local);

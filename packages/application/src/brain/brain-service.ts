@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { rename, stat } from 'node:fs/promises';
+import { stringify as stringifyYaml } from 'yaml';
 import type {
   BrainEntry, BrainHostPort, BrainMemory, BrainRecordRepositoryPort, BrainRepoPort, BrainWrite, DecisionRepositoryPort,
   IssueRepositoryPort, LedgerEvent, MissionRepositoryPort, RunRepositoryPort, RunScoreRepositoryPort, TaskRepositoryPort,
@@ -60,6 +61,26 @@ export interface BrainServiceDeps {
   readonly workflowSource?: import('../ports.js').WorkflowSourcePort;
   /** For promotions (Task 14): the promoter's runtime, the project's rows and the eval port. */
   readonly promotion?: Omit<PromotionsDeps, 'repo' | 'host' | 'records' | 'clock' | 'log' | 'paths'>;
+  /**
+   * The project's intake as it is set up before it has a brain (#52): a new
+   * brain's first commit carries it as `factory/tracker.yaml` and
+   * `factory/intake.yaml` (spec §3, "the P15 export of the current setup"),
+   * and the person making the brain keeps each source running here (Ruling 22).
+   */
+  readonly intake?: BrainIntakeExport;
+}
+
+/** What a new brain takes from the project's local intake settings. */
+export interface BrainIntakeExport {
+  /** The local configuration, or null when the project has none. */
+  current(workspaceId: WorkspaceId): {
+    readonly tracker: unknown;
+    readonly sources: readonly { readonly id: string }[];
+    readonly dailyCap: number;
+    readonly similarity: { readonly link: number; readonly ask: number };
+  } | null;
+  /** Records each source as on on this machine, by `caller`, unless this machine already says. */
+  keepOnHere(caller: Caller, workspaceId: WorkspaceId): void;
 }
 
 const SOURCE_LABEL: Readonly<Record<string, string>> = {
@@ -945,7 +966,6 @@ export class BrainService {
   }
 
   async #create(caller: Caller, workspaceId: WorkspaceId, owner: string, name: string): Promise<BrainView> {
-    void caller;
     const created = await this.deps.host.createRepo(owner, name);
     const remote = remoteOf(created.remote);
     const clonePath = await this.#freshClonePath(workspaceId);
@@ -955,6 +975,7 @@ export class BrainService {
     await this.deps.repo.setRemote(clonePath, remote);
     const pushed = await this.deps.repo.push(clonePath, DEFAULT_BRANCH, { setUpstream: true });
     const head = await this.deps.repo.head(clonePath);
+    this.deps.intake?.keepOnHere(caller, workspaceId);
     this.deps.brains.create({
       workspaceId, remote, defaultBranch: DEFAULT_BRANCH, clonePath, writerId: this.#writerId(),
       lastPulledSha: head, lastPushedSha: pushed === 'pushed' ? head : null, lastSyncAt: this.deps.clock.now(),
@@ -968,12 +989,12 @@ export class BrainService {
   }
 
   async #local(caller: Caller, workspaceId: WorkspaceId): Promise<BrainView> {
-    void caller;
     const clonePath = await this.#freshClonePath(workspaceId);
     await this.deps.repo.init(clonePath, DEFAULT_BRANCH);
     const project = this.deps.workspaces.view(workspaceId).workspace.name;
     await this.deps.repo.commit(clonePath, await this.#layout(workspaceId), `chore: create the brain for ${project}`, this.#author());
     const head = await this.deps.repo.head(clonePath);
+    this.deps.intake?.keepOnHere(caller, workspaceId);
     this.deps.brains.create({
       workspaceId, remote: null, defaultBranch: DEFAULT_BRANCH, clonePath, writerId: this.#writerId(),
       lastPulledSha: head, lastPushedSha: null, lastSyncAt: this.deps.clock.now(), lastSyncError: null,
@@ -1030,9 +1051,18 @@ export class BrainService {
       promotion: { autoApply: 'off', minHelpful: 3, minMissions: 2 },
       humanEdits: 'direct',
     };
+    // The intake the project has, so linking a brain keeps its Board and sources (#52 Ruling 21).
+    const intake = this.deps.intake?.current(workspaceId) ?? null;
+    const intakeFiles: { path: string; content: string }[] = [];
+    if (intake !== null && intake.tracker !== null && intake.tracker !== undefined) {
+      intakeFiles.push({ path: 'tracker.yaml', content: stringifyYaml({ tracker: intake.tracker }) });
+    }
+    if (intake !== null && intake.sources.length > 0) {
+      intakeFiles.push({ path: 'intake.yaml', content: stringifyYaml({ sources: intake.sources, dailyCap: intake.dailyCap, similarity: intake.similarity }) });
+    }
     return createBrainLayout({
       manifest,
-      setupFiles: rendered.files,
+      setupFiles: [...rendered.files, ...intakeFiles],
       knowledge: view.workspace.knowledge,
       decisions: decisionFiles(this.deps.decisions.listByWorkspace(workspaceId), scrub),
       skills,
