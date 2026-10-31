@@ -876,6 +876,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       skills: r.resolve(t.SKILL_SERVICE),
       issueSettings: r.resolve(t.ISSUE_REPOSITORY),
       issues: r.resolve(t.ISSUE_SERVICE),
+      integrations: r.resolve(t.INTEGRATION_REPOSITORY),
       workflows: r.resolve(t.WORKFLOW_SOURCE),
       folder: r.resolve(t.SETUP_FOLDER),
       settings: r.resolve(t.SETTINGS_STORE),

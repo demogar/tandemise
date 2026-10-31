@@ -144,6 +144,68 @@ if (wants('persistence')) {
   await container.dispose();
 }
 
+// ------------------------------------------------------------------ codec
+// A P15 snapshot fixture, used by the codec section and later ones.
+const roleFixture = (id, name, model, extra = {}) => ({
+  id, name, summary: `${name} summary`, instructions: `Do the ${id} work well.`, capabilities: ['repository.read'],
+  produces: [], consumes: [], isolation: 'worktree', outputContract: '', model, escalate: [], economyModel: null,
+  runtime: [], skills: [], ...extra,
+});
+const skillHash = 'a'.repeat(64);
+const snapshotFixture = {
+  project: {
+    name: 'Garipass', autonomy: { planApproval: 'ask', localCodeChanges: 'auto', externalWrites: 'policy', productionRelease: 'ask', financialActions: 'deny' },
+    maxTotalWorkers: 3, knowledge: { codingStandards: 'Use the design tokens.' }, wipLimit: null, monthlyLimits: [], missionLimits: [],
+  },
+  roles: [roleFixture('development', 'Developer', 'strong-model', { skills: [{ name: 'tdd', version: 1, hash: skillHash }] }), roleFixture('review', 'Reviewer', null)],
+  workflows: [{ file: 'build-feature.yaml', content: 'id: build-feature\nname: Build a feature\nsteps: []\n' }],
+  routines: [{ name: 'Nightly', kind: 'mission', goal: 'Tidy up', successCriteria: [], priority: 'normal', limits: null, workflow: null, schedule: { type: 'daily', at: '03:00' } }],
+  skills: [{ name: 'tdd', version: 1, hash: skillHash, source: { kind: 'git', url: 'https://github.com/garipass/skills', subpath: 'tdd' } }],
+  issues: null,
+};
+const mcpsFixture = [
+  { name: 'GitHub', provider: 'github', capabilities: ['github.read', 'github.write'], connect: { kind: 'cli', command: 'gh' } },
+  { name: 'YouTrack', provider: 'mcp', capabilities: ['issues.read', 'issues.write'], connect: { kind: 'mcp', url: 'https://youtrack.example.com/mcp' } },
+];
+// renderSetup(snapshotFixture).hash computed from origin/main's build, before
+// this change: a P15 export without the new files is byte-identical to today's.
+const P15_BASELINE_HASH = '717200293e5b';
+
+if (wants('codec')) {
+  section('codec: tracker, intake and mcps files; a brain root');
+  const base = app.renderSetup(snapshotFixture);
+  if (process.argv.includes('--print-baseline')) console.log('BASELINE', base.hash);
+  check('with no new fields the export is byte-identical to P15 (hash literal)', base.hash === P15_BASELINE_HASH, base.hash);
+  const nulls = app.renderSetup({ ...snapshotFixture, mcps: null, tracker: null, intake: null });
+  check('null mcps/tracker/intake add nothing', nulls.hash === base.hash);
+  const tracker = 'tracker:\n  kind: youtrack\n';
+  const full = app.renderSetup({ ...snapshotFixture, mcps: mcpsFixture, tracker, intake: null });
+  const added = full.files.map((f) => f.path).filter((p) => !base.files.some((b) => b.path === p)).sort();
+  check('the rendered set gains exactly mcps.yaml and tracker.yaml', JSON.stringify(added) === JSON.stringify(['mcps.yaml', 'tracker.yaml']), added);
+  const mcpsText = full.files.find((f) => f.path === 'mcps.yaml')?.content ?? '';
+  check('mcps.yaml names gh and no credential', mcpsText.includes('command: gh') && !/credentialRef|env|token/i.test(mcpsText), mcpsText);
+  const files = Object.fromEntries(full.files.map((f) => [f.path, f.content]));
+  const read = app.readSetup(files);
+  check('readSetup round-trips mcps', JSON.stringify(read.snapshot.mcps) === JSON.stringify(app.readSetup(Object.fromEntries(app.renderSetup(read.snapshot).files.map((f) => [f.path, f.content]))).snapshot.mcps) && read.snapshot.mcps?.length === 2, read.snapshot.mcps);
+  check('readSetup carries tracker byte for byte', read.snapshot.tracker === tracker && read.problems.length === 0, read.problems);
+  const items = app.diffSetup({ ...snapshotFixture, mcps: [] }, read, { library: [], stored: new Set(), repositories: [], integrations: [{ provider: 'github', name: 'GitHub' }] });
+  const yt = items.find((i) => i.id === 'mcps:YouTrack');
+  check('a missing MCP is an add row saying what to connect', yt?.action === 'add' && yt.detail === 'This project needs YouTrack. Connect it.' && yt.problem === null && yt.choice === null, yt);
+  check('a connected MCP is same', items.find((i) => i.id === 'mcps:GitHub')?.action === 'same');
+  check('the tracker is an item', items.find((i) => i.id === 'tracker:project')?.name === 'Tracker and state mapping');
+
+  const { FileSetupFolder } = await import('../apps/daemon/dist/setup-folder.js');
+  const dir = join(HOME, 'codec-brain');
+  mkdirSync(join(dir, 'factory', 'roles'), { recursive: true });
+  writeFileSync(join(dir, 'factory', 'tracker.yaml'), tracker);
+  writeFileSync(join(dir, 'factory', 'notes.txt'), 'hello');
+  writeFileSync(join(dir, 'factory', 'mcps.yaml'), mcpsText);
+  const quiet = { info() {}, warn() {}, error() {}, debug() {}, child() { return quiet; } };
+  const folder = await new FileSetupFolder(quiet).read(dir, { root: 'factory' });
+  check('FileSetupFolder reads a brain root', folder?.files['tracker.yaml'] === tracker && folder.files['mcps.yaml'] === mcpsText, folder);
+  check('and lists other files as ignored', folder?.ignored.includes('notes.txt'), folder?.ignored);
+}
+
 // ------------------------------------------------------------------ end
 rmSync(HOME, { recursive: true, force: true });
 console.log(`\n${passed} passed, ${failures.length} failed`);

@@ -145,9 +145,9 @@ export interface SetupFolderPort {
   /**
    * The files of `<folder>/.tandemise/` - or of `folder` itself when it is a
    * `.tandemise` folder - as path (relative to it) → text. Null when there is
-   * no such folder.
+   * no such folder. `root` names another setup folder: a brain passes `factory`.
    */
-  read(folder: string): Promise<{ readonly root: string; readonly files: Readonly<Record<string, string>>; readonly ignored: readonly string[] } | null>;
+  read(folder: string, opts?: { readonly root?: string }): Promise<{ readonly root: string; readonly files: Readonly<Record<string, string>>; readonly ignored: readonly string[] } | null>;
   /**
    * Stages writes (absolute path → text) next to their destinations. Nothing
    * is visible until `commit` renames them into place and deletes `remove`;
