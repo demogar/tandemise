@@ -165,12 +165,16 @@ export class GhPullRequestFlow implements PullRequestPort {
       return unknown;
     }
     const rules = await gh(this.#ctx(cwd), ['api', `repos/${repo}/rules/branches/${branch}`], { tolerateExitCodes: [1] });
-    if (rules.exitCode !== 0) return fromClassic ?? unknown;
+    // Rulesets unreadable: a requirement classic protection already sets holds; one it doesn't could still be set by a ruleset.
+    const tightenable = (c: { requiredChecks: boolean; reviewRequired: boolean; upToDate: boolean }) => ({
+      requiredChecks: c.requiredChecks ? true : null, reviewRequired: c.reviewRequired ? true : null, upToDate: c.upToDate ? true : null,
+    });
+    if (rules.exitCode !== 0) return fromClassic === null ? unknown : tightenable(fromClassic);
     let list: { type?: string; parameters?: Record<string, unknown> }[];
     try {
       list = JSON.parse(rules.stdout) as typeof list;
     } catch {
-      return fromClassic ?? unknown;
+      return fromClassic === null ? unknown : tightenable(fromClassic);
     }
     const review = list.some((r) => r.type === 'pull_request' && Number(r.parameters?.['required_approving_review_count'] ?? 0) > 0);
     const statusRule = list.find((r) => r.type === 'required_status_checks');

@@ -541,6 +541,10 @@ await attempt('review: rulesets and unknown protection', async () => {
   fake.setRepo(w.ghDir, REPO, { rules: undefined, rulesUnavailable: true });
   const unknown = await flow.protection(w.checkout, REPO, 'main');
   check('no classic protection and rulesets unreadable: unknown, so it asks', unknown.reviewRequired === null && unknown.requiredChecks === null, unknown);
+  // Classic protection asks for checks but no review; rulesets can't be read and could still ask for a review.
+  fake.setRepo(w.ghDir, REPO, { rulesUnavailable: true, protection: { required_status_checks: { strict: false, contexts: ['unit'] } } });
+  const partial = await flow.protection(w.checkout, REPO, 'main');
+  check('classic readable, rulesets unreadable: what classic requires holds, what rulesets could add is unknown', partial.requiredChecks === true && partial.reviewRequired === null && partial.upToDate === null, partial);
 });
 
 await attempt('review: a diff that cannot be measured asks', async () => {
