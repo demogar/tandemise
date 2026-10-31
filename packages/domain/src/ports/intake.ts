@@ -1,7 +1,9 @@
-import type { ClosureId, IntakeLinkId, IntakeTokenId, SignalId, Timestamp, TrackerItemId, WebhookMessageId, WorkspaceId } from '@tandemise/shared';
+import type {
+  Clock, ClosureId, IntakeLinkId, IntakeTokenId, Logger, SignalId, Timestamp, TrackerItemId, WebhookMessageId, WorkspaceId,
+} from '@tandemise/shared';
 import type {
   ClosureKind, IntakeAttachment, IntakeClosure, IntakeClosurePatch, IntakeConfig, IntakeLink, IntakeLinkedBy, IntakeLinkWritten, IntakeSignal,
-  IntakeSignalInput, IntakeSourcePatch, IntakeSourceState, IntakeTokenRow, SignalStatus, TrackerConfig, WebhookMessage,
+  IntakeSignalInput, IntakeSourceConfig, IntakeSourcePatch, IntakeSourceState, IntakeTokenRow, SignalStatus, TrackerConfig, WebhookMessage,
 } from '../entities/intake.js';
 import type { SourceEntry, TrackedItem, TrackerCommentMarker, TrackerCommentRow, TrackerItem, TrackerRef } from '../entities/tracker.js';
 
@@ -237,4 +239,95 @@ export interface IntakeClaimsPort {
   item(input: { readonly itemRef: string; readonly itemTitle: string; readonly itemUrl: string; readonly localRef: string }):
     Promise<{ readonly ok: true } | { readonly ok: false; readonly reason: string }>;
   releaseItem(itemRef: string, reason: 'done' | 'released'): Promise<void>;
+}
+
+// ------------------------------------------------------------------ runners (plan Task 10; spec §2)
+
+/**
+ * What a runner pushes: one `tandemise.intake/v1` signal. The domain cannot
+ * import the zod contract, so this is its domain mirror plus the schema
+ * line; the pipeline validates every push against the contract all the same,
+ * so a runner's bad signal is recorded as rejected like anyone else's.
+ */
+export type RunnerSignal = IntakeSignalInput & { readonly schema: 'tandemise.intake/v1' };
+
+/** A push's answer, field for field the contract's `IngestResultView`. */
+export interface RunnerPushResult {
+  readonly fingerprint: string | null;
+  readonly signalId: string | null;
+  readonly status: SignalStatus;
+  readonly reason: string | null;
+}
+
+/**
+ * What the host hands a runner (spec §2). The source's configuration comes
+ * from `IntakeConfigSource`; a secret is resolved by name through the
+ * source's `secret_refs` in the local secret store, so a runner never sees a
+ * ref or a config file. The cursor is the runner's own, opaque to everyone
+ * else, kept in `intake_sources.cursor`.
+ */
+export interface RunnerContext {
+  readonly workspaceId: WorkspaceId;
+  readonly source: IntakeSourceConfig;
+  /** Into the one pipeline (`IntakeService.ingest`), scoped to this project and source. */
+  push(signal: RunnerSignal): Promise<RunnerPushResult>;
+  readonly clock: Clock;
+  readonly secrets: { get(name: string): Promise<string | undefined> };
+  readonly log: Logger;
+  /** Aborted when the host stops the runner (shutdown, a changed configuration, a lost claim). */
+  readonly signal: AbortSignal;
+  readonly cursor: { get(): unknown; set(value: unknown): void };
+}
+
+/** A started runner. A poll runner answers `poll`; a socket runner listens until `stop`. */
+export interface RunnerHandle {
+  poll?(): Promise<void>;
+  stop(): Promise<void>;
+}
+
+/** One loop closure, handed to the runner of the signal's source (spec §8). */
+export interface Closure {
+  readonly kind: ClosureKind;
+  readonly signal: {
+    readonly fingerprint: string;
+    readonly key: string;
+    readonly url: string;
+    readonly instance: string;
+    readonly title: string;
+    /** The signal's `reply`, opaque to Tandemise. */
+    readonly reply: unknown;
+  };
+  readonly item: { readonly key: string; readonly url: string };
+  readonly prUrl: string | null;
+  readonly commit: { readonly sha: string; readonly repo: string } | null;
+}
+
+/** `externalId` is what was written at the source (a comment id), or null when nothing was. */
+export type ClosureResult =
+  | { readonly ok: true; readonly externalId: string | null }
+  | { readonly ok: false; readonly error: string; readonly retryable: boolean };
+
+/** A webhook delivery as the mailbox kept it: the body's bytes exactly as received. */
+export interface RunnerWebhookRequest {
+  readonly headers: Readonly<Record<string, string>>;
+  readonly body: Uint8Array;
+}
+
+/**
+ * One kind of source (spec §2). Shipped runners are contributed through
+ * `INTAKE_RUNNERS` (`@tandemise/integrations-core`); the application names
+ * none of them. Custom sources have no runner here: they push over HTTP or
+ * the CLI and read their closures from the feed.
+ *
+ * Additive to the spec's shape (plan Task 10): `close` and `fromWebhook` take
+ * the context too, since both need the source's secrets, and `fromWebhook`
+ * may answer a promise for the same reason. `fromWebhook` throws, in the
+ * source's words, when a delivery is not the source's (a bad signature).
+ */
+export interface IntakeRunner {
+  readonly kind: string;
+  readonly mode: 'poll' | 'socket' | 'webhook';
+  start(ctx: RunnerContext): RunnerHandle;
+  fromWebhook?(req: RunnerWebhookRequest, ctx: RunnerContext): Promise<readonly RunnerSignal[]> | readonly RunnerSignal[];
+  close?(closure: Closure, ctx: RunnerContext): Promise<ClosureResult>;
 }

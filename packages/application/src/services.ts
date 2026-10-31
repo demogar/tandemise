@@ -75,6 +75,8 @@ export interface TandemiseServices {
   readonly intake: import('./services/intake-service.js').IntakeService;
   /** The board from the primary tracker, and Start: a mission from one of its items (intake spec §7). */
   readonly tracker: import('./services/tracker-service.js').TrackerService;
+  /** The shipped intake runners, and "Check sources now" (intake spec §2, plan Task 10). */
+  readonly intakeRunners: import('./intake/runner-host.js').IntakeRunnerHost;
 }
 
 /** One contribution pinned as Evidence, with what a caller needs to type it next. */

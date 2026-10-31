@@ -103,6 +103,8 @@ export { SlidingWindowLimit } from './intake/rate-limit.js';
 export { MemoryBlobs } from './intake/memory-blobs.js';
 export { TrackerResolver, trackerSecretName } from './intake/tracker-resolver.js';
 export type { TrackerResolverDeps } from './intake/tracker-resolver.js';
+export { IntakeRunnerHost, NO_RUNNER_FOR_SOURCE } from './intake/runner-host.js';
+export type { IntakeRunnerHostDeps } from './intake/runner-host.js';
 export { ContributionError, ContributionServiceImpl, pickGitCredentialEnv } from './services/contribution-service.js';
 export type { ContributionDeps, ContributionErrorCode } from './services/contribution-service.js';
 export { EvalError, EvalService } from './services/eval-service.js';

@@ -1,6 +1,6 @@
 import { multiToken, token } from '@tandemise/kernel';
 import type { Clock, Logger } from '@tandemise/shared';
-import type { Integration, PrimaryTrackerFactory } from '@tandemise/domain';
+import type { IntakeRunner, Integration, PrimaryTrackerFactory } from '@tandemise/domain';
 import type { ToolBroker } from './broker.js';
 import type { ToolCatalog } from './catalog.js';
 import type { IntegrationTool } from './tool.js';
@@ -63,3 +63,11 @@ export const BUILT_IN_TOOLS = multiToken<IntegrationTool>('integrations/built-in
  * so the core resolves a tracker without naming any.
  */
 export const PRIMARY_TRACKER_FACTORIES = multiToken<PrimaryTrackerFactory>('intake/primary-tracker-factory');
+
+/**
+ * The shipped intake runners, one per source kind (intake spec §2, plan
+ * Task 10). Each provider package contributes its own, the way it
+ * contributes its tracker factory, so the application drives runners
+ * without naming any.
+ */
+export const INTAKE_RUNNERS = multiToken<IntakeRunner>('intake/runner');

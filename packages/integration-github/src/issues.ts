@@ -94,8 +94,11 @@ export class GhIssueTracker implements IssueTrackerPort {
     ], { timeoutMs: this.timeoutMs });
   }
 
-  async close(query: { repo: string; number: number; cwd?: string }): Promise<void> {
-    await gh(this.#ctx(query.cwd), ['issue', 'close', String(query.number), '--repo', query.repo], { timeoutMs: this.timeoutMs });
+  /** `reason` is gh's own (intake's GitHub runner closes a won't-do item as "not planned"); unset, gh's default. */
+  async close(query: { repo: string; number: number; cwd?: string; reason?: 'completed' | 'not planned' }): Promise<void> {
+    await gh(this.#ctx(query.cwd), [
+      'issue', 'close', String(query.number), '--repo', query.repo, ...(query.reason === undefined ? [] : ['--reason', query.reason]),
+    ], { timeoutMs: this.timeoutMs });
   }
 
   #ctx(cwd: string | undefined): GhContext {

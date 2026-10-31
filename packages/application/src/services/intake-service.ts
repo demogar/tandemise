@@ -131,9 +131,13 @@ export class IntakeService {
     return { workspaceId: asId<'WorkspaceId'>(workspace), sourceId: source, tokenId: null };
   }
 
-  /** One signal. Refusals (no tracker, unknown source, wrong source, rate) throw; an invalid signal is recorded as rejected. */
-  async ingest(scope: IntakeScope, raw: unknown): Promise<IngestResultView> {
-    const source = this.#admit(scope, [raw]);
+  /**
+   * One signal. Refusals (no tracker, unknown source, wrong source, rate) throw; an invalid signal is recorded as rejected.
+   * `fromRunner`: a shipped runner's push through the runner host (plan Task 10). The per-minute limit is
+   * spec §2's per-token limit for pushes from outside; a poll of 100 labelled issues is not one, and is not counted.
+   */
+  async ingest(scope: IntakeScope, raw: unknown, options?: { readonly fromRunner?: boolean }): Promise<IngestResultView> {
+    const source = this.#admit(scope, [raw], options?.fromRunner !== true);
     return this.#record(scope, source, raw);
   }
 
@@ -153,7 +157,7 @@ export class IntakeService {
    * project, its tracker, the source, a signal naming another source, and
    * the rate limit, which counts signals rather than requests.
    */
-  #admit(scope: IntakeScope, raws: readonly unknown[]): IntakeSourceConfig {
+  #admit(scope: IntakeScope, raws: readonly unknown[], rateLimited = true): IntakeSourceConfig {
     if (this.deps.workspaces.get(scope.workspaceId) === undefined) throw TandemiseError.notFound('Workspace', scope.workspaceId);
     const config = this.deps.config.read(scope.workspaceId);
     if (config.tracker === null) throw new TandemiseError('CONFLICT', "Set this project's tracker first.");
@@ -170,7 +174,7 @@ export class IntakeService {
       }
     }
     const key = scope.tokenId ?? `daemon:${scope.workspaceId}:${scope.sourceId}`;
-    if (!this.#limit.take(key, raws.length)) {
+    if (rateLimited && !this.#limit.take(key, raws.length)) {
       throw new TandemiseError('RATE_LIMITED', `Too many signals from this source: at most ${INTAKE_SIGNALS_PER_MINUTE} a minute.`, { retryable: true });
     }
     return source;

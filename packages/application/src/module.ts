@@ -79,6 +79,8 @@ import { TrackerService } from './services/tracker-service.js';
 import { LocalIntakeConfigSource } from './intake/config-source.js';
 import { MemoryBlobs } from './intake/memory-blobs.js';
 import { TrackerResolver } from './intake/tracker-resolver.js';
+import { IntakeRunnerHost } from './intake/runner-host.js';
+import { INTAKE_RUNNERS } from '@tandemise/integrations-core';
 
 const SOURCE = 'application';
 
@@ -387,7 +389,8 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       // Resolved per pass: issue sync creates missions through the mission service too.
       syncIssues: () => r.resolve(t.ISSUE_SERVICE).tick(),
       // Resolved per pass: intake retries and recovers in the background (plan Task 7).
-      syncIntake: () => { r.resolve(it.INTAKE_SERVICE).tick(); r.resolve(it.TRACKER_SERVICE).tick(); },
+      // The runner host starts due polls and drains the webhook mailbox there too (plan Task 10).
+      syncIntake: () => { r.resolve(it.INTAKE_SERVICE).tick(); r.resolve(it.TRACKER_SERVICE).tick(); r.resolve(it.INTAKE_RUNNER_HOST).tick(); },
       pullBacklog: () => r.resolve(t.BACKLOG_SERVICE).pull(),
       limits: r.resolve(t.LIMIT_SERVICE),
       // Resolved per pass, like the backlog: it reads the planner, composed after this.
@@ -868,6 +871,9 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       recorder: r.resolve(t.EVENT_RECORDER),
       clock: clock(r),
       log: log(r).child({ component: 'issues' }),
+      // "Use these issues as your tracker" (intake plan Task 10).
+      intakeConfig: r.resolve(it.INTAKE_CONFIG_SOURCE),
+      intake: r.resolve(it.INTAKE_REPOSITORY),
     }), { source: SOURCE });
 
     // Intake (spec 2026-10-30-intake-design.md, plan Task 3). The config comes
@@ -929,6 +935,22 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       trace: (missionId) => r.resolve(t.GATE_SERVICE).trace(missionId).trace,
       projections: r.resolve(t.PROJECTION_BUS),
       unitOfWork: r.resolve(t.UNIT_OF_WORK),
+      clock: clock(r),
+      log: log(r).child({ component: 'intake' }),
+    }), { source: SOURCE });
+    // The shipped runners (plan Task 10): contributed by the provider modules,
+    // read per pass, driven from the scheduler's `syncIntake`.
+    bind(it.INTAKE_RUNNER_HOST, (r) => new IntakeRunnerHost({
+      runners: () => r.resolveAll(INTAKE_RUNNERS),
+      config: r.resolve(it.INTAKE_CONFIG_SOURCE),
+      intake: r.resolve(it.INTAKE_REPOSITORY),
+      pipeline: r.resolve(it.INTAKE_SERVICE),
+      board: r.resolve(it.TRACKER_SERVICE),
+      claims: r.resolve(it.INTAKE_CLAIMS),
+      mailbox: r.resolve(it.WEBHOOK_MAILBOX),
+      secrets: r.resolve(t.SECRET_STORE),
+      workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
+      members: r.resolve(t.MEMBER_REPOSITORY),
       clock: clock(r),
       log: log(r).child({ component: 'intake' }),
     }), { source: SOURCE });
@@ -1035,6 +1057,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       evals: r.resolve(t.EVAL_SERVICE),
       intake: r.resolve(it.INTAKE_SERVICE),
       tracker: r.resolve(it.TRACKER_SERVICE),
+      intakeRunners: r.resolve(it.INTAKE_RUNNER_HOST),
     }), { source: SOURCE });
   });
 }

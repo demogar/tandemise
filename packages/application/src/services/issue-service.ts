@@ -8,6 +8,8 @@ import {
   githubRepoProblem, hasIssueMarker, isTerminalMissionStatus, issueCheckLabel, issueClosedNote, issueCreatedNote, issueEditedNote, issueGoal,
   issueLabelProblem, issueMissionTitle, issuePollProblem, issueReopenedNote, parseIssueCriteria,
 } from '@tandemise/domain';
+import type { IntakeConfigSource, IntakeRepositoryPort, IntakeSourceCadence, IntakeSourceConfig, TrackerConfig } from '@tandemise/domain';
+import { fingerprintOf, splitGithubRepo, trackerRef } from '@tandemise/domain';
 import type {
   CreateMissionRequest, IssueLinkView, IssuesOverview, RepositoryIssuesView, UpdateIssueSettingsRequest,
 } from '@tandemise/api-contract';
@@ -43,7 +45,17 @@ export interface IssueDeps {
   readonly recorder: EventRecorder;
   readonly clock: Clock;
   readonly log: Logger;
+  /**
+   * Intake (spec §10, plan Task 10): where `adoptAsTracker` writes the tracker
+   * and the source, and the signals P14's links move to. Optional, so a
+   * harness without intake composes; there the offer is never made.
+   */
+  readonly intakeConfig?: IntakeConfigSource;
+  readonly intake?: IntakeRepositoryPort;
 }
+
+/** Intake's contract limits a title to this (`INTAKE_MAX_TEXT`); a migrated link's longer title is cut. */
+const MAX_SIGNAL_TITLE = 200;
 
 /** A write-back failure is retried no sooner than this. */
 const RETRY_AFTER_MS = 60_000;
@@ -160,6 +172,103 @@ export class IssueService {
   importSettings(caller: Caller, repositoryId: RepositoryId, request: Omit<UpdateIssueSettingsRequest, 'enabled'>): void {
     this.configure(caller, repositoryId, { ...request, enabled: false });
     this.deps.issues.saveSettings(repositoryId, this.#requireRepository(repositoryId).workspaceId, { lastError: IMPORTED_ISSUES_NOTE });
+  }
+
+  /**
+   * "Use these issues as your tracker" (intake spec §10, plan Task 10): this
+   * repository's GitHub Issues become the project's primary tracker, and its
+   * issues arrive through intake from now on. In order, each step safe to run
+   * again, so a second call (or one after a crash) adds nothing:
+   *
+   * 1. every `issue_links` row becomes a `linked` signal, fingerprinted
+   *    `github:<repo>:<number>` as the GitHub runner reads it, with a done
+   *    `source_is_item` link to the issue itself, so nothing is filed again;
+   * 2. the tracker is written (when the project has none), mapped on labels;
+   * 3. a `github` source is added with P14's label, interval and close setting;
+   * 4. P14 is switched off here. Its missions keep their `issue_link_id`.
+   */
+  async adoptAsTracker(caller: Caller, repositoryId: RepositoryId): Promise<RepositoryIssuesView> {
+    const repository = this.#requireRepository(repositoryId);
+    const seat = requireSeat(this.deps, repository.workspaceId, caller);
+    const { intakeConfig, intake } = this.deps;
+    if (intakeConfig === undefined || intake === undefined) {
+      throw new TandemiseError('PRECONDITION_FAILED', 'Intake is not available in this build.');
+    }
+    if (intakeConfig.write === undefined) {
+      throw new TandemiseError('PRECONDITION_FAILED', "This project's intake is set in its brain. Change it there.");
+    }
+    // A check already running would link an issue after the move.
+    await this.#checking.get(repositoryId);
+    const settings = this.deps.issues.settings(repositoryId);
+    const repo = settings?.githubRepo ?? null;
+    if (settings === undefined || repo === null) {
+      throw new TandemiseError('PRECONDITION_FAILED', 'Turn issues on for this repository first.', { details: { repositoryId } });
+    }
+    const workspaceId = repository.workspaceId;
+    const current = intakeConfig.read(workspaceId);
+    const sameTracker = current.tracker?.kind === 'github-issues' && current.tracker.repo?.toLowerCase() === repo.toLowerCase();
+    if (current.tracker !== null && !sameTracker) {
+      throw new TandemiseError('CONFLICT', 'This project already has a tracker. Add this repository as a source in Settings → Intake instead.');
+    }
+    const sourceId = githubSourceId(repo);
+
+    // 1. The links, as signals already linked to their own issue. Only links
+    // read from this repository: a link from a repository set here before
+    // belongs to no source this project reads.
+    let migrated = 0;
+    this.deps.unitOfWork.transaction(() => {
+      for (const link of this.deps.issues.listLinks({ repositoryId })) {
+        if (link.githubRepo.toLowerCase() !== repo.toLowerCase()) continue;
+        const input = {
+          source: { kind: 'github', instance: repo },
+          key: String(link.number),
+          url: link.url,
+          title: link.title.length > MAX_SIGNAL_TITLE ? `${link.title.slice(0, MAX_SIGNAL_TITLE - 1)}…` : link.title,
+          ...(link.body === '' ? {} : { description: link.body }),
+          ...(link.author === null ? {} : { reporter: { handle: link.author, url: `https://${splitGithubRepo(repo).host ?? 'github.com'}/${link.author}` } }),
+        };
+        if (intake.findSignal(workspaceId, fingerprintOf(input)) !== undefined) continue;
+        const { signal } = intake.upsertSignal(workspaceId, sourceId, input, this.deps.clock.now());
+        const ref = trackerRef('github', `${repo}#${link.number}`);
+        const pending = intake.createPendingLink(workspaceId, signal.id, ref, 'source_is_item');
+        intake.completeLink(pending.id, ref);
+        intake.setStatus(signal.id, 'linked', null);
+        migrated++;
+      }
+    });
+
+    // 2 and 3. The tracker and the source.
+    const tracker: TrackerConfig = current.tracker ?? {
+      kind: 'github-issues',
+      repo,
+      board: `is:open label:${settings.label}`,
+      states: { ready: ['open'], in_progress: 'status: in progress', in_review: 'status: in review', done: ['closed'], wont_do: [] },
+      onComplete: 'in_review',
+    };
+    const source: IntakeSourceConfig = {
+      id: sourceId,
+      kind: 'github',
+      instance: repo,
+      every: `${settings.pollMinutes}m` as IntakeSourceCadence,
+      trigger: { label: settings.label },
+      closeOnDone: settings.closeOnComplete,
+      closeWontDo: false,
+    };
+    const sources = current.sources.some((s) => s.id === sourceId) ? current.sources : [...current.sources, source];
+    intakeConfig.write(workspaceId, {
+      ...(current.tracker === null ? { tracker } : {}),
+      intake: { sources, dailyCap: current.dailyCap, similarity: current.similarity },
+    });
+    // The runner acts as whoever turned issues on (P14 ruling 11), else the person adopting.
+    if (intake.source(workspaceId, sourceId) === undefined) {
+      intake.saveSource(workspaceId, sourceId, { kind: 'github', enabled: true, enabledBy: settings.enabledBy ?? seat.id });
+    }
+
+    // 4. P14 off here: the issues arrive through intake now.
+    this.deps.issues.saveSettings(repositoryId, workspaceId, { enabled: false, lastError: null });
+    this.deps.log.info('issues.adopted_as_tracker', { repositoryId, githubRepo: repo, sourceId, migrated });
+    this.#changed();
+    return this.repositoryView(repositoryId);
   }
 
   // ------------------------------------------------------------------ checks
@@ -503,6 +612,10 @@ export class IssueService {
       }),
       linked,
       checking,
+      // Intake spec §10: offered while issues are on and the project has no tracker.
+      offerTracker: s?.enabled === true && this.deps.intakeConfig !== undefined && this.deps.intakeConfig.read(repository.workspaceId).tracker === null,
+      // The whole card is the legacy path; it goes in the release after intake ships.
+      deprecated: true,
     };
   }
 
@@ -530,6 +643,12 @@ export class IssueService {
   #changed(): void {
     this.deps.recorder.invalidate('missions');
   }
+}
+
+/** Intake's source id for a GitHub repository: `github-<owner>-<name>`, lowercase, within the id rule's 63 characters. */
+export function githubSourceId(repo: string): string {
+  const slug = splitGithubRepo(repo).path.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  return `github-${slug}`.slice(0, 63).replace(/-+$/, '');
 }
 
 function linkView(link: IssueLink, missionId: string | null): IssueLinkView {

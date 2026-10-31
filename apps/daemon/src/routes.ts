@@ -154,6 +154,8 @@ export function buildRouter(services: TandemiseServices, options: { readonly tes
   r.patch('/v1/repositories/:id/issues', async (ctx) =>
     services.issues.configure(ctx.caller, asId(ctx.params.id!), await ctx.body(updateIssueSettingsRequest)));
   r.post('/v1/repositories/:id/issues/check', (ctx) => services.issues.checkNow(ctx.caller, asId(ctx.params.id!)));
+  // Intake spec §10: this repository's GitHub Issues become the project's tracker (plan Task 10).
+  r.post('/v1/repositories/:id/issues/use-as-tracker', (ctx) => services.issues.adoptAsTracker(ctx.caller, asId(ctx.params.id!)));
 
   // Intake (spec 2026-10-30-intake-design.md §2): custom runners push signals
   // with an intake token (the listener resolves it into ctx.intake) or the
@@ -181,6 +183,8 @@ export function buildRouter(services: TandemiseServices, options: { readonly tes
   // the item in the body: a GitHub ref holds `/` and `#`.
   r.get('/v1/workspaces/:id/board', (ctx) => services.tracker.board(asId(ctx.params.id!)));
   r.post('/v1/workspaces/:id/board/refresh', (ctx) => services.tracker.refreshBoard(asId(ctx.params.id!)));
+  // "Check sources now" (spec §2, plan Task 10): every poll at once, waited for, then the refreshed board.
+  r.post('/v1/workspaces/:id/intake/check', (ctx) => services.intakeRunners.checkNow(ctx.caller, asId(ctx.params.id!)));
   r.post('/v1/workspaces/:id/board/start', async (ctx) => {
     const workspaceId = asId<'WorkspaceId'>(ctx.params.id!);
     const mission = await services.tracker.start(ctx.caller, workspaceId, (await ctx.body(startBoardItemRequest)).key);

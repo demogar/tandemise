@@ -10,3 +10,4 @@ export { GhPullRequestSnapshots } from './pull-requests.js';
 export type { GhContext } from './gh.js';
 export { GhPrimaryTracker, githubStateLabels, githubTrackerFactory } from './primary-tracker.js';
 export type { GhPrimaryTrackerConfig } from './primary-tracker.js';
+export { GitHubIssuesRunner, issueSignal } from './intake-runner.js';

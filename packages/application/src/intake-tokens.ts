@@ -6,6 +6,7 @@ import type {
 import type { IntakeService } from './services/intake-service.js';
 import type { TrackerService } from './services/tracker-service.js';
 import type { TrackerResolver } from './intake/tracker-resolver.js';
+import type { IntakeRunnerHost } from './intake/runner-host.js';
 
 /**
  * Intake's application tokens (spec 2026-10-30-intake-design.md). They live
@@ -33,3 +34,5 @@ export const INTAKE_SIMILARITY = token<IntakeSimilarity>('port.IntakeSimilarity'
 export const INTAKE_CLAIMS = token<IntakeClaimsPort>('port.IntakeClaims');
 /** The board from the primary tracker, and Start (plan Task 8). */
 export const TRACKER_SERVICE = token<TrackerService>('application.TrackerService');
+/** Drives the shipped intake runners and "Check sources now" (plan Task 10). */
+export const INTAKE_RUNNER_HOST = token<IntakeRunnerHost>('application.IntakeRunnerHost');

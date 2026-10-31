@@ -185,6 +185,8 @@ export function bootstrap(config: DaemonConfig, options: { readonly localPersonN
   lifecycle.add(container.resolve(SCHEDULER));
   // Added after the scheduler, so shutdown stops the runner first; its live trial is left for boot recovery (P3b).
   lifecycle.add(container.resolve(EVAL_RUNNER));
+  // The intake runners (plan Task 10): shutdown stops every poll and socket runner.
+  lifecycle.add(container.resolve(applicationTokens.INTAKE_RUNNER_HOST));
 
   return { container, services, lifecycle, events, projections, log, testClock };
 }

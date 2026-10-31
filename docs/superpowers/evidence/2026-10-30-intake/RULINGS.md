@@ -267,3 +267,43 @@ was ambiguous or wrong, decided against the spec
     Tandemise starts), with no edits in between; a cancel posts nothing there (the spec names three milestones).
   - `deliveryLinks(artifacts, missionId)` (`support/delivery-links.ts`) takes the artifact repository and tags each
     link `pr` or `branch`; P14 reads only `label` and `url`, so its comments are unchanged.
+- Ruling 15 (the runner port, the host and P14's move, Task 10): decided from spec §2, §3 and §10:
+  - **The port.** The domain cannot import the zod contract, so a runner pushes a `RunnerSignal` (the domain
+    mirror `IntakeSignalInput` plus `schema`) and gets a `RunnerPushResult` (field for field `IngestResultView`);
+    the pipeline validates every push against `tandemise.intake/v1` all the same. `fromWebhook(req, ctx)` and
+    `close(closure, ctx)` both take the context (both need the source's secrets), `fromWebhook` may answer a
+    promise, and a delivery's body is the mailbox's `Uint8Array`.
+  - **Runner pushes are not rate-limited.** Spec §2's 60 a minute is per token, for pushes from outside; a poll
+    of 100 labelled issues is not one. `IntakeService.ingest` gains `{ fromRunner: true }`, used only by the host.
+  - **Which sources run.** A configured source runs when its project has a tracker and a shipped runner reads its
+    kind, unless this machine switched it off: an `intake_sources` row with `enabled: false`. The host's first
+    write of a source's row (`last_checked_at`, `last_error`, the cursor) creates it enabled. A custom kind has no
+    runner and is never flagged by the tick: it pushes over HTTP or the CLI.
+  - **Claims.** A refused source claim skips silently and is asked again no sooner than 30 s; a started socket
+    runner's claim is asked every 30 s, and a refusal stops it. A failed poll still records `last_checked_at`
+    (with `last_error`), so a broken source is retried at its interval, not every tick. A source taken out of the
+    configuration, switched off, or whose project lost its tracker is stopped on the next tick; a changed source
+    configuration restarts its runner.
+  - **The mailbox.** The local listener's path names only the source id, so the first project (in the
+    repository's order) configuring that id with a tracker takes the delivery. A delivery for an id no project
+    configures is acked and logged (there is no row to hold an error); one for a source whose kind has no runner,
+    or whose runner has no `fromWebhook`, is acked with "No runner for this source." on the source; one for a
+    source switched off here is acked and dropped.
+  - **The GitHub runner.** A title past the contract's 200 characters and a body past 20 000 are cut with `…`,
+    never rejected. The reporter's URL uses the repository's host (`https://<host>/<login>`). `close` writes one
+    comment per issue, marked `<!-- tandemise:closure -->` and found again among the signed-in user's comments, so
+    a retry after a crash edits it rather than posting twice. `done` closes as `--reason completed` (only with
+    `closeOnDone`); `not_planned` with `closeWontDo` comments "Not planned; tracked as <key>." and closes as
+    `--reason "not planned"` (`GhIssueTracker.close` gained the optional reason). A key that is not an issue number
+    fails without retry.
+  - **`adoptAsTracker`.** It needs the repository's `githubRepo` (not P14 being on, so a second call, after P14 is
+    off, is the idempotent no-op the plan asks for), waits for a check already running, and refuses with
+    `CONFLICT` "This project already has a tracker. Add this repository as a source in Settings → Intake instead."
+    when the project's tracker is anything but this repository's GitHub Issues, and with the brain sentence when
+    the config cannot be written here. Only links read from the current `githubRepo` migrate (a link from a
+    repository set before belongs to no source this project reads), keyed by the configured spelling so the
+    runner's fingerprints match. The source also carries P14's label as `trigger.label`, and its `intake_sources`
+    row is written enabled, `enabledBy` P14's switcher (else the adopter). `deprecated` is always true: the whole
+    card is the legacy path. The mapping is not checked against the repository's labels (`describe()`): the
+    `status: in progress` / `status: in review` labels must exist before Start can move an item (left to Task 14's
+    Settings or the person).
