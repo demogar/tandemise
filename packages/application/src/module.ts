@@ -1182,6 +1182,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       tasks: r.resolve(t.TASK_REPOSITORY),
       approvals: r.resolve(t.APPROVAL_REPOSITORY),
       artifacts: r.resolve(t.ARTIFACT_REPOSITORY),
+      events: r.resolve(t.EVENT_REPOSITORY),
       trace: (missionId) => r.resolve(t.GATE_SERVICE).trace(missionId).trace,
       projections: r.resolve(t.PROJECTION_BUS),
       unitOfWork: r.resolve(t.UNIT_OF_WORK),

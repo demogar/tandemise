@@ -1445,6 +1445,18 @@ try {
   check("a pull request plus a pending approval moves GAR-1 to 'In Review'", fakeW.issues.get('GAR-1')?.state === 'In Review' && WD.items.byKey(ws, 'GAR-1')?.writtenState === 'In Review', { state: fakeW.issues.get('GAR-1')?.state, written: WD.items.byKey(ws, 'GAR-1')?.writtenState });
   check('…and the comment links it', activity('GAR-1')[0].text.includes('\n\nPull request: https://github.com/acme/web/pull/7'), activity('GAR-1')[0].text);
 
+  // 3b. The ship step's pull request (#53) is no handoff link, only a ship.pr_opened event: it counts too.
+  fakeW.putIssue({ summary: 'Typo in the settings title', description: 'Settigns.\n\n## Done when\n- [ ] Settings', state: 'Open', type: 'Task' });
+  const typo = await tracker.start(WD.caller, ws, 'GAR-4');
+  await tracker.settle();
+  const typoSteps = await w.approvePlan(typo.id);
+  WD.container.resolve(pipeline.app.EVENT_RECORDER).record({ workspaceId: ws, missionId: typo.id, taskId: typoSteps[0]?.id ?? null }, { type: 'ship.pr_opened', repo: 'acme/web', number: 12, url: 'https://github.com/acme/web/pull/12', headSha: 'a'.repeat(40) });
+  w.pendingCard(typo.id);
+  pipeline.advance(61_000);
+  await w.pass();
+  check("the ship step's pull request plus a pending approval moves GAR-4 to 'In Review'", fakeW.issues.get('GAR-4')?.state === 'In Review', fakeW.issues.get('GAR-4')?.state);
+  check('…and its activity comment links that pull request', activity('GAR-4')[0]?.text.includes('Pull request: https://github.com/acme/web/pull/12') === true, activity('GAR-4')[0]?.text);
+
   // 4. COMPLETE → onComplete (In Review), with the criteria table.
   w.repo.approvals.update(card.id, { status: 'APPROVED', selectedOptionId: card.options[0]?.id ?? null, decidedAt: pipeline.clock.now() });
   w.complete(mission.id, steps[1].id);

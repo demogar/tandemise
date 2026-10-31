@@ -1,5 +1,5 @@
 import type {
-  ActivityCommentInput, ApprovalRepositoryPort, ArtifactRepositoryPort, CriteriaTrace, IntakeClaimsPort, IntakeConfigSource, IntakeRepositoryPort,
+  ActivityCommentInput, ApprovalRepositoryPort, ArtifactRepositoryPort, EventRepositoryPort, CriteriaTrace, IntakeClaimsPort, IntakeConfigSource, IntakeRepositoryPort,
   IntakeSignal, MemberRepositoryPort, Mission, MissionRepositoryPort, PersonRepositoryPort,
   PrimaryTracker, ProjectionBusPort, SourceEntry, TrackedItem, TrackerConfig, TrackerItem, TrackerItemRepositoryPort, TrackerRef, UnitOfWork,
   TaskRepositoryPort, WorkspaceRepositoryPort,
@@ -50,6 +50,8 @@ export interface TrackerServiceDeps {
   readonly approvals: Pick<ApprovalRepositoryPort, 'list'>;
   /** The mission's handoffs, for its pull request. */
   readonly artifacts: Pick<ArtifactRepositoryPort, 'listByMission'>;
+  /** The mission's events: the ship step's pull requests (#53), which are no handoff link. */
+  readonly events?: Pick<EventRepositoryPort, 'listByMission'>;
   /** The P5 trace, for the completed criteria table, as P14's completion comment. */
   readonly trace: (missionId: MissionId) => CriteriaTrace;
   /** Tells open windows the board changed; optional for harnesses. */
@@ -568,7 +570,7 @@ export class TrackerService {
   async #bringUpToDate(
     workspaceId: WorkspaceId, config: TrackerConfig, tracker: () => Promise<PrimaryTracker>, item: TrackedItem, mission: Mission,
   ): Promise<boolean> {
-    const links = deliveryLinks(this.deps.artifacts, mission.id);
+    const links = deliveryLinks(this.deps.artifacts, mission.id, this.deps.events);
     const facts = {
       mapping: { ...config.states, onComplete: config.onComplete },
       mission: { status: mission.status },
@@ -606,7 +608,7 @@ export class TrackerService {
    */
   async #syncActivity(
     workspaceId: WorkspaceId, tracker: PrimaryTracker | (() => Promise<PrimaryTracker>), config: TrackerConfig, item: TrackedItem, mission: Mission,
-    links: readonly DeliveryLink[] = deliveryLinks(this.deps.artifacts, mission.id),
+    links: readonly DeliveryLink[] = deliveryLinks(this.deps.artifacts, mission.id, this.deps.events),
   ): Promise<boolean> {
     const input = this.#activityInput(config, item, mission, links);
     const body = activityCommentBody(input);
