@@ -321,11 +321,19 @@ export class TaskExecutor {
     }
     // A hold the agent has not continued from yet pins the pass to the profile
     // holding its session: another profile has another config dir, where the
-    // session does not exist. A pinned profile no longer routed here runs the
-    // pass fresh on what is.
+    // session does not exist. Running it elsewhere would lose what the person
+    // did in that session, so a pinned profile no longer routed here blocks
+    // the task and the hold waits, unread.
     const continuation = this.#continuationFor(task);
-    const pinned = continuation === null ? [] : routed.filter((p) => p.id === continuation.runtimeProfileId);
-    const candidates = pinned.length > 0 ? pinned : routed;
+    if (continuation !== null && !routed.some((p) => p.id === continuation.runtimeProfileId)) {
+      return this.#block(task, scope, "The runtime holding this task's session is no longer available to its agent.");
+    }
+    // A session a restart left is continued on the profile that holds it when
+    // that profile can take the run; otherwise the attempt starts fresh elsewhere.
+    const sessionProfile = continuation?.runtimeProfileId ?? this.#latestResumable(task.id)?.runtimeProfileId ?? null;
+    const candidates = continuation !== null
+      ? routed.filter((p) => p.id === continuation.runtimeProfileId)
+      : [...routed].sort((a, b) => Number(b.id === sessionProfile) - Number(a.id === sessionProfile));
     const required = runtimeCapabilitiesFor(task);
     const selected = await deps.runtimeManager.select(candidates, required);
     // Selection awaits a health probe; a round upstream can hold this task
@@ -496,7 +504,8 @@ export class TaskExecutor {
         workingDirectory: target.workingDirectory,
         signal,
       });
-      await deps.harvester.prepare(target, scope, running);
+      // A continuation keeps the task's out folder: the person may have written the output during the hold.
+      await deps.harvester.prepare(target, scope, running, { keepOwn: continuation !== null });
       installed = await this.#installSkills(running, target, profile, adapter, scope);
       // Every pass of this attempt - the first run, a tighten, a delivery - gets the same skills.
       const actx: AttemptContext = { ...ctx, skills: installed };
@@ -733,6 +742,15 @@ export class TaskExecutor {
     });
     // Recorded before the run starts, so a round started while it runs already sees it as a consumer.
     deps.runInputs.record(runId, input.inputs);
+    // A handle on another profile cannot be resumed by this run or any run on
+    // this profile; left RESUMABLE, a later attempt routed back there would
+    // continue a session from before this one.
+    if (input.continueSession === undefined || input.continuation !== undefined) {
+      for (const stale of deps.runs.listByTask(task.id)) {
+        if (stale.status !== 'RESUMABLE' || stale.id === source?.id || stale.runtimeProfileId === profile.id) continue;
+        deps.runs.update(stale.id, { status: 'INTERRUPTED', errorMessage: 'Its session is on another runtime; a later attempt started fresh.' });
+      }
+    }
     // The hold is read once the run holding its session exists; an older one
     // left unread is superseded by it, and is not continued later either.
     if (input.continuation !== undefined) {
@@ -2338,10 +2356,15 @@ export class TaskExecutor {
 
   #resumableRun(taskId: TaskId, profile: RuntimeProfile, adapterSupportsResume: boolean): Run | null {
     if (!adapterSupportsResume) return null;
-    const runs = [...this.deps.runs.listByTask(taskId)].sort((a, b) => b.startedAt.localeCompare(a.startedAt));
-    const resumable = runs.find((r) => r.status === 'RESUMABLE' && r.externalSessionId !== null);
+    const resumable = this.#latestResumable(taskId);
     // As for a settled session: another profile's config dir does not have it, and resuming there silently starts fresh.
-    return resumable !== undefined && resumable.runtimeProfileId === profile.id ? resumable : null;
+    return resumable !== null && resumable.runtimeProfileId === profile.id ? resumable : null;
+  }
+
+  /** The task's latest run whose session a later attempt can take over, on whatever profile. */
+  #latestResumable(taskId: TaskId): Run | null {
+    const runs = [...this.deps.runs.listByTask(taskId)].sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+    return runs.find((r) => r.status === 'RESUMABLE' && r.externalSessionId !== null) ?? null;
   }
 
   /**

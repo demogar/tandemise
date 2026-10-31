@@ -316,6 +316,9 @@ section('engine: stopping into a hold and continuing from it');
     a: profile('a', [promptFile, write(brief()), cited(), done]),
     b: profile('b', [promptFile, write(brief()), cited(), done]),
     a5: profile('a5', [session('sess-a5'), promptFile, write(brief()), done]),
+    a6: profile('a6', [session('sess-a6'), promptFile, write(brief()), done]),
+    // Writes nothing: whatever it hands in is what the person left in the out folder.
+    c: profile('c', [promptFile, done]),
   };
   const caller = { personId: h.services.identity.localPerson().id };
   const ws = (await h.services.workspaces.create(caller, { name: 'Hold' })).workspace.id;
@@ -324,6 +327,7 @@ section('engine: stopping into a hold and continuing from it');
   const AG = {
     slow: agent('Slow', [P.slow]), quick: agent('Quick', [P.quick]),
     ab: agent('Two runtimes', [P.a, P.b]), a5b: agent('Moves runtimes', [P.a5, P.b]),
+    ba6: agent('Prefers its session', [P.b, P.a6]), c: agent('Hands in', [P.c]),
   };
 
   let seq = 0;
@@ -463,7 +467,53 @@ section('engine: stopping into a hold and continuing from it');
   await h.until(() => runsOf(five.id).length > 1 && idle(five.id), 20000);
   const r5b = runsOf(five.id)[1];
   check('5: the run routed to B does not resume A\'s session', r5b?.runtimeProfileId === P.b && resumedFrom(r5b) === null && r5b.externalSessionId !== 'sess-a5', { r5b, resumed: r5b && resumedFrom(r5b), s: task(five.id).status, why: task(five.id).statusReason, runs: runsOf(five.id).map((r) => [r.status, r.runtimeProfileId]) });
+  check('5: A\'s handle is retired once the fresh run on B starts', h.repo.runs.get(r5a.id)?.status === 'INTERRUPTED', h.repo.runs.get(r5a.id)?.status);
   h.repo.profiles.update(P.a5, { enabled: true });
+
+  // ---- 5b. A RESUMABLE run on an available profile is preferred over the agent's first runtime
+  {
+    h.repo.profiles.update(P.b, { enabled: false });
+    const pref = await addTask(AG.ba6);
+    await settled(pref.id);
+    h.repo.profiles.update(P.b, { enabled: true });
+    const [first] = runsOf(pref.id);
+    check('5b: setup: the first run was on A6 with a session', first?.runtimeProfileId === P.a6 && first.externalSessionId === 'sess-a6', first);
+    h.repo.runs.update(first.id, { status: 'RESUMABLE' });
+    const attempts = task(pref.id).attempts;
+    h.repo.tasks.update(pref.id, { status: 'READY', statusReason: null });
+    h.repo.missions.update(pref.mission.id, { status: 'EXECUTING' });
+    await h.until(() => runsOf(pref.id).length > 1 && idle(pref.id), 20000);
+    const second = runsOf(pref.id)[1];
+    check('5b: the restart resumes on A6, not on B listed first', second?.runtimeProfileId === P.a6 && resumedFrom(second) === 'sess-a6' && task(pref.id).attempts === attempts,
+      { second, resumed: second && resumedFrom(second), a: task(pref.id).attempts, attempts });
+  }
+
+  // ---- 8. A continuation whose runtime is gone blocks, and the hold waits unread
+  {
+    const gone = await addTask(AG.ab, { status: 'HELD', attempts: 1 });
+    const hg = hold(gone, { runtimeProfileId: P.a5 });
+    h.repo.tasks.update(gone.id, { status: 'READY', statusReason: null });
+    await h.until(() => task(gone.id).status === 'BLOCKED', 10000);
+    check('8: the task is BLOCKED and says why', task(gone.id).status === 'BLOCKED'
+      && task(gone.id).statusReason === "The runtime holding this task's session is no longer available to its agent.", { s: task(gone.id).status, r: task(gone.id).statusReason });
+    check('8: nothing ran and the hold is unread', runsOf(gone.id).length === 0 && h.repo.holds.get(hg.id)?.consumedAt === null, { runs: runsOf(gone.id).length, hold: h.repo.holds.get(hg.id) });
+  }
+
+  // ---- 9. Output written to the task's out folder during the hold survives into the continuation
+  {
+    const { writeFileSync } = await import('node:fs');
+    const kept = await addTask(AG.c, { status: 'HELD', attempts: 1 });
+    const out = join(kept.dir, '.tandemise', 'out', kept.id);
+    mkdirSync(out, { recursive: true });
+    writeFileSync(join(out, 'DesignBrief.md'), brief({ headline: 'Written during the hold' }));
+    hold(kept, { runtimeProfileId: P.c });
+    h.repo.tasks.update(kept.id, { status: 'READY', statusReason: null });
+    await settled(kept.id);
+    const harvested = h.repo.artifacts.listByTask(kept.id);
+    check('9: the continuation harvests what the person wrote during the hold', task(kept.id).status === 'SUCCEEDED'
+      && harvested.some((a) => a.type === 'DesignBrief' && a.handoff?.headline === 'Written during the hold'),
+      { s: task(kept.id).status, r: task(kept.id).statusReason, a: harvested.map((a) => [a.type, a.handoff?.headline]) });
+  }
 
   // ---- 6. ask_human while HELD leaves the status HELD
   {
