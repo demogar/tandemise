@@ -218,3 +218,26 @@ spec (`docs/superpowers/specs/2026-10-30-planner-and-merge-design.md`).
   the scheduler) left the step and mission BLOCKED even after the retry merged it. While
   the step is AWAITING_EXTERNAL or AWAITING_APPROVAL, such an error is now logged and
   retried on the next look.
+
+## Re-review round
+
+- process.person_commits: non-merge commits in `<base>..head` not reachable from the
+  pushed commit, by **author**; anything not at `@tandemise.local` (every identity
+  Tandemise commits as) is a person. The committer filter is gone: GitHub's web UI
+  commits a person's edit as noreply@github.com. A branch that no longer contains the
+  pushed commit is "couldn't measure", so it asks.
+- A queued GitHub auto-merge (`mergedBy` set, `mergedAt` null) is watched; the ship
+  step never queues it again.
+- `merge.reverted` carries who asked for the revert (`revertBy` in the revert
+  mission's workflowInputs).
+- Classic protection readable but rulesets unreadable: a requirement classic sets
+  holds; one it doesn't is null (asks), since a ruleset could still set it.
+- A failing look at a waiting ship step backs off from the poll interval, doubling up
+  to 10 minutes, and says "GitHub didn't answer (…); Tandemise tries again in …" on
+  the step; the first look that works restores the earlier reason.
+- The brain's merge.yaml reading `autoMerge: off` supersedes the accepted auto-merge
+  Decision at the next decision, so on again through the brain needs a fresh in-app
+  decision. merge-check's revert test now keeps auto-merge on (off in the brain
+  would end the decision that lets a revert of an auto-merge merge on its own).
+- process.holds counts the mission's #50 hold records; with no hold records to count
+  it is null (unmeasured).

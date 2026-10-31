@@ -151,14 +151,18 @@ request with none yet waits a few minutes for CI to start before it is treated
 as having none. A repository with no CI, or one whose branch protection (classic
 protection or rulesets) requires a review, always asks, and protection that
 can't be read counts as unknown, so it asks. A change whose diff can't be
-measured asks, saying so; commits GitHub makes itself (Update branch) are not a
-person's. An unmeasured fact fails `never` and `requires` and adds no points.
+measured asks, saying so. A person's commit is any non-merge commit on the
+branch that Tandemise didn't push and didn't author (edits in GitHub's web UI
+included); a branch rewritten after Tandemise pushed asks. An unmeasured fact fails `never` and `requires` and adds no points.
 Every merge is bound to the decided commit (`gh pr merge --match-head-commit`),
 so a push after the decision makes Tandemise decide again; `--auto` is used only
 when the branch requires checks, and a queued auto-merge is cancelled
 (`--disable-auto`) when the decision is voided or auto-merge is stopped. Your
 Merge on a Review and merge card answers at once; if GitHub refuses it,
 Tandemise keeps watching and tries again rather than marking the step blocked.
+While GitHub keeps failing, it backs off (up to 10 minutes between looks) and
+says so on the step. Turning auto-merge off in the brain (by any edit) ends the
+in-app decision: turning it on again needs a person in the app.
 
 Turning auto-merge on shows a **backtest** (your past decisions replayed under
 the new policy) and records a Decision. **Stop auto-merging** turns it off and
