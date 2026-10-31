@@ -1,4 +1,4 @@
-/* Settings → Intake (intake spec §2, §4.1, §6.2; plan Task 14). Colours only from theme.css roles. */
+/* Settings → Intake (intake spec §2, §4.1, §6.2; plan Task 14). Colours only from @tandemise/design roles. */
 .intake-settings__fieldset {
   display: flex;
   flex-direction: column;

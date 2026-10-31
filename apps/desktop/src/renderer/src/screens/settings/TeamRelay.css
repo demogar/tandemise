@@ -1,4 +1,4 @@
-/* Settings → Team relay, and the Team screen's relay block (relay spec). Colours only from theme.css roles. */
+/* Settings → Team relay, and the Team screen's relay block (relay spec). Colours only from @tandemise/design roles. */
 .team-relay .card {
   display: flex;
   flex-direction: column;

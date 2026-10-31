@@ -1,6 +1,6 @@
 /**
  * The few palette values the main process needs before the renderer has
- * painted - it cannot read CSS. Each must equal the value `palette.css` gives
+ * painted - it cannot read CSS. Each must equal the value `@tandemise/design` gives
  * the same role (`--canvas` in each scheme); `npm run check:design` fails if
  * they drift, since a mismatch shows as a flash of the wrong colour on launch.
  */

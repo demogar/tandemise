@@ -5,9 +5,9 @@ export type ThemePreference = 'system' | 'light' | 'dark';
 const STORAGE_KEY = 'tandemise.theme';
 
 /**
- * `system` leaves the root element unstamped so the `prefers-color-scheme`
- * block in theme.css wins; an explicit choice stamps `data-theme`, which
- * overrides it in both directions.
+ * `system` leaves the root element unstamped, so `color-scheme: dark light`
+ * from @tandemise/design/tokens.css lets the OS decide; an explicit choice
+ * stamps `data-theme`, which overrides it in both directions.
  */
 export function useThemePreference(): [ThemePreference, (next: ThemePreference) => void] {
   const [preference, setPreference] = useState<ThemePreference>(read);

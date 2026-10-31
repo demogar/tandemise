@@ -1,4 +1,4 @@
-/* The Board and its Intake tab (intake spec §7, plan Task 14). Colours only from theme.css roles. */
+/* The Board and its Intake tab (intake spec §7, plan Task 14). Colours only from @tandemise/design roles. */
 .board {
   display: flex;
   flex-direction: column;
