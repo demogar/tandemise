@@ -41,7 +41,7 @@ export const PARENT_SESSION_ENV = [
  * The absolute config directory this profile runs under, or null to inherit.
  *
  * `~` is expanded because the value is typed by a human in a settings field,
- * where `~/.claude-home` is the natural way to write it - and a literal `~`
+ * where `~/.claude` is the natural way to write it - and a literal `~`
  * directory is never what they meant.
  */
 export function resolveConfigDir(settings: Readonly<Record<string, unknown>>): string | null {
@@ -77,7 +77,7 @@ export const CLAUDE_SETTINGS_SCHEMA: readonly RuntimeSettingField[] = [
     key: 'configDir',
     label: 'Config directory',
     kind: 'text',
-    placeholder: '~/.claude-home',
+    placeholder: '~/.claude',
     hint: 'Sets CLAUDE_CONFIG_DIR for this profile: its login, settings and MCP servers. Leave blank to use whatever the daemon inherited.',
   },
   {
