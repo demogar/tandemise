@@ -7,6 +7,8 @@ import { DaemonError } from './lib/daemon.js';
 // The design system: tokens (palette + roles, both themes) and the brand reset.
 import '@tandemise/design/tokens.css';
 import '@tandemise/design/base.css';
+// The component stylesheet: buttons, badges, cards, fields, dialogs, tabs, empty states, the logo.
+import '@tandemise/design/components.css';
 import './styles/base.css';
 import './styles/shell.css';
 import './styles/controls.css';

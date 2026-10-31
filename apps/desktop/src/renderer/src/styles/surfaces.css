@@ -1,35 +1,5 @@
 /* Cards, lists, tables, state surfaces, overlays. */
 
-.card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: var(--s4);
-}
-
-.card--flush {
-  padding: 0;
-  overflow: hidden;
-}
-
-.card__head {
-  display: flex;
-  align-items: center;
-  gap: var(--s3);
-  padding: var(--s3) var(--s4);
-  border-bottom: 1px solid var(--border);
-}
-
-.card__title {
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  color: var(--text);
-}
-
-.card__body {
-  padding: var(--s4);
-}
-
 /* Stat tile. */
 .stat {
   display: flex;
@@ -187,43 +157,6 @@
 
 /* ------------------------------------------------------------ state panels */
 
-.empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--s3);
-  padding: var(--s12) var(--s6);
-  text-align: center;
-  color: var(--text-secondary);
-}
-
-.empty__icon {
-  display: grid;
-  place-items: center;
-  width: 40px;
-  height: 40px;
-  border-radius: var(--radius-md);
-  background: var(--surface-sunken);
-  border: 1px solid var(--border);
-  color: var(--text-tertiary);
-}
-
-.empty__title {
-  font-size: var(--fs-md);
-  font-weight: 600;
-  color: var(--text);
-}
-
-.empty__body {
-  max-width: 44ch;
-  font-size: var(--fs-sm);
-  line-height: 1.6;
-}
-
-.empty--inline {
-  padding: var(--s7) var(--s4);
-}
-
 .errorstate {
   display: flex;
   gap: var(--s3);
@@ -270,21 +203,6 @@
 }
 
 /* ---------------------------------------------------------------- overlays */
-
-.overlay {
-  position: fixed;
-  inset: 0;
-  z-index: var(--z-overlay);
-  display: flex;
-  justify-content: center;
-  background: var(--scrim);
-  backdrop-filter: blur(3px);
-  animation: fade var(--duration) var(--ease);
-}
-
-.overlay--center {
-  align-items: center;
-}
 
 .overlay--top {
   align-items: flex-start;
@@ -344,73 +262,11 @@
   }
 }
 
-@keyframes fade {
-  from {
-    opacity: 0;
-  }
-}
-
-/*
- * A modal never grows past the window: its head and foot stay put and the
- * body scrolls. Without the bound, a tall task drawer centred in the overlay
- * lost its top and bottom off-screen, footer buttons included, with nothing
- * to scroll.
- */
-.modal {
-  display: flex;
-  flex-direction: column;
-  width: min(520px, calc(100vw - var(--s12)));
-  max-height: calc(100vh - var(--s12));
-  background: var(--surface-raised);
-  /* Set here, not inherited: a modal opened from inside a drawer body would otherwise take its secondary text colour. */
-  color: var(--text);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
-  animation: rise var(--duration) var(--ease);
-  overflow: hidden;
-}
-
-.modal--wide {
-  width: min(760px, calc(100vw - var(--s12)));
-}
-
 @keyframes rise {
   from {
     opacity: 0;
     transform: translateY(8px) scale(0.99);
   }
-}
-
-.modal__head {
-  flex: none;
-  padding: var(--s4) var(--s5) 0;
-}
-
-.modal__title {
-  font-size: var(--fs-md);
-  font-weight: 620;
-  letter-spacing: -0.01em;
-}
-
-.modal__body {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  padding: var(--s3) var(--s5) var(--s5);
-  font-size: var(--fs-base);
-  color: var(--text-secondary);
-  line-height: 1.6;
-}
-
-.modal__foot {
-  flex: none;
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--s2);
-  padding: var(--s3) var(--s5);
-  border-top: 1px solid var(--border);
-  background: var(--surface);
 }
 
 /* ------------------------------------------------------- command palette */

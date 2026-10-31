@@ -9,9 +9,10 @@ as one product.
 - **One source.** Every token is authored once, in
   [`src/tokens.ts`](src/tokens.ts). The CSS, the Tailwind theme and the logo SVGs
   are emitted from it, committed, and checked for staleness in CI.
-- **Framework-free.** CSS custom properties plus plain TypeScript data. No
-  React, no runtime dependency, no imports at all; React 18 and React 19 apps
-  draw the same icons and logo from the same data.
+- **Framework-free at the root.** CSS custom properties plus plain TypeScript
+  data, with no runtime dependency. React components live on their own
+  subpath (`@tandemise/design/react`), with React 18 or 19 as an optional peer
+  dependency, so a site that wants only the tokens never loads React.
 - **Light and dark are peers.** Each colour role is written once as
   `light-dark(<light>, <dark>)`; `color-scheme` picks the theme.
 
@@ -25,6 +26,8 @@ npm install @tandemise/design
 |---|---|
 | `@tandemise/design/tokens.css` | Every token as a CSS custom property: palette, roles (both themes), shadows, radius, spacing, type, motion, the focus ring, the z-index scale and control heights (with a `[data-density='compact']` set). |
 | `@tandemise/design/base.css` | A small reset and type defaults built on the roles (body colours and font, focus ring, selection, scrollbars, reduced motion). Import after tokens.css. |
+| `@tandemise/design/components.css` | The component stylesheet: `.btn`, `.badge`, `.dot`, `.card`, `.field` and inputs, `.overlay`/`.modal`, `.tabs`/`.tab`, `.tooltip`, `.empty`, `.logo`. BEM classes, state in `data-*`/`aria-*`, roles and scales only. Import after base.css. |
+| `@tandemise/design/react` | Accessible React components over components.css: `Button`, `Badge`, `StatusPill`, `StatusDot`, `Card`, `Icon`, `Logo`, `Field`, `Dialog` (+ `useDialogLayer`), `Tabs`/`Tab`, `Tooltip`, `EmptyState`. See [React components](#react-components). |
 | `@tandemise/design/tailwind.css` | A Tailwind v4 theme (`@theme`) with the palette as utilities and the roles bridged to tokens.css. |
 | `@tandemise/design` | The tokens as typed data (`palette`, `colorRoles`, `radius`, `space`, `fontSize`, ...), `resolveTheme()`, `contrast()`, the Tailwind v3 `tailwindPreset`, `LOGO` and `ICON_PATHS`. |
 | `@tandemise/design/tokens`, `/icons`, `/logo`, `/resolve`, `/tailwind` | The same, one module at a time, for bundles that want only one. |
@@ -155,6 +158,37 @@ import mark from '@tandemise/design/assets/logo-mark-on-dark.svg';
 import { tailwindPreset } from '@tandemise/design/tailwind';
 export default { presets: [tailwindPreset], content: ['./src/**/*.{ts,tsx}'] };
 ```
+
+## React components
+
+```tsx
+import '@tandemise/design/tokens.css';
+import '@tandemise/design/base.css';
+import '@tandemise/design/components.css';
+import { Button, Dialog, Field, StatusPill, Tabs, Tab } from '@tandemise/design/react';
+```
+
+They carry markup and accessibility, never product logic: each one renders the
+classes in `components.css`, takes its state as props and reports it as
+`data-*` or `aria-*` attributes. React 18 and 19 are both supported.
+
+| Component | Props worth knowing | Accessibility |
+|---|---|---|
+| `Button` | `variant` (`secondary` default, `primary` at most once per view, `ghost`, `danger`), `size` (`md`, `lg`), `iconOnly`, `block`, `loading`, `loadingLabel` | `type="button"` by default; `loading` sets `aria-busy` and `data-loading` and stops presses while keeping the width; an `iconOnly` button warns in development without an `aria-label`. `buttonClass()` gives a link the same look. |
+| `Badge` | `tone` (a status, `accent`, `release`) | Plain text; colour is never the only signal. |
+| `StatusPill` | `tone`, `label`, `icon`, `live` | Words plus a dot or icon; the dot is `aria-hidden`. |
+| `StatusDot` | `tone`, `live` | Decorative, unless given an `aria-label` (then `role="img"`). |
+| `Card` | `title`, `actions`, `flush` | With a title, a `<section>` labelled by its heading. |
+| `Icon` | `name`, `size`, `label` | Decorative (`aria-hidden`) unless `label` makes it an image. |
+| `Logo` | `size`, `muted`, `title` | Decorative unless titled. |
+| `Field` | `label`, `hint`, `error`, `required`; children a node or `(control) => …` | Node form: a wrapping `<label>`. Render-prop form: `<label for>`, and the control gets `id`, `aria-describedby` (hint or error) and `aria-invalid`. |
+| `Dialog` | `title`, `description`, `footer`, `onClose`, `wide`, `initialFocus`, `closeOnScrim` | `role="dialog"`, `aria-modal`, named and described; focus moves in (to `[data-autofocus]` first), Tab is trapped, Escape closes only the topmost layer, focus returns to the opener. `useDialogLayer` gives a drawer or palette the same behaviour and the same Escape stack. |
+| `Tabs` / `Tab` | `label`; `selected`, `count`, `as` (a router link) | `tablist`/`tab`, `aria-selected`, roving `tabIndex`; Left/Right/Home/End move focus. |
+| `Tooltip` | `content`, `placement`, `delay`; children `(trigger) => …` | `role="tooltip"`, tied with `aria-describedby`; shows on hover and on focus, hides on Escape, blur or leave. |
+| `EmptyState` | `icon`, `title`, `body`, `action`, `inline` | Plain content. |
+
+The pure parts (`trapTarget`, `nextTabIndex`, `tooltipPosition`, `buttonClass`)
+are exported and tested on their own.
 
 ## Changing a token
 

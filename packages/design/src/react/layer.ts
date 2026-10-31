@@ -1,0 +1,99 @@
+import { useEffect, useRef, type RefObject } from 'react';
+
+/**
+ * Overlay layers: the open dialogs, drawers and palettes, oldest first, shared
+ * by every component that uses `useDialogLayer`. Escape closes only the
+ * topmost, so a confirm opened from a drawer closes on its own and the drawer
+ * the person was reading stays.
+ */
+const layers: object[] = [];
+
+/** How many layers are open. */
+export function openLayerCount(): number {
+  return layers.length;
+}
+
+/** What can take focus inside a dialog, in tab order. */
+export const FOCUSABLE_SELECTOR = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled]):not([type="hidden"])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+  '[contenteditable="true"]',
+].join(', ');
+
+/**
+ * Where focus must go for Tab (or Shift+Tab) to stay inside a dialog, or
+ * `null` to let the browser move it. Pure, so it is tested without a DOM:
+ * wrap from the last to the first and back, and pull focus in when it is
+ * somewhere outside the list (on the dialog itself, or escaped).
+ */
+export function trapTarget<T>(focusables: readonly T[], active: T | null, backwards: boolean): T | null {
+  if (focusables.length === 0) return null;
+  const first = focusables[0] as T;
+  const last = focusables[focusables.length - 1] as T;
+  const index = active === null ? -1 : focusables.indexOf(active);
+  if (index === -1) return backwards ? last : first;
+  if (backwards && index === 0) return last;
+  if (!backwards && index === focusables.length - 1) return first;
+  return null;
+}
+
+export interface DialogLayerOptions {
+  /** Where focus goes when the layer opens: the first match inside the panel. */
+  initialFocus?: string;
+  /** Keep Tab inside the panel. On for a modal layer. */
+  trapFocus?: boolean;
+  /** Return focus to whatever had it before the layer opened, when it closes. */
+  restoreFocus?: boolean;
+}
+
+/**
+ * Registers a modal layer for its lifetime: Escape (when it is the topmost
+ * layer) calls `onDismiss`, focus moves into `panel`, Tab stays inside it, and
+ * focus goes back to the opener on close. `onDismiss` is read through a ref,
+ * so a parent re-rendering with a new callback neither reorders the stack nor
+ * steals focus again.
+ */
+export function useDialogLayer(
+  panel: RefObject<HTMLElement>,
+  onDismiss: () => void,
+  { initialFocus = '[data-autofocus]', trapFocus = true, restoreFocus = true }: DialogLayerOptions = {},
+): void {
+  const dismiss = useRef(onDismiss);
+  dismiss.current = onDismiss;
+  useEffect(() => {
+    const token = {};
+    layers.push(token);
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (layers[layers.length - 1] !== token) return;
+      if (event.key === 'Escape') {
+        event.stopPropagation();
+        dismiss.current();
+        return;
+      }
+      if (event.key !== 'Tab' || !trapFocus || !panel.current) return;
+      const focusables = [...panel.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)].filter(
+        (el) => el.getClientRects().length > 0,
+      );
+      const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      const target = trapTarget(focusables, active, event.shiftKey);
+      if (focusables.length === 0) event.preventDefault();
+      else if (target) {
+        event.preventDefault();
+        target.focus();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown, true);
+    // Nothing matching: focus stays where it was, and the first Tab pulls it in.
+    panel.current?.querySelector<HTMLElement>(initialFocus)?.focus();
+    return () => {
+      document.removeEventListener('keydown', onKeyDown, true);
+      layers.splice(layers.indexOf(token), 1);
+      if (restoreFocus && opener?.isConnected) opener.focus();
+    };
+  }, [panel, initialFocus, trapFocus, restoreFocus]);
+}
