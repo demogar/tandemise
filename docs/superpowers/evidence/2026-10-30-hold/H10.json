@@ -21,7 +21,7 @@
     {
       "label": "the step's last session is resumed",
       "ok": true,
-      "observed": "Fake session sess-quick-run_01m683y7jqcnzw6xs9rh\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
+      "observed": "Fake session sess-quick-run_01m69rvd54z34gxdx5nn\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
     },
     {
       "label": "proof (API): HELD, in a new round",
@@ -41,8 +41,8 @@
       "ok": true,
       "observed": [
         {
-          "id": "art_01m683ycw3a6pzcpj01g",
-          "supersedes": "art_01m683y7kpakrxpn3wqf"
+          "id": "art_01m69rvjk1tm8zrrwqz6",
+          "supersedes": "art_01m69rvd6316ctc9wfzg"
         }
       ]
     },
@@ -62,7 +62,7 @@
   ],
   "notes": [],
   "shots": [
-    "/home/demogar/projects/tandemise/tandemise/docs/superpowers/evidence/2026-10-30-hold/H10-held-for-changes.png",
-    "/home/demogar/projects/tandemise/tandemise/docs/superpowers/evidence/2026-10-30-hold/H10-round-2-review.png"
+    "/home/demogar/projects/tandemise/tandemise/.claude/worktrees/agent-a322453df8fa3772c/docs/superpowers/evidence/2026-10-30-hold/H10-held-for-changes.png",
+    "/home/demogar/projects/tandemise/tandemise/.claude/worktrees/agent-a322453df8fa3772c/docs/superpowers/evidence/2026-10-30-hold/H10-round-2-review.png"
   ]
 }
