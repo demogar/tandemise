@@ -6,7 +6,7 @@
     {
       "label": "Brain → Sync says it is working from your copy",
       "ok": true,
-      "observed": "Working from your copy of the brain (last synced 20:38). Couldn't reach github.com."
+      "observed": "Working from your copy of the brain (last synced 21:12). Couldn't reach github.com."
     },
     {
       "label": "the task still runs to the end",
@@ -19,12 +19,12 @@
     {
       "label": "and the Sync tab still says so",
       "ok": true,
-      "observed": "Working from your copy of the brain (last synced 20:39). Couldn't reach github.com."
+      "observed": "Working from your copy of the brain (last synced 21:13). Couldn't reach github.com."
     },
     {
       "label": "back online, it is up to date again",
       "ok": true,
-      "observed": "Up to date (last synced 20:39)."
+      "observed": "Up to date (last synced 21:13)."
     }
   ],
   "notes": [

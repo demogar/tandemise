@@ -11,7 +11,7 @@
     {
       "label": "\"What it knew\" lists the lesson",
       "ok": true,
-      "observed": "What it knew\n\nLoaded 1 rules file and 1 lesson. Brain commit 0e1f7b9.\n\nmemory/rules/project.md\n\nKeep the header sticky on mobile.\nDeveloper\nFrom your hold · B4 hello page mvvqcvw3\n+0 / −0\nLoaded in 1 run, 1 passed first time\nOpen the run\nHelpful\nNot helpful\nMake this a rule\nRetire"
+      "observed": "What it knew\n\nLoaded 1 rules file and 1 lesson. Brain commit 264ccdb.\n\nmemory/rules/project.md\n\nKeep the header sticky on mobile.\nDeveloper\nFrom your hold · B4 hello page mvvrjxlp\n+0 / −0\nLoaded in 1 run, 1 passed first time\nOpen the run\nHelpful\nNot helpful\nMake this a rule\nRetire"
     },
     {
       "label": "and memory/rules/project.md",
@@ -20,13 +20,13 @@
     {
       "label": "in plain words",
       "ok": true,
-      "observed": "What it knew\n\nLoaded 1 rules file and 1 lesson. Brain commit 0e1f7b9.\n\nmemory/rules/project.md\n\nKeep the header sticky o"
+      "observed": "What it knew\n\nLoaded 1 rules file and 1 lesson. Brain commit 264ccdb.\n\nmemory/rules/project.md\n\nKeep the header sticky o"
     },
     {
       "label": "proof (API): runs.brain.loaded has the lesson id",
       "ok": true,
       "observed": [
-        "acceptance-ae1976:01m67skwh84rnfyxq6rj"
+        "acceptance-69237f:01m67vh5wn8yr8txg3jt"
       ]
     }
   ],

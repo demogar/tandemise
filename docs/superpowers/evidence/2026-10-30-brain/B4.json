@@ -12,7 +12,7 @@
       "label": "proof (API): an active lesson, from your hold",
       "ok": true,
       "observed": {
-        "id": "acceptance-ae1976:01m67skwh84rnfyxq6rj",
+        "id": "acceptance-69237f:01m67vh5wn8yr8txg3jt",
         "kind": "lesson",
         "text": "Keep the header sticky on mobile.",
         "scope": {
@@ -22,10 +22,10 @@
         "helpful": 0,
         "harmful": 0,
         "net": 0,
-        "addedAt": "2026-10-31T01:36:33.320Z",
-        "lastConfirmedAt": "2026-10-31T01:36:33.320Z",
+        "addedAt": "2026-10-31T02:10:01.749Z",
+        "lastConfirmedAt": "2026-10-31T02:10:01.749Z",
         "missions": [
-          "B4 hello page mvvqcvw3"
+          "B4 hello page mvvrjxlp"
         ],
         "invalidAt": null,
         "supersededBy": null,
@@ -37,11 +37,11 @@
         },
         "scopeLabel": "Developer",
         "sourceLabel": "your hold",
-        "sourceMission": "B4 hello page mvvqcvw3",
+        "sourceMission": "B4 hello page mvvrjxlp",
         "runLink": {
-          "missionId": "msn_01m67skpnyxa1xgk0tb8",
-          "taskId": "tsk_01m67skps5hp55ypwzy1",
-          "runId": "run_01m67sksscgs06344cfw"
+          "missionId": "msn_01m67vh01as5dctzyn3z",
+          "taskId": "tsk_01m67vh055cv2t8twx2e",
+          "runId": "run_01m67vh34p80m03cxk2h"
         },
         "loadedIn": {
           "runs": 0,
@@ -53,7 +53,7 @@
     {
       "label": "the mission timeline shows \"Learned: … (from your hold)\"",
       "ok": true,
-      "observed": "Learned: 'Keep the header sticky on mobile.' (from your hold)\n08:36:33 PM\n·\nTandemise"
+      "observed": "Learned: 'Keep the header sticky on mobile.' (from your hold)\n09:10:02 PM\n·\nTandemise"
     },
     {
       "label": "Brain → Lessons lists it as active",

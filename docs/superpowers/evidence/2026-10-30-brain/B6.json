@@ -6,7 +6,7 @@
     {
       "label": "the fake gh saw pr create with the lesson in the body",
       "ok": true,
-      "observed": "## What changes and why\n\nA lesson keeps proving useful, so this turns it into a rule in `memory/rules/role-development.md`.\n\n## Lessons\n\n- Keep the header sticky on mobile. (helpful 3, harmful 0; from B4 hello page mvvqcvw3, B5 hello page mvvqdrzr)\n\n## Classification\n\nSmall: Only adds lines to rules or role instructions.\n\n## Evals\n\n- Not evaluated: this project has no promotion evals yet.\n\nDrafted"
+      "observed": "## What changes and why\n\nA lesson keeps proving useful, so this turns it into a rule in `memory/rules/role-development.md`.\n\n## Lessons\n\n- Keep the header sticky on mobile. (helpful 6, harmful 0; from B4 hello page mvvrjxlp, B5 hello page mvvrkto6, B6 hello page mvvrlvgh)\n\n## Classification\n\nSmall: Only adds lines to rules or role instructions.\n\n## Evals\n\n- Not evaluated: this project has no promo"
     },
     {
       "label": "and \"Not evaluated\" (no promotion suite)",
@@ -19,7 +19,7 @@
         "pr",
         "create",
         "--head",
-        "tandemise/promote/337797ff99",
+        "tandemise/promote/124acee3c2",
         "--base",
         "main",
         "--title",
