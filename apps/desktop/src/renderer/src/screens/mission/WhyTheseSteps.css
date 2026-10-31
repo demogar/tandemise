@@ -1,0 +1,88 @@
+/* "Why these steps" (#53 §10): the plan header above the graph. */
+
+.why {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  font-size: var(--fs-sm);
+  color: var(--text);
+}
+
+.why__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  flex-wrap: wrap;
+}
+
+.why__chips {
+  display: inline-flex;
+  gap: var(--s1);
+  flex-wrap: wrap;
+}
+
+.why__chip {
+  height: 24px;
+  padding: 0 var(--s2);
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border);
+  background: var(--surface-sunken);
+  color: var(--text-secondary);
+  font-size: var(--fs-xs);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease), border-color var(--duration-fast) var(--ease);
+}
+
+.why__chip:hover {
+  background: var(--surface-hover);
+}
+
+.why__chip[data-open='true'] {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.why__actions {
+  margin-left: auto;
+  display: inline-flex;
+  gap: var(--s2);
+}
+
+.why__profile {
+  margin: 0;
+  font-weight: 600;
+}
+
+.why__lane {
+  margin: 0;
+}
+
+.why__muted {
+  color: var(--text-secondary);
+}
+
+.why__signals,
+.why__list {
+  margin: 0;
+  padding-left: var(--s5);
+  color: var(--text-secondary);
+}
+
+.why__signals {
+  padding: var(--s2) var(--s3) var(--s2) var(--s6);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+}
+
+.why__steps {
+  margin: 0;
+  padding-left: var(--s5);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-secondary);
+}
+
+.why__step + .why__step {
+  margin-top: var(--s1);
+}

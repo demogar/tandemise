@@ -209,6 +209,8 @@ export const PULL_REQUEST_SNAPSHOTS = token<PullRequestSnapshotPort>('port.PullR
 /** The git credential variables (ssh-agent, askpass) a pull request fetch may pass to git; see `pickGitCredentialEnv`. */
 export const GIT_CREDENTIAL_ENV = token<() => Readonly<Record<string, string>>>('port.GitCredentialEnv');
 export const SETUP_SERVICE = token<import('./services/setup-service.js').SetupService>('application.SetupService');
+/** "Why these steps", the lane switch and the opened pull request (#53 §10). */
+export const FACTORY_SERVICE = token<import('./services/factory-service.js').FactoryService>('application.FactoryService');
 /** Eval suites, saved cases and the run-score summary (P3b). */
 export const EVAL_SERVICE = token<import('./services/eval-service.js').EvalService>('application.EvalService');
 /**

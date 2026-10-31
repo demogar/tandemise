@@ -15,6 +15,7 @@ import {
   applySetupRequest, exportSetupRequest, previewSetupRequest,
   parkTaskRequest, handBackRequest, resolveWorkspaceLinkRequest,
   createEvalSuiteRequest, saveEvalCaseRequest, startEvalRunRequest, runScoresQuery,
+  planMissionRequest, setLaneRequest,
 } from '@tandemise/api-contract';
 import type { EvalSuiteView } from '@tandemise/api-contract';
 import { normalizeLimits } from '@tandemise/domain';
@@ -236,7 +237,13 @@ export function buildRouter(services: TandemiseServices, options: { readonly tes
     });
   }
 
-  r.post('/v1/missions/:id/plan', (ctx) => services.planning.begin(asId(ctx.params.id!)));
+  // Plan, or Plan quick / Plan careful for a mission the factory plans (#53 §10).
+  r.post('/v1/missions/:id/plan', async (ctx) =>
+    services.factory.plan(asId(ctx.params.id!), (await ctx.body(planMissionRequest)).lane, ctx.caller));
+  r.get('/v1/missions/:id/plan-decision', (ctx) => services.factory.planDecision(asId(ctx.params.id!)));
+  r.post('/v1/missions/:id/lane', async (ctx) =>
+    services.factory.setLane(asId(ctx.params.id!), (await ctx.body(setLaneRequest)).lane, ctx.caller));
+  r.get('/v1/missions/:id/ship', (ctx) => services.factory.ship(asId(ctx.params.id!)));
   r.post('/v1/missions/:id/replan', async (ctx) =>
     services.planning.replan(asId(ctx.params.id!), { note: (await ctx.body(replanMissionRequest)).note ?? null }));
   r.post('/v1/missions/:id/start', (ctx) => services.missions.start(asId(ctx.params.id!)));

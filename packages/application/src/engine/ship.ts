@@ -107,6 +107,7 @@ export class ShipService {
     }
     this.deps.recorder.record(scope, { type: 'ship.pr_opened', repo, number: pr.number, url: pr.url, headSha: pr.headSha });
     if (pr.created) this.deps.recorder.note(scope, `Opened the pull request ${pr.url}.`);
+    this.deps.recorder.invalidate('ship', mission.id);
     return { kind: 'opened', prs: [pr] };
   }
 

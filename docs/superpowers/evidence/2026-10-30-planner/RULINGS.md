@@ -76,3 +76,9 @@ spec (`docs/superpowers/specs/2026-10-30-planner-and-merge-design.md`).
   evidence line; approving it calls `PlannerService.laneApproved` (one optional
   hook in ApprovalService), which sets `laneRequest` and records
   `lightenedByPerson`, so it survives a restart.
+- Ruling (Task 8): Plan careful with no Done-when line doesn't refuse; the mission
+  stays a draft with a feed note and the UI points to "Get it ready" (spec §4: as
+  today). Plan quick / Plan careful are plain header buttons. The measured
+  "It touched …" sentence is asserted on the Timeline/events, since the Feed tab
+  shows cards only. A lane the measured change raised reads "… lane now: the
+  change turned out riskier than planned …", never "a plan you approve".

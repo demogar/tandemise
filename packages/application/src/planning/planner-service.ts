@@ -331,7 +331,8 @@ export class PlannerService {
       dropped: before?.dropped ?? [],
       steps: decisionSteps({ summary: '', tasks: tasksRepo.listByMission(mission.id) }),
       approvals: decisionApprovals({ summary: '', tasks: tasksRepo.listByMission(mission.id) }),
-      skipped: before?.skipped ?? [],
+      // Steps added for review or QA are no longer skipped.
+      skipped: (before?.skipped ?? []).filter((line) => !(made.some((t) => ['review', 'verify'].includes(stepClassFor(t))) && line.startsWith('No separate review'))),
       tiebreak: null,
       lightenedByPerson: before?.lightenedByPerson ?? false,
       createdAt: this.deps.clock.now() as Timestamp,

@@ -22,6 +22,7 @@
 // A task objective that mentions "preview" gets an "Open preview" link in its handoff.
 // P3 knobs (SCRIPTED_PLAN_SKIP, SCRIPTED_WORKSPACE_LINK) are described where they are read, as are SCRIPTED_NEEDS and SCRIPTED_STOP (plan fit).
 // P8 usage knobs (SCRIPTED_USAGE_MIN, SCRIPTED_COST_USD) are described where they are read, at the end.
+// #53: SCRIPTED_TOUCH=<path> (repeatable) is described where the ChangeSet is written.
 import { createHash } from 'node:crypto';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -356,6 +357,15 @@ for (const { type, destination } of outputs) {
       : FRONT[type] ?? {};
   // A ChangeSet touches a file, so a round leaves a commit on the task's branch.
   if (type === 'ChangeSet') appendFileSync(join(workIn, 'hello.txt'), `round ${inRound ? feedbackItems.map((f) => f.id).join(',') : 'first'}\n`);
+  // #53: SCRIPTED_TOUCH=<path> (repeatable, in the goal) makes the code step create or append to that file
+  // in its worktree too, so a scenario can steer which paths the measured change touches.
+  if (type === 'ChangeSet') {
+    for (const touch of new Set([...prompt.matchAll(/SCRIPTED_TOUCH=([\w./-]+)/g)].map((m) => m[1]))) {
+      if (isAbsolute(touch) || touch.split('/').includes('..')) continue;
+      mkdirSync(dirname(join(workIn, touch)), { recursive: true });
+      appendFileSync(join(workIn, touch), `// touched by the scripted agent (${inRound ? 'round' : 'first'})\n`);
+    }
+  }
   const front = {
     type, schemaVersion: 1, title: `${type}: ${title}`.slice(0, 60).trim(),
     ...(omitHandoff ? {} : { handoff }),

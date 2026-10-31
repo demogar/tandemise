@@ -66,6 +66,8 @@ export interface TandemiseServices {
   readonly issues: import('./services/issue-service.js').IssueService;
   /** The project's setup as files in a repository (P15). */
   readonly setup: import('./services/setup-service.js').SetupService;
+  /** Planning by lane, "Why these steps" and the opened pull request (#53). */
+  readonly factory: import('./services/factory-service.js').FactoryService;
   /** Files and links handed in from outside a mission, pinned as Evidence (P3). */
   readonly contributions: ContributionService;
   /** Eval suites, saving a finished step as a case, and the run-score summary (P3b). */

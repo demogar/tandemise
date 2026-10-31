@@ -44,6 +44,9 @@ export const keys = {
   // Under 'mission' too: artifacts and tasks changing refresh it with the rest of the mission.
   missionCriteria: (id: string) => ['mission', id, 'criteria'] as const,
   missionRefinement: (id: string) => ['mission', id, 'refinement'] as const,
+  // Under 'mission' too: planning, a lane switch and the ship step all change the mission's tasks.
+  planDecision: (id: string) => ['mission', id, 'plan-decision'] as const,
+  ship: (id: string) => ['mission', id, 'ship'] as const,
   missionEvents: (id: string) => ['mission-events', id] as const,
   // Not under 'mission': the drawer and the reader read it outside a mission's screen, so it is refreshed with every task change.
   taskFeedback: (id: string) => ['mission-task-feedback', id] as const,
@@ -86,6 +89,8 @@ const TOPIC_KEYS: Readonly<Record<ProjectionTopic, readonly (readonly string[])[
   // A refinement decision changes the mission's readiness and the inbox row that asks for it.
   // The backlog shows each draft's readiness too.
   refinement: [['mission'], ['inbox'], ['home'], ['missions']],
+  // A pull request opened (#53): the ship card, and later the Inbox's review rows.
+  ship: [['mission'], ['inbox']],
 };
 
 export function invalidateTopic(
@@ -255,6 +260,25 @@ export function useMissionRefinement(id: string, enabled = true) {
     placeholderData: (previous) => previous,
     // The stream says when a pass lands; polling while one runs covers a dropped frame.
     refetchInterval: (query) => (query.state.data?.state === 'running' ? 2_000 : false),
+  });
+}
+
+/** "Why these steps" for a mission the factory planned; null before it is planned. */
+export function usePlanDecision(id: string) {
+  const daemon = useDaemon();
+  return useQuery({ queryKey: keys.planDecision(id), queryFn: () => daemon.planDecision(id), enabled: id.length > 0, placeholderData: (previous) => previous });
+}
+
+/** The ship step and the pull requests it opened (#53). */
+export function useShip(id: string, enabled = true) {
+  const daemon = useDaemon();
+  return useQuery({
+    queryKey: keys.ship(id),
+    queryFn: () => daemon.ship(id),
+    enabled: enabled && id.length > 0,
+    placeholderData: (previous) => previous,
+    // Opening takes a push and a `gh` call; polling while it does covers a dropped frame.
+    refetchInterval: (query) => (query.state.data?.stage === 'opening' ? 2_000 : false),
   });
 }
 

@@ -1,4 +1,5 @@
 import type {
+  PlanDecisionView, SetLaneRequest, ShipView,
   IssuesOverview, RepositoryIssuesView, UpdateIssueSettingsRequest,
   ApiErrorBody,
   NotificationPreferencesView,
@@ -367,6 +368,21 @@ export class DaemonClient {
 
   missionAction(id: string, action: 'plan' | 'replan' | 'start' | 'pause' | 'resume' | 'cancel', body?: unknown): Promise<MissionDetail> {
     return this.#request('POST', `/missions/${id}/${action}`, body ?? {});
+  }
+
+  /** "Why these steps" (#53 §10); null until the factory planned the mission. */
+  planDecision(id: string): Promise<PlanDecisionView | null> {
+    return this.#get(`/missions/${id}/plan-decision`);
+  }
+
+  /** Make it quick (asks first) or Make it careful (adds steps now). */
+  setLane(id: string, lane: SetLaneRequest['lane']): Promise<PlanDecisionView | null> {
+    return this.#request('POST', `/missions/${id}/lane`, { lane });
+  }
+
+  /** The ship step and the pull requests it opened. */
+  ship(id: string): Promise<ShipView> {
+    return this.#get(`/missions/${id}/ship`);
   }
 
   deleteMission(id: string): Promise<void> {

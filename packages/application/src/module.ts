@@ -69,6 +69,7 @@ import { ContributionServiceImpl } from './services/contribution-service.js';
 import { SkillInstaller } from './engine/skill-installer.js';
 import { DEFAULT_QUIET_AFTER_MS, reachedReason, type IssueTrackerPort, type PullRequestSnapshotPort } from '@tandemise/domain';
 import { SetupService } from './services/setup-service.js';
+import { FactoryService } from './services/factory-service.js';
 import { RefinementServiceImpl } from './services/refinement-service.js';
 import { EvalService } from './services/eval-service.js';
 import { PlanningServiceImpl } from './services/planning-service.js';
@@ -987,6 +988,18 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       runner: () => r.resolve(t.EVAL_RUNNER),
     }), { source: SOURCE });
 
+    bind(t.FACTORY_SERVICE, (r) => new FactoryService({
+      planner: r.resolve(t.PLANNER_SERVICE),
+      planning: r.resolve(t.PLANNING_SERVICE),
+      projections: r.resolve(t.PROJECTION_SERVICE),
+      readiness: r.resolve(t.READINESS_SERVICE),
+      missions: r.resolve(t.MISSION_REPOSITORY),
+      tasks: r.resolve(t.TASK_REPOSITORY),
+      planDecisions: r.resolve(t.PLAN_DECISION_REPOSITORY),
+      events: r.resolve(t.EVENT_REPOSITORY),
+      recorder: r.resolve(t.EVENT_RECORDER),
+    }), { source: SOURCE });
+
     bind(t.TANDEMISE_SERVICES, (r): TandemiseServices => ({
       system: r.resolve(t.SYSTEM_SERVICE),
       workspaces: r.resolve(t.WORKSPACE_SERVICE),
@@ -1014,6 +1027,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       skills: r.resolve(t.SKILL_SERVICE),
       issues: r.resolve(t.ISSUE_SERVICE),
       setup: r.resolve(t.SETUP_SERVICE),
+      factory: r.resolve(t.FACTORY_SERVICE),
       contributions: r.resolve(t.CONTRIBUTION_SERVICE),
       evals: r.resolve(t.EVAL_SERVICE),
     }), { source: SOURCE });

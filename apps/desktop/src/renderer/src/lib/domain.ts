@@ -75,6 +75,13 @@ const SEMANTIC: Readonly<Record<TandemiseEventBody['type'], boolean>> = {
   'task.unparked': true,
   'task.handed_back': true,
   'mission.intake_completed': true,
+  'plan.decided': true,
+  'ship.pr_opened': true,
+  'task.outcome': false,
+  'merge.decided': true,
+  'merge.merged': true,
+  'merge.asked': true,
+  'merge.reverted': true,
   note: true,
 };
 

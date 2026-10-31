@@ -20,6 +20,7 @@ import { SaveCaseDialog } from '../evals/SaveCaseDialog.js';
 import { ArtifactReader } from '../artifacts/ArtifactReader.js';
 import { HandoffLinkButton, openableLinks } from '../../components/HandoffLinks.js';
 import { useWorkspaceId } from '../../lib/workspace.js';
+import { ShipCard } from '../../components/ShipCard.js';
 
 export function TaskDetail({ task, detail, onClose }: { task: TaskView; detail: MissionDetail; onClose: () => void }): JSX.Element {
   // A note turns the retry into the next round, framed as a request rather than as the failure it follows.
@@ -236,6 +237,8 @@ export function TaskDetail({ task, detail, onClose }: { task: TaskView; detail: 
             )}
           </div>
         ) : null}
+
+        {task.executor === 'ship' ? <ShipCard missionId={detail.mission.id} /> : null}
 
         <StaffingBlock task={task} detail={detail} actors={actors} />
 

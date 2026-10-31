@@ -6,6 +6,8 @@ import { useActors, type Actors } from '../../lib/team.js';
 import { Icon } from '../../components/Icon.js';
 import { Empty, IdChip } from '../../components/primitives.js';
 import { TaskDetail } from './TaskDetail.js';
+import { WhyTheseSteps } from './WhyTheseSteps.js';
+import { usePlanDecision } from '../../lib/queries.js';
 import { duration, pluralize, taskBadge, taskTone } from '../../lib/format.js';
 
 interface Edge {
@@ -30,6 +32,8 @@ export function PlanPane({ detail }: { detail: MissionDetail }): JSX.Element {
   const cards = useRef(new Map<string, HTMLElement>());
   const [edges, setEdges] = useState<readonly Edge[]>([]);
   const actors = useActors();
+  // Only a mission the factory planned has one (#53 §10).
+  const decision = usePlanDecision(detail.mission.workflowPreset === 'auto' ? detail.mission.id : '').data ?? null;
   const approvalsById = useMemo(() => new Map(detail.approvals.map((a) => [a.id as string, a])), [detail.approvals]);
   // A plan wider than the window is normal; without an edge fade the only hint
   // is a scrollbar pinned to the bottom of the pane, which nobody looks at.
@@ -141,6 +145,11 @@ export function PlanPane({ detail }: { detail: MissionDetail }): JSX.Element {
 
   return (
     <>
+      {decision ? (
+        <div style={{ padding: 'var(--s4) var(--s7) 0' }}>
+          <WhyTheseSteps missionId={detail.mission.id} decision={decision} />
+        </div>
+      ) : null}
       {detail.plan?.summary ? (
         <div style={{ padding: 'var(--s4) var(--s7) 0' }}>
           <div className="banner">
