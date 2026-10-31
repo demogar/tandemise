@@ -2,7 +2,7 @@
 // The pivot, end to end on one installation (#56): the owner's normal day across relay, brain, hold, intake and the
 // planner, in the real window, with fakes for everything outside this machine.
 //
-//   npm run build && node scratch/acceptance/integrated/run-all.mjs [--hold]
+//   npm run build && node scratch/acceptance/integrated/run-all.mjs [--hold] [--keep-painting]
 //
 // Fresh TANDEMISE_HOME + project (p0/setup.mjs) whose checkout is registered with a GitHub remote (acme/web) and
 // whose `origin` is then a local bare repository, so the ship step's push works offline. The daemon is this
@@ -17,6 +17,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { installFakeGh } from '../../fake-gh.mjs';
+import { keepPainting } from '../p0/lib/frame-pump.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '../../..');
@@ -107,6 +108,8 @@ const desktop = spawn('npx', ['electron-vite', 'dev', '--', `--remote-debugging-
   detached: true,
 });
 desktop.unref();
+// --keep-painting (or ACCEPTANCE_KEEP_PAINTING=1): for a display that is idle during the run.
+keepPainting([PORT]);
 
 log('day.mjs');
 const code = await new Promise((done) => {

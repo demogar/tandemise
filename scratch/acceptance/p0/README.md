@@ -1,8 +1,12 @@
 # P0 real-app acceptance suite
 
 ```
-node scratch/acceptance/p0/run-all.mjs [--p1 | --p2] [--skip-claude] [--keep-going] [--only=s02,s03]
+node scratch/acceptance/p0/run-all.mjs [--p1 | --p2] [--skip-claude] [--keep-going] [--only=s02,s03] [--keep-painting]
 ```
+
+`--keep-painting` (or `ACCEPTANCE_KEEP_PAINTING=1`) is for a machine whose display goes idle during the run: an
+undriven window stops producing frames, and a scenario waiting on one (hold's terminal `paint`) stalls.
+`lib/frame-pump.mjs` then asks the window for a tiny screenshot once a second. Every suite's run-all takes it.
 
 Each run starts from a fresh install: a new `TANDEMISE_HOME` behind `/tmp/tdm-p0`, the daemon
 built from this checkout, and the real desktop window (`electron-vite dev`, CDP on 9333). It then

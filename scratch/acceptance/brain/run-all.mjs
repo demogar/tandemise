@@ -15,6 +15,7 @@ import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, sy
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
+import { keepPainting } from '../p0/lib/frame-pump.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '../../..');
@@ -84,6 +85,8 @@ for (const [link, port] of [[LINK1, PORT1], [LINK2, PORT2]]) {
     detached: true,
   });
   desktop.unref();
+  // --keep-painting (or ACCEPTANCE_KEEP_PAINTING=1): for a display that is idle during the run.
+  keepPainting([port]);
   windows.push(desktop);
   // Two electron-vite dev servers starting at once fight over the renderer port; let the first settle.
   await sleep(8000);

@@ -16,6 +16,7 @@ import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync,
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
+import { keepPainting } from '../p0/lib/frame-pump.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '../../..');
@@ -76,6 +77,8 @@ const desktop = spawn('npx', ['electron-vite', 'dev', '--', `--remote-debugging-
   detached: true,
 });
 desktop.unref();
+// --keep-painting (or ACCEPTANCE_KEEP_PAINTING=1): for a display that is idle during the run.
+keepPainting([PORT]);
 
 // Order: what builds on one held step first (H8 → H1 → H2 → H4 → H5 → H3), then the scenarios with steps of their own.
 const scenarios = [

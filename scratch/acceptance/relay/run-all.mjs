@@ -15,6 +15,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { startRelayProcess } from './common.mjs';
+import { keepPainting } from '../p0/lib/frame-pump.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '../../..');
@@ -61,6 +62,8 @@ function install(link, port) {
     detached: true,
   });
   desktop.unref();
+  // --keep-painting (or ACCEPTANCE_KEEP_PAINTING=1): for a display that is idle during the run.
+  keepPainting([port]);
   desktops.push(desktop);
   return real;
 }

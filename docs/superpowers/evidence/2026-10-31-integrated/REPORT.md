@@ -1,15 +1,15 @@
 # The pivot, end to end on main: acceptance report
 
-Run: 2026-10-31T10:51:10.958Z · build 6857fe9 · fresh install at /tmp/tdm-integrated-run-mvwa42dv · fake YouTrack and GitHub, fake runtime
+Run: 2026-10-31T11:09:02.851Z · build 423ff82 · fresh install at /tmp/tdm-integrated-run-mvwar1gz · fake YouTrack and GitHub, fake runtime
 Result: **PASS** (30/30 checks)
 
 ## N1 — The owner's normal day: intake → Board → quick lane → hold → pull request → tracker → claims: PASS
 
 - note: setup: the Coding agent (development) runs on a fake runtime that resumes and opens an interactive session on a PTY
-- note: mission msn_01m68s8h8wcn04cr2xx9
+- note: mission msn_01m68t981zjqwttrz7te
 - ✅ brain: the project is linked to a brain on this machine — `{"linked":true,"status":"local_only"}`
 - ✅ brain: the project's intake still reads its tracker and web-form source — `{"origin":"brain","sources":["web-form"]}`
-- ✅ Settings → Intake: Make a token shows a tdi_ token — `"tdi_nkqa…"`
+- ✅ Settings → Intake: Make a token shows a tdi_ token — `"tdi_mXbt…"`
 - ✅ Settings → Intake, with a brain: Save token saves this computer's YouTrack token — `{"button":"clicked","saves":[1,2]}`
 - ✅ a shell pushes the signal (tandemise intake push exits 0) — `{"code":0,"stdout":"custom:web-form:form-7: received\n","stderr":""}`
 - ✅ Intake tab: the signal is filed in the tracker — `{"fingerprint":"custom:web-form:form-7","title":"Typo in the settings title","source":"custom","status":"Filed as GAR-2","text":"Typo in the settings title\ncustom\nFiled as GAR-2\njust now"}`
@@ -23,20 +23,20 @@ Result: **PASS** (30/30 checks)
 - ✅ fake YouTrack: GAR-2 is In Progress — `"In Progress"`
 - ✅ the implement step runs on the Coding agent's fake runtime — `"Day fake"`
 - ✅ Hold opens the terminal panel, "Held by You" — `"Implement the changeHeld by YouContinueReleaseClose terminalClaude Code may ask whether to trust this folder — choose “Yes, I trust this folder”. Tandemise created it for this task."`
-- ✅ what you type reaches the session (it writes notes.txt) — `"Fake session sess-day-run_01m68s8hd4wzgae6vy6r\nwrite notes.txt\n> write notes.txt\nwrote notes.txt\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"`
-- ✅ proof (disk): notes.txt is in the step's worktree — `"/tmp/tdm-integrated/home/workspaces/ws_01m68s88hx65wt4pst1c/missions/msn_01m68s8h8wcn04cr2xx9/worktrees/typo-in-the-settings-title-implement-gtvaymmy"`
+- ✅ what you type reaches the session (it writes notes.txt) — `"Fake session sess-day-run_01m68t98638rh78a03tz\nwrite notes.txt\n> write notes.txt\nwrote notes.txt\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"`
+- ✅ proof (disk): notes.txt is in the step's worktree — `"/tmp/tdm-integrated/home/workspaces/ws_01m68t8zb58xm1s25etc/missions/msn_01m68t981zjqwttrz7te/worktrees/typo-in-the-settings-title-implement-dy0tnm9d"`
 - ✅ Continue: the step finishes on a resumed pass, no attempt spent — `{"status":"SUCCEEDED","reason":null,"attempts":[1,1]}`
 - ✅ proof (DB): the hold ended as continued — `{"ending":"continued","diffStat":"{\"files\":2,\"insertions\":2,\"deletions\":0}"}`
 - ✅ ship: one pull request opened on acme/web — `{"repo":"acme/web","number":1,"url":"https://github.com/acme/web/pull/1"}`
-- ✅ ship: waiting for your review, "Auto-merge is off for this project." — `{"headline":"Waiting for your review","decision":{"id":"mrg_01m68s8s4ah3n7vstxvx","verdict":"ask","headSha":"f82cad2b9e0bb155180533b16e12371abd8451fe","scoreLine":"Risk score 4 of 2 allowed","reasons":["Auto-merge is off`
-- ✅ fake gh: one `pr create`, and no `pr merge` — `["pr create --repo acme/web --head tandemise/typo-in-the-settings-title/typo-in-the-settings-title-implement-gtvaymmy --base main --title fix: typo in the settings title --body-file -"]`
-- ✅ the pull request's branch carries the agent's change and the file made in the hold — `{"title":"fix: typo in the settings title","head":"tandemise/typo-in-the-settings-title/typo-in-the-settings-title-implement-gtvaymmy","files":[".gitignore",".tandemise/workflows/build-only.yaml",".tandemise/workflows/p0`
+- ✅ ship: waiting for your review, "Auto-merge is off for this project." — `{"headline":"Waiting for your review","decision":{"id":"mrg_01m68t9fxghxwvhv0n8s","verdict":"ask","headSha":"ebefff3cc3f30c39e3c57d2cff7279ac8131323a","scoreLine":"Risk score 4 of 2 allowed","reasons":["Auto-merge is off`
+- ✅ fake gh: one `pr create`, and no `pr merge` — `["pr create --repo acme/web --head tandemise/typo-in-the-settings-title/typo-in-the-settings-title-implement-dy0tnm9d --base main --title fix: typo in the settings title --body-file -"]`
+- ✅ the pull request's branch carries the agent's change and the file made in the hold — `{"title":"fix: typo in the settings title","head":"tandemise/typo-in-the-settings-title/typo-in-the-settings-title-implement-dy0tnm9d","files":[".gitignore",".tandemise/workflows/build-only.yaml",".tandemise/workflows/p0`
 - ✅ Inbox: "Review and merge" — `["Review and merge fix: typo in the settings title"]`
 - ✅ the ship card says "Waiting for your review" with Open in GitHub — `"Waiting for your review\n\nWaiting for your review: Auto-merge is off for this project.\n\nacme/web #1\nOpen in GitHub\nMerge\nAuto-merge is off for this project.\nThis repository has no CI checks, so Tandemise never me`
 - ✅ fake YouTrack: GAR-2 moved to In Review while the pull request waits for you — `"In Review"`
 - ✅ fake YouTrack: one activity comment, linking the pull request — `[{"id":"4-1","text":"<!-- tandemise:activity -->\n\nStarted in Tandemise by Demostenes Garcia: Typo in the settings title.\n\nPlan:\n- [x] Implement the change\n- [ ] Ship — waiting for a person\n\nPull request: https://`
 - ✅ Board: GAR-2 shows its mission — `"GAR-2\nTypo in the settings title\ncustom · web-form\nMission: Executing\nStart"`
-- ✅ Home → Who's working on what: GAR-2 (Typo in the settings title), yours — `"Who's working on what\nYou\nGAR-2\nTypo in the settings title\nsince 05:49"`
+- ✅ Home → Who's working on what: GAR-2 (Typo in the settings title), yours — `"Who's working on what\nYou\nGAR-2\nTypo in the settings title\nsince 06:07"`
 - screenshot: `N1-settings-tokens.png`
 - screenshot: `N1-intake-filed.png`
 - screenshot: `N1-board-ready.png`
