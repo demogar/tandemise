@@ -55,7 +55,7 @@ git(project, 'remote', 'add', 'origin', 'git@github.com:acme/web.git');
 
 log('setup');
 execFileSync(process.execPath, [join(here, '../p0/setup.mjs'), LINK], {
-  env: { ...process.env, PATH: `${ghBin}:${process.env.PATH}`, SCRIPTED_DELAY_MS: '1200', TANDEMISE_SHIP_POLL_MS: '1500', SCRIPTED_STATE_DIR: `${LINK}/scripted-state` },
+  env: { ...process.env, PATH: `${ghBin}:${process.env.PATH}`, SCRIPTED_DELAY_MS: '1200', TANDEMISE_SHIP_POLL_MS: '1500', TANDEMISE_SHIP_CI_GRACE_MS: '3000', SCRIPTED_STATE_DIR: `${LINK}/scripted-state` },
   stdio: ['ignore', 'pipe', 'inherit'],
 });
 // GitHub, offline: the registered remote URL stays acme/web, while pushes go to a bare repository.

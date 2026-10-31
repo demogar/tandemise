@@ -209,9 +209,33 @@ function main(argv) {
     const path = (endpoint ?? '').split('?')[0];
     let c = /^repos\/([^/]+\/[^/]+)\/commits\/([0-9a-f]+)\/check-runs$/.exec(path);
     if (c) {
-      // A repository's `defaultChecks` stand for every commit that has none of its own.
-      const runs = (repoOf(c[1]).checks ?? {})[c[2]] ?? repoOf(c[1]).defaultChecks ?? [];
-      out({ check_runs: runs.map((k) => ({ name: k.name, status: k.status ?? 'completed', conclusion: k.conclusion ?? null, details_url: k.link ?? null, output: { summary: null, text: k.logTail ?? null } })) });
+      // A repository's `defaultChecks` stand for every commit that has none of its own;
+      // `defaultCheckSequence` answers each read with the next list (the last one repeats), for NONE → PENDING → PASS.
+      const r = repoOf(c[1]);
+      let runs = (r.checks ?? {})[c[2]];
+      if (runs === undefined && Array.isArray(r.defaultCheckSequence) && r.defaultCheckSequence.length > 0) {
+        runs = r.defaultCheckSequence[0];
+        if (r.defaultCheckSequence.length > 1) { r.defaultCheckSequence.shift(); writeState(dir, state); }
+      }
+      runs ??= r.defaultChecks ?? [];
+      const query = new URLSearchParams((endpoint ?? '').split('?')[1] ?? '');
+      const per = Number(query.get('per_page') ?? 30);
+      const page = Number(query.get('page') ?? 1);
+      const slice = runs.slice((page - 1) * per, page * per);
+      out({ total_count: runs.length, check_runs: slice.map((k) => ({ name: k.name, status: k.status ?? 'completed', conclusion: k.conclusion ?? null, details_url: k.link ?? null, output: { summary: null, text: k.logTail ?? null } })) });
+      return;
+    }
+    c = /^repos\/([^/]+\/[^/]+)\/commits\/([0-9a-f]+)\/check-suites$/.exec(path);
+    if (c) {
+      const suites = (repoOf(c[1]).suites ?? {})[c[2]] ?? [];
+      out({ total_count: suites.length, check_suites: suites });
+      return;
+    }
+    c = /^repos\/([^/]+\/[^/]+)\/commits\/([0-9a-f]+)\/status$/.exec(path);
+    if (c) {
+      const statuses = (repoOf(c[1]).statuses ?? {})[c[2]] ?? [];
+      const state = statuses.length === 0 ? 'pending' : statuses.some((x) => x.state === 'failure' || x.state === 'error') ? 'failure' : statuses.some((x) => x.state === 'pending') ? 'pending' : 'success';
+      out({ state, total_count: statuses.length, statuses });
       return;
     }
     c = /^repos\/([^/]+\/[^/]+)\/branches\/([^/]+)\/protection$/.exec(path);

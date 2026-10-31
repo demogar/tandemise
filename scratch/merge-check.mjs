@@ -471,6 +471,43 @@ await attempt('review: queued auto-merge is cancelled', async () => {
   check('without required checks, it merges directly (no --auto)', call.length > 0 && !call.includes('--auto'), call);
 });
 
+await attempt('review: ci read completely, and not too early', async () => {
+  section('review: ci read completely, and not too early');
+  const fake = await import('./fake-gh.mjs');
+  const { realExecutor } = await import('./planner-harness.mjs');
+  const w = await world({ ciGraceMs: 4000 });
+  const flow = new GH.GhPullRequestFlow(realExecutor(`${w.ghDir}/bin`));
+  const sha = 'c'.repeat(40);
+  fake.setChecks(w.ghDir, REPO, sha, [{ name: 'unit', conclusion: 'success' }]);
+  fake.setRepo(w.ghDir, REPO, { suites: { [sha]: [{ status: 'queued', latest_check_runs_count: 0, app: { slug: 'github-actions' } }] } });
+  check('a workflow that hasn\'t started its runs yet keeps CI pending', (await flow.checks(w.checkout, REPO, sha)).state === 'PENDING');
+  fake.setRepo(w.ghDir, REPO, { suites: {}, statuses: { [sha]: [{ context: 'ci/legacy', state: 'failure', description: 'boom' }] } });
+  const legacy = await flow.checks(w.checkout, REPO, sha);
+  check('a failing commit status (not a check run) fails CI', legacy.state === 'FAIL' && legacy.failing.some((f) => f.name === 'ci/legacy'), legacy);
+  fake.setRepo(w.ghDir, REPO, { statuses: {} });
+  const many = Array.from({ length: 130 }, (_, i) => ({ name: `job${i}`, conclusion: i === 120 ? 'failure' : 'success' }));
+  fake.setChecks(w.ghDir, REPO, sha, many);
+  const paged = await flow.checks(w.checkout, REPO, sha);
+  check('check runs are read past the first page', paged.total === 130 && paged.state === 'FAIL', [paged.total, paged.state]);
+
+  // Right after the PR opens there is no CI yet: that is waiting, not "no CI".
+  fake.setRepo(w.ghDir, REPO, { defaultCheckSequence: [[], [{ name: 'unit', status: 'in_progress' }], [{ name: 'unit', conclusion: 'success' }]] });
+  const m = await w.mission('fix: typo in the settings title');
+  await w.h.until(() => w.h.repo.mergeDecisions.listByMission(m.id).length > 0, 60000);
+  const first = w.h.repo.mergeDecisions.listByMission(m.id);
+  check('no CI at first, then pending, then green: one decision, on green CI', first.length === 1 && first[0].facts.ci.state === 'PASS', first.map((d) => d.facts.ci.state));
+  // Past the grace period with no CI it asks; when CI shows up later for the same head it decides again.
+  const w2 = await world({ ciGraceMs: 300 });
+  const m2 = await w2.mission('fix: typo in the footer');
+  await w2.h.until(() => w2.h.repo.mergeDecisions.listByMission(m2.id).length > 0, 60000);
+  const noCi = w2.h.repo.mergeDecisions.listByMission(m2.id)[0];
+  check('with no CI after the grace period it asks', noCi.facts.ci.state === 'NONE' && noCi.reasons.includes(D.NO_CI), noCi.reasons);
+  fake.setChecks(w2.ghDir, REPO, noCi.headSha, [{ name: 'unit', conclusion: 'success' }]);
+  await w2.h.until(() => w2.h.repo.mergeDecisions.listByMission(m2.id).length === 2, 30000);
+  const again = w2.h.repo.mergeDecisions.listByMission(m2.id);
+  check('…and decides again on the same head once CI appears', again[0].voidedAt !== null && again[1].headSha === noCi.headSha && again[1].facts.ci.state === 'PASS', again.map((d) => [d.facts.ci.state, d.voidedAt]));
+});
+
 // @sections
 
 clearInterval(keepAlive);

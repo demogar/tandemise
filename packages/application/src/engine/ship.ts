@@ -44,6 +44,8 @@ const PUSH_TIMEOUT_MS = 120_000;
 export const SHIP_CI_POLL_MS = 30_000;
 /** CI that hasn't finished in an hour is something a person should look at. */
 export const SHIP_CI_TIMEOUT_MS = 3_600_000;
+/** A workflow can take a few minutes to register its first check after a push. */
+export const SHIP_CI_GRACE_MS = 180_000;
 /** Lines of a failing check's output given to the next round. */
 export const SHIP_LOG_TAIL_LINES = 40;
 
@@ -90,6 +92,8 @@ export interface ShipDecideDeps {
   readonly factory: (workspaceId: string) => Promise<{ planner: PlannerConfig; merge: MergePolicyOrError; policyRef: string; autoMergeAuthorized: boolean }>;
   readonly pollMs: number;
   readonly timeoutMs: number;
+  /** No CI right after a push is CI not started yet: waited for this long before it counts as none. */
+  readonly ciGraceMs: number;
 }
 
 export class ShipService {
@@ -193,9 +197,11 @@ export class ShipService {
       if (existing !== undefined && existing.voidedAt === null && existing.headSha === pr.headSha) {
         return this.#settle(mission, task, repository, pr, existing);
       }
-      const checks = await this.deps.pullRequests.checks(repository.path, pr.repo, pr.headSha);
+      const read = await this.deps.pullRequests.checks(repository.path, pr.repo, pr.headSha);
+      const starting = read.state === 'NONE' && this.deps.clock.epochMs() - started < d.ciGraceMs;
+      const checks = starting ? { ...read, state: 'PENDING' as const } : read;
       if (checks.state === 'PENDING') {
-        this.#status(mission, task, 'AWAITING_EXTERNAL', `Waiting for CI (${checks.done} of ${checks.total} checks done)`);
+        this.#status(mission, task, 'AWAITING_EXTERNAL', starting ? 'Waiting for CI (0 of 0 checks done)' : `Waiting for CI (${checks.done} of ${checks.total} checks done)`);
         if (this.deps.clock.epochMs() - started > d.timeoutMs) return { kind: 'blocked', reason: 'CI didn\'t finish within an hour.' };
         await sleep(d.pollMs, signal);
         const now = await this.deps.pullRequests.view(repository.path, pr.repo, pr.number);
@@ -298,6 +304,14 @@ export class ShipService {
       return this.#afterOpen(mission, task, repository, pr, signal);
     }
     if (decision.voidedAt !== null) return this.#afterOpen(mission, task, repository, pr, signal);
+    // Decided with no CI, and CI has shown up since for the same head: decide again on it.
+    if ((decision.facts as { ci?: { state?: string } }).ci?.state === 'NONE' && decision.mergedAt === null && decision.mergedBy === null) {
+      const now = await this.deps.pullRequests.checks(repository.path, pr.repo, pr.headSha);
+      if (now.state !== 'NONE') {
+        this.#void(mission, task, decision);
+        return this.#afterOpen(mission, task, repository, pr, signal);
+      }
+    }
     return this.#settle(mission, task, repository, pr, decision);
   }
 

@@ -1,7 +1,7 @@
 import { defineModule, type Container, type Resolver, type TandemiseModule } from '@tandemise/kernel';
 import { SHIPPED_FACTORY_SOURCE } from './planning/factory-config.js';
 import { PlannerService } from './planning/planner-service.js';
-import { SHIP_CI_POLL_MS, SHIP_CI_TIMEOUT_MS, ShipService } from './engine/ship.js';
+import { SHIP_CI_GRACE_MS, SHIP_CI_POLL_MS, SHIP_CI_TIMEOUT_MS, ShipService } from './engine/ship.js';
 import { policyRef } from './planning/planner-service.js';
 import { OutcomeRecorder } from './engine/outcomes.js';
 import { MergeWatch } from './engine/merge-watch.js';
@@ -109,6 +109,8 @@ export interface ApplicationModuleOptions {
   readonly quietAfterMs?: number;
   /** How often the ship step reads CI and a waiting pull request (#53). The daemon passes TANDEMISE_SHIP_POLL_MS. */
   readonly shipPollMs?: number;
+  /** How long no CI right after a push counts as CI not started yet. The daemon passes TANDEMISE_SHIP_CI_GRACE_MS. */
+  readonly shipCiGraceMs?: number;
 }
 
 /**
@@ -445,6 +447,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
         },
         pollMs: shipPollMs,
         timeoutMs: SHIP_CI_TIMEOUT_MS,
+        ciGraceMs: options.shipCiGraceMs ?? SHIP_CI_GRACE_MS,
       },
     }), { source: SOURCE });
 

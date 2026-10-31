@@ -122,6 +122,7 @@ export function bootstrap(config: DaemonConfig, options: { readonly localPersonN
       ...(options.localPersonName === undefined ? {} : { localPersonName: options.localPersonName }),
       quietAfterMs: config.quietMs,
       ...(process.env['TANDEMISE_SHIP_POLL_MS'] === undefined ? {} : { shipPollMs: Number(process.env['TANDEMISE_SHIP_POLL_MS']) }),
+      ...(process.env['TANDEMISE_SHIP_CI_GRACE_MS'] === undefined ? {} : { shipCiGraceMs: Number(process.env['TANDEMISE_SHIP_CI_GRACE_MS']) }),
     }),
   );
 

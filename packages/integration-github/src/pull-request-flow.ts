@@ -26,6 +26,9 @@ const prSchema = z.object({
   mergeCommit: z.object({ oid: z.string() }).nullable().optional(),
 });
 
+/** At most this many pages of 100 check runs are read. */
+const CHECK_PAGES = 10;
+
 /** Lines of a failing check's output kept for the round's note. */
 const LOG_TAIL_LINES = 40;
 
@@ -79,31 +82,58 @@ export class GhPullRequestFlow implements PullRequestPort {
     return toRef(repo, await ghJson(this.#ctx(cwd), ['pr', 'view', String(number), '--repo', repo, '--json', PR_FIELDS], prSchema));
   }
 
+  /**
+   * Everything GitHub says about a commit's CI: check runs (every page), check
+   * suites that haven't produced their runs yet (a workflow queued), and
+   * commit statuses from older integrations. PASS only when all are done and
+   * green and there is at least one; NONE only when there is nothing at all.
+   */
   async checks(cwd: string, repo: string, sha: string): Promise<PullRequestChecks> {
-    const runs = await ghJson(this.#ctx(cwd), ['api', `repos/${repo}/commits/${sha}/check-runs?per_page=100`], z.object({
-      check_runs: z.array(z.object({
-        name: z.string(),
-        status: z.string(),
-        conclusion: z.string().nullable().optional(),
-        details_url: z.string().nullable().optional(),
-        output: z.object({ summary: z.string().nullable().optional(), text: z.string().nullable().optional() }).nullable().optional(),
-      }).passthrough()).optional(),
-    }));
-    const all = runs.check_runs ?? [];
+    const runSchema = z.object({
+      name: z.string(),
+      status: z.string(),
+      conclusion: z.string().nullable().optional(),
+      details_url: z.string().nullable().optional(),
+      output: z.object({ summary: z.string().nullable().optional(), text: z.string().nullable().optional() }).nullable().optional(),
+    }).passthrough();
+    const all: z.infer<typeof runSchema>[] = [];
+    for (let page = 1; page <= CHECK_PAGES; page++) {
+      const res = await ghJson(this.#ctx(cwd), ['api', `repos/${repo}/commits/${sha}/check-runs?per_page=100&page=${page}`], z.object({
+        total_count: z.number().optional(),
+        check_runs: z.array(runSchema).optional(),
+      }));
+      const runs = res.check_runs ?? [];
+      all.push(...runs);
+      if (runs.length < 100 || (res.total_count !== undefined && all.length >= res.total_count)) break;
+    }
+    const suites = await ghJson(this.#ctx(cwd), ['api', `repos/${repo}/commits/${sha}/check-suites?per_page=100`], z.object({
+      check_suites: z.array(z.object({ status: z.string().nullable().optional(), latest_check_runs_count: z.number().optional(), app: z.object({ slug: z.string().optional() }).nullable().optional() }).passthrough()).optional(),
+    })).catch(() => ({ check_suites: [] }));
+    // A suite still waiting to create its runs (a workflow just queued) keeps CI pending. Suites of apps with no
+    // runs at all stay queued forever, so only GitHub Actions' or ones that already have runs count.
+    const waitingSuites = (suites.check_suites ?? []).filter((s) => (s.status ?? '').toLowerCase() !== 'completed'
+      && ((s.latest_check_runs_count ?? 0) > 0 || s.app?.slug === 'github-actions')).length;
+    const status = await ghJson(this.#ctx(cwd), ['api', `repos/${repo}/commits/${sha}/status`], z.object({
+      statuses: z.array(z.object({ context: z.string(), state: z.string(), target_url: z.string().nullable().optional(), description: z.string().nullable().optional() }).passthrough()).optional(),
+    })).catch(() => ({ statuses: [] }));
+    const statuses = status.statuses ?? [];
     const done = all.filter((r) => r.status.toLowerCase() === 'completed');
-    const failing = done.filter((r) => !['success', 'neutral', 'skipped'].includes((r.conclusion ?? '').toLowerCase()));
-    const state: PullRequestChecks['state'] = all.length === 0 ? 'NONE'
-      : failing.length > 0 ? 'FAIL'
-        : done.length < all.length ? 'PENDING' : 'PASS';
-    return {
-      state,
-      done: done.length,
-      total: all.length,
-      failing: failing.map((r) => {
+    const failingRuns = done.filter((r) => !['success', 'neutral', 'skipped'].includes((r.conclusion ?? '').toLowerCase()));
+    const failingStatuses = statuses.filter((s) => s.state === 'failure' || s.state === 'error');
+    const pendingStatuses = statuses.filter((s) => s.state === 'pending');
+    const total = all.length + statuses.length;
+    const finished = done.length + statuses.length - pendingStatuses.length;
+    const failing = [
+      ...failingRuns.map((r) => {
         const text = [r.output?.summary, r.output?.text].filter((t): t is string => typeof t === 'string' && t.length > 0).join('\n');
         return { name: r.name, link: r.details_url ?? null, logTail: text.length === 0 ? null : text.split('\n').slice(-LOG_TAIL_LINES).join('\n') };
       }),
-    };
+      ...failingStatuses.map((s) => ({ name: s.context, link: s.target_url ?? null, logTail: s.description ?? null })),
+    ];
+    const state: PullRequestChecks['state'] = total === 0 && waitingSuites === 0 ? 'NONE'
+      : failing.length > 0 ? 'FAIL'
+        : finished < total || waitingSuites > 0 ? 'PENDING' : 'PASS';
+    return { state, done: finished, total: total + waitingSuites, failing };
   }
 
   async protection(cwd: string, repo: string, branch: string): Promise<{ requiredChecks: boolean | null; reviewRequired: boolean | null; upToDate: boolean | null }> {

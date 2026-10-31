@@ -7,7 +7,7 @@ import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-export async function engineHarness(HOME, { factory, tiebreak, pullRequests, commandExecutor, shipPollMs, brainRepo } = {}) {
+export async function engineHarness(HOME, { factory, tiebreak, pullRequests, commandExecutor, shipPollMs, brainRepo, ciGraceMs } = {}) {
   const app = await import('@tandemise/application');
   const { Container, compose } = await import('@tandemise/kernel');
   const { createLogger, createPaths, systemClock } = await import('@tandemise/shared');
@@ -31,7 +31,7 @@ export async function engineHarness(HOME, { factory, tiebreak, pullRequests, com
     persistenceTokens.persistenceModule({ path: paths.db, logger: log }),
     A.createArtifactsModule({ paths }),
     policyModule, contextModule, createEvaluationModule(), runtimesCoreModule, genericRuntimeModule,
-    executionCoreModule, executionLocalModule, integrationsCoreModule, app.createApplicationModule({ localPersonName: 'Demo', shipPollMs: shipPollMs ?? 150 }),
+    executionCoreModule, executionLocalModule, integrationsCoreModule, app.createApplicationModule({ localPersonName: 'Demo', shipPollMs: shipPollMs ?? 150, shipCiGraceMs: ciGraceMs ?? 300 }),
   );
   container.bind(EXEC_CLOCK, () => systemClock, { source: 'check' });
   container.bind(EXEC_LOGGER, () => log, { source: 'check' });
@@ -127,7 +127,7 @@ export const git = (cwd, ...args) => execFileSync('git', ['-C', cwd, '-c', 'user
 export const REPO = 'acme/web';
 
 /** A world: a checkout with a bare origin, the fake gh, and the engine. */
-export async function world({ factory = {}, scripts = {}, brain = false } = {}) {
+export async function world({ factory = {}, scripts = {}, brain = false, ciGraceMs } = {}) {
   const base = mkdtempSync(join(tmpdir(), 'tdm-merge-'));
   const ghDir = join(base, 'gh');
   const fake = await import('./fake-gh.mjs');
@@ -154,7 +154,7 @@ export async function world({ factory = {}, scripts = {}, brain = false } = {}) 
     writeFileSync(gitconfig, '[user]\n\tname = Check\n\temail = check@example.com\n[init]\n\tdefaultBranch = main\n[commit]\n\tgpgsign = false\n');
     brainRepo = new EL.GitBrainRepo(new EL.NodeProcessSupervisor(nullLogger), nullLogger, () => ({ GIT_CONFIG_GLOBAL: gitconfig }));
   }
-  const h = await engineHarness(join(base, 'home'), { factory: files, commandExecutor: exec, pullRequests: new GH.GhPullRequestFlow(exec), ...(brainRepo === undefined ? {} : { brainRepo }) });
+  const h = await engineHarness(join(base, 'home'), { factory: files, commandExecutor: exec, pullRequests: new GH.GhPullRequestFlow(exec), ciGraceMs, ...(brainRepo === undefined ? {} : { brainRepo }) });
   git(h.paths.root, 'init', '-q', '-b', 'main');
   git(h.paths.root, 'commit', '-q', '--allow-empty', '-m', 'init');
   const { systemClock, ids } = await import('@tandemise/shared');
