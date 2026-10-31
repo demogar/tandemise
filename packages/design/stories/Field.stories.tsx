@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, userEvent } from 'storybook/test';
 import { Field } from '../src/react/index.js';
+import type { FieldControlProps } from '../src/react/index.js';
 
 const meta = {
   title: 'Components/Field',
@@ -10,7 +11,7 @@ const meta = {
     hint: 'What outcome do you want?',
     error: '',
     required: false,
-    children: (control) => <input className="input" placeholder="Ship the settings page" {...control} />,
+    children: (control: FieldControlProps) => <input className="input" placeholder="Ship the settings page" {...control} />,
   },
   argTypes: {
     label: { control: 'text' },
@@ -59,7 +60,7 @@ export const Disabled: Story = {
   args: {
     label: 'Branch',
     hint: 'Set by the mission; it cannot change once work started.',
-    children: (control) => <input className="input" defaultValue="feat/settings" disabled {...control} />,
+    children: (control: FieldControlProps) => <input className="input" defaultValue="feat/settings" disabled {...control} />,
   },
 };
 
@@ -83,7 +84,7 @@ export const Textarea: Story = {
   args: {
     label: 'Note for the next round',
     hint: 'The next round works from exactly what you write.',
-    children: (control) => <textarea className="textarea" rows={4} {...control} />,
+    children: (control: FieldControlProps) => <textarea className="textarea" rows={4} {...control} />,
   },
   play: async ({ canvas }) => {
     const box = canvas.getByRole('textbox', { name: 'Note for the next round' });
