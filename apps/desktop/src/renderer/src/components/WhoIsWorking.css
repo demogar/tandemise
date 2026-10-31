@@ -1,0 +1,96 @@
+/* "Who's working on what" (relay spec). Colours come from theme.css roles only. */
+.who-working {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.who-working__row {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s3) var(--s4);
+  border-top: 1px solid var(--border);
+  min-width: 0;
+}
+
+.who-working__row:first-child {
+  border-top: none;
+}
+
+.who-working__dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--presence-offline);
+}
+
+.who-working__dot[data-presence='online'] {
+  background: var(--presence-online);
+}
+
+.who-working__dot[data-presence='away'] {
+  background: var(--presence-away);
+}
+
+.who-working__name {
+  flex: none;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.who-working__key {
+  flex: none;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+span.who-working__key {
+  cursor: default;
+}
+
+.who-working__title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.who-working__since {
+  flex: none;
+  color: var(--text-tertiary);
+}
+
+.who-working__row[data-stale='true'] .who-working__since {
+  color: var(--status-blocked);
+}
+
+.who-working__badge {
+  flex: none;
+  padding: 0 var(--s2);
+  border-radius: var(--radius-full);
+  background: var(--status-pending-soft);
+  color: var(--text-secondary);
+}
+
+.who-working__badge[data-sync='conflicted'] {
+  background: var(--status-blocked-soft);
+  color: var(--status-blocked);
+}
+
+.who-working__empty {
+  margin: 0;
+  color: var(--text-tertiary);
+}

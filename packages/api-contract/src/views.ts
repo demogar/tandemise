@@ -530,6 +530,8 @@ export interface MissionDetail {
     readonly refs: readonly ExternalRefView[];
     readonly intakeArtifactId: string | null;
   }[];
+  /** Its tracker item's claim with the team, when it has one (relay spec). */
+  readonly claim?: MissionClaimView | null;
 }
 
 /** MVP.md §22.2. Values the runtime does not expose stay null, never guessed. */
@@ -703,6 +705,8 @@ export interface InboxView {
    * so an Inbox built before P3 still type-checks; a live one always sends it.
    */
   readonly parked?: readonly InboxParkedView[];
+  /** Missions whose tracker item someone else now holds (relay spec). */
+  readonly unclaimed?: readonly InboxUnclaimedView[];
 }
 
 /** One DRAFT mission in the backlog, in pull order. */
@@ -1192,3 +1196,51 @@ export interface RoleModelSummary {
 }
 
 export type RoleModelSummaryView = RoleModelSummary;
+
+// ---- coordination (the optional relay, docs/superpowers/specs/2026-10-30-relay-design.md)
+
+/** Where this install's coordination stands: local only, or with a team relay. */
+export type CoordinationStatusView =
+  | { readonly kind: 'local' }
+  | { readonly kind: 'connected'; readonly host: string; readonly teamName: string; readonly role: 'admin' | 'member'; readonly memberId: string; readonly offerImport: boolean }
+  | { readonly kind: 'offline'; readonly since: string; readonly pendingOps: number; readonly host: string; readonly teamName: string; readonly role: 'admin' | 'member'; readonly memberId: string }
+  | { readonly kind: 'refused'; readonly reason: string; readonly host: string };
+
+/** One row of "Who's working on what". */
+export interface CoordinationClaimRowView {
+  readonly claimId: string;
+  readonly memberName: string;
+  readonly mine: boolean;
+  readonly presence: 'online' | 'away' | 'offline';
+  readonly itemKey: string;
+  readonly itemTitle: string;
+  readonly itemUrl: string | null;
+  /** "10:42", in the daemon's time zone. */
+  readonly since: string;
+  readonly startedAt: string;
+  readonly stale: boolean;
+  readonly staleLabel: string | null;
+  readonly sync: 'confirmed' | 'pending' | 'conflicted' | null;
+  /** The mission this row is tied to on this machine, when it is yours. */
+  readonly missionId: string | null;
+}
+
+/** How a mission's tracker item stands with the team. */
+export interface MissionClaimView {
+  readonly claimId: string;
+  readonly itemKey: string;
+  readonly state: 'held' | 'pending' | 'unclaimed';
+  readonly sentence: string;
+  readonly mayTakeBack: boolean;
+}
+
+/** A mission whose claim was lost, waiting on the person's choice. */
+export interface InboxUnclaimedView {
+  readonly missionId: string;
+  readonly missionTitle: string;
+  readonly claimId: string;
+  readonly itemKey: string;
+  readonly sentence: string;
+  readonly mayTakeBack: boolean;
+  readonly forIds: readonly string[];
+}

@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { TandemiseError, asId, errorMessage } from '@tandemise/shared';
 import { API_VERSION } from '@tandemise/api-contract';
 import { loadConfig } from './config.js';
-import { bootstrap } from './bootstrap.js';
+import { COORDINATION_SWITCH, bootstrap } from './bootstrap.js';
 import { buildRouter } from './routes.js';
 import { HttpServer } from './http/server.js';
 import { StreamServer } from './http/stream.js';
@@ -93,7 +93,9 @@ export async function startDaemon(overrides: Parameters<typeof loadConfig>[0] = 
   const testEvents = process.env['TANDEMISE_TEST_ROUTES'] === '1' && process.env['TANDEMISE_PACKAGED'] !== '1'
     ? recordTestEvent(container)
     : null;
-  const router = buildRouter(services, { testClock, testEvents });
+  const coordination = container.resolve(COORDINATION_SWITCH);
+  await coordination.resume();
+  const router = buildRouter(services, { testClock, testEvents, coordination });
 
   let stream: StreamServer | undefined;
   const http = new HttpServer({
@@ -102,6 +104,7 @@ export async function startDaemon(overrides: Parameters<typeof loadConfig>[0] = 
     log,
     // P0 has one token and one person: every request acts as the local person.
     identityResolver: () => ({ personId: services.identity.localPerson().id }),
+    unauthenticatedHooks: () => coordination.settings().localHooksUnauthenticated === true,
     port: config.port,
     onUpgrade: (req, socket, head) => stream?.handleUpgrade(req, socket, head),
   });
@@ -114,6 +117,8 @@ export async function startDaemon(overrides: Parameters<typeof loadConfig>[0] = 
     events,
     projections,
   });
+  coordination.setHooksBase(`${url}/v1`);
+  coordination.startPresence(() => stream?.desktopPresence() ?? null);
 
   writeConnectionFile(config.home, {
     url,
@@ -129,6 +134,7 @@ export async function startDaemon(overrides: Parameters<typeof loadConfig>[0] = 
   const stop = async (): Promise<void> => {
     if (stopped) return;
     stopped = true;
+    coordination.close();
     stream?.close();
     await http.close();
     await lifecycle.stop();

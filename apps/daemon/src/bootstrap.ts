@@ -51,12 +51,17 @@ import { oauthCallbacks } from './oauth-callback.js';
 import { FileSetupFolder } from './setup-folder.js';
 import { FileWorkflowSource } from './workflow-source.js';
 import { DaemonSkillFiles } from './skill-files.js';
+import { SwitchableCoordination, type RelayFactory } from './coordination.js';
+import type { SqlHandle } from '@tandemise/coordination';
+import { relayFactory } from '@tandemise/coordination-relay';
 
 export const CLOCK = token<Clock>('Clock');
 export const LOGGER = token<Logger>('Logger');
 export const EVENT_BUS = token<EventBusPort>('EventBusPort');
 export const PROJECTION_BUS = token<ProjectionBusPort>('ProjectionBusPort');
 export const CONFIG = token<DaemonConfig>('DaemonConfig');
+/** The daemon's coordination switch (relay spec): local, or a team relay, swapped in place. */
+export const COORDINATION_SWITCH = token<SwitchableCoordination>('daemon.Coordination');
 
 export interface Bootstrapped {
   readonly container: Container;
@@ -77,7 +82,7 @@ export interface Bootstrapped {
  * `requires`, so this list is a readable manifest rather than a fragile
  * sequence - and adding a capability really is one more entry here.
  */
-export function bootstrap(config: DaemonConfig, options: { readonly localPersonName?: string } = {}): Bootstrapped {
+export function bootstrap(config: DaemonConfig, options: { readonly localPersonName?: string; readonly relayFactory?: RelayFactory | null } = {}): Bootstrapped {
   const log = createLogger({ level: config.logLevel, base: { component: 'daemon' } });
   const container = new Container();
   const events = new InMemoryEventBus();
@@ -182,6 +187,28 @@ export function bootstrap(config: DaemonConfig, options: { readonly localPersonN
     return head.exitCode === 0 ? head.stdout : (await run(['diff'])).stdout;
   }, { source: 'bootstrap' });
   container.rebind(applicationTokens.BRAIN_HOST, (r) => new GhBrainHost(r.resolve(TOOL_COMMAND_EXECUTOR)), { source: 'bootstrap' });
+
+  // Who works on what with the team (relay spec): one switch, bound to both
+  // coordination ports, over the persistence database's own handle.
+  container.bind(COORDINATION_SWITCH, (r) => new SwitchableCoordination({
+    db: r.resolve(persistenceTokens.DATABASE).handle as unknown as SqlHandle,
+    settings: r.resolve(applicationTokens.SETTINGS_STORE),
+    secrets: r.resolve(applicationTokens.SECRET_STORE),
+    clock,
+    log,
+    localName: options.localPersonName ?? 'You',
+    // The relay client is a provider: bootstrap is the one place that names it.
+    relayFactory: options.relayFactory === undefined ? relayFactory : options.relayFactory,
+    setRelayHandle: (handle) => {
+      const me = r.resolve(applicationTokens.IDENTITY).localPerson();
+      const handles: Record<string, string> = { ...me.handles };
+      if (handle === null) delete handles['relay'];
+      else handles['relay'] = handle;
+      r.resolve(applicationTokens.PERSON_REPOSITORY).update(me.id, { handles });
+    },
+  }), { source: 'bootstrap' });
+  container.bind(applicationTokens.COORDINATION, (r) => r.resolve(COORDINATION_SWITCH), { source: 'bootstrap' });
+  container.bind(applicationTokens.COORDINATION_CONTROL, (r) => r.resolve(COORDINATION_SWITCH), { source: 'bootstrap' });
 
   const services = createServices(container);
 

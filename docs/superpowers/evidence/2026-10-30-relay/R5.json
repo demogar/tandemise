@@ -1,0 +1,57 @@
+{
+  "id": "R5",
+  "title": "A stale claim is taken over; the holder sees Unclaimed and keeps working",
+  "ok": true,
+  "checks": [
+    {
+      "label": "after 25 h away, B is offered Take over",
+      "ok": true,
+      "observed": {
+        "dialog": "Someone is working on this\n\nAna is working on acme/app#11 since 20:29.\n\nNot now\nTake over",
+        "buttons": [
+          "Not now",
+          "Take over"
+        ]
+      }
+    },
+    {
+      "label": "B's mission starts once B holds the item",
+      "ok": true
+    },
+    {
+      "label": "A's mission shows Unclaimed: \"Bruno took over acme/app#11.\"",
+      "ok": true,
+      "observed": "Unclaimed. Bruno took over acme/app#11. This mission keeps running until you decide.\nStop\nTake it back\nKeep going without a claim"
+    },
+    {
+      "label": "…with Stop, Take it back and Keep going without a claim",
+      "ok": true,
+      "observed": [
+        "Stop",
+        "Take it back",
+        "Keep going without a claim"
+      ]
+    },
+    {
+      "label": "…and A's mission is still running",
+      "ok": true,
+      "observed": "EXECUTING"
+    },
+    {
+      "label": "Keep going without a claim hides the banner",
+      "ok": true
+    },
+    {
+      "label": "…and the mission is untouched",
+      "ok": true
+    }
+  ],
+  "notes": [
+    "relay clock now 2026-11-01T02:30:05.826Z"
+  ],
+  "shots": [
+    "/home/demogar/projects/tandemise/tandemise/.claude/worktrees/agent-a7a3a08456d2c2555/docs/superpowers/evidence/2026-10-30-relay/R5-b-take-over.png",
+    "/home/demogar/projects/tandemise/tandemise/.claude/worktrees/agent-a7a3a08456d2c2555/docs/superpowers/evidence/2026-10-30-relay/R5-a-unclaimed.png",
+    "/home/demogar/projects/tandemise/tandemise/.claude/worktrees/agent-a7a3a08456d2c2555/docs/superpowers/evidence/2026-10-30-relay/R5-a-kept-going.png"
+  ]
+}

@@ -78,6 +78,15 @@ lessons, the next run loads the relevant ones, and **Brain** in the sidebar show
 them, the rules they are becoming, and how the brain syncs. Sharing is
 `git pull` and `git push`: no server, and no secret ever enters the brain.
 
+## Working as a team (optional relay)
+
+Nothing here needs a server. When a team wants to see who is working on
+which tracker item, one person runs the relay (`docker compose -f
+apps/relay/compose.yaml up -d`, see [apps/relay/README.md](../apps/relay/README.md))
+and everyone connects from **Settings → Team relay** with an invite code.
+Webhooks from sources that only push (Sentry, WhatsApp) can land on the relay
+and be picked up by one daemon.
+
 ## Where things are
 
 | | |

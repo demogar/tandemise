@@ -80,7 +80,7 @@ Why it stays splittable:
 
 One schema, owned by a new package `packages/coordination`. Every table is prefixed `coord_` so it can live inside the daemon's database without colliding. The same DDL runs in the daemon's SQLite file (solo, and as a mirror in relay mode) and in the relay's own SQLite file. That is what "the same shape" means here: not a similar schema, but the same one.
 
-A relay instance is one team. A team has one or more **projects**. A project is identified by a `projectKey`, a stable string. Once #51 lands, the key is the brain repo's identity (for example `github.com/garipass/brain`). Until then, a workspace gets a `coordination.projectKey` setting that defaults to the workspace id.
+A relay instance is one team. A team has one or more **projects**. A project is identified by a `projectKey`, a stable string. Once #51 lands, the key is the brain repo's identity (for example `github.com/garipass/brain`). Until then, a workspace gets a `coordination.projectKeys[workspaceId]` setting. Its default is the workspace's first repository's remote, normalised (`github.com/acme/app`), so two people's installs of one repository agree without setting anything; with no remote, it is the workspace id. The key is written to the setting on first use and kept, so a remote added or changed later never moves a workspace's claims to another project. *(Amended at build time; controller ruling.)*
 
 | Table | Fields | Notes |
 |---|---|---|
@@ -347,7 +347,7 @@ The outbox is drained in order, with backoff (1 s doubling to 5 min). An op that
   - The build stage runs `npm ci` and builds only the workspaces the relay needs: `api-contract`, `coordination` and `relay`.
   - The runtime stage is `node:22-bookworm-slim` with production dependencies only. `better-sqlite3` uses its prebuilt binary, so there is no compiler in the final image.
   - It runs as the non-root `node` user, `EXPOSE 8787`, with `HEALTHCHECK` on `/relay/v1/health`.
-  - Target image size: under 120 MB.
+  - Target image size: under 120 MB **compressed**, the size a pull downloads (measured with `docker save | gzip`). The `node:22-bookworm-slim` base alone is about 200 MB unpacked, so an unpacked target would rule out the base this spec chose. *(Amended at build time; controller ruling.)*
 - **`compose.yaml`**: one `relay` service, a named volume `relay-data:/data`, the port `8787:8787`, `restart: unless-stopped`.
   - An optional `caddy` service, under a compose profile (`--profile tls`), terminates TLS with automatic certificates for `RELAY_PUBLIC_URL`.
   - Teams with their own reverse proxy skip it.

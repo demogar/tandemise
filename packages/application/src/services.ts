@@ -72,6 +72,8 @@ export interface TandemiseServices {
   readonly evals: import('./services/eval-service.js').EvalService;
   /** The project's brain repository: link, sync, memory and promotions (#51). */
   readonly brain: import('./brain/brain-service.js').BrainService;
+  /** Who works on which tracker item, alone or with a team relay (relay spec). */
+  readonly coordination: import('./services/coordination-service.js').CoordinationService;
 }
 
 /** One contribution pinned as Evidence, with what a caller needs to type it next. */
