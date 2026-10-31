@@ -398,7 +398,7 @@ export class MissionServiceImpl implements MissionService {
     // those keep today's framing.
     // A wait step reads no feedback, so its note stays a retry reason.
     const effect = feedbackEffectFor(task, this.deps.approvals.pendingForTask(taskId), this.deps.runs);
-    if (note.length > 0 && !stopping && task.executor !== 'wait' && (effect.kind === 'review' || effect.kind === 'reopen' || effect.kind === 'round_now')) {
+    if (note.length > 0 && !stopping && task.executor !== 'wait' && task.executor !== 'ship' && (effect.kind === 'review' || effect.kind === 'reopen' || effect.kind === 'round_now')) {
       let pending;
       try {
         // One unit with the round, so a round that cannot start leaves the task's access as it was.
@@ -648,8 +648,8 @@ export class MissionServiceImpl implements MissionService {
       throw new TandemiseError('CONFLICT', reason, { details: { taskId, status: task.status, executor: task.executor } });
     };
     if (task.executor !== 'agent') {
-      refuse(task.executor === 'wait'
-        ? `'${task.title}' is a wait step; it finishes on its own check, not in another tool.`
+      refuse(task.executor === 'wait' || task.executor === 'ship'
+        ? `'${task.title}' is a ${task.executor === 'ship' ? 'ship' : 'wait'} step; it finishes on its own check, not in another tool.`
         : `'${task.title}' is already a person's step; complete it instead.`);
     }
     if (!PARKABLE_TASK_STATUSES.includes(task.status)) refuse(`A step in ${task.status} cannot be continued elsewhere.`);

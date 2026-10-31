@@ -25,6 +25,8 @@ export interface ModelPolicy {
   readonly independentOf?: string;
   /** Set only by eval trials: the step's model beats economy mode so limit pressure can't mask a candidate. */
   readonly pinned?: boolean;
+  /** Why the factory routed this model (#53 §6.3), shown in place of "step override". */
+  readonly reason?: string;
 }
 
 /** What a role says about models (Team → Roles). */
@@ -118,7 +120,7 @@ export function resolveModel(ctx: ModelContext): ResolvedModel {
   }
 
   const step = name(ctx.step?.model);
-  if (step !== null) return { model: step, reason: 'step override', source: 'step' };
+  if (step !== null) return { model: step, reason: name(ctx.step?.reason) ?? 'step override', source: 'step' };
   const role = name(ctx.role?.model);
   if (role !== null) return { model: role, reason: 'role model', source: 'role' };
   const profile = name(ctx.profileModel);
@@ -166,10 +168,12 @@ export function normalizeModelPolicy(policy: ModelPolicy | null | undefined): Mo
   const model = name(policy.model);
   const escalate = ladder(policy.escalate);
   const independentOf = name(policy.independentOf);
-  const out: { model?: string; escalate?: string[]; independentOf?: string } = {};
+  const reason = name(policy.reason);
+  const out: { model?: string; escalate?: string[]; independentOf?: string; reason?: string } = {};
   if (model !== null) out.model = model;
   if (escalate.length > 0) out.escalate = escalate;
   if (independentOf !== null) out.independentOf = independentOf;
+  if (reason !== null && model !== null) out.reason = reason;
   return Object.keys(out).length === 0 ? null : out;
 }
 

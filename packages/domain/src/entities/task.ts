@@ -5,10 +5,16 @@ import type { GateExpression } from '../gate.js';
 import type { ResolvedStaffingSnapshot, StaffingPatch } from '../staffing.js';
 import type { ModelPolicy } from './models.js';
 import type { SkillPin } from './skill.js';
+import type { StepClass } from '../planner/types.js';
 
 /** Who carries a task out (MVP.md §11). */
-export const TASK_EXECUTORS = ['agent', 'human', 'wait'] as const;
+export const TASK_EXECUTORS = ['agent', 'human', 'wait', 'ship'] as const;
 export type TaskExecutor = (typeof TASK_EXECUTORS)[number];
+
+/** Whether a runtime carries the task out: not a person, a wait or the daemon's ship step (#53). */
+export function isAgentExecutor(e: TaskExecutor): boolean {
+  return e === 'agent';
+}
 
 export const TASK_STATUSES = [
   'PENDING',       // dependencies not yet satisfied
@@ -134,6 +140,8 @@ export interface MissionTask {
   readonly approvalPolicy: ApprovalPolicy;
   readonly retryPolicy: RetryPolicy;
   readonly completionGate: GateExpression | null;
+  /** What the step is for (#53 §5); null or absent: derived from its role (`stepClassFor`). */
+  readonly stepClass?: StepClass | null;
   /** The workflow step's model settings (P12); null or absent when it has none. */
   readonly modelPolicy?: ModelPolicy | null;
   /**

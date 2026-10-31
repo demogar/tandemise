@@ -259,7 +259,7 @@ export interface MissionCriterionView {
   /** `U1…` for the person's lines; the spec's own id (`AC1`) for spec criteria. */
   readonly key: string;
   readonly statement: string;
-  readonly source: 'user' | 'spec';
+  readonly source: 'user' | 'spec' | 'implicit';
   /** User keys this spec criterion covers. */
   readonly covers: readonly string[];
   /** Spec keys that cover this user criterion. */
@@ -921,7 +921,7 @@ export interface WorkflowSummary {
   readonly description: string | null;
   readonly path: string | null;
   readonly inputs: readonly { name: string; description: string | null; required: boolean }[];
-  readonly steps: readonly { key: string; title: string; executor: 'agent' | 'human' | 'wait' }[];
+  readonly steps: readonly { key: string; title: string; executor: 'agent' | 'human' | 'wait' | 'ship' }[];
   /** Non-empty when the file exists but cannot be used. */
   readonly issues: readonly { path: string; message: string }[];
 }

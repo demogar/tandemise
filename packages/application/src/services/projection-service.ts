@@ -328,7 +328,7 @@ export class ProjectionServiceImpl implements ProjectionService {
         // Only this task's notes, as the reader resolves them: a change answers the notes on its own task.
         changed: resolveChanges(named, primary?.handoff, new Map((notesByTask.get(task.id) ?? []).map((i) => [i.id as string, i]))),
         // A wait step reads nothing, a task with nothing done has nothing to change yet, and a cancelled mission takes no more rounds.
-        canRequestChanges: task.executor !== 'wait' && (task.startedAt !== null || primary !== undefined) && missionTakesRounds(mission),
+        canRequestChanges: task.executor !== 'wait' && task.executor !== 'ship' && (task.startedAt !== null || primary !== undefined) && missionTakesRounds(mission),
       };
       if (section === 'needs_you') needsYou.push(card);
       else if (section === 'in_progress') inProgress.push(card);

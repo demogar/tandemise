@@ -7,6 +7,7 @@ export * from './plan.js';
 export * from './event.js';
 export * from './staffing.js';
 export * from './staffing-presets.js';
+export * from './planner/index.js';
 
 export * from './entities/mission.js';
 export * from './entities/member.js';

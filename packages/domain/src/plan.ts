@@ -8,6 +8,7 @@ import { validateGate } from './gate.js';
 import { lintGate } from './gate-lint.js';
 import type { ModelPolicy } from './entities/models.js';
 import type { SkillRef } from './entities/skill.js';
+import type { StepClass } from './planner/types.js';
 
 /**
  * A proposed mission plan.
@@ -73,6 +74,8 @@ export interface PlannedTask {
   readonly approvalPolicy: ApprovalPolicy;
   readonly retryPolicy: RetryPolicy;
   readonly completionGate: string | null;
+  /** What the step is for (#53 §5); absent: derived from its role. */
+  readonly stepClass?: StepClass | null;
   /** Model settings from a workflow step (P12). A planner never sets them. */
   readonly modelPolicy?: ModelPolicy | null;
   /** A workflow step's `skills:` (P13), resolved to pins when the task is created. A planner never sets them. */
