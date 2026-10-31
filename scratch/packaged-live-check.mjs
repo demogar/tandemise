@@ -20,6 +20,11 @@
  *     session (Electron's binary again) is told to run as Node;
  *   - closing the window quits the app and leaves the daemon, its files and
  *     the held session running.
+ * `--simulate-upgrade` first starts a daemon that says it is release 0.8.0
+ * (this checkout's apps/daemon build with TANDEMISE_VERSION=0.8.0) on the same
+ * home, as an older install would have left it; the app must tell the person
+ * it is restarting its background service, stop that daemon cleanly, and
+ * start its own.
  * Unlike scratch/desktop-live-check.mjs, nothing here comes from the checkout
  * except this script: the daemon, its native modules and the renderer are the
  * packaged ones.
@@ -38,8 +43,10 @@ const extractAndRun = args.includes('--extract-and-run');
 // The AppImage runtime deletes what it extracted when the app exits, under a
 // daemon that is still running from it; NO_CLEANUP=1 keeps it.
 const noCleanup = args.includes('--no-cleanup');
+// Plays an update: a daemon of an older release is already running when the app starts.
+const simulateUpgrade = args.includes('--simulate-upgrade');
 if (packaged === null || !existsSync(packaged)) {
-  console.error('usage: node scratch/packaged-live-check.mjs --packaged <AppImage or app executable> [--extract-and-run [--no-cleanup]] [--evidence <dir>]');
+  console.error('usage: node scratch/packaged-live-check.mjs --packaged <AppImage or app executable> [--extract-and-run [--no-cleanup]] [--simulate-upgrade] [--evidence <dir>]');
   process.exit(2);
 }
 
@@ -148,6 +155,22 @@ try {
   const which = spawnSync('sh', ['-c', 'command -v node || echo none'], { env, encoding: 'utf8' });
   ok('`node` is not on the PATH the app is started with', which.stdout.trim() === 'none', which.stdout.trim());
 
+  let oldDaemon = null;
+  let oldExit = null;
+  if (simulateUpgrade) {
+    section('an older release left its daemon running');
+    const repoRoot = resolve(import.meta.dirname, '..');
+    oldDaemon = spawn(process.execPath, [join(repoRoot, 'apps/daemon/dist/main.js')], {
+      cwd: scratch, detached: true, stdio: 'ignore',
+      env: { ...env, PATH: process.env.PATH, TANDEMISE_VERSION: '0.8.0' },
+    });
+    oldDaemon.on('exit', (code, signal) => { oldExit = code ?? signal; });
+    procs.push(oldDaemon);
+    await poll(() => existsSync(join(home, 'daemon.json')), 30_000);
+    const old = existsSync(join(home, 'daemon.json')) ? JSON.parse(readFileSync(join(home, 'daemon.json'), 'utf8')) : null;
+    ok('a daemon of release 0.8.0 is running on this home', old?.version === '0.8.0' && old.pid === oldDaemon.pid, old);
+  }
+
   section('the packaged app starts its own daemon');
   const appArgs = [...(extractAndRun ? ['--appimage-extract-and-run'] : []), `--remote-debugging-port=${PORT}`, `--user-data-dir=${join(scratch, 'electron')}`];
   const app = spawn(packaged, appArgs, { cwd: scratch, env, stdio: ['ignore', 'ignore', 'pipe'], detached: true });
@@ -160,12 +183,35 @@ try {
   ok('the window loads the packaged renderer from file://', page !== null, page?.url ?? `app exit ${app.exitCode ?? app.signalCode}; stderr: ${appErr.slice(-800)}`);
   if (page === null) throw new Error('no window');
 
+  if (simulateUpgrade) {
+    // Watch the window while the old daemon is replaced.
+    let told = '';
+    for (const until = Date.now() + 15_000; Date.now() < until && !told; await sleep(50)) {
+      const text = (await page.evaluate('document.body.innerText')) ?? '';
+      if (text.includes('Tandemise was updated; restarting its background service')) told = text;
+    }
+    await poll(() => oldExit !== null, 30_000);
+    ok('the window tells the person: "Tandemise was updated; restarting its background service…"', told !== '', told.slice(0, 160).replace(/\n/g, ' / '));
+    ok('the old daemon stopped cleanly (exit 0, its coordinated shutdown)', oldExit === 0, String(oldExit));
+    if (evidence && told) {
+      const shot = await page.send('Page.captureScreenshot', { format: 'png' });
+      if (shot.result?.data) writeFileSync(join(evidence, 'upgrade-restarting.png'), Buffer.from(shot.result.data, 'base64'));
+    }
+    await poll(() => { try { return JSON.parse(readFileSync(join(home, 'daemon.json'), 'utf8')).version === '0.9.0'; } catch { return false; } }, 30_000);
+  }
+
   const connFile = join(home, 'daemon.json');
   await poll(() => existsSync(connFile), 30_000);
   const conn = existsSync(connFile) ? JSON.parse(readFileSync(connFile, 'utf8')) : null;
   ok('the daemon published its handshake', conn !== null, conn?.url ?? '');
   if (conn === null) throw new Error(`no daemon; launch log:\n${(() => { try { return readFileSync(join(home, 'logs', 'daemon-launch.log'), 'utf8'); } catch { return '(none)'; } })()}`);
   daemonPid = conn.pid;
+  if (simulateUpgrade) {
+    ok('the new daemon is the app\'s release, in a new process', conn.version === '0.9.0' && conn.pid !== oldDaemon?.pid, { version: conn.version, pid: conn.pid });
+    const log = readFileSync(join(home, 'logs', 'daemon-launch.log'), 'utf8');
+    ok('the launch log records the replacement', /replacing the daemon of version 0\.8\.0 \(pid \d+\) with this app's 0\.9\.0/.test(log) && /the old daemon \(pid \d+\) stopped/.test(log),
+      log.split('\n').filter((l) => /replacing|old daemon/.test(l)).join(' | '));
+  }
 
   const launchLog = readFileSync(join(home, 'logs', 'daemon-launch.log'), 'utf8');
   const started = launchLog.split('\n').find((l) => l.includes('desktop: starting')) ?? '';
@@ -213,6 +259,12 @@ try {
   }
   ok('the UI reports the daemon as connected', text.includes('Daemon connected'));
   ok('the new project is shown', text.includes('Packaged check'));
+
+  // Opening the app again focuses this window rather than starting a second app.
+  const again = spawn(packaged, [...(extractAndRun ? ['--appimage-extract-and-run'] : []), `--user-data-dir=${join(scratch, 'electron')}`], { cwd: scratch, env, stdio: 'ignore', detached: true });
+  const againExit = await new Promise((r) => { again.on('exit', (code, signal) => r(code ?? signal)); setTimeout(() => r('still running'), 20_000); });
+  if (againExit === 'still running') { try { process.kill(-again.pid, 'SIGTERM'); } catch {} }
+  ok('a second launch exits at once and leaves the first window', againExit === 0 && (await page.evaluate('document.body.innerText'))?.includes('Packaged check'), String(againExit));
   if (evidence) {
     const shot = await page.send('Page.captureScreenshot', { format: 'png' });
     if (shot.result?.data) writeFileSync(join(evidence, 'connected.png'), Buffer.from(shot.result.data, 'base64'));
@@ -330,5 +382,5 @@ say('\n' + '─'.repeat(60));
 say(failures.length === 0
   ? `ALL ${passed} PACKAGED LIVE CHECKS PASSED`
   : `${passed} passed, ${failures.length} FAILED:\n  - ${failures.join('\n  - ')}`);
-if (evidence) writeFileSync(join(evidence, `packaged-live-check${extractAndRun ? '-extract-and-run' : ''}${noCleanup ? '-no-cleanup' : ''}.txt`), `${lines.join('\n')}\n`);
+if (evidence) writeFileSync(join(evidence, `packaged-live-check${extractAndRun ? '-extract-and-run' : ''}${noCleanup ? '-no-cleanup' : ''}${simulateUpgrade ? '-upgrade' : ''}.txt`), `${lines.join('\n')}\n`);
 process.exit(failures.length === 0 ? 0 : 1);

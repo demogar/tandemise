@@ -3,37 +3,38 @@
   ok   `node` is not on the PATH the app is started with  none
 
 == the packaged app starts its own daemon
-  (started /home/demogar/projects/tandemise/tandemise/.claude/worktrees/agent-a774d3127da9205c7/apps/desktop/release/Tandemise-0.9.0-linux-x86_64.AppImage --appimage-extract-and-run --remote-debugging-port=9351 --user-data-dir=/tmp/tdm-packaged-4xmB2W/electron)
-  ok   the window loads the packaged renderer from file://  file:///tmp/appimage_extracted_ac74e2ca940bbd8a83be4fb16543036c/resources/app.asar/dist/renderer/index.html
-  ok   the daemon published its handshake  http://127.0.0.1:34829
-  ok   the desktop started the bundled daemon, on its own Node (from bundled)  [2026-10-31T17:44:23.804Z] desktop: starting /tmp/appimage_extracted_ac74e2ca940bbd8a83be4fb16543036c/resources/daemon/dist/main.js with Node 24.21.0 at /tmp/appimage_extracted_ac74e2ca940bbd8a83be4fb16543036c/tandemise (from bundled)
-  ok   the daemon process is the app's own binary, not a system node  /tmp/appimage_extracted_ac74e2ca940bbd8a83be4fb16543036c/tandemise
-  ok   it runs resources/daemon/dist/main.js  /tmp/appimage_extracted_ac74e2ca940bbd8a83be4fb16543036c/tandemise /tmp/appimage_extracted_ac74e2ca940bbd8a83be4fb16543036c/resources/daemon/dist/main.js
+  (started /home/demogar/projects/tandemise/tandemise/.claude/worktrees/agent-a774d3127da9205c7/apps/desktop/release/Tandemise-0.9.0-linux-x86_64.AppImage --appimage-extract-and-run --remote-debugging-port=9351 --user-data-dir=/tmp/tdm-packaged-60GVNF/electron)
+  ok   the window loads the packaged renderer from file://  file:///tmp/appimage_extracted_bae9c5e3a890b68043cfffb84565effb/resources/app.asar/dist/renderer/index.html
+  ok   the daemon published its handshake  http://127.0.0.1:36955
+  ok   the desktop started the bundled daemon, on its own Node (from bundled)  [2026-10-31T18:41:19.571Z] desktop: starting /tmp/appimage_extracted_bae9c5e3a890b68043cfffb84565effb/resources/daemon/dist/main.js with Node 24.21.0 at /tmp/appimage_extracted_bae9c5e3a890b68043cfffb84565effb/tandemise (from bundled)
+  ok   the daemon process is the app's own binary, not a system node  /tmp/appimage_extracted_bae9c5e3a890b68043cfffb84565effb/tandemise
+  ok   it runs resources/daemon/dist/main.js  /tmp/appimage_extracted_bae9c5e3a890b68043cfffb84565effb/tandemise /tmp/appimage_extracted_bae9c5e3a890b68043cfffb84565effb/resources/daemon/dist/main.js
   ok   it was started in Node mode (ELECTRON_RUN_AS_NODE=1)
   ok   its PATH has no node either
-  ok   the daemon answers health  {"ok":true,"apiVersion":"v1"}
+  ok   the daemon answers health  {"ok":true,"apiVersion":"v1","version":"0.9.0","build":"17f31d0"}
 
 == the window connects
   ok   a new install asks for a project first  Create your first project /  / A project is a codebase and everything that works on it — its repositories, its roles, the ru
   ok   the UI reports the daemon as connected
   ok   the new project is shown
+  ok   a second launch exits at once and leaves the first window  0
 
 == the hold terminal (node-pty in the bundled daemon)
-  ok   a project on a git repository  {"workspace":{"id":"ws_01m69h03mgdft7xq3eje","name":"Hold packaged","defaultRepositoryId":"repo_01m69h03nbprgxwde1y6","autonomy":{"planApproval":"ask","localCodeChanges":"auto","externalWrites":"policy","productionRelease":"ask","financialActions":"deny"},"concurrency":{"maxTotalWorkers":3,"perRunti
-  ok   a fake runtime stands in for the agent  {"id":"rt_01m69h03nmnk62a465sc","workspaceId":null,"adapterId":"fake","name":"Fake agent","executablePath":null,"args":[],"settings":{"script":{"resume":"ok","steps":[{"kind":"checkpoint","sessionId":"sess-packaged","label":"session.init"},{"kind":"write-file","path":".tandemise/out/DesignBrief.md",
-  ok   the mission starts  {"id":"msn_01m69h03nq2ck9nbv4se","workspaceId":"ws_01m69h03mgdft7xq3eje","repositoryId":"repo_01m69h03nbprgxwde1y6","title":"Design onboarding","goal":"Design onboarding","constraints":[],"successCriteria":["The design is written"],"status":"EXECUTING","autonomy":"balanced","workflowPreset":"hold-pa
-  ok   its step is running and holdable (the terminal component loaded)  {"id":"tsk_01m69h03p8zrsyjabdjz","missionId":"msn_01m69h03nq2ck9nbv4se","key":"design","title":"design","objective":"Design the onboarding.","roleId":"design","dependsOn":[],"requiredCapabilities":[],"inputArtifacts":[],"expectedOutputs":["DesignBrief"],"executionPolicy":{"isolation":"none","maxWall
+  ok   a project on a git repository  {"workspace":{"id":"ws_01m69m8bvvehjwwbm1na","name":"Hold packaged","defaultRepositoryId":"repo_01m69m8bwsmav6mv7jqm","autonomy":{"planApproval":"ask","localCodeChanges":"auto","externalWrites":"policy","productionRelease":"ask","financialActions":"deny"},"concurrency":{"maxTotalWorkers":3,"perRunti
+  ok   a fake runtime stands in for the agent  {"id":"rt_01m69m8bx0e01hpqt0b7","workspaceId":null,"adapterId":"fake","name":"Fake agent","executablePath":null,"args":[],"settings":{"script":{"resume":"ok","steps":[{"kind":"checkpoint","sessionId":"sess-packaged","label":"session.init"},{"kind":"write-file","path":".tandemise/out/DesignBrief.md",
+  ok   the mission starts  {"id":"msn_01m69m8bx4jfjnbb2re1","workspaceId":"ws_01m69m8bvvehjwwbm1na","repositoryId":"repo_01m69m8bwsmav6mv7jqm","title":"Design onboarding","goal":"Design onboarding","constraints":[],"successCriteria":["The design is written"],"status":"EXECUTING","autonomy":"balanced","workflowPreset":"hold-pa
+  ok   its step is running and holdable (the terminal component loaded)  {"id":"tsk_01m69m8bxhcjvfrvw5pb","missionId":"msn_01m69m8bx4jfjnbb2re1","key":"design","title":"design","objective":"Design the onboarding.","roleId":"design","dependsOn":[],"requiredCapabilities":[],"inputArtifacts":[],"expectedOutputs":["DesignBrief"],"executionPolicy":{"isolation":"none","maxWall
   ok   its card offers Hold
   ok   Hold opens the terminal panel  Terminal: design
   ok   the terminal shows the held session, running on a PTY  Fake session sess-packaged
   ok   what you type reaches the session (it echoes it back)  Fake session sess-packaged / hello from the packaged app / > hello from the packaged app
-  ok   a typed command writes into the step's worktree  /tmp/tdm-packaged-4xmB2W/repo
-  ok   the held session is the app's binary in Node mode too  1420270 /tmp/appimage_extracted_ac74e2ca940bbd8a83be4fb16543036c/tandemise -e  const fs = require('fs'); const path = require('path'); const readline = require('readline'); fs.writeFileSync("/tmp/tdm-packaged-4xmB2W/home/workspaces/ws_01m69h03mgdft7xq3eje/missions/msn_01m69h03nq2ck9nbv4se/holds/hld_
+  ok   a typed command writes into the step's worktree  /tmp/tdm-packaged-60GVNF/repo
+  ok   the held session is the app's binary in Node mode too  1572331 /tmp/appimage_extracted_bae9c5e3a890b68043cfffb84565effb/tandemise -e  const fs = require('fs'); const path = require('path'); const readline = require('readline'); fs.writeFileSync("/tmp/tdm-packaged-60GVNF/home/workspaces/ws_01m69m8bvvehjwwbm1na/missions/msn_01m69m8bx4jfjnbb2re1/holds/hld_
 
 == the daemon outlives the window
   ok   closing the window quits the app  exit 0
-  ok   the daemon's own files are still there after the app quit  /tmp/appimage_extracted_ac74e2ca940bbd8a83be4fb16543036c/tandemise
-  ok   the daemon still answers after the app quit  {"status":200,"body":{"ok":true,"apiVersion":"v1"}}
+  ok   the daemon's own files are still there after the app quit  /tmp/appimage_extracted_bae9c5e3a890b68043cfffb84565effb/tandemise
+  ok   the daemon still answers after the app quit  {"status":200,"body":{"ok":true,"apiVersion":"v1","version":"0.9.0","build":"17f31d0"}}
   ok   the held step is still held  HELD
   ok   its terminal reopens without the window and repaints the scrollback  Fake session sess-packaged
 hello from the packaged app
@@ -45,4 +46,4 @@ wrote packaged.txt
   ok   and typing still reaches the session
 
 ────────────────────────────────────────────────────────────
-ALL 28 PACKAGED LIVE CHECKS PASSED
+ALL 29 PACKAGED LIVE CHECKS PASSED
