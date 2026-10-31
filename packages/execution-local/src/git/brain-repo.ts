@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, open, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, open, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, normalize } from 'node:path';
 import { TandemiseError, type Logger } from '@tandemise/shared';
@@ -55,7 +55,7 @@ export class GitBrainRepo implements BrainRepoPort {
     return result.exitCode === 0 && sha !== '' ? sha : null;
   }
 
-  async fetchAndRebase(clone: string, branch: string): Promise<{ head: string; conflicted: readonly string[]; offline: string | null }> {
+  async fetchAndRebase(clone: string, branch: string): Promise<{ head: string; conflicted: readonly string[]; offline: string | null; failed?: string }> {
     const current = async (): Promise<string> => (await this.head(clone)) ?? '';
     const origin = await this.#origin(clone);
     if (origin === null) return { head: await current(), conflicted: [], offline: null };
@@ -71,6 +71,8 @@ export class GitBrainRepo implements BrainRepoPort {
     if (rebased.exitCode === 0) return { head: await current(), conflicted: [], offline: null };
     const conflicted = (await this.#git(clone, ['diff', '--name-only', '--diff-filter=U'])).stdout.split('\n').map((l) => l.trim()).filter(Boolean).sort();
     await this.#git(clone, ['rebase', '--abort']);
+    // A rebase that failed with nothing conflicted (a dirty tree, a lock) is a failure, never a success.
+    if (conflicted.length === 0) return { head: await current(), conflicted: [], offline: null, failed: lastLine(rebased) };
     return { head: await current(), conflicted, offline: null };
   }
 
@@ -93,6 +95,26 @@ export class GitBrainRepo implements BrainRepoPort {
         await rm(dir, { recursive: true, force: true });
       }
     }
+    // What each file was, so a commit that fails leaves the clone exactly as it found it.
+    const originals = new Map<string, Buffer | null>();
+    for (const file of files) {
+      const absolute = join(clone, safePath(file.path));
+      if (!originals.has(absolute)) originals.set(absolute, await readFile(absolute).catch(() => null));
+    }
+    try {
+      await this.#writeAndCommit(clone, files, message, author);
+    } catch (e) {
+      for (const [absolute, before] of originals) {
+        if (before === null) await rm(absolute, { force: true });
+        else await writeFile(absolute, before);
+      }
+      await this.#git(clone, ['reset', '-q', '--', ...files.map((f) => safePath(f.path))]);
+      throw e;
+    }
+    return (await this.head(clone)) ?? '';
+  }
+
+  async #writeAndCommit(clone: string, files: readonly BrainWrite[], message: string, author: { name: string; email: string } | null): Promise<void> {
     for (const file of files) {
       const absolute = join(clone, safePath(file.path));
       if (file.mode === 'delete') {
@@ -118,7 +140,6 @@ export class GitBrainRepo implements BrainRepoPort {
     if (staged.exitCode !== 0) {
       await this.#must(clone, ['-c', `user.name=${who.name}`, '-c', `user.email=${who.email}`, 'commit', '--no-verify', '-q', '-m', message]);
     }
-    return (await this.head(clone)) ?? '';
   }
 
   async push(clone: string, branch: string, opts?: { force?: false; setUpstream?: boolean }): Promise<BrainPushResult> {
@@ -143,9 +164,34 @@ export class GitBrainRepo implements BrainRepoPort {
     const range = hasUpstream ? [`${upstream}..refs/heads/${base}`] : [`refs/heads/${base}`];
     const shas = (await this.#must(clone, ['rev-list', '--reverse', ...range])).split('\n').map((l) => l.trim()).filter(Boolean);
     if (shas.length === 0) return [];
-    await this.#must(clone, ['branch', '-f', branch, `refs/heads/${base}`]);
-    if (hasUpstream) await this.#must(clone, ['reset', '--hard', upstream]);
-    return shas;
+    if (!hasUpstream) {
+      await this.#must(clone, ['branch', '-f', branch, `refs/heads/${base}`]);
+      return shas;
+    }
+    // Ledger commits stay on the default branch (they never conflict); only the rest moves.
+    const ledgerOnly = async (sha: string): Promise<boolean> => {
+      const paths = (await this.#must(clone, ['diff-tree', '--no-commit-id', '--name-only', '-r', sha])).split('\n').map((l) => l.trim()).filter(Boolean);
+      return paths.length > 0 && paths.every((p) => p.startsWith(LEDGER_DIR));
+    };
+    const keep: string[] = [];
+    const move: string[] = [];
+    for (const sha of shas) (await ledgerOnly(sha) ? keep : move).push(sha);
+    if (move.length === 0) return [];
+    // The branch starts where this clone's work started, so its commits apply as they were made.
+    const forkPoint = (await this.#must(clone, ['merge-base', `refs/heads/${base}`, upstream])).trim();
+    await this.#must(clone, ['branch', '-f', branch, forkPoint]);
+    const dir = await mkdtemp(join(tmpdir(), 'tandemise-brain-'));
+    await rm(dir, { recursive: true, force: true });
+    await this.#must(clone, ['worktree', 'add', '-f', dir, branch]);
+    try {
+      for (const sha of move) await this.#must(dir, ['-c', `user.name=${DAEMON_AUTHOR.name}`, '-c', `user.email=${DAEMON_AUTHOR.email}`, 'cherry-pick', '--allow-empty', sha]);
+    } finally {
+      await this.#git(clone, ['worktree', 'remove', '--force', dir]);
+      await rm(dir, { recursive: true, force: true });
+    }
+    await this.#must(clone, ['reset', '--hard', upstream]);
+    for (const sha of keep) await this.#must(clone, ['-c', `user.name=${DAEMON_AUTHOR.name}`, '-c', `user.email=${DAEMON_AUTHOR.email}`, 'cherry-pick', sha]);
+    return move;
   }
 
   async fastForward(clone: string, branch: string, onto: string): Promise<boolean> {
@@ -158,8 +204,15 @@ export class GitBrainRepo implements BrainRepoPort {
   }
 
   async revert(clone: string, sha: string, message: string): Promise<string> {
-    await this.#must(clone, ['revert', '--no-commit', sha]);
-    await this.#must(clone, ['-c', `user.name=${DAEMON_AUTHOR.name}`, '-c', `user.email=${DAEMON_AUTHOR.email}`, 'commit', '--no-verify', '-q', '-m', message]);
+    try {
+      await this.#must(clone, ['revert', '--no-commit', sha]);
+      await this.#must(clone, ['-c', `user.name=${DAEMON_AUTHOR.name}`, '-c', `user.email=${DAEMON_AUTHOR.email}`, 'commit', '--no-verify', '-q', '-m', message]);
+    } catch (e) {
+      // A revert that conflicts is abandoned, so the clone is never left mid-revert.
+      await this.#git(clone, ['revert', '--abort']);
+      await this.#git(clone, ['reset', '-q', '--merge']);
+      throw e;
+    }
     return (await this.head(clone)) ?? '';
   }
 
@@ -197,7 +250,7 @@ export class GitBrainRepo implements BrainRepoPort {
       command: 'git',
       args: [
         '--no-pager',
-        '-c', 'core.hooksPath=/dev/null', '-c', 'protocol.file.allow=always', '-c', 'submodule.recurse=false',
+        '-c', 'core.hooksPath=/dev/null', '-c', 'submodule.recurse=false',
         ...(github ? ['-c', 'credential.helper=', '-c', 'credential.helper=!gh auth git-credential'] : []),
         ...args,
       ],

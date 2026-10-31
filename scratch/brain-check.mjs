@@ -157,7 +157,7 @@ mkdirSync(FAKE.bin, { recursive: true });
 mkdirSync(FAKE.remotes, { recursive: true });
 writeFileSync(join(FAKE.bin, 'gh'), `#!/bin/sh\nFAKE_GH_LOG='${FAKE.log}' FAKE_GH_STATE='${FAKE.state}' FAKE_GH_REMOTES='${FAKE.remotes}' exec '${process.execPath}' '${join(here, 'brain-fixtures', 'fake-gh.mjs')}' "$@"\n`);
 chmodSync(join(FAKE.bin, 'gh'), 0o755);
-writeFileSync(FAKE.gitconfig, `[url "file://${FAKE.remotes}/"]\n\tinsteadOf = https://github.com/\n[user]\n\tname = Check\n\temail = check@localhost\n[init]\n\tdefaultBranch = main\n`);
+writeFileSync(FAKE.gitconfig, `[url "file://${FAKE.remotes}/"]\n\tinsteadOf = https://github.com/\n[protocol "file"]\n\tallow = always\n[user]\n\tname = Check\n\temail = check@localhost\n[init]\n\tdefaultBranch = main\n`);
 process.env.PATH = `${FAKE.bin}:${process.env.PATH}`;
 process.env.GIT_CONFIG_GLOBAL = FAKE.gitconfig;
 const ghLog = () => (existsSync(FAKE.log) ? readFileSync(FAKE.log, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []);
@@ -287,17 +287,34 @@ if (wants('git')) {
   check('fetchAndRebase reports no conflict on ledger files', rebased.conflicted.length === 0 && rebased.offline === null, rebased);
   check('then the push goes through', (await repo.push(b, 'main')) === 'pushed');
 
-  // A real conflict on a rules file.
+  // A real conflict on a rules file, with an unpushed ledger commit before it.
   await repo.fetchAndRebase(a, 'main');
   await repo.commit(a, [{ path: 'memory/rules/project.md', mode: 'write', content: 'from a\n' }], 'chore: rules a', null);
   await repo.push(a, 'main');
+  await repo.commit(b, [{ path: 'memory/ledger/2026/10/b.jsonl', mode: 'append', content: '{"b":2}\n' }], 'chore: lessons from b', null);
   await repo.commit(b, [{ path: 'memory/rules/project.md', mode: 'write', content: 'from b\n' }], 'chore: rules b', null);
   const conflict = await repo.fetchAndRebase(b, 'main');
   check('a rules conflict is reported', JSON.stringify(conflict.conflicted) === JSON.stringify(['memory/rules/project.md']), conflict);
   check('no rebase is left in progress', !existsSync(join(b, '.git', 'rebase-merge')) && !existsSync(join(b, '.git', 'rebase-apply')));
   const moved = await repo.moveUnpushedTo(b, 'tandemise/local/b/x', 'main');
-  check('moveUnpushedTo moves one commit', moved.length === 1, moved);
-  check('main equals origin/main afterwards', (await repo.head(b, 'main')) === (await repo.head(b, 'refs/remotes/origin/main')));
+  check('moveUnpushedTo moves only the rules commit', moved.length === 1, moved);
+  check('the branch holds the rules change', git(b, 'show', 'tandemise/local/b/x:memory/rules/project.md') === 'from b\n');
+  check('the ledger commit stays on main, on top of origin/main', git(b, 'show', 'main:memory/ledger/2026/10/b.jsonl').includes('{"b":2}') && git(b, 'rev-parse', 'main~1').trim() === (await repo.head(b, 'refs/remotes/origin/main')));
+  check('and main has no rules change of its own', git(b, 'show', 'main:memory/rules/project.md') === 'from a\n');
+  // A commit that fails leaves the file exactly as it was.
+  const ledgerBefore = readFileSync(join(b, 'memory/ledger/2026/10/b.jsonl'));
+  writeFileSync(join(b, '.git', 'index.lock'), '');
+  let failedCommit = false;
+  try { await repo.commit(b, [{ path: 'memory/ledger/2026/10/b.jsonl', mode: 'append', content: '{"b":3}\n' }], 'chore: fails', null); } catch { failedCommit = true; }
+  rmSync(join(b, '.git', 'index.lock'), { force: true });
+  check('a failed commit throws and restores the ledger file byte for byte', failedCommit && readFileSync(join(b, 'memory/ledger/2026/10/b.jsonl')).equals(ledgerBefore));
+  // A rebase that fails with nothing conflicted is a failure, not a success.
+  await repo.commit(a, [{ path: 'memory/rules/other.md', mode: 'write', content: 'x\n' }], 'chore: other', null);
+  await repo.push(a, 'main');
+  writeFileSync(join(b, 'memory/rules/project.md'), 'dirty, not committed\n');
+  const dirty = await repo.fetchAndRebase(b, 'main');
+  check('a rebase blocked by a dirty tree reports failed', typeof dirty.failed === 'string' && dirty.conflicted.length === 0, dirty);
+  git(b, 'checkout', '--', 'memory/rules/project.md');
 
   // Protected branch.
   const prot = bare('protected');
@@ -342,8 +359,8 @@ if (wants('fold')) {
   events.push(add(W[0], 20, 'Run npm run ci before a PR.'));
   events.push(add(W[1], 21, 'run  npm run ci, before a PR'));
   for (let i = 0; i < 10; i++) events.push(vote(W[i % 3], 30 + i, id(W[i % 3], (i % 12) + 1), i % 4 === 0 ? 'harmful' : 'helpful'));
-  events.push(vote(W[2], 41, id(W[1], 21), 'helpful'));
-  events.push(vote(W[2], 42, id(W[0], 20), 'helpful'));
+  events.push(vote(W[2], 41, id(W[1], 21), 'helpful', 'reflector', 'M20'));
+  events.push(vote(W[2], 42, id(W[0], 20), 'helpful', 'reflector', 'M21'));
   for (let i = 0; i < 12; i++) events.push({ op: 'confirm', id: id(W[(i + 1) % 3], (i % 12) + 1), at: t(50 + i), by: W[(i + 1) % 3], mission: `X${i}` });
   events.push({ op: 'accept', id: id(W[0], 4), at: t(60), by: W[2] });
   events.push({ op: 'retire', id: id(W[1], 5), at: t(61), by: W[0], reason: 'Old.' });
@@ -372,7 +389,7 @@ if (wants('fold')) {
   check('a superseded entry stays, invalid from invalidAt', old?.invalidAt === t(3) && old.supersededBy === id(W[0], 2), old);
   check('and is not loadable after', old !== undefined && D.isLoadable(old, t(4)) === false);
 
-  const harm = D.foldLedger?.([add(W[0], 1, 'Bad advice.'), ...[2, 3, 4].map((n) => vote(W[1], n, id(W[0], 1), 'harmful'))], [], now);
+  const harm = D.foldLedger?.([add(W[0], 1, 'Bad advice.'), ...[2, 3, 4].map((n) => vote(W[1], n, id(W[0], 1), 'harmful', 'reflector', `H${n}`))], [], now);
   check('3 harmful votes flag it and stop it loading', harm?.entries[0]?.flags.harmful === true && D.isLoadable(harm.entries[0], now) === false, harm?.entries[0]);
 
   const staleNow = new Date(Date.parse(t(1)) + 91 * 86_400_000).toISOString();
@@ -385,6 +402,16 @@ if (wants('fold')) {
   check('a confirm from another mission makes it load', D.isLoadable?.(cand([{ op: 'confirm', id: id(W[0], 1), at: t(2), by: W[1], mission: 'M2' }]), now) === true);
   check('accept makes it load', D.isLoadable?.(cand([{ op: 'accept', id: id(W[0], 1), at: t(2), by: W[1] }]), now) === true);
   check('reject never loads', D.isLoadable?.(cand([{ op: 'reject', id: id(W[0], 1), at: t(2), by: W[1] }, { op: 'confirm', id: id(W[0], 1), at: t(3), by: W[1], mission: 'M2' }]), now) === false);
+
+  const eidAdd = { ...add(W[0], 1, 'Counted once.'), eid: 'w:e1' };
+  const eidVote = { ...vote(W[1], 2, id(W[0], 1), 'helpful', 'person', 'M9'), eid: 'w:e2' };
+  const twice = D.foldLedger([eidAdd, eidVote, eidVote], [], now).entries[0];
+  check('an event appended twice (same eid) folds once', twice?.helpful === 3, twice);
+  const repeat = D.foldLedger([add(W[0], 1, 'Repeat.'), vote(W[1], 2, id(W[0], 1), 'helpful', 'person', 'MA'), vote(W[1], 3, id(W[0], 1), 'helpful', 'person', 'MA'), vote(W[1], 4, id(W[0], 1), 'helpful', 'person', 'MB')], [], now).entries[0];
+  check('a writer votes once per mission; two missions are two supporters', repeat?.helpful === 6 && repeat.supporters === 2, repeat);
+  const promoted = [add(W[0], 1, 'Promoted.'), { op: 'promote', id: id(W[0], 1), at: t(2), by: W[0], target: 'x', pr: 'https://pr/1' }];
+  const closedTwice = D.foldLedger([...promoted, { op: 'unpromote', id: id(W[0], 1), at: t(3), by: W[0], pr: 'https://pr/1' }, { op: 'unpromote', id: id(W[0], 1), at: t(4), by: W[1], pr: 'https://pr/1' }], [], now).entries[0];
+  check('two daemons closing the same PR leave the lesson active, no longer promoted', closedTwice?.state === 'active' && closedTwice.promoted === null && closedTwice.netSinceRejected === 0 && D.isLoadable(closedTwice, now), closedTwice);
 
   const lines = [JSON.stringify(add(W[0], 1, 'Good line.')), '{not json', '{"op":"explode"}', JSON.stringify(vote(W[0], 2, id(W[2], 9), 'helpful'))];
   const parsed = lines.map((l, i) => D.parseLedgerLine?.(l, 'memory/ledger/2026/10/ana-a1b2c3.jsonl', i + 1));
@@ -721,6 +748,21 @@ if (H1 !== null && (wants('factory') || wants('ledger') || wants('loading') || w
   scratchEdit({ 'brain.yaml': (t) => t.replace('humanEdits: pr', 'humanEdits: direct') });
   await s1.brain.sync(ws1, 'person');
 
+  // Three-way write-through: the clone has a teammate's role change the database has not taken yet.
+  scratchEdit({ 'factory/roles/review.md': (t) => withModel(t.replace('id: review', 'id: development'), 'teammate-model').replace('id: development', 'id: review') });
+  const link3 = r1(app.WORKSPACE_BRAIN_REPOSITORY).get(ws1);
+  await H1.brainRepo.fetchAndRebase(link3.clonePath, 'main');
+  s1.roles.upsert({ ...s1.roles.list(ws1).find((x) => x.id === 'development'), workspaceId: ws1, models: { model: 'fifth-model', escalate: [], economyModel: null } });
+  await s1.brain.settleEdits(ws1);
+  check("your edit writes only what you changed; a teammate's newer role is not reverted", git(remoteDir, 'show', 'main:factory/roles/review.md').includes('teammate-model') && git(remoteDir, 'show', 'main:factory/roles/development.md').includes('fifth-model'));
+  await s1.brain.sync(ws1, 'person');
+  check("the next sync brings the teammate's role in", s1.roles.list(ws1).find((x) => x.id === 'review')?.models?.model === 'teammate-model');
+
+  // MCPs carry no machine path.
+  r1(app.INTEGRATION_REPOSITORY).create({ id: shared.ids.integration(), workspaceId: ws1, providerId: 'mcp', name: 'Local MCP', transport: 'mcp', config: { command: '/home/ana/bin/yt-mcp --stdio' }, credentialRef: null, enabledCapabilities: [], enabled: true, createdAt: shared.systemClock.now(), updatedAt: shared.systemClock.now() });
+  const mcps = (await s1.setup.snapshotFor(ws1, { mcps: true })).mcps ?? [];
+  check('an MCP command keeps its name, not its path', mcps.find((m) => m.name === 'Local MCP')?.connect.command === 'yt-mcp --stdio', mcps);
+
   // Workflow precedence.
   const wf = (name) => `name: ${name}\ndescription: One step.\nsteps:\n  - key: build\n    role: development\n    objective: Build it.\n    outputs: [ChangeSet]\n    gate: artifact.ChangeSet.exists\n`;
   mkdirSync(join(H1.repoDir, '.tandemise', 'workflows'), { recursive: true });
@@ -846,6 +888,11 @@ if (H1 !== null && (wants('ledger') || wants('loading') || wants('tools') || wan
   let pathRefused = null;
   try { await s1.brain.remember(c1, ws1, { text: 'see /etc/hosts' }); } catch (e) { pathRefused = e.message; }
   check('a machine path is refused with the sentence', pathRefused === "A lesson can't name a path on your machine. Name the file inside its repository instead.", pathRefused);
+  let scopeRefused = null;
+  try { await s1.brain.remember(c1, ws1, { text: 'Scoped badly.', scope: { paths: ['/home/ana/secret/**'] } }); } catch (e) { scopeRefused = e.message; }
+  check('a scope naming a machine path is refused', scopeRefused !== null && scopeRefused.includes('scope'), scopeRefused);
+  const relScope = await s1.brain.remember(c1, ws1, { text: 'Scoped well.', scope: { paths: [`${H1.repoDir}/src/**`] } });
+  check('a scope inside a repository becomes repo-relative', JSON.stringify(relScope.entry.scope.paths) === JSON.stringify(['src/**']), relScope.entry.scope);
 
   // Two writers converge.
   await s2.brain.sync(ws2, 'person');
@@ -971,6 +1018,11 @@ if (H1 !== null && (wants('loading') || wants('tools') || wants('signals') || wa
   check('under pressure the lessons are summarized or dropped', tight.truncated.some((x) => x.section === 'Lessons from earlier work'), tight.truncated);
   check('and the rules stay', tight.prompt.includes('Project rules') && tight.prompt.includes('Always run npm run ci.'));
   check('with no brain the prompt is byte-identical', compiler.compile(baseReq).prompt === compiler.compile({ ...baseReq, brain: undefined }).prompt);
+
+  // Rules are capped, per file and in total, with a pointer to brain.read.
+  const capped = app.capRules([{ path: 'memory/rules/project.md', text: 'p'.repeat(10_000) }, ...[1, 2, 3].map((n) => ({ path: `memory/rules/repo-${n}.md`, text: 'r'.repeat(7_000) }))]);
+  check('a long rules file is cut at 8,000 with a brain.read pointer', capped[0].text.length < 8_300 && capped[0].text.includes('brain.read("memory/rules/project.md")'));
+  check('the total stays under 24,000 and names what did not fit', capped.reduce((n, r) => n + r.text.length, 0) <= 24_400 && capped.at(-1).text.includes('"memory/rules/repo-3.md"'), capped.map((r) => [r.path, r.text.length]));
 
   // Trials read their frozen knowledge, or only a candidate's rules.
   const trialOff = await supply.forAttempt({ task: t, mission, role, repositories: repos, round: 1, previousRuns: [], trial: { role, knowledge: baseReq.knowledge, decisions: [], answers: [] } });
@@ -1172,6 +1224,7 @@ if (H1 !== null && (wants('promotion') || wants('intake'))) {
   };
   const tA = taskIn('Mission A');
   const tB = taskIn('Mission B');
+  const tC = taskIn('Mission C');
   const evalStub = { result: null, calls: [], async run(ws, suites, ref) { this.calls.push({ suites, ref }); return this.result; } };
   H1.container.rebind(app.BRAIN_PROMOTION_EVALS, () => evalStub, { source: 'check' });
   const scoreOf = (pass, cost = 1, failed = 0) => ({ gatePassRate: pass, firstAttemptPassRate: pass, criteria: { verified: 1, failed, unverified: 0 }, meanAttempts: 1, overBudget: 0, tokens: { mean: 1, total: 1 }, costUsd: { mean: cost, total: cost }, wallTimeMs: { mean: 1, total: 1 }, trials: { completed: 1, blocked: 0, failed: 0, errored: 0 } });
@@ -1262,8 +1315,44 @@ if (H1 !== null && (wants('promotion') || wants('intake'))) {
   await s1.brain.sync(wsP, 'person');
   check('a closed PR is closed with reject events', s1.brain.proposals(wsP).find((p) => p.id === p1.id)?.state === 'closed' && s1.brain.entries(wsP, {}).find((e) => e.id === l1)?.promoted === null);
   check('the lesson is not eligible again until +3 net', !s1.brain.eligiblePromotions(wsP).some((b) => b.lessonIds.includes(l1)));
-  await s1.brain.vote(c1, l1, { vote: 'helpful', taskId: tA });
+  await s1.brain.vote(c1, l1, { vote: 'helpful', taskId: tC });
   check('one more thumbs-up (+3) makes it eligible again', s1.brain.eligiblePromotions(wsP).some((b) => b.lessonIds.includes(l1)));
+
+  // 9. A secret in the promoter's draft never reaches the brain.
+  const l9 = await lessonFor('PROMO-NINE: rotate keys.', { repo: 'nine' });
+  evalStub.result = null;
+  promoterSays([{ path: 'memory/rules/repo-nine.md', content: `# nine\n\n- Rotate keys; the old one was ghp_${'k'.repeat(36)}.\n` }]);
+  scratchEditOn(promoRemote, { 'evals/gates.yaml': 'suites: []\n' });
+  await s1.brain.sync(wsP, 'person');
+  const p9 = (await s1.brain.proposePromotions(wsP)).find((p) => p.lessonIds.includes(l9));
+  check('a promoter draft is scrubbed before it is committed', p9 !== undefined && !git(promoRemote, 'log', '-p', '--all').includes('ghp_kkk') && git(promoRemote, 'show', `${p9.branch}:memory/rules/repo-nine.md`).includes('[redacted secret]'), p9);
+
+  // 10. A teammate edits the target while the promotion is evaluated: no auto-apply, a PR instead.
+  scratchEditOn(promoRemote, { 'evals/gates.yaml': 'suites:\n  - name: smoke\n    repeats: 1\n    spendCapUsd: 2\n' });
+  await s1.brain.sync(wsP, 'person');
+  const l10 = await lessonFor('PROMO-TEN: name tests after behaviour.', { repo: 'ten' });
+  scratchEditOn(promoRemote, { 'memory/rules/repo-ten.md': '# ten\n\n- A teammate wrote this first.\n' });
+  await s1.brain.sync(wsP, 'person');
+  promoterSays([{ path: 'memory/rules/repo-ten.md', content: '# ten\n\n- A teammate wrote this first.\n- Name tests after behaviour.\n' }]);
+  evalStub.result = [{ suite: 'smoke', scorecard: card(scoreOf(1)), problem: null }];
+  const realRun = evalStub.run.bind(evalStub);
+  evalStub.run = async (...args) => {
+    scratchEditOn(promoRemote, { 'memory/rules/repo-ten.md': '# ten\n\n- A teammate wrote this first.\n- And another line meanwhile.\n' });
+    await s1.brain.sync(wsP, 'person');
+    return realRun(...args);
+  };
+  const p10 = (await s1.brain.proposePromotions(wsP)).find((p) => p.lessonIds.includes(l10));
+  evalStub.run = realRun;
+  const ten = git(promoRemote, 'show', 'main:memory/rules/repo-ten.md');
+  check('a target that moved during evals is not applied on its own', p10 !== undefined && p10.state === 'open' && p10.prUrl !== null, p10);
+  check("the teammate's line on main survives", ten.includes('And another line meanwhile.') && !ten.includes('Name tests after behaviour.'), ten);
+  const l11 = await lessonFor('PROMO-ELEVEN: one change per commit.', { repo: 'eleven' });
+  scratchEditOn(promoRemote, { 'memory/rules/repo-eleven.md': '# eleven\n\n- Keep this line.\n' });
+  await s1.brain.sync(wsP, 'person');
+  // The promoter drafted from an older file and leaves the teammate's line out.
+  promoterSays([{ path: 'memory/rules/repo-eleven.md', content: '# eleven\n\n- One change per commit.\n' }]);
+  const p11 = (await s1.brain.proposePromotions(wsP)).find((p) => p.lessonIds.includes(l11));
+  check('a draft that drops a line on the current file is structural, a PR', p11?.classification === 'structural' && p11.state === 'open' && git(promoRemote, 'show', 'main:memory/rules/repo-eleven.md').includes('Keep this line.'), p11);
 
   // 8. Local-only: accept merges locally.
   const wsL = (await s1.workspaces.create(c1, { name: 'Local promo', repositoryPath: H1.repoDir })).workspace.id;

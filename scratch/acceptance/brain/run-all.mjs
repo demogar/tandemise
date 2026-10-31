@@ -6,8 +6,8 @@
 // Two fresh TANDEMISE_HOMEs (p0/setup.mjs), each with the daemon from this checkout's build and its own
 // desktop window over CDP (home 1 on 9363, home 2 on 9364). Both daemons get a fake `gh` first on PATH and a
 // git config (GIT_CONFIG_GLOBAL) that turns https://github.com/ into local bare repositories under the run, so
-// nothing reaches the network. Both run with TANDEMISE_CLOCK_OFFSET_MS=0, which only enables the daemon's
-// test routes (B4 stands in for a hold through POST /v1/test/events until #50 lands). A Generic CLI "Brain
+// nothing reaches the network. Both run with TANDEMISE_TEST_ROUTES=1, which enables the daemon's
+// test-only routes (B4 stands in for a hold through POST /v1/test/events until #50 lands). A Generic CLI "Brain
 // agent" answers the reflector and promoter and hands every other prompt to the P0 scripted agent.
 // Writes evidence to docs/superpowers/evidence/2026-10-30-brain/.
 import { spawn, execFileSync } from 'node:child_process';
@@ -48,8 +48,8 @@ mkdirSync(fake.bin, { recursive: true });
 mkdirSync(fake.remotes, { recursive: true });
 writeFileSync(join(fake.bin, 'gh'), `#!/bin/sh\nFAKE_GH_LOG='${fake.log}' FAKE_GH_STATE='${fake.state}' FAKE_GH_REMOTES='${fake.remotes}' exec '${process.execPath}' '${join(repoRoot, 'scratch/brain-fixtures/fake-gh.mjs')}' "$@"\n`);
 chmodSync(join(fake.bin, 'gh'), 0o755);
-writeFileSync(fake.gitconfig, `[url "file://${fake.remotes}/"]\n\tinsteadOf = https://github.com/\n[user]\n\tname = Acceptance\n\temail = acceptance@example.invalid\n[init]\n\tdefaultBranch = main\n`);
-const daemonEnv = { ...process.env, PATH: `${fake.bin}:${process.env.PATH}`, GIT_CONFIG_GLOBAL: fake.gitconfig, TANDEMISE_CLOCK_OFFSET_MS: '0' };
+writeFileSync(fake.gitconfig, `[url "file://${fake.remotes}/"]\n\tinsteadOf = https://github.com/\n[protocol "file"]\n\tallow = always\n[user]\n\tname = Acceptance\n\temail = acceptance@example.invalid\n[init]\n\tdefaultBranch = main\n`);
+const daemonEnv = { ...process.env, PATH: `${fake.bin}:${process.env.PATH}`, GIT_CONFIG_GLOBAL: fake.gitconfig, TANDEMISE_TEST_ROUTES: '1' };
 writeFileSync(`${LINK1}/brain-acceptance.json`, JSON.stringify({ ...fake, link2: LINK2, port2: PORT2 }, null, 2));
 
 log('setup');

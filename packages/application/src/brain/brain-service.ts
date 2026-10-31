@@ -119,7 +119,6 @@ export class BrainService {
       repo: deps.repo, host: deps.host, setup: deps.setup, skillFiles: deps.skillFiles, identity: deps.identity,
       recorder: deps.recorder, log: deps.log,
     });
-    this.onSync((ws, from, to) => this.#factory.refreshFactory(ws, from, to).then(() => undefined));
     this.resolveConflict = (ws, conflicted) => this.#factory.resolveConflict(ws, conflicted);
     this.beforeAdoptPreview.push(async (_ws, clonePath, head) => { await this.#factory.fillSkills(clonePath, head); });
     this.#promotions = deps.promotion === undefined ? null : new Promotions(this, {
@@ -143,9 +142,43 @@ export class BrainService {
     return this.#factory.brainWorkflows(workspaceId);
   }
 
+  /**
+   * The brain commit this machine's factory rows were last refreshed to. It
+   * moves only when a refresh succeeds, so a failed one is retried at the next
+   * sync and write-through never takes a stale database for your edit.
+   */
+  readonly #factoryShas = new Map<string, string>();
+
+  /** Before `lastPulledSha` moves outside a sync: the factory rows still reflect the commit before. */
+  #holdFactorySha(workspaceId: WorkspaceId): void {
+    const sha = this.deps.brains.get(workspaceId)?.lastPulledSha ?? null;
+    if (!this.#factoryShas.has(workspaceId) && sha !== null) this.#factoryShas.set(workspaceId, sha);
+  }
+
+  factorySha(workspaceId: WorkspaceId): string | null {
+    return this.#factoryShas.get(workspaceId) ?? this.deps.brains.get(workspaceId)?.lastPulledSha ?? null;
+  }
+
+  /** Refreshes the database from the brain up to `to`; throws when it could not. */
+  async #refreshFactoryTo(workspaceId: WorkspaceId, to: string | null): Promise<string | null> {
+    if (to === null) return null;
+    const from = this.factorySha(workspaceId);
+    if (from === to) return null;
+    try {
+      await this.#factory.refreshFactory(workspaceId, from, to);
+      this.#factoryShas.set(workspaceId, to);
+      return null;
+    } catch (e) {
+      this.deps.log.warn('brain.factory_refresh_failed', { workspaceId, error: errorMessage(e) });
+      return `The factory couldn't be updated from the brain: ${errorMessage(e)}`;
+    }
+  }
+
   /** A local-only brain moved: its new head is what the next run reads. */
   markPulled(workspaceId: WorkspaceId, sha: string | null): void {
-    if (this.deps.brains.get(workspaceId) === undefined) return;
+    const row = this.deps.brains.get(workspaceId);
+    if (row === undefined) return;
+    this.#holdFactorySha(workspaceId);
     this.deps.brains.update(workspaceId, { lastPulledSha: sha, lastSyncAt: this.deps.clock.now() });
   }
 
@@ -259,6 +292,12 @@ export class BrainService {
 
   async unlink(caller: Caller, workspaceId: WorkspaceId): Promise<BrainView> {
     void caller;
+    // What this machine learned and your last edit reach the brain before it is let go.
+    if (this.deps.brains.get(workspaceId) !== undefined) {
+      await this.#factory.settle(workspaceId).catch(() => undefined);
+      await this.#writer.flush(workspaceId).catch(() => undefined);
+    }
+    this.#factory.cancel(workspaceId);
     return this.#exclusive(workspaceId, async () => {
       const row = this.deps.brains.get(workspaceId);
       if (row === undefined) return this.view(workspaceId);
@@ -326,6 +365,12 @@ export class BrainService {
     return (await this.deps.repo.listAt(row.clonePath, sha, dir)).filter((p) => !isEvalsPath(p));
   }
 
+  /** A curated text (a rule, a promoter's draft) scrubbed against this project's repositories. */
+  scrubDocumentFor(workspaceId: WorkspaceId, text: string): string {
+    const repos = this.deps.workspaces.view(workspaceId).repositories.map((r) => ({ name: r.name, path: r.path }));
+    return scrubDocument(text, repos);
+  }
+
   /** The brain manifest at a commit; the defaults when it is missing or broken. */
   async manifestAt(workspaceId: WorkspaceId, sha: string): Promise<BrainManifest> {
     const text = await this.readAt(workspaceId, sha, BRAIN_MANIFEST);
@@ -365,6 +410,7 @@ export class BrainService {
       if (rebased.offline === null && rebased.conflicted.length === 0) result = await this.deps.repo.push(row.clonePath, row.defaultBranch);
     }
     const head = await this.deps.repo.head(row.clonePath);
+    this.#holdFactorySha(workspaceId);
     if (result === 'pushed') this.deps.brains.update(workspaceId, { lastPushedSha: head, lastPulledSha: head, lastSyncError: null, lastSyncAt: this.deps.clock.now(), fallbackBranch: null });
     else if (result === 'offline') this.deps.brains.update(workspaceId, { lastSyncError: `Couldn't reach ${hostOf(row.remote)}.` });
     else if (result === 'protected') await this.#ledgerFallback(workspaceId);
@@ -381,6 +427,7 @@ export class BrainService {
     await this.deps.repo.branch(row.clonePath, branch, `refs/heads/${row.defaultBranch}`);
     const pushed = await this.deps.repo.push(row.clonePath, branch);
     const head = await this.deps.repo.head(row.clonePath);
+    this.#holdFactorySha(workspaceId);
     this.deps.brains.update(workspaceId, { fallbackBranch: branch, lastPulledSha: head, lastSyncAt: this.deps.clock.now() });
     if (pushed !== 'pushed') {
       this.reportProblem(workspaceId, `Couldn't push lessons to ${branch}.`);
@@ -409,7 +456,8 @@ export class BrainService {
     const from = row.lastPulledSha;
     if (row.remote === null) {
       const head = await this.deps.repo.head(row.clonePath);
-      this.deps.brains.update(workspaceId, { lastPulledSha: head, lastSyncAt: this.deps.clock.now(), lastSyncError: null });
+      const refreshError = await this.#refreshFactoryTo(workspaceId, head);
+      this.deps.brains.update(workspaceId, { lastPulledSha: head, lastSyncAt: this.deps.clock.now(), lastSyncError: refreshError });
       if (head !== from) await this.#notify(workspaceId, from, head);
       await this.#refreshInfo(workspaceId);
       return;
@@ -421,16 +469,23 @@ export class BrainService {
       this.deps.recorder.invalidate('workspaces');
       return;
     }
+    if (pulled.failed !== undefined) {
+      this.deps.log.warn('brain.rebase_failed', { workspaceId, why, detail: pulled.failed });
+      this.deps.brains.update(workspaceId, { lastSyncError: `Couldn't update from the brain: ${pulled.failed}` });
+      this.deps.recorder.invalidate('workspaces');
+      return;
+    }
     let syncError: string | null = null;
     if (pulled.conflicted.length > 0) syncError = await this.resolveConflict(workspaceId, pulled.conflicted);
     const ahead = (await this.deps.repo.head(row.clonePath)) !== (await this.deps.repo.head(row.clonePath, `refs/remotes/origin/${row.defaultBranch}`));
-    if (ahead) {
-      const pushed = await this.pushLocked(workspaceId);
-      if (pushed === 'protected') syncError ??= null;
-    }
+    let pushed: string | null = null;
+    if (ahead) pushed = await this.pushLocked(workspaceId);
     const head = await this.deps.repo.head(row.clonePath);
+    const refreshError = await this.#refreshFactoryTo(workspaceId, head);
+    // An offline push keeps its words; a clean sync clears them.
+    const pushError = pushed === 'offline' ? (this.deps.brains.get(workspaceId)?.lastSyncError ?? null) : null;
     this.deps.brains.update(workspaceId, {
-      lastPulledSha: head, lastSyncAt: this.deps.clock.now(), lastSyncError: syncError,
+      lastPulledSha: head, lastSyncAt: this.deps.clock.now(), lastSyncError: refreshError ?? syncError ?? pushError,
       ...(ahead ? {} : { lastPushedSha: this.deps.brains.get(workspaceId)?.lastPushedSha ?? head }),
     });
     if (head !== from) await this.#notify(workspaceId, from, head);
@@ -694,21 +749,6 @@ export class BrainService {
       .filter((e) => q.scope === undefined || q.scope === '' || scopeMatchesFilter(e, q.scope))
       .map((e) => this.#entryView(workspaceId, e, loaded))
       .sort((a, b) => (b.lastConfirmedAt < a.lastConfirmedAt ? -1 : b.lastConfirmedAt > a.lastConfirmedAt ? 1 : 0) || (a.id < b.id ? -1 : 1));
-  }
-
-  /**
-   * Records an event on a mission as another feature would (a hold ending,
-   * say). Only the daemon's test-clock routes reach this; it exists so the
-   * acceptance run can stand in for work not merged yet.
-   */
-  recordForTest(missionId: string, taskId: string | null, body: Record<string, unknown>): { recorded: true } {
-    const mission = this.deps.missions?.get(asId<'MissionId'>(missionId) as MissionId);
-    if (mission === undefined) throw TandemiseError.notFound('Mission', missionId);
-    this.deps.recorder.record(
-      { workspaceId: mission.workspaceId, missionId: mission.id, taskId: taskId === null ? null : (asId<'TaskId'>(taskId) as TaskId) },
-      body as unknown as import('@tandemise/domain').TandemiseEventBody,
-    );
-    return { recorded: true };
   }
 
   /** The ledger events about one entry at a commit (its history, for brain.read). */

@@ -16,7 +16,7 @@ export class BrainSyncLoop implements LifecycleComponent {
   #timer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
-    private readonly brain: Pick<BrainService, 'sync' | 'missionEnded' | 'flushAll'>,
+    private readonly brain: Pick<BrainService, 'sync' | 'missionEnded' | 'flushAll' | 'settleEdits'>,
     private readonly brains: Pick<WorkspaceBrainRepositoryPort, 'list'>,
     private readonly log: Logger,
     /** Mission ends write a history line (spec §5). */
@@ -42,7 +42,8 @@ export class BrainSyncLoop implements LifecycleComponent {
     this.#timer = null;
     this.#unsubscribe?.();
     this.#unsubscribe = null;
-    // Nothing learned is left in memory at shutdown.
+    // Your last edit and nothing learned is left in memory at shutdown.
+    for (const link of this.brains.list()) await this.brain.settleEdits(link.workspaceId).catch(() => undefined);
     await this.brain.flushAll().catch((e) => this.log.warn('brain.flush_failed', { error: errorMessage(e) }));
   }
 

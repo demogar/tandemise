@@ -164,6 +164,14 @@ export class BrainFactory {
     });
   }
 
+  /** Drops a scheduled write-through (the project was unlinked). */
+  cancel(workspaceId: WorkspaceId): void {
+    const timer = this.#timers.get(workspaceId);
+    if (timer !== undefined) clearTimeout(timer);
+    this.#timers.delete(workspaceId);
+    this.#what.delete(workspaceId);
+  }
+
   /** Waits for a scheduled write-through (tests and shutdown). */
   async settle(workspaceId: WorkspaceId): Promise<void> {
     const timer = this.#timers.get(workspaceId);
@@ -176,29 +184,44 @@ export class BrainFactory {
   }
 
   /**
-   * The factory files this machine's rows say, against the brain's. Workflows,
+   * A three-way write (#51 review): only what the person changed is written.
+   * `base` is the factory the database last took from the brain, `mine` is the
+   * database rendered now, `theirs` is the brain's head. A file the person did
+   * not change is never written, so a teammate's work that arrived since is
+   * never reverted; a file both changed is left alone and reported. Workflows,
    * the tracker, intake and MCPs are never written from rows, and the knowledge
    * fields live in `memory/rules/project.md` once a brain is linked.
    */
   async #factoryWrites(workspaceId: WorkspaceId, clonePath: string, head: string): Promise<BrainWrite[]> {
-    const brainFiles = await this.brain.factoryFiles(clonePath, head);
-    const theirs = readSetup(brainFiles).snapshot;
-    const mine = await this.deps.setup.snapshotFor(workspaceId, { mcps: false });
-    const merged: SetupSnapshot = {
-      ...mine,
-      project: mine.project === null ? null : { ...mine.project, knowledge: theirs.project?.knowledge ?? mine.project.knowledge },
-      workflows: null,
-      mcps: null,
-      tracker: null,
-      intake: null,
-    };
-    const rendered = renderSetup(merged).files;
+    const theirsFiles = await this.brain.factoryFiles(clonePath, head);
+    const baseSha = this.brain.factorySha(workspaceId) ?? head;
+    const baseFiles = baseSha === head ? theirsFiles : await this.brain.factoryFiles(clonePath, baseSha);
+    const baseSnap = readSetup(baseFiles).snapshot;
+    const knowledge = baseSnap.project?.knowledge;
+    const canonical = (snap: SetupSnapshot): Map<string, string> => new Map(renderSetup({
+      ...snap,
+      project: snap.project === null ? null : { ...snap.project, knowledge: knowledge ?? snap.project.knowledge },
+      workflows: null, mcps: null, tracker: null, intake: null,
+    }).files.map((f) => [f.path, f.content]));
+    const base = canonical(baseSnap);
+    const theirs = canonical(readSetup(theirsFiles).snapshot);
+    const mine = canonical(await this.deps.setup.snapshotFor(workspaceId, { mcps: false }));
     const writes: BrainWrite[] = [];
-    for (const file of rendered) {
-      if (brainFiles[file.path] !== file.content) writes.push({ path: `${BRAIN_FACTORY}/${file.path}`, mode: 'write', content: file.content });
+    const conflicts: string[] = [];
+    const paths = new Set([...base.keys(), ...mine.keys()]);
+    for (const path of [...paths].sort()) {
+      const b = base.get(path);
+      const m = mine.get(path);
+      if (m === b) continue;
+      if (theirs.get(path) !== b) { conflicts.push(path); continue; }
+      if (m === undefined) {
+        if (path.startsWith(`${SETUP_ROLES_DIR}/`)) writes.push({ path: `${BRAIN_FACTORY}/${path}`, mode: 'delete' });
+      } else {
+        writes.push({ path: `${BRAIN_FACTORY}/${path}`, mode: 'write', content: m });
+      }
     }
-    for (const path of Object.keys(brainFiles)) {
-      if (path.startsWith(`${SETUP_ROLES_DIR}/`) && !rendered.some((f) => f.path === path)) writes.push({ path: `${BRAIN_FACTORY}/${path}`, mode: 'delete' });
+    if (conflicts.length > 0) {
+      this.brain.reportProblem(workspaceId, `Your change to ${conflicts.join(', ')} wasn't written to the brain: it changed there too. Sync, then make it again.`);
     }
     return writes;
   }

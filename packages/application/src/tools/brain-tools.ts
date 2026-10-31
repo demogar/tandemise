@@ -44,11 +44,16 @@ export function createBrainTools(deps: BrainToolDeps): readonly IntegrationTool[
     name: BRAIN_READ_TOOL,
     capability: CORE_CAPABILITIES.repositoryRead,
     risk: 'read',
-    description: 'Read one lesson from the project brain by its id (the ids in "More lessons you can read with brain.read"), with its counters and history.',
+    description: 'Read one lesson from the project brain by its id (the ids in "More lessons you can read with brain.read"), with its counters and history, or a rules file whole by its path (memory/rules/<file>.md).',
     inputSchema: z.object({ id: z.string().trim().min(1).describe('The lesson id, as the prompt shows it in brackets.') }),
     async execute(ctx, input): Promise<ToolExecution<Record<string, unknown>>> {
       const run = runOf(ctx);
       if (run?.brain === null || run?.brain === undefined) return { output: { found: false, message: NO_BRAIN } };
+      // A rules file the prompt had to cut, read whole at the run's commit.
+      if (/^memory\/rules\/[^/]+\.md$/.test(input.id)) {
+        const text = await deps.brain().readAt(ctx.assignment.workspaceId, run.brain.sha, input.id);
+        return text === null ? { output: { found: false, message: UNKNOWN_LESSON } } : { output: { found: true, rules: { path: input.id, text } }, summary: `Read ${input.id}` };
+      }
       const memory = await deps.brain().memoryAt(ctx.assignment.workspaceId, run.brain.sha);
       const id = memory.aliases[input.id] ?? input.id;
       const entry = memory.entries.find((e) => e.id === id);

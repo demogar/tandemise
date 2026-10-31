@@ -99,8 +99,8 @@ export class SqliteLimitRepository implements LimitRepositoryPort {
       `SELECT ${USAGE} FROM measured_usage u WHERE u.mission_id = :missionId`,
     );
     this.#workspaceUsage = db.handle.prepare<{ workspaceId: string; start: string; end: string }, UsageRow>(
-      `SELECT ${USAGE} FROM measured_usage u JOIN missions m ON m.id = u.mission_id
-        WHERE m.workspace_id = :workspaceId AND u.recorded_at >= :start AND u.recorded_at < :end`,
+      `SELECT ${USAGE} FROM measured_usage u LEFT JOIN missions m ON m.id = u.mission_id
+        WHERE COALESCE(m.workspace_id, u.workspace_id) = :workspaceId AND u.recorded_at >= :start AND u.recorded_at < :end`,
     );
     // Eval spend within the same window (P3b): the mirror of workspaceUsage,
     // restricted to hidden trial missions. The monthly total above still
@@ -113,7 +113,7 @@ export class SqliteLimitRepository implements LimitRepositoryPort {
     // never listed, so it must not appear as a row in the usage-by-mission view.
     this.#usageByMission = db.handle.prepare<{ workspaceId: string; start: string; end: string }, UsageRow & { mission_id: string }>(
       `SELECT u.mission_id AS mission_id, ${USAGE} FROM measured_usage u JOIN missions m ON m.id = u.mission_id
-        WHERE m.workspace_id = :workspaceId AND u.recorded_at >= :start AND u.recorded_at < :end AND m.eval_trial_id IS NULL
+        WHERE m.workspace_id = :workspaceId AND u.recorded_at >= :start AND u.recorded_at < :end AND m.eval_trial_id IS NULL AND u.mission_id IS NOT NULL
         GROUP BY u.mission_id ORDER BY agent_ms DESC, u.mission_id`,
     );
     this.#find = db.handle.prepare<{ workspaceId: string; missionId: string; metric: string; windowStart: string; threshold: string; amount: number }, IncidentRow>(

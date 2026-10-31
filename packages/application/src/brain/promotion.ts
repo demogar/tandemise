@@ -14,6 +14,12 @@ import type { ReflectorDeps } from './reflector.js';
 /** A lesson whose promotion was closed unmerged needs this many more net helpful votes first (spec §8). */
 export const PROMOTION_REGAIN = 3;
 export const NOT_EVALUATED = 'Not evaluated: this project has no promotion evals yet.';
+/**
+ * Helpful votes from at least this many distinct sources (a writer in one run
+ * or mission each) before a lesson is proposed: one click, however weighted,
+ * is not a pattern. A person who found it helpful in two missions counts twice.
+ */
+export const MIN_SUPPORTERS = 2;
 
 const OPEN_STATES: ReadonlySet<BrainProposal['state']> = new Set(['evaluating', 'open', 'draft']);
 
@@ -60,6 +66,7 @@ export class Promotions {
     for (const e of this.brain.memory(workspaceId).entries) {
       if (e.kind !== 'lesson' || !isLoadable(e, now) || (e.state !== 'active' && e.state !== 'accepted')) continue;
       if (e.net < manifest.promotion.minHelpful || e.missions.length < manifest.promotion.minMissions) continue;
+      if (e.supporters < MIN_SUPPORTERS) continue;
       if (e.promoted !== null || open.has(e.id)) continue;
       if (e.netSinceRejected !== null && e.netSinceRejected < PROMOTION_REGAIN) continue;
       const key = scopeKey(e.scope);
@@ -147,23 +154,38 @@ export class Promotions {
       this.brain.reportProblem(workspaceId, `A promotion couldn't be drafted: ${pass.result.problem}`);
       return null;
     }
+    // Everything the promoter wrote is scrubbed before it is classified or committed.
+    const files = pass.result.output.files.map((f) => ({ path: f.path, content: this.brain.scrubDocumentFor(workspaceId, f.content) }));
     // Classified by code from the whole reply first: a promoter that touched evals/ is refused outright.
     const before = async (path: string): Promise<string | null> => (path.startsWith('evals/') ? null : this.brain.readAt(workspaceId, head, path));
-    const fullDiff = await Promise.all(pass.result.output.files.map(async (f) => ({ path: f.path, before: await before(f.path), after: f.content })));
+    const fullDiff = await Promise.all(files.map(async (f) => ({ path: f.path, before: await before(f.path), after: f.content })));
     const first = classifyBrainChange(fullDiff);
     if (first.class === 'refused') {
       this.brain.reportProblem(workspaceId, `A promotion was dropped: ${first.reasons[0] ?? 'it was refused'}`);
       return null;
     }
-    const kept = fullDiff.filter((d) => d.path === target);
+    const drafted = fullDiff.find((d) => d.path === target);
     const dropped = fullDiff.filter((d) => d.path !== target).map((d) => d.path);
     if (dropped.length > 0) this.brain.reportProblem(workspaceId, `The promoter also tried to change ${dropped.join(', ')}; only ${target} was kept.`);
-    if (kept.length === 0 || kept.every((d) => d.before === d.after)) return null;
-    const classification = classifyBrainChange(kept);
-    const cls = classification.class === 'small' ? 'small' : 'structural';
-    const writes: BrainWrite[] = kept.map((d) => ({ path: d.path, mode: 'write', content: d.after ?? '' }));
+    if (drafted === undefined || drafted.after === null) return null;
+    const after = drafted.after;
+    const writes: BrainWrite[] = [{ path: target, mode: 'write', content: after }];
     const subject = `chore: promote ${lessons.length === 1 ? 'a lesson' : `${lessons.length} lessons`} to ${target}`;
-    await this.brain.exclusive(workspaceId, () => this.deps.repo.commit(link.clonePath, writes, `${subject}\n\nTandemise-Promotion: ${id}`, null, { branch, from: `refs/heads/${link.defaultBranch}` }));
+    // The branch starts from the default branch as it is now, and the change is classified
+    // against the file as it is now: a teammate's edit since the draft is never silently undone.
+    const drawn = await this.brain.exclusive(workspaceId, async () => {
+      const base = `refs/heads/${link.defaultBranch}`;
+      const tip = await this.deps.repo.head(link.clonePath, base);
+      const now = tip === null ? null : await this.deps.repo.readAt(link.clonePath, tip, target);
+      if (now === after) return null;
+      await this.deps.repo.branch(link.clonePath, branch, base);
+      await this.deps.repo.commit(link.clonePath, writes, `${subject}\n\nTandemise-Promotion: ${id}`, null, { branch, from: base });
+      return { before: now, classification: classifyBrainChange([{ path: target, before: now, after }]) };
+    });
+    if (drawn === null) return null;
+    const classification = drawn.classification;
+    const cls = classification.class === 'small' ? 'small' : 'structural';
+    const kept = [{ path: target }];
 
     // Evals: the project's suites, the candidate is this branch, the baseline the default branch.
     const gates = readEvalGates(await this.brain.readEvalsForPromotion(workspaceId, head, 'evals/gates.yaml'));
@@ -194,16 +216,24 @@ export class Promotions {
       id, workspaceId, lessonIds: lessons.map((l) => l.id), targets: kept.map((d) => d.path), classification: cls,
       reasons: classification.reasons, branch, evalRunId: null, verdict, createdAt: now, updatedAt: now,
     };
-    let proposal: BrainProposal;
+    let proposal: BrainProposal | null = null;
     if (cls === 'small' && manifest.promotion.autoApply === 'small' && verdict === 'passed') {
       const message = `${subject}\n\nTandemise-Promotion: ${id}\nTandemise-Eval: ${evalLines.join('; ')}`;
       const applied = await this.brain.exclusive(workspaceId, async () => {
+        // Evals take time: if the file moved meanwhile, a person reviews it instead.
+        const tip = await this.deps.repo.head(link.clonePath, `refs/heads/${link.defaultBranch}`);
+        const now = tip === null ? null : await this.deps.repo.readAt(link.clonePath, tip, target);
+        if (now !== drawn.before) return null;
         const sha = await this.deps.repo.commit(link.clonePath, writes, message, null);
         if (link.remote !== null) await this.brain.pushLocked(workspaceId);
         else this.brain.markPulled(workspaceId, sha);
         return sha;
       });
-      proposal = { ...base, state: 'applied', prUrl: null, appliedSha: applied };
+      if (applied !== null) proposal = { ...base, state: 'applied', prUrl: null, appliedSha: applied };
+      else this.brain.reportProblem(workspaceId, `${target} changed while the promotion was evaluated, so it waits for review instead of applying on its own.`);
+    }
+    if (proposal !== null) {
+      // applied above
     } else if (link.remote !== null) {
       const pushed = await this.brain.exclusive(workspaceId, () => this.deps.repo.push(link.clonePath, branch));
       if (pushed !== 'pushed') {
@@ -263,7 +293,7 @@ export class Promotions {
       if (state === 'merged') this.deps.records.upsertProposal({ ...p, state: 'merged', updatedAt: this.deps.clock.now() });
       if (state === 'closed') {
         this.deps.records.upsertProposal({ ...p, state: 'closed', updatedAt: this.deps.clock.now() });
-        await this.brain.append(workspaceId, p.lessonIds.map((id) => ({ op: 'reject' as const, id })), { actor: 'daemon' });
+        await this.brain.append(workspaceId, p.lessonIds.map((id) => ({ op: 'unpromote' as const, id, pr: p.prUrl })), { actor: 'daemon' });
       }
     }
   }
@@ -277,7 +307,13 @@ export class Promotions {
       if (!moved) {
         // The default branch moved on (ledger lines): the proposal's files land as one commit, as a merge would.
         const tip = await this.deps.repo.head(link.clonePath, `refs/heads/${p.branch}`);
-        if (tip !== null) {
+        const mainTip = await this.deps.repo.head(link.clonePath, `refs/heads/${link.defaultBranch}`);
+        // Only when the targets on the default branch are still what the proposal started from.
+        let unchanged = tip !== null && mainTip !== null;
+        for (const path of unchanged ? p.targets : []) {
+          if ((await this.deps.repo.readAt(link.clonePath, `${tip}~1`, path)) !== (await this.deps.repo.readAt(link.clonePath, mainTip!, path))) unchanged = false;
+        }
+        if (tip !== null && unchanged) {
           const writes: BrainWrite[] = [];
           for (const path of p.targets) {
             const text = await this.deps.repo.readAt(link.clonePath, tip, path);
@@ -304,7 +340,7 @@ export class Promotions {
     if (!OPEN_STATES.has(p.state)) throw new TandemiseError('CONFLICT', 'This proposal is already settled.');
     const next: BrainProposal = { ...p, state: 'declined', updatedAt: this.deps.clock.now() };
     this.deps.records.upsertProposal(next);
-    await this.brain.append(p.workspaceId, p.lessonIds.map((lessonId) => ({ op: 'reject' as const, id: lessonId })), { actor: 'person' });
+    await this.brain.append(p.workspaceId, p.lessonIds.map((lessonId) => ({ op: 'unpromote' as const, id: lessonId, pr: p.prUrl })), { actor: 'person' });
     return next;
   }
 

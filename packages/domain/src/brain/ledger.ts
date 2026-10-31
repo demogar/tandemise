@@ -49,14 +49,22 @@ export interface EntryBody {
   readonly state: 'active' | 'candidate';
 }
 
-export type LedgerEvent =
+/**
+ * Every event carries `eid`, unique per write, so an event appended twice (a
+ * flush retried after a failed commit) folds once. Lines written before `eid`
+ * existed have none and are taken as they are.
+ */
+export type LedgerEvent = (
   | { readonly op: 'add'; readonly id: EntryId; readonly at: Iso; readonly by: string; readonly entry: EntryBody }
   | { readonly op: 'vote'; readonly id: EntryId; readonly at: Iso; readonly by: string; readonly vote: 'helpful' | 'harmful'; readonly why: VoteSource; readonly run?: RunRef; readonly mission?: string }
   | { readonly op: 'confirm'; readonly id: EntryId; readonly at: Iso; readonly by: string; readonly run?: RunRef; readonly mission?: string }
   | { readonly op: 'accept' | 'reject'; readonly id: EntryId; readonly at: Iso; readonly by: string }
   | { readonly op: 'supersede'; readonly id: EntryId; readonly at: Iso; readonly by: string; readonly successor: EntryId; readonly invalidAt: Iso }
   | { readonly op: 'promote'; readonly id: EntryId; readonly at: Iso; readonly by: string; readonly target: string; readonly pr: string | null }
-  | { readonly op: 'retire'; readonly id: EntryId; readonly at: Iso; readonly by: string; readonly reason: string };
+  | { readonly op: 'retire'; readonly id: EntryId; readonly at: Iso; readonly by: string; readonly reason: string }
+  /** A promotion's PR closed unmerged: the lesson is no longer promoted by that PR. Idempotent per PR. */
+  | { readonly op: 'unpromote'; readonly id: EntryId; readonly at: Iso; readonly by: string; readonly pr: string | null }
+) & { readonly eid?: string };
 
 export interface LedgerProblem {
   readonly file: string;
@@ -84,6 +92,8 @@ export interface BrainEntry {
   readonly supersededBy: EntryId | null;
   readonly retired: { readonly at: Iso; readonly reason: string } | null;
   readonly promoted: { readonly target: string; readonly pr: string | null } | null;
+  /** Distinct sources of helpful votes (a writer in one run or mission each); promotion needs two. */
+  readonly supporters: number;
   /** Net helpful votes gained since its last rejected promotion (spec §8 "three more"). */
   readonly netSinceRejected: number | null;
   readonly flags: { readonly harmful: boolean; readonly stale: boolean };
@@ -105,7 +115,7 @@ const scopeSchema = z.object({
   step: z.string().min(1).optional(),
   paths: z.array(z.string().min(1)).optional(),
 }).strict();
-const base = { id: z.string().min(3), at: z.string().min(10), by: z.string().min(1) };
+const base = { id: z.string().min(3), at: z.string().min(10), by: z.string().min(1), eid: z.string().min(3).optional() };
 const eventSchema = z.discriminatedUnion('op', [
   z.object({
     op: z.literal('add'), ...base,
@@ -129,6 +139,7 @@ const eventSchema = z.discriminatedUnion('op', [
   z.object({ op: z.literal('supersede'), ...base, successor: z.string().min(3), invalidAt: z.string().min(10) }),
   z.object({ op: z.literal('promote'), ...base, target: z.string().min(1), pr: z.string().nullable() }),
   z.object({ op: z.literal('retire'), ...base, reason: z.string() }),
+  z.object({ op: z.literal('unpromote'), ...base, pr: z.string().nullable() }),
 ]);
 
 /** Validates an event the daemon is about to write (the same schema the fold reads with). */
@@ -202,6 +213,8 @@ interface Mutable {
   retired: { at: Iso; reason: string } | null;
   promoted: { target: string; pr: string | null } | null;
   rejectedAtNet: number | null;
+  voters: Set<string>;
+  supporters: Set<string>;
 }
 
 const cmp = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
@@ -240,7 +253,12 @@ export function foldLedger(events: readonly LedgerEvent[], problems: readonly Le
     }
   };
 
+  const seenEids = new Set<string>();
   for (const e of sorted) {
+    if (e.eid !== undefined) {
+      if (seenEids.has(e.eid)) continue;
+      seenEids.add(e.eid);
+    }
     if (e.op === 'add') {
       if (entries.has(e.id) || aliases[e.id] !== undefined) continue;
       const key = `${normaliseText(e.entry.text)}\u0000${scopeKey(e.entry.scope)}`;
@@ -256,7 +274,7 @@ export function foldLedger(events: readonly LedgerEvent[], problems: readonly Le
         id: e.id, kind: e.entry.kind, text: e.entry.text, scope: e.entry.scope, source: e.entry.source, state: e.entry.state,
         helpful: 0, harmful: 0, addedAt: e.at, lastConfirmedAt: e.at,
         missions: new Set(e.entry.source.mission === '' ? [] : [e.entry.source.mission]), confirmedElsewhere: false,
-        invalidAt: null, supersededBy: null, retired: null, promoted: null, rejectedAtNet: null,
+        invalidAt: null, supersededBy: null, retired: null, promoted: null, rejectedAtNet: null, voters: new Set(), supporters: new Set(),
       });
       byContent.set(key, e.id);
       continue;
@@ -268,9 +286,12 @@ export function foldLedger(events: readonly LedgerEvent[], problems: readonly Le
     }
     switch (e.op) {
       case 'vote': {
+        // One vote per writer per run (or mission): a repeated click or a reflector run twice counts once.
+        const key = `${e.by}|${e.run?.runId ?? e.mission ?? ''}`;
+        if (m.voters.has(key)) break;
+        m.voters.add(key);
         const weight = e.why === 'person' ? PERSON_VOTE_WEIGHT : 1;
-        if (e.vote === 'helpful') m.helpful += weight;
-        else m.harmful += weight;
+        if (e.vote === 'helpful') { m.helpful += weight; m.supporters.add(key); } else m.harmful += weight;
         if (e.mission !== undefined && e.mission !== '') m.missions.add(e.mission);
         break;
       }
@@ -281,12 +302,13 @@ export function foldLedger(events: readonly LedgerEvent[], problems: readonly Le
         if (m.state !== 'rejected') m.state = 'accepted';
         break;
       case 'reject':
-        // On a candidate, a person said no. On a promoted lesson, its proposal was closed.
-        if (m.promoted !== null) {
+        m.state = 'rejected';
+        break;
+      case 'unpromote':
+        // Two daemons settling the same closed PR write this twice; only the first matters.
+        if (m.promoted !== null && m.promoted.pr === e.pr) {
           m.promoted = null;
           m.rejectedAtNet = net(m);
-        } else {
-          m.state = 'rejected';
         }
         break;
       case 'supersede':
@@ -309,7 +331,7 @@ export function foldLedger(events: readonly LedgerEvent[], problems: readonly Le
     return {
       id: m.id, kind: m.kind, text: m.text, scope: m.scope, source: m.source, state: m.state,
       helpful: m.helpful, harmful: m.harmful, net: n, addedAt: m.addedAt, lastConfirmedAt: m.lastConfirmedAt,
-      missions: [...m.missions].sort(), confirmedElsewhere: m.confirmedElsewhere,
+      missions: [...m.missions].sort(), confirmedElsewhere: m.confirmedElsewhere, supporters: m.supporters.size,
       invalidAt: m.invalidAt, supersededBy: m.supersededBy, retired: m.retired, promoted: m.promoted,
       netSinceRejected: m.rejectedAtNet === null ? null : n - m.rejectedAtNet,
       flags: {

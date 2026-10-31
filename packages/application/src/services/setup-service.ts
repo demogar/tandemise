@@ -7,7 +7,7 @@ import type {
   ApplySetupRequest, SetupApplyView, SetupExportRecord, SetupExportView, SetupPreviewView, SetupStatusView, UpdateWorkspaceRequest,
 } from '@tandemise/api-contract';
 import type { Clock, Logger, RoutineId, WorkspaceId } from '@tandemise/shared';
-import { TandemiseError, asId } from '@tandemise/shared';
+import { TandemiseError, asId, redactSecrets } from '@tandemise/shared';
 import type { SettingsStorePort, SetupFolderPort, WorkflowSourcePort } from '../ports.js';
 import { listProjectWorkflows, type BrainWorkflowReader } from '../brain/workflows.js';
 import type { RoleService, WorkspaceService } from '../services.js';
@@ -131,8 +131,18 @@ export class SetupService {
     for (const i of this.deps.integrations?.listByWorkspace(workspaceId) ?? []) {
       const url = typeof i.config['url'] === 'string' ? i.config['url'] : null;
       const command = typeof i.config['command'] === 'string' ? i.config['command'] : null;
+      // No machine path leaves this machine (#51 spec §1): a command's own path becomes its name, and a
+      // command or URL that still names a path or carries a credential is left out.
+      const portable = (text: string): string | null => {
+        const cleaned = text.trim().replace(/^(~?\/[^\s]*\/)([^/\s]+)/, '$2');
+        if (/(^|[\s'"=])~?\/[^\s]+\/[^\s]*/.test(cleaned) || /[A-Za-z]:\\/.test(cleaned)) return null;
+        if (redactSecrets(cleaned) !== cleaned) return null;
+        return cleaned;
+      };
+      const safeUrl = url === null ? null : portable(url.replace(/^https?:\/\/[^/]+/, (h) => h.replace(/\/\/[^@/]+@/, '//')));
+      const safeCommand = command === null ? null : portable(command);
       const connect: McpSetup['connect'] | null = i.providerId === 'github' ? { kind: 'cli', command: 'gh' }
-        : url !== null ? { kind: 'mcp', url } : command !== null ? { kind: 'mcp', command } : null;
+        : safeUrl !== null ? { kind: 'mcp', url: url!.startsWith('http') ? url!.replace(/\/\/[^@/]+@/, '//') : safeUrl } : safeCommand !== null ? { kind: 'mcp', command: safeCommand } : null;
       if (connect === null) continue;
       out.push({ name: i.name, provider: i.providerId, capabilities: [...i.enabledCapabilities], connect });
     }

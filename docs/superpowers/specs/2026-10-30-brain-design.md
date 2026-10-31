@@ -301,7 +301,7 @@ The promoter never sees `evals/`.
 | | Any change that adds a capability or integration, or **removes or relaxes an approval or a gate** |
 
 **Evals gate every promotion.** Every promotion runs the project's promotion suites before it is offered or applied:
-- `evals/gates.yaml` names the P3b suites, the repeats, the spend cap, and the pass rule. The default pass rule: candidate gate pass rate ≥ baseline, criteria failed ≤ baseline, and median cost ≤ baseline × 1.25.
+- `evals/gates.yaml` names the P3b suites, the repeats, the spend cap, and the pass rule. The default pass rule: candidate gate pass rate ≥ baseline, criteria failed ≤ baseline, and mean cost ≤ baseline × 1.25. (The P3b scorecard reports a mean cost and no median, so the rule compares means.)
 - The run is a P3b eval run (`packages/application/src/engine/eval-runner.ts`) with a new candidate kind, `{ kind: 'brain', ref }`. It is the existing `{ kind: 'setup', folder }` (`packages/domain/src/entities/eval.ts`), read from the promotion branch's `factory/`, plus that branch's `memory/rules` as the trial's rules. The baseline is the default branch.
 - The proposer can't see or edit these evals (Darwin Gödel Machine; skill-creator's blind A/B):
   - the cases live in `evals/`, which no prompt, no `brain.*` tool and no worktree ever exposes;

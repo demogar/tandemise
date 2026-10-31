@@ -32,7 +32,11 @@ import { brainRoutes } from './brain-routes.js';
  * way means the API is a projection of the application layer rather than a
  * second place where mission rules live.
  */
-export function buildRouter(services: TandemiseServices, options: { readonly testClock?: AdjustableClock | null } = {}): Router {
+export function buildRouter(services: TandemiseServices, options: {
+  readonly testClock?: AdjustableClock | null;
+  /** Test-only event recording (TANDEMISE_TEST_ROUTES=1); null in every real daemon. */
+  readonly testEvents?: ((missionId: string, taskId: string | null, body: Record<string, unknown>) => unknown) | null;
+} = {}): Router {
   const r = new Router();
 
   /**
@@ -236,10 +240,13 @@ export function buildRouter(services: TandemiseServices, options: { readonly tes
       const offsetMs = testClock.advance(advanceMs);
       return { now: testClock.now(), offsetMs };
     });
+  }
+  const testEvents = options.testEvents ?? null;
+  if (testEvents !== null) {
     // Test-only (#51 acceptance): records an event body on a mission, as another feature would.
     r.post('/v1/test/events', async (ctx) => {
       const body = (await ctx.body(z.object({ missionId: z.string().min(1), taskId: z.string().min(1).optional(), body: z.record(z.string(), z.unknown()) })));
-      return services.brain.recordForTest(body.missionId, body.taskId ?? null, body.body);
+      return testEvents(body.missionId, body.taskId ?? null, body.body);
     });
   }
 

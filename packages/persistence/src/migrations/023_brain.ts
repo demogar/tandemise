@@ -13,6 +13,7 @@ import type { Migration } from './types.js';
  *  - `measured_usage`: `usage_records` plus the passes that belong to a
  *    mission, so a reflector's spend counts toward P8 limits like any run's.
  *    A pass has no `runs` row, and `usage_records.run_id` references `runs`.
+ *    A promoter pass belongs to no mission: it counts toward its project's month.
  */
 export const migration023: Migration = {
   version: 23,
@@ -75,13 +76,13 @@ CREATE TABLE brain_proposals (
 CREATE INDEX ix_brain_proposals_workspace ON brain_proposals (workspace_id, updated_at);
 
 CREATE VIEW measured_usage AS
-  SELECT id, mission_id, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
+  SELECT id, mission_id, NULL AS workspace_id, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
          cost_usd, wall_time_ms, turns, recorded_at
     FROM usage_records
   UNION ALL
-  SELECT id, mission_id, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
+  SELECT id, mission_id, workspace_id, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
          cost_usd, wall_time_ms, NULL AS turns, created_at AS recorded_at
     FROM brain_passes
-   WHERE mission_id IS NOT NULL AND has_usage = 1;
+   WHERE has_usage = 1;
 `,
 };

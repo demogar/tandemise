@@ -1,5 +1,7 @@
 import type { BrainRepoPort, EntryBody, LedgerEvent, MissionRepositoryPort } from '@tandemise/domain';
-import { BRAIN_SECRET_REFUSAL, isTrialMission, scrubForBrain, validateLedgerEvent } from '@tandemise/domain';
+import { BRAIN_REDACTED, BRAIN_SECRET_REFUSAL, isTrialMission, scrubForBrain, validateLedgerEvent } from '@tandemise/domain';
+
+const redactText = (t: string): string => redactSecrets(t).replace(/(?:gh|sk-|sk-ant-|github_pat_|figd_|xox|AKIA|jwt)?«redacted»/g, BRAIN_REDACTED);
 import type { Clock, Logger, MissionId, WorkspaceId } from '@tandemise/shared';
 import { TandemiseError, errorMessage, newId, redactSecrets } from '@tandemise/shared';
 import type { WorkspaceService } from '../services.js';
@@ -58,19 +60,39 @@ export class LedgerWriter {
     const out: LedgerEvent[] = [];
     for (const input of inputs) {
       const at = this.deps.clock.now();
-      let candidate: Record<string, unknown> = { ...input, at, by: link.writerId };
+      // A unique id per event, so a retried flush that appends it twice folds once.
+      let candidate: Record<string, unknown> = { ...input, at, by: link.writerId, eid: `${link.writerId}:${newId('x').slice(2)}` };
+      const refuse = (reason: string): boolean => {
+        if (opts.actor === 'person') throw TandemiseError.validation(reason);
+        this.deps.log.warn('brain.lesson_refused', { workspaceId, actor: opts.actor, reason });
+        return true;
+      };
+      if ('mission' in input && typeof input.mission === 'string') candidate['mission'] = redactText(input.mission);
       if (input.op === 'add') {
         candidate['id'] = input.id ?? `${link.writerId}:${newId('x').slice(2)}`;
         const scrubbed = scrubForBrain(input.entry.text, repos);
-        if ('refused' in scrubbed) {
-          if (opts.actor === 'person') throw TandemiseError.validation(scrubbed.refused);
-          this.deps.log.warn('brain.lesson_refused', { workspaceId, actor: opts.actor, reason: scrubbed.refused });
-          continue;
+        if ('refused' in scrubbed) { refuse(scrubbed.refused); continue; }
+        // Scope values are text too: a secret or a machine path in one never reaches the brain.
+        const scope: Record<string, unknown> = {};
+        let refused = false;
+        for (const [key, value] of Object.entries(input.entry.scope)) {
+          const values = Array.isArray(value) ? value as string[] : [value as string];
+          const clean: string[] = [];
+          for (const v of values) {
+            const s = scrubForBrain(v, repos);
+            if ('refused' in s || s.text.includes(BRAIN_REDACTED)) { refused = true; break; }
+            // A repository path rewritten as `<repo>:<rest>` is a path glob inside that repository.
+            clean.push(key === 'paths' ? s.text.replace(/^[^/:]+:/, '') : s.text);
+          }
+          if (refused) break;
+          scope[key] = Array.isArray(value) ? clean : clean[0];
         }
+        if (refused) { refuse('A lesson\'s scope can\'t name a secret or a path on your machine.'); continue; }
         const entry: EntryBody = {
           ...input.entry,
           text: scrubbed.text,
-          source: { ...input.entry.source, mission: redactSecrets(input.entry.source.mission).replace(/«redacted»/g, '[redacted secret]') },
+          scope: scope as EntryBody['scope'],
+          source: { ...input.entry.source, mission: redactText(input.entry.source.mission) },
         };
         candidate = { ...candidate, entry };
       } else if (input.op === 'retire') {

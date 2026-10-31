@@ -28,7 +28,8 @@ export interface BrainRepoPort {
   setRemote(clone: string, remote: string): Promise<void>;
   head(clone: string, ref?: string): Promise<string | null>;
   /** Never throws for a network failure: `offline` carries git's sentence instead. */
-  fetchAndRebase(clone: string, branch: string): Promise<{ head: string; conflicted: readonly string[]; offline: string | null }>;
+  /** `failed` is a rebase that stopped with nothing conflicted (aborted; the clone is as it was). */
+  fetchAndRebase(clone: string, branch: string): Promise<{ head: string; conflicted: readonly string[]; offline: string | null; failed?: string }>;
   /**
    * Commits on the checked-out branch, or with `onto` on another branch
    * (created from `from` when missing) without touching the checked-out one.

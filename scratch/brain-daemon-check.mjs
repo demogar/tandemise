@@ -31,7 +31,7 @@ mkdirSync(FAKE.bin, { recursive: true });
 mkdirSync(FAKE.remotes, { recursive: true });
 writeFileSync(join(FAKE.bin, 'gh'), `#!/bin/sh\nFAKE_GH_LOG='${FAKE.log}' FAKE_GH_STATE='${FAKE.state}' FAKE_GH_REMOTES='${FAKE.remotes}' exec '${process.execPath}' '${join(here, 'brain-fixtures', 'fake-gh.mjs')}' "$@"\n`);
 chmodSync(join(FAKE.bin, 'gh'), 0o755);
-writeFileSync(FAKE.gitconfig, `[url "file://${FAKE.remotes}/"]\n\tinsteadOf = https://github.com/\n[user]\n\tname = Ana Smith\n\temail = ana@localhost\n[init]\n\tdefaultBranch = main\n`);
+writeFileSync(FAKE.gitconfig, `[url "file://${FAKE.remotes}/"]\n\tinsteadOf = https://github.com/\n[protocol "file"]\n\tallow = always\n[user]\n\tname = Ana Smith\n\temail = ana@localhost\n[init]\n\tdefaultBranch = main\n`);
 process.env.PATH = `${FAKE.bin}:${process.env.PATH}`;
 process.env.GIT_CONFIG_GLOBAL = FAKE.gitconfig;
 process.env.TANDEMISE_OFFLINE = '1';
@@ -108,6 +108,9 @@ try {
   check('after sync the remote has the lesson and no token', git(remoteDir, 'log', '-p', '--all').includes('run npm run ci') && !git(remoteDir, 'log', '-p', '--all').includes('ghp_q'));
   const refused = await d2.api('POST', `/v1/workspaces/${d2.ws}/brain/entries`, { text: 'see /etc/hosts' });
   check('a machine path is refused in words', refused.status === 400 && refused.body?.error?.message === "A lesson can't name a path on your machine. Name the file inside its repository instead.", refused.body);
+
+  const testRoute = await d2.api('POST', '/v1/test/events', { missionId: 'msn_x', body: { type: 'note', text: 'x' } });
+  check('the test events route does not exist without TANDEMISE_TEST_ROUTES', testRoute.status === 404, testRoute.status);
 
   section('daemon: proposals and what a run knew');
   const props = await d2.api('GET', `/v1/workspaces/${d2.ws}/brain/proposals`);

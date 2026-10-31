@@ -153,3 +153,4 @@ export * from './brain/eval-gates.js';
 export { buildPromoterPrompt, parsePromoterReply, promote } from './brain/promoter.js';
 export { BrainIntakeConfigSource, INTAKE_DEFAULTS, SET_IN_BRAIN, brainIntakeFile, brainTrackerFile } from './brain/intake-config.js';
 export type { BrainIntakeConfig, BrainTrackerConfig, IntakeConfigSourceShape } from './brain/intake-config.js';
+export { RULES_FILE_MAX_CHARS, RULES_TOTAL_MAX_CHARS, capRules } from './brain/context-supply.js';
