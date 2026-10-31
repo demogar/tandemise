@@ -7,6 +7,7 @@ import { LimitFields, limitDraft, limitsFromDraft } from '../../components/Limit
 import { useDaemonMutation, useWorkflows } from '../../lib/queries.js';
 import { useWorkspaceId } from '../../lib/workspace.js';
 import { MISSION_PRIORITIES, ROUTINE_HOURS, ROUTINE_TEMPLATES, WEEKDAY_OPTIONS, priorityLabel } from '../../lib/domain.js';
+import { Button } from '@tandemise/design/react';
 
 type Repeats = RoutineSchedule['type'];
 
@@ -134,10 +135,10 @@ export function RoutineDialog({ editing, onClose }: { editing: RoutineView | nul
               ? 'Each run adds a queued mission to the backlog. It is planned when there is room under your work-in-progress limit.'
               : 'Each run writes the next version of the project’s status report.'}
           </span>
-          <button type="button" className="btn btn--ghost" onClick={onClose}>Cancel</button>
-          <button type="button" className="btn btn--primary" disabled={save.isPending} onClick={submit}>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="primary" disabled={save.isPending} onClick={submit}>
             {save.isPending ? 'Saving…' : editing === null ? 'Create routine' : 'Save routine'}
-          </button>
+          </Button>
         </>
       }
     >
@@ -147,16 +148,14 @@ export function RoutineDialog({ editing, onClose }: { editing: RoutineView | nul
             <span className="field__label">Start from</span>
             <div className="grid grid--3">
               {ROUTINE_TEMPLATES.map((template) => (
-                <button
+                <Button
                   key={template.key}
-                  type="button"
-                  className="btn"
                   aria-pressed={draft.name === template.name}
                   title={template.description}
                   onClick={() => { setDraft(fromTemplate(template)); setLimits(limitDraft([])); setProblem(null); }}
                 >
                   {template.name}
-                </button>
+                </Button>
               ))}
             </div>
           </section>

@@ -3,6 +3,7 @@ import type { Scorecard as ScorecardData, ScorecardDifferenceView, VariantScoreV
 import { Icon } from '../../components/Icon.js';
 import { duration, metric } from '../../lib/format.js';
 import { percent, usd } from './shared.js';
+import { Badge, Card } from '@tandemise/design/react';
 
 /** Which way is better for a difference: a pass rate should go up; attempts, length, tokens, cost and time should go down. */
 type Better = 'higher' | 'lower';
@@ -120,11 +121,11 @@ export function Scorecard({ scorecard }: { scorecard: ScorecardData }): JSX.Elem
     <section className="stack" aria-label="Scorecard" style={{ gap: 'var(--s3)' }}>
       <div className="row" style={{ gap: 'var(--s2)', alignItems: 'baseline' }}>
         <h2 className="section__title">Scorecard</h2>
-        {scorecard.fewRepeats ? <span className="badge badge--blocked" aria-label="Few repeats">few repeats, differences may be noise</span> : null}
+        {scorecard.fewRepeats ? <Badge tone="blocked" aria-label="Few repeats">few repeats, differences may be noise</Badge> : null}
       </div>
-      <div className="card card--flush">
+      <Card flush>
         <ScoreTable baseline={scorecard.baseline} candidate={scorecard.candidate} difference={scorecard.difference} label="Whole suite" />
-      </div>
+      </Card>
       {scorecard.perCase.length > 0 ? (
         <div className="stack" style={{ gap: 'var(--s2)' }}>
           <h3 className="field__label" style={{ margin: 0 }}>By case</h3>

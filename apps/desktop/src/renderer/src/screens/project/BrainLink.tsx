@@ -6,6 +6,7 @@ import { ConfirmDialog } from '../../components/Modal.js';
 import { ErrorState, Field, SectionHead, SkeletonList } from '../../components/primitives.js';
 import { useBrain, useDaemonMutation } from '../../lib/queries.js';
 import { showFlash } from '../../lib/notices.js';
+import { Button, Card } from '@tandemise/design/react';
 
 type Mode = 'create' | 'adopt' | 'local' | null;
 
@@ -59,24 +60,24 @@ export function BrainLink({ workspaceId, ownerHint }: { workspaceId: string; own
           onUnlink={() => setUnlinking(true)}
         />
       ) : (
-        <div className="card">
+        <Card>
           <p className="field__hint" style={{ marginBottom: 'var(--s3)' }}>
             A brain is one git repository that holds what this project has learned and how its factory works: roles, workflows,
             rules and lessons. A teammate who links the same brain gets the same factory. Sharing is <span className="mono">git pull</span> and{' '}
             <span className="mono">git push</span>; secrets and your own settings never go in it.
           </p>
           <div className="row" style={{ gap: 'var(--s2)' }}>
-            <button type="button" className={`btn${mode === 'create' ? ' btn--primary' : ''}`} onClick={() => { setMode('create'); setPreview(null); }}>
+            <Button variant={mode === 'create' ? 'primary' : 'secondary'} onClick={() => { setMode('create'); setPreview(null); }}>
               <Icon name="plus" size={13} />
               Create a brain
-            </button>
-            <button type="button" className={`btn${mode === 'adopt' ? ' btn--primary' : ''}`} onClick={() => { setMode('adopt'); setPreview(null); }}>
+            </Button>
+            <Button variant={mode === 'adopt' ? 'primary' : 'secondary'} onClick={() => { setMode('adopt'); setPreview(null); }}>
               <Icon name="folder" size={13} />
               Use an existing brain
-            </button>
-            <button type="button" className="btn" disabled={link.isPending} onClick={() => { setMode('local'); run({ mode: 'local' }); }}>
+            </Button>
+            <Button disabled={link.isPending} onClick={() => { setMode('local'); run({ mode: 'local' }); }}>
               Keep it on this machine
-            </button>
+            </Button>
           </div>
 
           {mode === 'create' ? (
@@ -84,9 +85,9 @@ export function BrainLink({ workspaceId, ownerHint }: { workspaceId: string; own
               <div className="row" style={{ gap: 'var(--s2)', alignItems: 'flex-end' }}>
                 <Field label="GitHub owner"><input className="input" aria-label="GitHub owner" value={owner} onChange={(e) => setOwner(e.target.value)} /></Field>
                 <Field label="Repository name"><input className="input" aria-label="Repository name" value={name} onChange={(e) => setName(e.target.value)} /></Field>
-                <button type="button" className="btn btn--primary" disabled={link.isPending || owner.trim() === '' || name.trim() === ''} onClick={() => run({ mode: 'create', owner: owner.trim(), name: name.trim() })}>
+                <Button variant="primary" disabled={link.isPending || owner.trim() === '' || name.trim() === ''} onClick={() => run({ mode: 'create', owner: owner.trim(), name: name.trim() })}>
                   {link.isPending ? 'Creating…' : 'Create'}
-                </button>
+                </Button>
               </div>
               <p className="field__hint">A private repository named {owner.trim() || 'owner'}/{name.trim() || 'brain'}, made with your GitHub CLI.</p>
             </div>
@@ -97,9 +98,9 @@ export function BrainLink({ workspaceId, ownerHint }: { workspaceId: string; own
               <Field label="Brain repository" hint="github.com/owner/name, or a git address">
                 <input className="input" aria-label="Brain repository" value={remote} placeholder="github.com/garipass/brain" onChange={(e) => setRemote(e.target.value)} />
               </Field>
-              <button type="button" className="btn btn--primary" disabled={link.isPending || remote.trim() === ''} onClick={() => run({ mode: 'adopt', remote: remote.trim() })}>
+              <Button variant="primary" disabled={link.isPending || remote.trim() === ''} onClick={() => run({ mode: 'adopt', remote: remote.trim() })}>
                 {link.isPending ? 'Reading…' : 'Preview'}
-              </button>
+              </Button>
             </div>
           ) : null}
 
@@ -115,7 +116,7 @@ export function BrainLink({ workspaceId, ownerHint }: { workspaceId: string; own
           ) : null}
           {link.isError ? <ErrorState error={link.error} /> : null}
           {apply.isError ? <ErrorState error={apply.error} /> : null}
-        </div>
+        </Card>
       )}
 
       {unlinking ? <ConfirmDialog
@@ -127,17 +128,17 @@ export function BrainLink({ workspaceId, ownerHint }: { workspaceId: string; own
         onCancel={() => setUnlinking(false)}
       /> : null}
       {sharing && view?.linked ? (
-        <div className="card" style={{ marginTop: 'var(--s3)' }} aria-label="Share this brain">
+        <Card style={{ marginTop: 'var(--s3)' }} aria-label="Share this brain">
           <div className="row" style={{ gap: 'var(--s2)', alignItems: 'flex-end' }}>
             <Field label="GitHub owner"><input className="input" aria-label="Share owner" value={owner} onChange={(e) => setOwner(e.target.value)} /></Field>
             <Field label="Repository name"><input className="input" aria-label="Share name" value={name} onChange={(e) => setName(e.target.value)} /></Field>
-            <button type="button" className="btn btn--primary" disabled={share.isPending} onClick={() => share.mutate({ owner: owner.trim(), name: name.trim() }, { onSuccess: (v) => { setSharing(false); showFlash(v.statusLine); } })}>
+            <Button variant="primary" disabled={share.isPending} onClick={() => share.mutate({ owner: owner.trim(), name: name.trim() }, { onSuccess: (v) => { setSharing(false); showFlash(v.statusLine); } })}>
               {share.isPending ? 'Sharing…' : 'Share'}
-            </button>
-            <button type="button" className="btn btn--ghost" onClick={() => setSharing(false)}>Cancel</button>
+            </Button>
+            <Button variant="ghost" onClick={() => setSharing(false)}>Cancel</Button>
           </div>
           {share.isError ? <ErrorState error={share.error} /> : null}
-        </div>
+        </Card>
       ) : null}
     </section>
   );
@@ -145,7 +146,7 @@ export function BrainLink({ workspaceId, ownerHint }: { workspaceId: string; own
 
 function Linked({ view, syncing, onSync, onShare, onUnlink }: { view: BrainView; syncing: boolean; onSync: () => void; onShare: () => void; onUnlink: () => void }): JSX.Element {
   return (
-    <div className="card stack" aria-label="Brain status">
+    <Card className="stack" aria-label="Brain status">
       <p aria-label="Brain status line" data-status={view.status} style={{ margin: 0 }}>{view.statusLine}</p>
       <p className="muted" style={{ margin: 0, fontSize: 'var(--fs-sm)' }}>
         {view.counts.rules} rules {view.counts.rules === 1 ? 'file' : 'files'} · {view.counts.lessons} {view.counts.lessons === 1 ? 'lesson' : 'lessons'}
@@ -154,15 +155,15 @@ function Linked({ view, syncing, onSync, onShare, onUnlink }: { view: BrainView;
       </p>
       {view.problems.map((p) => <div key={p} className="banner banner--warn">{p}</div>)}
       <div className="row" style={{ gap: 'var(--s2)' }}>
-        <button type="button" className="btn" disabled={syncing} onClick={onSync}>
+        <Button disabled={syncing} onClick={onSync}>
           <Icon name="refresh" size={13} />
           {syncing ? 'Syncing…' : 'Sync now'}
-        </button>
+        </Button>
         <Link href="/brain" className="btn btn--ghost">Open the brain</Link>
-        {view.status === 'local_only' ? <button type="button" className="btn" onClick={onShare}>Share this brain</button> : null}
-        <button type="button" className="btn btn--ghost" style={{ marginLeft: 'auto' }} onClick={onUnlink}>Unlink</button>
+        {view.status === 'local_only' ? <Button onClick={onShare}>Share this brain</Button> : null}
+        <Button variant="ghost" style={{ marginLeft: 'auto' }} onClick={onUnlink}>Unlink</Button>
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -210,8 +211,8 @@ function AdoptPreview({ preview, choices, onChoose, pending, onLink, onCancel }:
         </tbody>
       </table>
       <div className="row" style={{ gap: 'var(--s2)' }}>
-        <button type="button" className="btn btn--primary" disabled={pending} onClick={onLink}>{pending ? 'Linking…' : 'Link'}</button>
-        <button type="button" className="btn btn--ghost" onClick={onCancel}>Cancel</button>
+        <Button variant="primary" disabled={pending} onClick={onLink}>{pending ? 'Linking…' : 'Link'}</Button>
+        <Button variant="ghost" onClick={onCancel}>Cancel</Button>
       </div>
     </div>
   );

@@ -19,6 +19,7 @@ import { MISSION_PRIORITIES, priorityLabel } from '../lib/domain.js';
 import { LimitFields, limitDraft, limitsFromDraft } from '../components/LimitFields.js';
 import { showFlash } from '../lib/notices.js';
 import { ContributionPicker, type Contribution } from '../components/ContributionPicker.js';
+import { Badge, Button, Card } from '@tandemise/design/react';
 
 /** The request schema's cap on uploads at creation; more can follow later as feedback. */
 const MAX_UPLOADS = 10;
@@ -148,22 +149,20 @@ export function NewMission(): JSX.Element {
         subtitle="Describe the outcome. Tandemise proposes the plan before anything runs."
         actions={
           <>
-            <button type="button" className="btn btn--ghost" onClick={() => navigate('/missions')}>
+            <Button variant="ghost" onClick={() => navigate('/missions')}>
               Cancel
-            </button>
-            <button
-              type="button"
-              className="btn"
+            </Button>
+            <Button
               onClick={() => submit('backlog')}
               disabled={!ready || create.isPending}
               title="Queue it: Tandemise plans it when it is ready and there is room under the project's limit."
             >
               Add to backlog
-            </button>
-            <button type="button" className="btn btn--primary" onClick={() => submit()} disabled={!ready || create.isPending}>
+            </Button>
+            <Button variant="primary" onClick={() => submit()} disabled={!ready || create.isPending}>
               {create.isPending ? (hasCriteria ? 'Planning…' : 'Creating…') : hasCriteria ? 'Plan mission' : 'Create and refine'}
               <kbd style={{ marginLeft: 2 }}>⌘↵</kbd>
-            </button>
+            </Button>
           </>
         }
       />
@@ -362,7 +361,7 @@ export function NewMission(): JSX.Element {
               >
                 <Icon name="chevronRight" size={13} className="disclosure__chevron" />
                 Staffing for this mission
-                {Object.keys(staffing).length > 0 ? <span className="badge badge--accent">{Object.keys(staffing).length} changed</span> : null}
+                {Object.keys(staffing).length > 0 ? <Badge tone="accent">{Object.keys(staffing).length} changed</Badge> : null}
               </button>
               {showStaffing ? (
                 <div className="disclosure__panel">
@@ -410,7 +409,7 @@ function MissionStaffing({
   };
 
   return (
-    <div className="card card--flush">
+    <Card flush>
       {(roles.data ?? []).map((role) => {
         const patch = value[role.id];
         const preset: StaffingPreset | 'inherit' = patch ? presetOf(patch, actors).preset : 'inherit';
@@ -461,26 +460,25 @@ function MissionStaffing({
           onClose={() => setEditing(null)}
           footer={
             <>
-              <button type="button" className="btn btn--ghost" onClick={() => setEditing(null)}>
+              <Button variant="ghost" onClick={() => setEditing(null)}>
                 Cancel
-              </button>
-              <button
-                type="button"
-                className="btn btn--primary"
+              </Button>
+              <Button
+                variant="primary"
                 onClick={() => {
                   set(editing.id, draft);
                   setEditing(null);
                 }}
               >
                 Use this
-              </button>
+              </Button>
             </>
           }
         >
           <StaffingEditor roleId={editing.id} value={draft} onChange={setDraft} actors={actors} level="mission" inherited={project[editing.id]} startPreset={startPreset} startCustom={startCustom} />
         </Drawer>
       ) : null}
-    </div>
+    </Card>
   );
 }
 

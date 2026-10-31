@@ -12,6 +12,7 @@ import { ArtifactReader } from '../artifacts/ArtifactReader.js';
 import { DecisionForm, copyFor, riskLabel, useApprovalDecision } from '../../components/Decision.js';
 import { LimitDecision } from './LimitDecision.js';
 import { isLimitCard } from '../../lib/domain.js';
+import { Badge } from '@tandemise/design/react';
 
 /**
  * MVP.md §23.4 is a hard requirement, not a style note: every card must answer
@@ -45,7 +46,7 @@ export function ApprovalCard({ view, compact = false }: { view: ApprovalView; co
           <h3 className="approval__title">{approval.title}</h3>
           <div className="approval__context">
             <span className={copy.question ? 'chip chip--you' : 'chip chip--muted'}>{copy.kindLabel}</span>
-            {position ? <span className="badge badge--accent">{position}</span> : null}
+            {position ? <Badge tone="accent">{position}</Badge> : null}
             <IdChip id={approval.id} />
             {approval.taskId ? <IdChip id={approval.taskId} prefix="task" /> : null}
             {view.missionTitle ? (

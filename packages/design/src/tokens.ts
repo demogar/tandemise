@@ -133,6 +133,13 @@ export const colorRoles = {
   border: { light: 'paper-150', dark: 'ink-800' },
   'border-strong': { light: 'paper-300', dark: 'ink-700' },
   'border-focus': { light: 'indigo-500', dark: 'brand-mint' },
+  /* the keyboard focus outline: the focus border, named for where it is read */
+  'focus-ring': { alias: 'border-focus' },
+
+  /* scrims: the wash behind an overlay - a modal's, and a drawer's lighter one
+     that keeps the list beside it readable */
+  scrim: { wash: 'surface-sunken', percent: 72 },
+  'scrim-light': { wash: 'surface-sunken', percent: 40 },
 
   /* text */
   text: { light: 'brand-indigo', dark: 'mint-50' },
@@ -162,6 +169,13 @@ export const colorRoles = {
   'status-succeeded-soft': { wash: 'status-succeeded', percent: 13 },
   'status-pending-soft': { wash: 'status-pending', percent: 13 },
 
+  /* a status as an edge: the border of a danger button or a status panel */
+  'status-running-line': { wash: 'status-running', percent: 40 },
+  'status-blocked-line': { wash: 'status-blocked', percent: 40 },
+  'status-failed-line': { wash: 'status-failed', percent: 40 },
+  'status-succeeded-line': { wash: 'status-succeeded', percent: 40 },
+  'status-pending-line': { wash: 'status-pending', percent: 40 },
+
   /* presence with the team: online, away, offline */
   'presence-online': { alias: 'status-succeeded' },
   'presence-away': { alias: 'status-blocked' },
@@ -173,6 +187,12 @@ export const colorRoles = {
   'risk-external': { alias: 'status-blocked' },
   'risk-destructive': { alias: 'status-failed' },
   'risk-release': { light: 'signal-violet-deep', dark: 'signal-violet-bright' },
+  'risk-release-soft': { wash: 'risk-release', percent: 14 },
+
+  /* tooltip: the inverse of the page, so a hint reads as floating above it in
+     either theme */
+  'tooltip-background': { light: 'brand-indigo', dark: 'mint-50' },
+  'tooltip-text': { light: 'paper-0', dark: 'ink-950' },
 
   /* terminal: xterm.js paints on a canvas and takes plain colours, so an app
      resolves these through getComputedStyle (or `resolveTheme`) and hands it
@@ -241,7 +261,52 @@ export const lineHeight = { base: 1.5 } as const;
 
 /* ------------------------------------------------------------------- motion */
 
-export const duration = { fast: 120, base: 160 } as const;
-export const easing = { standard: 'cubic-bezier(0.32, 0.72, 0, 1)' } as const;
+/**
+ * Durations, in ms. `fast` is a hover, `base` an overlay entering, `slow` a
+ * larger move; `shimmer` and `pulse` are the loops of a skeleton and a live
+ * status dot. `prefers-reduced-motion` turns all of them off (base.css).
+ */
+export const duration = { fast: 120, base: 160, slow: 240, shimmer: 1300, pulse: 1900 } as const;
+
+/** `standard` moves within the page; `enter` decelerates in, `exit` accelerates out. */
+export const easing = {
+  standard: 'cubic-bezier(0.32, 0.72, 0, 1)',
+  enter: 'cubic-bezier(0, 0, 0.2, 1)',
+  exit: 'cubic-bezier(0.4, 0, 1, 1)',
+} as const;
+
+/* -------------------------------------------------------------------- focus */
+
+/** The keyboard focus outline, in px: drawn in `--focus-ring`. */
+export const focusRing = { width: 2, offset: 2 } as const;
+
+/* ------------------------------------------------------------------ stacking */
+
+/**
+ * The z-index scale. Every layer that floats is one of these, so a new one is
+ * placed by name rather than by guessing a number above the last.
+ *
+ *   raised          a sticky edge or fade inside a scroller
+ *   dropdown        a menu anchored to its trigger
+ *   overlay         a modal or drawer and its scrim
+ *   overlay-raised  an overlay that opens over another (a terminal over a drawer)
+ *   toast           a transient message, above every overlay
+ *   tooltip         above everything, since it describes what is under the pointer
+ */
+export const zIndex = { raised: 2, dropdown: 40, overlay: 50, 'overlay-raised': 55, toast: 60, tooltip: 70 } as const;
+
+/* ------------------------------------------------------------------ density */
+
+/**
+ * Control heights, in px: `xs` a badge, `sm` a compact button or chip, `md` a
+ * button or input, `lg` the one primary action of a screen. `compact` is what
+ * they become under `[data-density='compact']`, for a dense table or toolbar.
+ */
+export const controlHeight = {
+  comfortable: { xs: 20, sm: 26, md: 30, lg: 36 },
+  compact: { xs: 18, sm: 22, md: 26, lg: 32 },
+} as const;
+
+export type Density = keyof typeof controlHeight;
 
 export type ThemeName = 'light' | 'dark';

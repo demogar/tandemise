@@ -10,6 +10,7 @@ import { useDaemon } from '../lib/connection.js';
 import { openImpact } from '../lib/notices.js';
 import { useActors, type Actors } from '../lib/team.js';
 import { titleCase } from '../lib/format.js';
+import { Badge, Button } from '@tandemise/design/react';
 
 /**
  * Deciding an approval, wherever it is decided.
@@ -201,10 +202,9 @@ export function DecisionForm({ decision, variant = 'full' }: { decision: Approva
           {ordered.map((option) => {
             const { danger } = decision.consequence(option.id);
             return (
-              <button
+              <Button
                 key={option.id}
-                type="button"
-                className={`btn${danger ? ' btn--danger' : option.id === primaryId ? ' btn--primary' : ''}`}
+                variant={danger ? 'danger' : option.id === primaryId ? 'primary' : 'secondary'}
                 title={option.description ?? undefined}
                 disabled={decision.pending}
                 onMouseEnter={aim(option.id)}
@@ -217,7 +217,7 @@ export function DecisionForm({ decision, variant = 'full' }: { decision: Approva
                 }}
               >
                 {decision.pending && option.id === decision.selected ? 'Submitting…' : submitLabel(decision.consequence(option.id).copy, option)}
-              </button>
+              </Button>
             );
           })}
         </div>
@@ -244,9 +244,9 @@ export function DecisionForm({ decision, variant = 'full' }: { decision: Approva
             <span className="option__label">
               {option.label}
               {option.id === approval.recommendedOptionId ? (
-                <span className="badge badge--accent" style={{ marginLeft: 8 }}>
+                <Badge tone="accent" style={{ marginLeft: 8 }}>
                   Recommended
-                </span>
+                </Badge>
               ) : null}
             </span>
             {option.description ? <span className="option__desc">{option.description}</span> : null}
@@ -271,14 +271,13 @@ export function DecisionForm({ decision, variant = 'full' }: { decision: Approva
           {decision.missingAnswer ? missingText(copy) : hint}
         </span>
         <RecordingFor actors={actors} value={decision.recordFor} onChange={decision.setRecordFor} />
-        <button
-          type="button"
-          className={`btn ${danger ? 'btn--danger' : 'btn--primary'}`}
+        <Button
+          variant={danger ? 'danger' : 'primary'}
           disabled={decision.pending || !chosen || decision.missingAnswer}
           onClick={decision.request}
         >
           {decision.pending ? 'Submitting…' : submitLabel(copy, chosen)}
-        </button>
+        </Button>
       </div>
       <DecisionConfirm decision={decision} />
     </>

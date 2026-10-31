@@ -7,6 +7,7 @@ import { useDaemonMutation } from '../../lib/queries.js';
 import { showFlash } from '../../lib/notices.js';
 import { quietFor } from '../../lib/domain.js';
 import { relativeTime } from '../../lib/format.js';
+import { Button } from '@tandemise/design/react';
 
 /**
  * A mission nothing moves and nothing asks about (P9): what is stuck, and the
@@ -55,9 +56,9 @@ export function StalledRow({ stalled, bordered = false }: { stalled: InboxStalle
       <div className="list__aside">
         <span className="chip chip--muted">Stalled</span>
         <span className="dim" style={{ fontSize: 'var(--fs-xs)', minWidth: 56, textAlign: 'right' }}>{relativeTime(stalled.since)}</span>
-        <button type="button" className="btn" disabled={act.isPending} onClick={press}>
+        <Button disabled={act.isPending} onClick={press}>
           {act.isPending ? 'Working…' : stalled.action.label}
-        </button>
+        </Button>
       </div>
       {confirming ? (
         <ConfirmDialog
@@ -101,22 +102,19 @@ export function QuietRow({ run, bordered = false }: { run: InboxSilentRunView; b
       </div>
       <div className="list__aside">
         <span className="chip chip--muted" title={`Tandemise stops it on its own only at its ${quietFor(run.budgetMs)} wall-time budget.`}>Quiet</span>
-        <button
-          type="button"
-          className="btn btn--ghost"
+        <Button
+          variant="ghost"
           disabled={busy}
           onClick={() => wait.mutate(undefined, { onSuccess: () => showFlash(`Keeping ${run.taskKey} running. You will be asked again if it stays quiet another ${quietFor(run.silentAfterMs)}.`) })}
         >
           {wait.isPending ? 'Saving…' : 'Keep waiting'}
-        </button>
-        <button
-          type="button"
-          className="btn"
+        </Button>
+        <Button
           disabled={busy}
           onClick={() => stop.mutate(undefined, { onSuccess: () => showFlash(`Stopped ${run.taskKey}; it starts again as attempt ${run.attempt + 1}.`) })}
         >
           {stop.isPending ? 'Stopping…' : 'Stop and retry'}
-        </button>
+        </Button>
       </div>
     </div>
   );

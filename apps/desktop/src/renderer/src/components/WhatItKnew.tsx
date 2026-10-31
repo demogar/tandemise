@@ -5,6 +5,7 @@ import { useWorkspaceId } from '../lib/workspace.js';
 import { showFlash } from '../lib/notices.js';
 import { LessonRow } from '../screens/Brain.js';
 import '../screens/Brain.css';
+import { Button, Card } from '@tandemise/design/react';
 
 /**
  * "What it knew" (#51 spec §11): the brain commit a run read, the rules files
@@ -49,17 +50,17 @@ export function RememberThis({ taskId, roleId, stepKey }: { taskId: string; role
     (daemon, body: { text: string }) => daemon.remember(workspaceId, { text: body.text, scope: { role: roleId, step: stepKey }, taskId }),
     ['workspaces'],
   );
-  if (!open) return <button type="button" className="btn btn--ghost btn--sm" onClick={() => setOpen(true)}>Remember this</button>;
+  if (!open) return <Button variant="ghost" className="btn--sm" onClick={() => setOpen(true)}>Remember this</Button>;
   return (
-    <div className="card stack" aria-label="Remember this on the task">
+    <Card className="stack" aria-label="Remember this on the task">
       <textarea className="input" rows={2} aria-label="Remember this text" value={text} placeholder="What should the next person doing this step know?" onChange={(e) => setText(e.target.value)} />
       <div className="row" style={{ gap: 'var(--s2)' }}>
-        <button type="button" className="btn btn--primary btn--sm" disabled={remember.isPending || text.trim() === ''} onClick={() => remember.mutate({ text: text.trim() }, { onSuccess: (v) => { setOpen(false); setText(''); showFlash(v.message); } })}>
+        <Button variant="primary" className="btn--sm" disabled={remember.isPending || text.trim() === ''} onClick={() => remember.mutate({ text: text.trim() }, { onSuccess: (v) => { setOpen(false); setText(''); showFlash(v.message); } })}>
           {remember.isPending ? 'Saving…' : 'Remember'}
-        </button>
-        <button type="button" className="btn btn--ghost btn--sm" onClick={() => setOpen(false)}>Cancel</button>
+        </Button>
+        <Button variant="ghost" className="btn--sm" onClick={() => setOpen(false)}>Cancel</Button>
       </div>
       {remember.isError ? <ErrorState error={remember.error} /> : null}
-    </div>
+    </Card>
   );
 }

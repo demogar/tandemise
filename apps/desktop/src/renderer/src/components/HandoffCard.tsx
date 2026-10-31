@@ -17,6 +17,7 @@ import { showFlash } from '../lib/notices.js';
 import { actorLabel, type Actors } from '../lib/team.js';
 import { SaveCaseDialog } from '../screens/evals/SaveCaseDialog.js';
 import { HoldButton, NowLine } from './TerminalPanel.js';
+import { Badge, Button } from '@tandemise/design/react';
 
 /** What changed, at most: the handoff contract caps `changed` at three, and a card shows all of them. */
 const CHANGED_SHOWN = 3;
@@ -123,12 +124,12 @@ export function HandoffCard({
           <span className={`dot dot--${tone}${card.status === 'RUNNING' ? ' dot--pulse' : ''}`} />
           {statusLabel(card)}
         </span>
-        {card.round > 1 ? <span className="badge feedcard__round">Round {card.round}</span> : null}
+        {card.round > 1 ? <Badge className="feedcard__round">Round {card.round}</Badge> : null}
         {/* A note about length, not a failure: neutral, and it says only what was measured. */}
         {card.overBudget ? (
-          <span className="badge" title="Longer than the word budget for its type">
+          <Badge title="Longer than the word budget for its type">
             Over budget
-          </span>
+          </Badge>
         ) : null}
         <span className="feedcard__time">
           {/* A later task replaced this output; saying so (and who, when known) keeps the card honest without a line of its own. */}
@@ -145,23 +146,23 @@ export function HandoffCard({
           ))}
           {card.moreArtifacts > 0 ? <span className="feedcard__more">+{pluralize(card.moreArtifacts, 'more doc', 'more docs')}</span> : null}
           {card.artifactId ? (
-            <button type="button" className="btn btn--ghost feedcard__link" onClick={() => onFullDoc(card)}>
+            <Button variant="ghost" className="feedcard__link" onClick={() => onFullDoc(card)}>
               <Icon name="file" size={12} />
               Full doc
-            </button>
+            </Button>
           ) : null}
           {canContinue ? (
-            <button type="button" className="btn btn--ghost feedcard__link" onClick={() => setElsewhere('continue')}>
+            <Button variant="ghost" className="feedcard__link" onClick={() => setElsewhere('continue')}>
               <Icon name="externalLink" size={12} />
               Continue elsewhere
-            </button>
+            </Button>
           ) : null}
           {canHold && task !== undefined ? <HoldButton task={task} missionId={missionId} className="btn btn--ghost feedcard__link" /> : null}
           {canSaveCase ? (
-            <button type="button" className="btn btn--ghost feedcard__link" onClick={() => setSavingCase(true)}>
+            <Button variant="ghost" className="feedcard__link" onClick={() => setSavingCase(true)}>
               <Icon name="target" size={12} />
               Save as eval case
-            </button>
+            </Button>
           ) : null}
           {/* A review card on this card already offers Request changes as one of its answers; a second button with the same words would be two ways to say one thing. */}
           {card.canRequestChanges && card.taskId !== null && !offersRequestChanges(card) ? (
@@ -191,17 +192,16 @@ export function HandoffCard({
           <div className="feedcard__needs-line">
             <Icon name="clock" size={13} />
             <span className="feedcard__needs-text">Waiting for your work in {parked.tool}</span>
-            <button
-              type="button"
-              className="btn btn--ghost"
+            <Button
+              variant="ghost"
               disabled={takeBack.isPending}
               onClick={() => takeBack.mutate(card.taskId!, { onSuccess: () => showFlash(`Taken back from ${parked.tool}`) })}
             >
               {takeBack.isPending ? 'Taking it back…' : 'Take it back'}
-            </button>
-            <button type="button" className="btn btn--primary" onClick={() => setElsewhere('hand_back')}>
+            </Button>
+            <Button variant="primary" onClick={() => setElsewhere('hand_back')}>
               Hand back
-            </button>
+            </Button>
           </div>
           {takeBack.isError ? <p className="field__error" role="alert">{describeError(takeBack.error).detail}</p> : null}
         </div>
@@ -244,17 +244,17 @@ export function HandoffCard({
                 <strong>{check ? 'Check when you can' : 'Needs'}</strong> {needs}
               </span>
               {replan && onReplan ? (
-                <button type="button" className="btn btn--primary" onClick={onReplan} disabled={replanning}>
+                <Button variant="primary" onClick={onReplan} disabled={replanning}>
                   <Icon name="sparkle" size={13} />
                   Re-plan
-                </button>
+                </Button>
               ) : null}
               {/* On the needs line itself: the step is one button, and a row of its own would spend a line on it. */}
               {!card.pendingApproval && card.humanAction ? (
-                <button type="button" className="btn btn--primary" onClick={() => onDoIt(card)}>
+                <Button variant="primary" onClick={() => onDoIt(card)}>
                   {card.humanAction === 'claim' ? 'Claim and do it' : 'Do it'}
                   <Icon name="chevronRight" size={13} />
-                </button>
+                </Button>
               ) : null}
             </div>
           ) : null}

@@ -2,7 +2,7 @@
 
 .terminal-overlay {
   /* Above a task drawer it may have been opened from, below the flash. */
-  z-index: 55;
+  z-index: var(--z-overlay-raised);
   align-items: stretch;
   padding: var(--s5) var(--s6);
 }

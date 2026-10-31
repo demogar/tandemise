@@ -3,6 +3,7 @@ import type { RepositoryIssuesView, UpdateIssueSettingsRequest } from '@tandemis
 import { ErrorState, Field, SectionHead, Switch } from '../../components/primitives.js';
 import { Icon } from '../../components/Icon.js';
 import { useDaemonMutation, useIssues, useWorkflows } from '../../lib/queries.js';
+import { Button, Card } from '@tandemise/design/react';
 
 /** Mirrors ISSUE_POLL_MINUTES in @tandemise/domain; the daemon refuses anything else. */
 const POLL_MINUTES = [5, 10, 15, 30, 60] as const;
@@ -66,7 +67,7 @@ function RepositoryIssues({ view }: { view: RepositoryIssuesView }): JSX.Element
   };
 
   return (
-    <div className="card" aria-label={`Issues for ${view.repositoryName}`}>
+    <Card aria-label={`Issues for ${view.repositoryName}`}>
       {view.offerTracker ? <UseAsTracker view={view} /> : null}
       <div className="list__row" style={{ padding: 0, alignItems: 'flex-start' }}>
         <div className="list__main">
@@ -160,18 +161,18 @@ function RepositoryIssues({ view }: { view: RepositoryIssuesView }): JSX.Element
           {s.enabled && s.lastError !== null ? <div className="field__error">{s.lastError}</div> : null}
         </div>
         <div className="list__aside">
-          <button type="button" className="btn" disabled={!dirty || update.isPending} onClick={() => update.mutate(fields)}>
+          <Button disabled={!dirty || update.isPending} onClick={() => update.mutate(fields)}>
             {update.isPending ? 'Saving…' : 'Save issue settings'}
-          </button>
-          <button type="button" className="btn" disabled={!s.enabled || view.checking || checkNow.isPending} onClick={() => checkNow.mutate()}>
+          </Button>
+          <Button disabled={!s.enabled || view.checking || checkNow.isPending} onClick={() => checkNow.mutate()}>
             <Icon name="refresh" size={13} />
             {view.checking || checkNow.isPending ? 'Checking…' : 'Check now'}
-          </button>
+          </Button>
         </div>
       </div>
       {update.isError ? <ErrorState error={update.error} /> : null}
       {checkNow.isError ? <ErrorState error={checkNow.error} /> : null}
-    </div>
+    </Card>
   );
 }
 
@@ -199,19 +200,18 @@ function UseAsTracker({ view }: { view: RepositoryIssuesView }): JSX.Element | n
   return (
     <div className="banner banner--accent" role="status" aria-label="Use as tracker" style={{ marginBottom: 'var(--s3)' }}>
       <span style={{ flex: 1 }}>Use {repo}'s GitHub Issues as this project's board?</span>
-      <button type="button" className="btn btn--primary" disabled={adopt.isPending} onClick={() => adopt.mutate()}>
+      <Button variant="primary" disabled={adopt.isPending} onClick={() => adopt.mutate()}>
         {adopt.isPending ? 'Switching…' : 'Use them'}
-      </button>
-      <button
-        type="button"
-        className="btn btn--ghost"
+      </Button>
+      <Button
+        variant="ghost"
         onClick={() => {
           try { localStorage.setItem(OFFER_DISMISSED + view.repositoryId, '1'); } catch { /* the offer simply comes back */ }
           setDismissed(true);
         }}
       >
         Not now
-      </button>
+      </Button>
       {adopt.isError ? <ErrorState error={adopt.error} /> : null}
     </div>
   );

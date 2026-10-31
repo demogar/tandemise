@@ -3,6 +3,7 @@ import { ErrorState } from '../../components/primitives.js';
 import { useDaemonMutation } from '../../lib/queries.js';
 import { relativeTime } from '../../lib/format.js';
 import '../Board.css';
+import { Button } from '@tandemise/design/react';
 
 /**
  * An Inbox card for a signal intake was unsure about (intake spec §5 step 4,
@@ -34,10 +35,10 @@ export function IntakeDecisionRow({ view }: { view: InboxIntakeDecisionView }): 
       <div className="list__aside intake-decision__actions">
         <span className="dim intake-decision__when">{relativeTime(view.receivedAt)}</span>
         {view.candidate ? (
-          <button type="button" className="btn btn--primary" disabled={decide.isPending} onClick={() => decide.mutate('same')}>Same task</button>
+          <Button variant="primary" disabled={decide.isPending} onClick={() => decide.mutate('same')}>Same task</Button>
         ) : null}
-        <button type="button" className="btn" disabled={decide.isPending} onClick={() => decide.mutate('new')}>New task</button>
-        <button type="button" className="btn btn--ghost" disabled={decide.isPending} onClick={() => decide.mutate('not_work')}>Not work</button>
+        <Button disabled={decide.isPending} onClick={() => decide.mutate('new')}>New task</Button>
+        <Button variant="ghost" disabled={decide.isPending} onClick={() => decide.mutate('not_work')}>Not work</Button>
       </div>
     </div>
   );

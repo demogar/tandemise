@@ -74,6 +74,9 @@
   --color-border: var(--border);
   --color-border-strong: var(--border-strong);
   --color-border-focus: var(--border-focus);
+  --color-focus-ring: var(--focus-ring);
+  --color-scrim: var(--scrim);
+  --color-scrim-light: var(--scrim-light);
   --color-text: var(--text);
   --color-text-secondary: var(--text-secondary);
   --color-text-tertiary: var(--text-tertiary);
@@ -93,6 +96,11 @@
   --color-status-failed-soft: var(--status-failed-soft);
   --color-status-succeeded-soft: var(--status-succeeded-soft);
   --color-status-pending-soft: var(--status-pending-soft);
+  --color-status-running-line: var(--status-running-line);
+  --color-status-blocked-line: var(--status-blocked-line);
+  --color-status-failed-line: var(--status-failed-line);
+  --color-status-succeeded-line: var(--status-succeeded-line);
+  --color-status-pending-line: var(--status-pending-line);
   --color-presence-online: var(--presence-online);
   --color-presence-away: var(--presence-away);
   --color-presence-offline: var(--presence-offline);
@@ -101,6 +109,9 @@
   --color-risk-external: var(--risk-external);
   --color-risk-destructive: var(--risk-destructive);
   --color-risk-release: var(--risk-release);
+  --color-risk-release-soft: var(--risk-release-soft);
+  --color-tooltip-background: var(--tooltip-background);
+  --color-tooltip-text: var(--tooltip-text);
   --color-terminal-background: var(--terminal-background);
   --color-terminal-foreground: var(--terminal-foreground);
   --color-terminal-cursor: var(--terminal-cursor);

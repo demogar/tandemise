@@ -9,6 +9,7 @@ import { useActors } from '../lib/team.js';
 import { describeError } from '../lib/daemon.js';
 import { showFlash } from '../lib/notices.js';
 import { defaultElsewhereTool } from '../lib/domain.js';
+import { Button, Field } from '@tandemise/design/react';
 
 /** The daemon's limits on a tool name and a note, said before sending rather than as a refusal after. */
 const MAX_TOOL_CHARS = 40;
@@ -52,19 +53,18 @@ export function ContinueElsewhereDialog({
       onClose={onClose}
       footer={
         <>
-          <button type="button" className="btn" onClick={onClose}>
+          <Button onClick={onClose}>
             Cancel
-          </button>
-          <button type="button" className="btn btn--primary" disabled={trimmed === '' || tooLong || park.isPending} onClick={send}>
+          </Button>
+          <Button variant="primary" disabled={trimmed === '' || tooLong || park.isPending} onClick={send}>
             {park.isPending ? 'Stopping the agent…' : 'Continue elsewhere'}
-          </button>
+          </Button>
         </>
       }
     >
       <div className="composer">
         <p className="muted">The agent stops, and work that needs this step waits until you hand it back.</p>
-        <label className="field">
-          <span className="field__label">Where you will work on it</span>
+        <Field label="Where you will work on it" error={tooLong ? `At most ${MAX_TOOL_CHARS} characters.` : undefined}>
           <input
             className="input"
             value={tool}
@@ -74,8 +74,7 @@ export function ContinueElsewhereDialog({
             }}
             autoFocus
           />
-          {tooLong ? <span className="field__error">At most {MAX_TOOL_CHARS} characters.</span> : null}
-        </label>
+        </Field>
         {park.isError ? <p className="field__error" role="alert">{describeError(park.error).detail}</p> : null}
       </div>
     </Modal>
@@ -135,18 +134,17 @@ export function HandBackDialog({
       footer={
         <>
           <RecordingFor actors={actors} value={recordFor} onChange={setRecordFor} />
-          <button type="button" className="btn" onClick={onClose}>
+          <Button onClick={onClose}>
             Cancel
-          </button>
-          <button type="button" className="btn btn--primary" disabled={!ready} onClick={send}>
+          </Button>
+          <Button variant="primary" disabled={!ready} onClick={send}>
             {give.isPending ? 'Handing back…' : 'Hand back'}
-          </button>
+          </Button>
         </>
       }
     >
       <div className="composer">
-        <label className="field">
-          <span className="field__label">What did you do in {tool}?</span>
+        <Field label={`What did you do in ${tool}?`} error={tooLong ? `At most ${MAX_NOTE_CHARS} characters.` : undefined}>
           <textarea
             className="textarea"
             rows={4}
@@ -158,8 +156,7 @@ export function HandBackDialog({
             placeholder="The work that follows reads this note with what you attach."
             autoFocus
           />
-          {tooLong ? <span className="field__error">At most {MAX_NOTE_CHARS} characters.</span> : null}
-        </label>
+        </Field>
         <ContributionPicker
           value={contribution}
           onChange={(next) => {

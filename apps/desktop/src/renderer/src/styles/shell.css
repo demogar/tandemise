@@ -37,24 +37,6 @@
   flex: none;
 }
 
-/* The product mark (components/Logo.tsx). */
-.logo__lead {
-  stroke: var(--logo-lead);
-}
-
-.logo__trail {
-  stroke: var(--logo-trail);
-}
-
-.logo__axle {
-  stroke: var(--logo-axle);
-}
-
-/* Offline: the same shape with the colour drained out of it. */
-.logo--muted :is(.logo__lead, .logo__trail, .logo__axle) {
-  stroke: var(--text-tertiary);
-}
-
 .sidebar__name {
   font-size: var(--fs-base);
   font-weight: 600;
@@ -278,57 +260,6 @@
 
 /* --------------------------------------------------------------------- tabs */
 
-.tabs {
-  display: flex;
-  align-items: center;
-  gap: var(--s1);
-  padding: 0 var(--s7);
-  border-bottom: 1px solid var(--border);
-  flex: none;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.tabs::-webkit-scrollbar {
-  display: none;
-}
-
-.tab {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: var(--s2);
-  padding: var(--s3) var(--s3) calc(var(--s3) - 1px);
-  color: var(--text-secondary);
-  font-size: var(--fs-base);
-  font-weight: 500;
-  white-space: nowrap;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-  transition: color var(--duration-fast) var(--ease), border-color var(--duration-fast) var(--ease);
-  text-decoration: none;
-}
-
-.tab:hover {
-  color: var(--text);
-  text-decoration: none;
-}
-
-.tab[aria-selected='true'] {
-  color: var(--text);
-  border-bottom-color: var(--accent);
-}
-
-.tab__count {
-  font-size: var(--fs-xs);
-  font-variant-numeric: tabular-nums;
-  color: var(--text-tertiary);
-  background: var(--surface-active);
-  border-radius: var(--radius-full);
-  padding: 0 6px;
-  line-height: 16px;
-}
-
 /* --------------------------------------------------------- section headings */
 
 .section {
@@ -465,7 +396,7 @@
 
 .wsswitch__menu {
   position: absolute;
-  z-index: 40;
+  z-index: var(--z-dropdown);
   left: var(--s3);
   right: var(--s3);
   top: calc(100% - var(--s1));

@@ -6,6 +6,7 @@ import { useDaemonMutation, useMissionRefinement } from '../../lib/queries.js';
 import { pluralize, type Tone } from '../../lib/format.js';
 import { ArtifactReader } from '../artifacts/ArtifactReader.js';
 import { Icon } from '../../components/Icon.js';
+import { Button, Card } from '@tandemise/design/react';
 
 type Upload = NonNullable<MissionDetail['uploads']>[number];
 
@@ -41,17 +42,17 @@ export function GetReady({ missionId, uploads = [] }: { missionId: string; uploa
           <h2 className="section__title">Get it ready</h2>
           <span className="section__meta">{view.readiness.ready ? 'Ready to plan' : toDecide > 0 ? `${toDecide} to decide` : 'Needs a Done-when criterion'}</span>
         </div>
-        <div className="card">
+        <Card>
           <div className="card__body stack" style={{ gap: 'var(--s3)' }}>
             <p className="muted">{intro(view)}</p>
             <div className="decide-inline__row">
-              <button type="button" className="btn" disabled={running} onClick={() => refine.mutate(undefined)}>
+              <Button disabled={running} onClick={() => refine.mutate(undefined)}>
                 {running ? 'Refining…' : view.artifactId === null ? 'Refine' : 'Refine again'}
-              </button>
+              </Button>
               {view.artifactId !== null ? (
-                <button type="button" className="btn btn--ghost" onClick={() => setReading(view.artifactId)}>
+                <Button variant="ghost" onClick={() => setReading(view.artifactId)}>
                   Read the refinement
-                </button>
+                </Button>
               ) : null}
               <span className="dim">
                 {running
@@ -68,7 +69,7 @@ export function GetReady({ missionId, uploads = [] }: { missionId: string; uploa
             ) : null}
             {refine.isError ? <ErrorState error={refine.error} /> : null}
           </div>
-        </div>
+        </Card>
       </section>
 
       {uploads.length > 0 ? (
@@ -90,9 +91,9 @@ export function GetReady({ missionId, uploads = [] }: { missionId: string; uploa
                 </div>
                 <div className="list__aside">
                   {upload.intakeArtifactId !== null ? (
-                    <button type="button" className="btn btn--ghost" onClick={() => setReadingUpload(upload)}>
+                    <Button variant="ghost" onClick={() => setReadingUpload(upload)}>
                       Read what it became
-                    </button>
+                    </Button>
                   ) : (
                     // Intake waits for the first refinement or plan: a request can sit in the backlog for days first.
                     <span className="dim">Read when refining or planning starts</span>
@@ -124,7 +125,7 @@ export function GetReady({ missionId, uploads = [] }: { missionId: string; uploa
             <h2 className="section__title">Questions</h2>
             <span className="section__meta">{open.length > 0 ? `${pluralize(open.length, 'to answer', 'to answer')}` : 'All answered'}</span>
           </div>
-          <div className="card">
+          <Card>
             <div className="card__body stack" style={{ gap: 'var(--s5)' }}>
               {open.map((q) => (
                 <OpenQuestion key={q.id} missionId={missionId} question={q} />
@@ -138,7 +139,7 @@ export function GetReady({ missionId, uploads = [] }: { missionId: string; uploa
                 </div>
               ))}
             </div>
-          </div>
+          </Card>
         </section>
       ) : null}
 
@@ -242,29 +243,27 @@ function ProposedRow({ missionId, criterion }: { missionId: string; criterion: R
       <div className="list__aside">
         {editing === null ? (
           <>
-            <button type="button" className="btn" disabled={decide.isPending} onClick={() => decide.mutate({ verdict: 'accept' })}>
+            <Button disabled={decide.isPending} onClick={() => decide.mutate({ verdict: 'accept' })}>
               Accept
-            </button>
-            <button type="button" className="btn btn--ghost" disabled={decide.isPending} onClick={() => decide.mutate({ verdict: 'reject' })}>
+            </Button>
+            <Button variant="ghost" disabled={decide.isPending} onClick={() => decide.mutate({ verdict: 'reject' })}>
               Reject
-            </button>
-            <button type="button" className="btn btn--ghost" disabled={decide.isPending} onClick={() => setEditing(criterion.statement)}>
+            </Button>
+            <Button variant="ghost" disabled={decide.isPending} onClick={() => setEditing(criterion.statement)}>
               Edit
-            </button>
+            </Button>
           </>
         ) : (
           <>
-            <button
-              type="button"
-              className="btn"
+            <Button
               disabled={decide.isPending || editing.trim().length === 0}
               onClick={() => decide.mutate({ verdict: 'accept', statement: editing.trim() })}
             >
               Accept with changes
-            </button>
-            <button type="button" className="btn btn--ghost" onClick={() => setEditing(null)}>
+            </Button>
+            <Button variant="ghost" onClick={() => setEditing(null)}>
               Cancel
-            </button>
+            </Button>
           </>
         )}
       </div>
@@ -299,9 +298,9 @@ function OpenQuestion({ missionId, question }: { missionId: string; question: Re
           value={answer}
           onChange={(event) => setAnswer(event.target.value)}
         />
-        <button type="button" className="btn" disabled={send.isPending || answer.trim().length === 0} onClick={() => send.mutate(answer.trim())}>
+        <Button disabled={send.isPending || answer.trim().length === 0} onClick={() => send.mutate(answer.trim())}>
           Answer
-        </button>
+        </Button>
       </div>
       {send.isError ? <ErrorState error={send.error} /> : null}
     </div>
@@ -321,14 +320,12 @@ function AddCriterion({ missionId }: { missionId: string }): JSX.Element {
           value={statement}
           onChange={(event) => setStatement(event.target.value)}
         />
-        <button
-          type="button"
-          className="btn"
+        <Button
           disabled={add.isPending || statement.trim().length === 0}
           onClick={() => add.mutate(statement.trim(), { onSuccess: () => setStatement('') })}
         >
           Add
-        </button>
+        </Button>
       </div>
       {add.isError ? <ErrorState error={add.error} /> : null}
     </div>

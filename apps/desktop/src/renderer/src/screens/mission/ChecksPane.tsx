@@ -3,6 +3,7 @@ import { Icon } from '../../components/Icon.js';
 import { Empty, SectionHead } from '../../components/primitives.js';
 import { criteriaCoveragePercent } from '../../lib/domain.js';
 import { duration, relativeTime, titleCase } from '../../lib/format.js';
+import { Card } from '@tandemise/design/react';
 
 /**
  * Deterministic checks and gate outcomes.
@@ -20,17 +21,17 @@ export function ChecksPane({ detail }: { detail: MissionDetail }): JSX.Element {
         <section className="section">
           <SectionHead title="Quality gates" meta={`${gated.filter((t) => t.gate?.passed).length} of ${gated.length} passing`} />
           {gated.length === 0 ? (
-            <div className="card">
+            <Card>
               <Empty
                 icon="shield"
                 title="No gates have been evaluated"
                 body="A gate is a small boolean expression over facts the orchestrator measured. It runs when a task finishes."
               />
-            </div>
+            </Card>
           ) : (
             <div className="stack">
               {gated.map((task) => (
-                <div key={task.id} className="card">
+                <Card key={task.id}>
                   <div className="row">
                     <span className={`badge badge--${task.gate?.passed ? 'succeeded' : 'blocked'}`}>
                       <Icon name={task.gate?.passed ? 'shield' : 'alert'} size={12} />
@@ -68,7 +69,7 @@ export function ChecksPane({ detail }: { detail: MissionDetail }): JSX.Element {
                       ))}
                     </div>
                   ) : null}
-                </div>
+                </Card>
               ))}
             </div>
           )}
@@ -77,11 +78,11 @@ export function ChecksPane({ detail }: { detail: MissionDetail }): JSX.Element {
         <section className="section">
           <SectionHead title="Deterministic checks" meta={`${detail.checks.length} results`} />
           {detail.checks.length === 0 ? (
-            <div className="card">
+            <Card>
               <Empty icon="check" title="No checks have run" body="Typecheck, lint, test and build commands run against each task's worktree once the work lands." />
-            </div>
+            </Card>
           ) : (
-            <div className="card card--flush">
+            <Card flush>
               <table className="table">
                 <thead>
                   <tr>
@@ -113,7 +114,7 @@ export function ChecksPane({ detail }: { detail: MissionDetail }): JSX.Element {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </Card>
           )}
         </section>
 
@@ -122,7 +123,7 @@ export function ChecksPane({ detail }: { detail: MissionDetail }): JSX.Element {
             <SectionHead title="Evaluations" meta="Structured verdicts from evaluator roles" />
             <div className="stack">
               {detail.evaluations.map((evaluation) => (
-                <div key={evaluation.id} className="card card--flush">
+                <Card key={evaluation.id} flush>
                   <div className="card__head">
                     <span
                       className={`badge badge--${evaluation.verdict === 'pass' ? 'succeeded' : evaluation.verdict === 'fail' ? 'failed' : 'blocked'}`}
@@ -157,7 +158,7 @@ export function ChecksPane({ detail }: { detail: MissionDetail }): JSX.Element {
                       </div>
                     ))}
                   </div>
-                </div>
+                </Card>
               ))}
             </div>
           </section>

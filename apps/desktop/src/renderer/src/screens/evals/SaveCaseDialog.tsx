@@ -6,6 +6,7 @@ import { Field } from '../../components/primitives.js';
 import { useEvalSuites } from '../../lib/queries.js';
 import { evalsHref } from './link.js';
 import { Refusal, useEvalMutation } from './shared.js';
+import { Button } from '@tandemise/design/react';
 
 const NEW_SUITE = '__new__';
 const NAME_MAX = 80;
@@ -43,13 +44,13 @@ export function SaveCaseDialog({ task, onClose }: { task: { readonly id: string;
       onClose={onClose}
       footer={
         saved ? (
-          <button type="button" className="btn btn--primary" data-autofocus onClick={onClose}>Done</button>
+          <Button variant="primary" data-autofocus onClick={onClose}>Done</Button>
         ) : (
           <>
-            <button type="button" className="btn btn--ghost" onClick={onClose}>Cancel</button>
-            <button type="button" className="btn btn--primary" disabled={!ready || save.isPending} onClick={submit}>
+            <Button variant="ghost" onClick={onClose}>Cancel</Button>
+            <Button variant="primary" disabled={!ready || save.isPending} onClick={submit}>
               {save.isPending ? 'Saving…' : 'Save case'}
-            </button>
+            </Button>
           </>
         )
       }

@@ -3,6 +3,7 @@ import { Empty, ErrorState, Segmented, SkeletonList } from '../../components/pri
 import { useRoles, useRunScoreSummary } from '../../lib/queries.js';
 import { duration } from '../../lib/format.js';
 import { percent, usd } from './shared.js';
+import { Card } from '@tandemise/design/react';
 
 type Days = '7' | '30' | '90';
 
@@ -38,11 +39,11 @@ export function FromYourRuns(): JSX.Element {
       ) : summary.isPending ? (
         <SkeletonList rows={3} />
       ) : rows.length === 0 ? (
-        <div className="card">
+        <Card>
           <Empty icon="activity" title="No scores yet" body="Scores start with the first gated step that runs after this update." />
-        </div>
+        </Card>
       ) : (
-        <div className="card card--flush">
+        <Card flush>
           <table className="table scorecard" aria-label="From your runs">
             <thead>
               <tr>
@@ -71,7 +72,7 @@ export function FromYourRuns(): JSX.Element {
               ))}
             </tbody>
           </table>
-        </div>
+        </Card>
       )}
     </div>
   );

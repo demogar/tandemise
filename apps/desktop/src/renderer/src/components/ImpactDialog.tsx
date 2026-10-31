@@ -10,6 +10,7 @@ import { useActors } from '../lib/team.js';
 import { titleCase } from '../lib/format.js';
 import { openImpact, showFlash, useImpactRequest } from '../lib/notices.js';
 import { describeError } from '../lib/daemon.js';
+import { Button } from '@tandemise/design/react';
 
 /** Where a dependent is, in the feed's words: "done", not SUCCEEDED. */
 const STATUS_WORDS: Readonly<Record<TaskStatus, string>> = {
@@ -79,12 +80,11 @@ export function ImpactDialog({
       onClose={onClose}
       footer={
         <>
-          <button type="button" className="btn" onClick={onClose}>
+          <Button onClick={onClose}>
             Not now
-          </button>
-          <button
-            type="button"
-            className="btn btn--primary"
+          </Button>
+          <Button
+            variant="primary"
             disabled={start.isPending || (choice === 'redo' && picked.length === 0)}
             onClick={() =>
               start.mutate(undefined, {
@@ -96,7 +96,7 @@ export function ImpactDialog({
             }
           >
             {start.isPending ? 'Starting…' : `Start round ${impact.nextRound}`}
-          </button>
+          </Button>
         </>
       }
     >

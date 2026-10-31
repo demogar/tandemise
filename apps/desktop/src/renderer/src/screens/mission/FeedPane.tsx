@@ -12,6 +12,7 @@ import { ArtifactReader } from '../artifacts/ArtifactReader.js';
 import { TaskDetail } from './TaskDetail.js';
 import { DoneWhen } from './DoneWhen.js';
 import { GetReady } from './GetReady.js';
+import { Button, Card } from '@tandemise/design/react';
 
 /** Finished cards shown before "Show N more"; the daemon's default, named here so the button can count past it. */
 const DONE_SHOWN = 5;
@@ -57,7 +58,7 @@ export function FeedPane({ detail, focusNeeds, onFocused }: { detail: MissionDet
 
     if (needsYou.length + inProgress.length + doneTotal === 0) {
       return (
-        <div className="card">
+        <Card>
           <Empty
             icon="sparkle"
             title="Nothing has run yet"
@@ -68,7 +69,7 @@ export function FeedPane({ detail, focusNeeds, onFocused }: { detail: MissionDet
               </Link>
             }
           />
-        </div>
+        </Card>
       );
     }
 
@@ -125,13 +126,13 @@ export function FeedPane({ detail, focusNeeds, onFocused }: { detail: MissionDet
                 Showing the latest {done.length} of {doneTotal}; the Plan tab lists every task.
               </p>
             ) : doneTotal > done.length ? (
-              <button type="button" className="btn btn--ghost feed__more" onClick={() => setShowAllDone(true)} disabled={feed.isFetching}>
+              <Button variant="ghost" className="feed__more" onClick={() => setShowAllDone(true)} disabled={feed.isFetching}>
                 Show {doneTotal - done.length} more
-              </button>
+              </Button>
             ) : showAllDone && doneTotal > DONE_SHOWN ? (
-              <button type="button" className="btn btn--ghost feed__more" onClick={() => setShowAllDone(false)}>
+              <Button variant="ghost" className="feed__more" onClick={() => setShowAllDone(false)}>
                 Show fewer
-              </button>
+              </Button>
             ) : null}
           </section>
         ) : null}

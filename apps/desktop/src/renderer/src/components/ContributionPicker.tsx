@@ -3,6 +3,7 @@ import type { OutsideContributionInput } from '@tandemise/api-contract';
 import { Icon } from './Icon.js';
 import { bytes } from '../lib/format.js';
 import { CONTRIBUTION_FILE_MESSAGE, CONTRIBUTION_MAX_BYTES, CONTRIBUTION_TOTAL_MESSAGE } from '../lib/domain.js';
+import { Button } from '@tandemise/design/react';
 
 export type Contribution = OutsideContributionInput;
 type FilePayload = { readonly filename: string; readonly mediaType: string; readonly dataBase64: string };
@@ -123,31 +124,31 @@ export function ContributionPicker({
             autoFocus
           />
           <div className="contrib__row">
-            <button type="button" className="btn btn--ghost" disabled={reading} onClick={() => exportInput.current?.click()}>
+            <Button variant="ghost" disabled={reading} onClick={() => exportInput.current?.click()}>
               <Icon name="filePlus" size={12} />
               {linkExport ? `Export: ${linkExport.filename}` : 'Attach an export'}
-            </button>
+            </Button>
             <span className="contrib__hint">Only a GitHub pull request can be read from its link; anything else needs an export.</span>
             <div className="spacer" />
-            <button type="button" className="btn btn--ghost" onClick={() => { setLinking(false); setUrl(''); setLinkExport(null); }}>
+            <Button variant="ghost" onClick={() => { setLinking(false); setUrl(''); setLinkExport(null); }}>
               Cancel
-            </button>
-            <button type="button" className="btn" disabled={url.trim() === '' || urlProblem !== null} onClick={addLink}>
+            </Button>
+            <Button disabled={url.trim() === '' || urlProblem !== null} onClick={addLink}>
               Add
-            </button>
+            </Button>
           </div>
           {urlProblem ? <span className="field__error">{urlProblem}</span> : null}
         </div>
       ) : !full ? (
         <div className="contrib__row">
-          <button type="button" className="btn" disabled={reading} onClick={() => fileInput.current?.click()}>
+          <Button disabled={reading} onClick={() => fileInput.current?.click()}>
             <Icon name="filePlus" size={12} />
             {reading ? 'Reading…' : 'Add file'}
-          </button>
-          <button type="button" className="btn" onClick={() => { setLinking(true); setProblem(null); }}>
+          </Button>
+          <Button onClick={() => { setLinking(true); setProblem(null); }}>
             <Icon name="link" size={12} />
             Add link
-          </button>
+          </Button>
           {hint ? <span className="contrib__hint">{hint}</span> : null}
         </div>
       ) : null}

@@ -4,6 +4,7 @@ import type { NotificationPreferencesView, UpdateNotificationPreferencesRequest 
 import { ErrorState, SectionHead, Switch } from '../../components/primitives.js';
 import { useDaemon } from '../../lib/connection.js';
 import { showFlash } from '../../lib/notices.js';
+import { Button, Card } from '@tandemise/design/react';
 
 type Kind = keyof NotificationPreferencesView['kinds'];
 
@@ -56,7 +57,7 @@ export function NotificationSettings(): JSX.Element {
     <section className="section" aria-label="Notifications">
       <SectionHead title="Notifications" meta={view?.quietNow ? 'Quiet hours now' : undefined} />
       {preferences.isError ? <ErrorState error={preferences.error} onRetry={() => void preferences.refetch()} /> : null}
-      <div className="card card--flush">
+      <Card flush>
         {KINDS.map(({ kind, title, detail }) => (
           <div className="list__row" key={kind}>
             <div className="list__main">
@@ -101,14 +102,12 @@ export function NotificationSettings(): JSX.Element {
               {sameEnds ? <div className="field__error">Pick a different start and end.</div> : null}
             </div>
             <div className="list__aside">
-              <button
-                type="button"
-                className="btn"
+              <Button
                 disabled={!dirty || sameEnds || update.isPending}
                 onClick={() => update.mutate({ quietHours: { from, to } })}
               >
                 Save quiet hours
-              </button>
+              </Button>
             </div>
           </div>
         ) : null}
@@ -121,12 +120,12 @@ export function NotificationSettings(): JSX.Element {
             </div>
           </div>
           <div className="list__aside">
-            <button type="button" className="btn" disabled={test.isPending} onClick={() => test.mutate()}>
+            <Button disabled={test.isPending} onClick={() => test.mutate()}>
               Send a test notification
-            </button>
+            </Button>
           </div>
         </div>
-      </div>
+      </Card>
       {update.isError ? <ErrorState error={update.error} /> : null}
     </section>
   );

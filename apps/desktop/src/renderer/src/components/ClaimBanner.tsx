@@ -5,6 +5,7 @@ import { useDaemonMutation } from '../lib/queries.js';
 import { Icon } from './Icon.js';
 import { Modal } from './Modal.js';
 import { ErrorState } from './primitives.js';
+import { Button } from '@tandemise/design/react';
 
 /**
  * A mission's claim with the team, when it needs saying (relay spec):
@@ -36,11 +37,11 @@ export function ClaimBanner({ missionId, claim }: { missionId: string; claim: Mi
         <span style={{ flex: 1 }}>
           <strong>Unclaimed.</strong> {claim.sentence} This mission keeps running until you decide.
         </span>
-        <button type="button" className="btn" disabled={act.isPending} onClick={() => act.mutate('stop')}>Stop</button>
+        <Button disabled={act.isPending} onClick={() => act.mutate('stop')}>Stop</Button>
         {claim.mayTakeBack ? (
-          <button type="button" className="btn" disabled={act.isPending} onClick={() => act.mutate('take-back')}>Take it back</button>
+          <Button disabled={act.isPending} onClick={() => act.mutate('take-back')}>Take it back</Button>
         ) : null}
-        <button type="button" className="btn btn--primary" disabled={act.isPending} onClick={() => act.mutate('keep-going')}>Keep going without a claim</button>
+        <Button variant="primary" disabled={act.isPending} onClick={() => act.mutate('keep-going')}>Keep going without a claim</Button>
       </div>
       {act.isError ? <ErrorState error={act.error} /> : null}
     </div>
@@ -76,16 +77,15 @@ export function ClaimRefusal({ error, onClose, onTakenOver }: { error: unknown; 
       onClose={onClose}
       footer={
         <>
-          <button type="button" className="btn" data-autofocus onClick={onClose}>Not now</button>
+          <Button data-autofocus onClick={onClose}>Not now</Button>
           {held.takeOver ? (
-            <button
-              type="button"
-              className="btn btn--primary"
+            <Button
+              variant="primary"
               disabled={take.isPending}
               onClick={() => take.mutate({ claimId: held.claimId, missionId: held.missionId }, { onSuccess: () => { onClose(); onTakenOver(); } })}
             >
               Take over
-            </button>
+            </Button>
           ) : null}
         </>
       }

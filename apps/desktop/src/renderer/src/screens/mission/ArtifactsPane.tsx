@@ -5,6 +5,7 @@ import { ArtifactRows } from '../artifacts/ArtifactRows.js';
 import { Empty, ErrorState, SkeletonList } from '../../components/primitives.js';
 import { useMissionArtifacts } from '../../lib/queries.js';
 import { pluralize } from '../../lib/format.js';
+import { Card } from '@tandemise/design/react';
 
 /**
  * A mission's artifacts, newest version of each by default.
@@ -53,13 +54,13 @@ export function ArtifactsPane({ detail }: { detail: MissionDetail }): JSX.Elemen
     return (
       <div className="page">
         <div className="page__inner">
-          <div className="card">
+          <Card>
             <Empty
               icon="artifacts"
               title="No artifacts yet"
               body="Roles hand work to each other as typed artifacts — a spec, a plan, a review report. They appear here as they are produced."
             />
-          </div>
+          </Card>
         </div>
       </div>
     );

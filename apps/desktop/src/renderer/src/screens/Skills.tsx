@@ -11,6 +11,7 @@ import { useDaemonMutation, useSkillVersion, useSkills } from '../lib/queries.js
 import { dateTime, pluralize } from '../lib/format.js';
 import { ImportSkills } from './skills/ImportSkills.js';
 import { evalsHref } from './evals/link.js';
+import { Badge, Button, Card } from '@tandemise/design/react';
 
 /**
  * The skills library (P13): skills the person already has, imported as
@@ -33,10 +34,10 @@ export function Skills(): JSX.Element {
       title="Skills"
       subtitle="Skills you already use, pinned to the roles that need them. Every run gets exactly the version it was pinned to."
       actions={
-        <button type="button" className="btn btn--primary" onClick={() => setImporting(true)}>
+        <Button variant="primary" onClick={() => setImporting(true)}>
           <Icon name="plus" size={13} />
           Import skills
-        </button>
+        </Button>
       }
     />
   );
@@ -57,14 +58,14 @@ export function Skills(): JSX.Element {
             {skills.isError ? <ErrorState error={skills.error} onRetry={() => void skills.refetch()} /> : null}
             {notice.length > 0 ? <p role="status" className="muted">{notice.join(' ')}</p> : null}
             {skills.isPending ? <SkeletonList rows={3} /> : !skills.isError ? (
-              <div className="card">
+              <Card>
                 <Empty
                   icon="book"
                   title="No skills yet"
                   body="Import the skills you already use - from ~/.claude/skills, a folder or a git repository - then attach them to roles in Team → Roles."
-                  action={<button type="button" className="btn" onClick={() => setImporting(true)}>Import skills</button>}
+                  action={<Button onClick={() => setImporting(true)}>Import skills</Button>}
                 />
-              </div>
+              </Card>
             ) : null}
           </div>
         </div>
@@ -100,7 +101,7 @@ export function Skills(): JSX.Element {
                   {skill.usedBy.length > 0 ? ` · Used by ${skill.usedBy.map((u) => `${u.roleName} v${u.version}`).join(', ')}` : ''}
                 </div>
               </div>
-              {skill.sourceStatus === 'update_available' ? <span className="badge badge--blocked">Update available</span> : null}
+              {skill.sourceStatus === 'update_available' ? <Badge tone="blocked">Update available</Badge> : null}
               {skill.sourceStatus === 'missing' ? <span className="chip chip--muted">Source gone</span> : null}
             </button>
           ))}
@@ -146,15 +147,15 @@ function SkillDetail({ skill, onDeleted }: { skill: SkillView; onDeleted: () => 
         <SourceLine skill={skill} />
         <div className="row" style={{ gap: 'var(--s2)' }}>
           {skill.sourceStatus === 'update_available' || skill.sourceStatus === 'unchecked' ? (
-            <button type="button" className="btn" disabled={update.isPending} onClick={() => update.mutate(undefined, { onSuccess: (done) => setVersion(done.version) })}>
+            <Button disabled={update.isPending} onClick={() => update.mutate(undefined, { onSuccess: (done) => setVersion(done.version) })}>
               <Icon name="refresh" size={13} />
               {update.isPending ? 'Updating…' : skill.sourceStatus === 'unchecked' ? 'Update from source' : 'Update'}
-            </button>
+            </Button>
           ) : null}
-          <button type="button" className="btn btn--ghost" onClick={() => setDeleting(true)}>
+          <Button variant="ghost" onClick={() => setDeleting(true)}>
             <Icon name="trash" size={13} />
             Delete
-          </button>
+          </Button>
         </div>
         {update.isSuccess ? <p role="status" className="muted" style={{ margin: 0 }}>{update.data.message}</p> : null}
         {update.isError ? <ErrorState error={update.error} /> : null}
@@ -177,10 +178,10 @@ function SkillDetail({ skill, onDeleted }: { skill: SkillView; onDeleted: () => 
             </ul>
             {behind.length > 0 ? (
               <div className="row" style={{ gap: 'var(--s2)' }}>
-                <button type="button" className="btn" onClick={tryOnEvals}>
+                <Button onClick={tryOnEvals}>
                   <Icon name="target" size={13} />
                   Try on evals
-                </button>
+                </Button>
                 <span className="dim" style={{ fontSize: 'var(--fs-sm)' }}>Run your eval cases with v{skill.latest.version} before moving any role to it.</span>
               </div>
             ) : null}
@@ -218,9 +219,9 @@ function SkillDetail({ skill, onDeleted }: { skill: SkillView; onDeleted: () => 
         {detail.data?.skillMd === null ? (
           <p className="badge badge--failed" style={{ margin: 0 }}>This version's files are missing from the store. Import it again to restore them.</p>
         ) : detail.data ? (
-          <div aria-label="SKILL.md" className="card">
+          <Card aria-label="SKILL.md">
             <Markdown source={stripFrontMatter(detail.data.skillMd)} />
-          </div>
+          </Card>
         ) : null}
       </section>
 
@@ -244,7 +245,7 @@ function SourceLine({ skill }: { skill: SkillView }): JSX.Element {
     case 'current':
       return <p className="dim" style={{ margin: 0, fontSize: 'var(--fs-sm)' }}>The source matches v{skill.latest.version}.</p>;
     case 'update_available':
-      return <p style={{ margin: 0, fontSize: 'var(--fs-sm)' }}><span className="badge badge--blocked">Update available</span> The source changed since v{skill.latest.version}. Update imports it as v{skill.latest.version + 1}; roles keep their version until you move them.</p>;
+      return <p style={{ margin: 0, fontSize: 'var(--fs-sm)' }}><Badge tone="blocked">Update available</Badge> The source changed since v{skill.latest.version}. Update imports it as v{skill.latest.version + 1}; roles keep their version until you move them.</p>;
     case 'missing':
       return <p className="dim" style={{ margin: 0, fontSize: 'var(--fs-sm)' }}>The source folder is gone or no longer a skill. The imported versions still work.</p>;
     default:

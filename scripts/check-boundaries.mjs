@@ -69,15 +69,34 @@ for (const [name, spec] of Object.entries(PACKAGES)) {
 // renderer value-import them below, and what lets one be split into its own
 // repository and published with no dependency to bring along.
 const ANY_SPECIFIER_RE = /^\s*(?:import|export)\b[^;]*?\bfrom\s+['"]([^'"]+)['"]|^\s*import\s+['"]([^'"]+)['"]|\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)|\brequire\s*\(/gm;
+//
+// The one exception is a UI package's `src/react/` subpath: it may import
+// `react` (its optional peer dependency) and nothing else from outside. The
+// rest of the package must not reach into `react/`, so the root entry stays
+// framework-free for a site that only wants the tokens.
+const walkUi = (dir, out = []) => {
+  for (const e of readdirSync(dir)) {
+    const p = join(dir, e);
+    if (statSync(p).isDirectory()) walkUi(p, out);
+    else if (/\.tsx?$/.test(p) && !p.endsWith('.d.ts')) out.push(p);
+  }
+  return out;
+};
 for (const name of Object.keys(UI_PACKAGES)) {
   let files;
-  try { files = walk(`packages/${name}/src`); } catch { errors.push(`packages/${name}/src: listed in UI_PACKAGES but missing`); continue; }
+  try { files = walkUi(`packages/${name}/src`); } catch { errors.push(`packages/${name}/src: listed in UI_PACKAGES but missing`); continue; }
   for (const file of files) {
     const src = readFileSync(file, 'utf8');
+    const inReact = file.split(/[\\/]/).includes('react');
     for (const m of src.matchAll(ANY_SPECIFIER_RE)) {
       const mod = m[1] ?? m[2] ?? m[3];
+      if (!inReact && mod && /(^|\/)react\//.test(mod) && mod.startsWith('.')) {
+        errors.push(`${file}: only src/react/ may import the React components (found '${mod}'); keep the root entry framework-free`);
+        continue;
+      }
       if (mod?.startsWith('./') || mod?.startsWith('../')) continue;
-      errors.push(`${file}: UI package '${name}' may import only its own modules (found ${mod ? `'${mod}'` : 'require()'})`);
+      if (inReact && mod === 'react') continue;
+      errors.push(`${file}: UI package '${name}' may import only its own modules${inReact ? " and 'react'" : ''} (found ${mod ? `'${mod}'` : 'require()'})`);
     }
   }
 }

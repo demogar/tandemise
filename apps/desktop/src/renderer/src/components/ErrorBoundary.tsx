@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { Icon } from './Icon.js';
+import { Button, Card } from '@tandemise/design/react';
 
 /**
  * Keeps one screen's failure from taking the window with it.
@@ -52,7 +53,7 @@ export class ErrorBoundary extends Component<Props, State> {
     return (
       <div className="page">
         <div className="page__inner">
-          <div className="card">
+          <Card>
             <div className="empty">
               <div className="empty__icon">
                 <Icon name="alertCircle" size={22} />
@@ -64,12 +65,12 @@ export class ErrorBoundary extends Component<Props, State> {
                 together.
               </p>
               <pre className="mono error-detail">{error.message}</pre>
-              <button type="button" className="btn btn--primary" onClick={() => this.setState({ error: null })}>
+              <Button variant="primary" onClick={() => this.setState({ error: null })}>
                 <Icon name="refresh" size={14} />
                 Try again
-              </button>
+              </Button>
             </div>
-          </div>
+          </Card>
         </div>
       </div>
     );

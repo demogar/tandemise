@@ -8,6 +8,7 @@ import { useDaemonMutation, useRoutines } from '../../lib/queries.js';
 import { priorityLabel } from '../../lib/domain.js';
 import { pluralize } from '../../lib/format.js';
 import { RoutineDialog } from './RoutineDialog.js';
+import { Badge, Button, Card } from '@tandemise/design/react';
 
 /**
  * Routines (P11): standing work that adds itself to the backlog on a schedule.
@@ -37,10 +38,10 @@ export function Routines(): JSX.Element {
             A routine adds the same mission to your backlog on a schedule, with its Done-when lines, priority and limits, so it is
             ready to plan. It never plans or runs anything itself: your work-in-progress limit and your spending limits still decide.
           </p>
-          <button type="button" className="btn" onClick={() => setDialog({ editing: null })}>
+          <Button onClick={() => setDialog({ editing: null })}>
             <Icon name="plus" size={14} />
             New routine
-          </button>
+          </Button>
         </div>
       </section>
 
@@ -48,19 +49,19 @@ export function Routines(): JSX.Element {
       {toggle.isError ? <ErrorState error={toggle.error} /> : null}
 
       {items.length === 0 ? (
-        <div className="card">
+        <Card>
           <Empty
             icon="clock"
             title="No routines yet"
             body="Weekly dependency updates, a nightly look at failing checks, a Friday status report: set it up once and it joins the backlog on its own."
             action={
-              <button type="button" className="btn" onClick={() => setDialog({ editing: null })}>
+              <Button onClick={() => setDialog({ editing: null })}>
                 <Icon name="plus" size={14} />
                 New routine
-              </button>
+              </Button>
             }
           />
-        </div>
+        </Card>
       ) : (
         <>
           <section aria-label="Routine list" className="list">
@@ -132,11 +133,11 @@ function RoutineRow({
           <span className="dim" style={{ fontSize: 'var(--fs-xs)' }}>{routine.enabled ? 'On' : 'Off'}</span>
           <Switch checked={routine.enabled} label="Enabled" onChange={onToggle} />
         </span>
-        <button type="button" className="btn btn--ghost" disabled={busy} onClick={onRunNow}>Run now</button>
-        <button type="button" className="btn btn--ghost" onClick={onEdit}>Edit</button>
-        <button type="button" className="btn btn--ghost btn--icon" aria-label="Delete" title="Delete routine" onClick={onDelete}>
+        <Button variant="ghost" disabled={busy} onClick={onRunNow}>Run now</Button>
+        <Button variant="ghost" onClick={onEdit}>Edit</Button>
+        <Button variant="ghost" iconOnly aria-label="Delete" title="Delete routine" onClick={onDelete}>
           <Icon name="trash" size={14} />
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -154,6 +155,6 @@ function LastOutcome({ view }: { view: RoutineView }): JSX.Element {
     return <>Last: <Link href={`/artifacts/${routine.lastArtifactId}`}>{label}</Link></>;
   }
   // No outcome yet but a note: an imported routine, off until the person turns it on (P15).
-  if (routine.lastOutcome === null) return <span className="badge badge--blocked">{label}</span>;
+  if (routine.lastOutcome === null) return <Badge tone="blocked">{label}</Badge>;
   return <span className={tone === null ? undefined : `badge badge--${tone}`}>{tone === null ? `Last: ${label}` : label}</span>;
 }

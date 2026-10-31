@@ -14,6 +14,7 @@ import { ParkedRow } from './inbox/ParkedRow.js';
 import { buildTimeline } from '../lib/events.js';
 import { useActors } from '../lib/team.js';
 import { healthTone, missionTone, pluralize, relativeTime } from '../lib/format.js';
+import { Badge, Button, Card } from '@tandemise/design/react';
 
 export function Home(): JSX.Element {
   const home = useHome();
@@ -52,14 +53,14 @@ export function Home(): JSX.Element {
         subtitle={data?.workspace ? `${data.workspace.name} workspace` : 'Your agent workforce at a glance'}
         actions={
           <>
-            <button type="button" className="btn" disabled={report.isPending || !workspaceId} onClick={writeReport} title="A report of every mission, written from stored facts; no model writes it">
+            <Button disabled={report.isPending || !workspaceId} onClick={writeReport} title="A report of every mission, written from stored facts; no model writes it">
               <Icon name="artifacts" size={14} />
               {report.isPending ? 'Writing…' : 'Status report'}
-            </button>
-            <button type="button" className="btn btn--primary" onClick={() => navigate('/missions/new')}>
+            </Button>
+            <Button variant="primary" onClick={() => navigate('/missions/new')}>
               <Icon name="plus" size={14} />
               New mission
-            </button>
+            </Button>
           </>
         }
       />
@@ -116,13 +117,13 @@ export function Home(): JSX.Element {
             {home.isPending ? (
               <SkeletonCards count={2} />
             ) : needsMe.length === 0 && (data?.blockedMissions.length ?? 0) === 0 ? (
-              <div className="card">
+              <Card>
                 <Empty
                   icon="check"
                   title="Nothing is waiting on you"
                   body="Every mission is either running on its own or finished. New approvals will land here the moment an agent needs a decision."
                 />
-              </div>
+              </Card>
             ) : (
               <div className="stack">
                 {needsMe.slice(0, 2).map((item) =>
@@ -173,19 +174,19 @@ export function Home(): JSX.Element {
               {home.isPending ? (
                 <SkeletonList rows={3} />
               ) : (data?.activeMissions.length ?? 0) === 0 ? (
-                <div className="card">
+                <Card>
                   <Empty
                     icon="flag"
                     title="No missions running"
                     body="Describe an outcome in one sentence and Tandemise will plan the work, route it to your runtimes, and bring you the decisions."
                     action={
-                      <button type="button" className="btn btn--primary" onClick={() => navigate('/missions/new')}>
+                      <Button variant="primary" onClick={() => navigate('/missions/new')}>
                         <Icon name="plus" size={14} />
                         Start a mission
-                      </button>
+                      </Button>
                     }
                   />
-                </div>
+                </Card>
               ) : (
                 <div className="list">
                   {(data?.activeMissions ?? []).map((summary) => (
@@ -200,7 +201,7 @@ export function Home(): JSX.Element {
               {home.isPending ? (
                 <SkeletonList rows={2} />
               ) : (data?.runtimes.length ?? 0) === 0 ? (
-                <div className="card">
+                <Card>
                   <Empty
                     icon="runtimes"
                     title="No runtimes configured"
@@ -211,7 +212,7 @@ export function Home(): JSX.Element {
                       </Link>
                     }
                   />
-                </div>
+                </Card>
               ) : (
                 <div className="list">
                   {(data?.runtimes ?? []).map((runtime) => (
@@ -227,9 +228,9 @@ export function Home(): JSX.Element {
                       </div>
                       <div className="list__aside">
                         {runtime.activeRuns > 0 ? (
-                          <span className="badge badge--running">
+                          <Badge tone="running">
                             {runtime.activeRuns}/{runtime.profile.maxConcurrent} active
-                          </span>
+                          </Badge>
                         ) : (
                           <span className="chip chip--muted">idle</span>
                         )}
@@ -244,11 +245,11 @@ export function Home(): JSX.Element {
                 {home.isPending ? (
                   <SkeletonList rows={3} />
                 ) : (data?.recentEvents.length ?? 0) === 0 ? (
-                  <div className="card">
+                  <Card>
                     <Empty icon="pulse" title="Quiet so far" body="Semantic events from every mission appear here as work happens." />
-                  </div>
+                  </Card>
                 ) : (
-                  <div className="card">
+                  <Card>
                     <div className="timeline">
                       {buildTimeline(data?.recentEvents ?? [], roleNames, actors.name)
                         .slice(-7)
@@ -265,7 +266,7 @@ export function Home(): JSX.Element {
                           </div>
                         ))}
                     </div>
-                  </div>
+                  </Card>
                 )}
               </div>
             </section>
@@ -388,10 +389,10 @@ function MissionRow({ summary }: { summary: MissionSummary }): JSX.Element {
   return (
     <Link href={`/missions/${summary.mission.id}`} className="card" style={{ display: 'block', textDecoration: 'none', color: 'inherit' }}>
       <div className="row">
-        <span className="badge badge--blocked">
+        <Badge tone="blocked">
           <Icon name="alert" size={12} />
           Blocked
-        </span>
+        </Badge>
         <span style={{ fontWeight: 560 }}>{summary.mission.title}</span>
         <div className="spacer" />
         <span className="dim" style={{ fontSize: 'var(--fs-xs)' }}>{relativeTime(summary.lastEventAt)}</span>

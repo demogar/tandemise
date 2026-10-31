@@ -5,6 +5,7 @@ import { ErrorState, SectionHead, Stat } from '../../components/primitives.js';
 import { LimitFields, limitDraft, limitsFromDraft, type LimitDraft } from '../../components/LimitFields.js';
 import { useDaemonMutation, useWorkspaceUsage } from '../../lib/queries.js';
 import { metric, money } from '../../lib/format.js';
+import { Button, Card } from '@tandemise/design/react';
 
 /**
  * The project's limits (P8): this month's usage against the monthly limit, and
@@ -21,7 +22,7 @@ export function Limits({ workspaceId, monthly, perMission }: {
   return (
     <section className="section" aria-label="Limits">
       <SectionHead title="Limits" meta={u ? `This month (${monthName(u.month)}) so far` : 'Spend and time ceilings'} />
-      <div className="card">
+      <Card>
         <div className="grid grid--3">
           <Stat label="Agent minutes this month" value={metric(u?.usage.agentMinutes ?? null)} />
           <Stat label="Tokens this month" value={metric(u?.usage.tokens ?? null)} muted={(u?.usage.tokens ?? null) === null} />
@@ -38,7 +39,7 @@ export function Limits({ workspaceId, monthly, perMission }: {
             {(u?.limits ?? []).map((status) => <MonthBar key={status.metric} status={status} />)}
           </div>
         ) : null}
-      </div>
+      </Card>
       <LimitForm
         key={`month-${JSON.stringify(monthly)}`}
         workspaceId={workspaceId}
@@ -84,19 +85,19 @@ function LimitForm({ workspaceId, field, title, hint, suffix, limits }: {
     save.mutate(parsed.limits, { onSuccess: () => setSaved(true) });
   };
   return (
-    <div className="card" style={{ marginTop: 'var(--s3)' }} aria-label={title}>
+    <Card style={{ marginTop: 'var(--s3)' }} aria-label={title}>
       <div className="field__label">{title}</div>
       <p className="field__hint" style={{ marginBottom: 'var(--s3)' }}>{hint}</p>
       <LimitFields draft={draft} onChange={setDraft} suffix={suffix} />
       {problem ? <p className="field__error">{problem}</p> : null}
       {save.isError ? <ErrorState error={save.error} /> : null}
       <div className="row" style={{ gap: 'var(--s2)', marginTop: 'var(--s3)' }}>
-        <button type="button" className="btn" disabled={save.isPending} onClick={submit}>
+        <Button disabled={save.isPending} onClick={submit}>
           {field === 'monthlyLimits' ? 'Save monthly limit' : 'Save mission limit'}
-        </button>
+        </Button>
         {saved ? <span className="muted">Saved.</span> : null}
       </div>
-    </div>
+    </Card>
   );
 }
 

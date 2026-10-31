@@ -19,6 +19,8 @@
 //   6. the app icon uses a colour that is not in the palette, or the template
 //      mark uses anything but black
 //   7. the main process's pre-paint window colours drift from the palette
+//   8. the gallery (packages/design/gallery) is stale, or leaves out a component
+//      that @tandemise/design/react exports
 //
 //   node scripts/check-design-system.mjs     (after `npm run build`: it reads packages/design/dist)
 import { execFileSync } from 'node:child_process';
@@ -70,6 +72,21 @@ try {
   execFileSync(process.execPath, [join(design, 'scripts/emit.mjs'), '--check'], { cwd: root, stdio: ['ignore', 'ignore', 'pipe'] });
 } catch (error) {
   fail(design, 0, String(error.stderr ?? error.message).trim());
+}
+// 0b. The gallery (gallery/index.html) is fresh, and shows every component the
+// React subpath exports: it is the visual reference, so nothing ships unseen.
+const GALLERY = join(design, 'gallery/index.html');
+try {
+  execFileSync(process.execPath, [join(design, 'scripts/gallery.mjs'), '--check'], { cwd: root, stdio: ['ignore', 'ignore', 'pipe'] });
+} catch (error) {
+  fail(design, 0, String(error.stderr ?? error.message).trim());
+}
+if (existsSync(GALLERY)) {
+  const { COMPONENTS } = await import(pathToFileURL(join(design, 'dist/react/index.js')).href);
+  const gallery = readFileSync(GALLERY, 'utf8');
+  for (const name of COMPONENTS) {
+    if (!gallery.includes(`data-component="${name}"`)) fail(GALLERY, 0, `<${name}> is exported by @tandemise/design/react but missing from the gallery`);
+  }
 }
 for (const theme of ['light', 'dark']) {
   const resolved = tokens.resolveTheme(theme);

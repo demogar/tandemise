@@ -8,6 +8,7 @@ import { useCoordinationClaims, useCoordinationStatus, useDaemonMutation } from 
 import { dateTime, relativeTime } from '../../lib/format.js';
 import { showFlash } from '../../lib/notices.js';
 import '../settings/TeamRelay.css';
+import { Button, Card } from '@tandemise/design/react';
 
 const PRESENCE_WORDS: Readonly<Record<CoordMemberView['presence'], string>> = { online: 'Online', away: 'Away', offline: 'Offline' };
 
@@ -35,12 +36,12 @@ export function RelayTeam(): JSX.Element | null {
       <SectionHead
         title="Team relay"
         meta={status.teamName || undefined}
-        action={admin ? <button type="button" className="btn btn--primary" onClick={() => setInviting(true)}>Invite someone</button> : undefined}
+        action={admin ? <Button variant="primary" onClick={() => setInviting(true)}>Invite someone</Button> : undefined}
       />
       {roster.isError ? <ErrorState error={roster.error} onRetry={() => void roster.refetch()} /> : null}
       {revoke.isError ? <ErrorState error={revoke.error} /> : null}
       {remove.isError ? <ErrorState error={remove.error} /> : null}
-      <div className="card card--flush">
+      <Card flush>
         {members.map((m) => {
           const holding = rows.filter((r) => (r.mine ? m.id === status.memberId : r.memberName === m.displayName)).map((r) => r.itemKey);
           return (
@@ -51,7 +52,7 @@ export function RelayTeam(): JSX.Element | null {
                 {m.role === 'admin' ? <span className="chip chip--muted">admin</span> : null}
                 <span className="relay-team__claims">{holding.length ? `Working on ${holding.join(', ')}` : m.presence === 'offline' && m.lastSeenAt ? `Last seen ${relativeTime(m.lastSeenAt)}` : ''}</span>
                 {admin && m.id !== status.memberId ? (
-                  <button type="button" className="btn btn--ghost" onClick={() => remove.mutate(m.id)}>Remove</button>
+                  <Button variant="ghost" onClick={() => remove.mutate(m.id)}>Remove</Button>
                 ) : null}
               </div>
               {admin ? devices.filter((d) => d.memberId === m.id).map((d) => (
@@ -59,13 +60,13 @@ export function RelayTeam(): JSX.Element | null {
                   <span className="muted" style={{ flex: 1 }}>
                     {d.label} · {d.revokedAt ? 'revoked' : d.lastSeenAt ? `last seen ${relativeTime(d.lastSeenAt)}` : 'never seen'}
                   </span>
-                  {d.revokedAt === null ? <button type="button" className="btn btn--ghost" onClick={() => revoke.mutate(d.id)}>Revoke</button> : null}
+                  {d.revokedAt === null ? <Button variant="ghost" onClick={() => revoke.mutate(d.id)}>Revoke</Button> : null}
                 </div>
               )) : null}
             </div>
           );
         })}
-      </div>
+      </Card>
       {inviting ? <InviteDrawer onClose={() => setInviting(false)} /> : null}
     </section>
   );
@@ -83,8 +84,8 @@ function InviteDrawer({ onClose }: { onClose: () => void }): JSX.Element {
           <div className="relay-team__code" data-invite-code>{made.code}</div>
           <p className="muted" style={{ margin: 0 }}>This code works once and expires on {dateTime(made.expiresAt)}. It is shown only now.</p>
           <div className="row">
-            <button type="button" className="btn btn--primary" onClick={() => { void navigator.clipboard.writeText(made.code); showFlash('Invite code copied.'); }}>Copy</button>
-            <button type="button" className="btn" onClick={onClose}>Done</button>
+            <Button variant="primary" onClick={() => { void navigator.clipboard.writeText(made.code); showFlash('Invite code copied.'); }}>Copy</Button>
+            <Button onClick={onClose}>Done</Button>
           </div>
         </div>
       ) : (
@@ -97,7 +98,7 @@ function InviteDrawer({ onClose }: { onClose: () => void }): JSX.Element {
             </select>
           </Field>
           {invite.isError ? <ErrorState error={invite.error} /> : null}
-          <div><button type="submit" className="btn btn--primary" disabled={invite.isPending}>Make an invite code</button></div>
+          <div><Button type="submit" variant="primary" disabled={invite.isPending}>Make an invite code</Button></div>
         </form>
       )}
     </Drawer>

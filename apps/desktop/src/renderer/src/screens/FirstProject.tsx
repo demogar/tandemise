@@ -4,6 +4,7 @@ import { Logo } from '../components/Logo.js';
 import { ErrorState, Field } from '../components/primitives.js';
 import { useDaemonMutation } from '../lib/queries.js';
 import { shortenPath } from '../lib/format.js';
+import { Button } from '@tandemise/design/react';
 
 /**
  * The first thing a new install shows.
@@ -90,35 +91,33 @@ export function ProjectForm({ onCreated }: { onCreated?: (id: string) => void })
                   {shortenPath(path, 3)}
                 </div>
               </div>
-              <button
-                type="button"
-                className="btn btn--icon btn--ghost"
+              <Button
+                iconOnly variant="ghost"
                 aria-label={`Remove ${path}`}
                 onClick={() => setPaths((current) => current.filter((p) => p !== path))}
               >
                 <Icon name="x" size={13} />
-              </button>
+              </Button>
             </div>
           ))}
-          <button type="button" className="btn" onClick={() => void browse()}>
+          <Button onClick={() => void browse()}>
             <Icon name="plus" size={13} />
             {paths.length === 0 ? 'Add a repository' : 'Add another'}
-          </button>
+          </Button>
         </div>
       </Field>
 
       {create.isError ? <ErrorState error={create.error} /> : null}
 
-      <button
-        type="button"
-        className="btn btn--primary btn--lg"
+      <Button
+        variant="primary" size="lg"
         disabled={name.trim() === '' || create.isPending}
         onClick={() =>
           create.mutate(undefined, { onSuccess: (view) => onCreated?.(view.workspace.id) })
         }
       >
         {create.isPending ? 'Creating…' : 'Create project'}
-      </button>
+      </Button>
     </div>
   );
 }

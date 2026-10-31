@@ -1,7 +1,7 @@
 {
   "name": "@tandemise/design",
   "version": "0.9.0",
-  "description": "The Tandemise design system: brand palette, light/dark semantic roles, type, spacing, radius and motion tokens as CSS, TypeScript and a Tailwind theme, plus the logo and icon set.",
+  "description": "The Tandemise design system: brand palette, light/dark semantic roles, type, spacing, radius, motion, focus, stacking and density tokens as CSS, TypeScript and a Tailwind theme; the logo and icon set; and accessible React components over a component stylesheet.",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -15,7 +15,10 @@
     "design-tokens",
     "css-variables",
     "tailwindcss",
-    "light-dark"
+    "light-dark",
+    "react",
+    "components",
+    "accessibility"
   ],
   "type": "module",
   "sideEffects": [
@@ -25,6 +28,7 @@
     "dist",
     "css",
     "assets",
+    "gallery",
     "README.md",
     "LICENSE"
   ],
@@ -56,8 +60,13 @@
       "types": "./dist/tailwind.d.ts",
       "default": "./dist/tailwind.js"
     },
+    "./react": {
+      "types": "./dist/react/index.d.ts",
+      "default": "./dist/react/index.js"
+    },
     "./tokens.css": "./css/tokens.css",
     "./base.css": "./css/base.css",
+    "./components.css": "./css/components.css",
     "./tailwind.css": "./css/tailwind.css",
     "./assets/*": "./assets/*",
     "./package.json": "./package.json"
@@ -65,10 +74,26 @@
   "engines": {
     "node": ">=20"
   },
+  "peerDependencies": {
+    "react": "^18.0.0 || ^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
   "scripts": {
     "build": "tsc -b",
     "emit": "node scripts/emit.mjs",
-    "emit:check": "node scripts/emit.mjs --check"
+    "emit:check": "node scripts/emit.mjs --check",
+    "gallery": "node scripts/gallery.mjs",
+    "gallery:check": "node scripts/gallery.mjs --check"
   },
   "publishConfig": {
     "access": "public"

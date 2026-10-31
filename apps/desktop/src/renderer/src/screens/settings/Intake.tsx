@@ -8,6 +8,7 @@ import { useWorkspace, useWorkspaceId } from '../../lib/workspace.js';
 import { showFlash } from '../../lib/notices.js';
 import { INTAKE_SOURCE_SECRETS, intakeSourceLabel, isShippedIntakeKind } from '../../lib/domain.js';
 import './Intake.css';
+import { Button, Card } from '@tandemise/design/react';
 
 /** The daemon's words for a refusal, as it said them (plan Global Constraints: "the UI shows the daemon's own words"). */
 function Refusal({ error }: { error: unknown }): JSX.Element {
@@ -78,10 +79,10 @@ function MovedAddresses({ view }: { view: IntakeConfigView }): JSX.Element | nul
           </p>
           <p className="muted intake-settings__moved-saved">Saved for <span className="mono">{m.saved}</span>.</p>
           <div className="row intake-settings__actions">
-            <button type="button" className="btn btn--primary" disabled={confirm.isPending}
+            <Button variant="primary" disabled={confirm.isPending}
               onClick={() => confirm.mutate(m.sourceId, { onSuccess: () => showFlash('Using the new address.') })}>
               Use the new address
-            </button>
+            </Button>
           </div>
         </div>
       ))}
@@ -102,7 +103,7 @@ function ThisComputerCard({ view, readOnly }: { view: IntakeConfigView; readOnly
   const shipped = view.sources.filter((s) => isShippedIntakeKind(s.kind));
   if (shipped.length === 0) return null;
   return (
-    <div className="card intake-settings__card" aria-label="On this computer">
+    <Card className="intake-settings__card" aria-label="On this computer">
       <h3 className="intake-settings__subhead">On this computer</h3>
       <p className="muted intake-settings__lead">Sources this computer reads, with your credentials. {view.origin === 'brain' ? "A source from the project's brain stays off here until you switch it on." : ''}</p>
       <ul className="intake-settings__sources">
@@ -121,7 +122,7 @@ function ThisComputerCard({ view, readOnly }: { view: IntakeConfigView; readOnly
         ))}
       </ul>
       {toggle.isError ? <Refusal error={toggle.error} /> : null}
-    </div>
+    </Card>
   );
 }
 
@@ -189,7 +190,7 @@ function TrackerCard({ view, readOnly }: { view: IntakeConfigView; readOnly: boo
   const dirty = JSON.stringify(draft) !== savedKey;
   const youtrack = draft.kind === 'youtrack';
   return (
-    <div className="card intake-settings__card" aria-label="Tracker">
+    <Card className="intake-settings__card" aria-label="Tracker">
       <h3 className="intake-settings__subhead">Tracker</h3>
       <p className="muted intake-settings__lead">
         {view.tracker === null
@@ -248,9 +249,9 @@ function TrackerCard({ view, readOnly }: { view: IntakeConfigView; readOnly: boo
       </div>
       {save.isError ? <Refusal error={save.error} /> : null}
       <div className="row intake-settings__actions">
-        <button type="button" className="btn btn--primary" disabled={!dirty || save.isPending} onClick={() => save.mutate({ tracker: trackerOf(draft, view.tracker) } as UpdateIntakeConfigRequest, { onSuccess: () => showFlash('Tracker saved.') })}>
+        <Button variant="primary" disabled={!dirty || save.isPending} onClick={() => save.mutate({ tracker: trackerOf(draft, view.tracker) } as UpdateIntakeConfigRequest, { onSuccess: () => showFlash('Tracker saved.') })}>
           {save.isPending ? 'Checking with your tracker…' : 'Save tracker'}
-        </button>
+        </Button>
       </div>
       </fieldset>
       <div className="intake-settings__secret">
@@ -258,13 +259,13 @@ function TrackerCard({ view, readOnly }: { view: IntakeConfigView; readOnly: boo
           {youtrack ? <input className="input mono" type="password" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)} placeholder="perm:…" /> : <span />}
         </Field>
         {youtrack ? (
-          <button type="button" className="btn" disabled={token.trim() === '' || saveToken.isPending} onClick={() => saveToken.mutate(token.trim(), { onSuccess: () => { setToken(''); showFlash('Token saved on this computer.'); } })}>
+          <Button disabled={token.trim() === '' || saveToken.isPending} onClick={() => saveToken.mutate(token.trim(), { onSuccess: () => { setToken(''); showFlash('Token saved on this computer.'); } })}>
             Save token
-          </button>
+          </Button>
         ) : null}
       </div>
       {saveToken.isError ? <Refusal error={saveToken.error} /> : null}
-    </div>
+    </Card>
   );
 }
 
@@ -278,7 +279,7 @@ function intakeBody(view: IntakeConfigView, sources: readonly IntakeSourceConfig
 function SourcesCard({ view }: { view: IntakeConfigView }): JSX.Element {
   const shipped = view.sources.filter((s) => isShippedIntakeKind(s.kind));
   return (
-    <div className="card intake-settings__card" aria-label="Sources">
+    <Card className="intake-settings__card" aria-label="Sources">
       <h3 className="intake-settings__subhead">Sources</h3>
       <p className="muted intake-settings__lead">What files work into your tracker. Each is read on its own schedule, and Check sources now on the Board reads them all.</p>
       {shipped.length === 0 ? <p className="muted">No sources yet.</p> : (
@@ -287,7 +288,7 @@ function SourcesCard({ view }: { view: IntakeConfigView }): JSX.Element {
         </ul>
       )}
       <AddSource view={view} />
-    </div>
+    </Card>
   );
 }
 
@@ -341,14 +342,14 @@ function SourceRow({ view, source }: { view: IntakeConfigView; source: IntakeSou
               <option value="7d">7 days</option>
             </select>
           </Field>
-          <button type="button" className="btn" disabled={save.isPending} onClick={() => save.mutate({ ...source, filter: filterOf() } as IntakeSourceConfig)}>Save filter</button>
+          <Button disabled={save.isPending} onClick={() => save.mutate({ ...source, filter: filterOf() } as IntakeSourceConfig)}>Save filter</Button>
         </div>
       ) : null}
       {(INTAKE_SOURCE_SECRETS[source.kind] ?? []).map((secret) => <SecretField key={secret.name} sourceId={source.id} name={secret.name} label={secret.label} />)}
       {save.isError ? <Refusal error={save.error} /> : null}
       {remove.isError ? <Refusal error={remove.error} /> : null}
       <div>
-        <button type="button" className="btn btn--ghost" disabled={remove.isPending} onClick={() => remove.mutate()}>Remove this source</button>
+        <Button variant="ghost" disabled={remove.isPending} onClick={() => remove.mutate()}>Remove this source</Button>
       </div>
     </li>
   );
@@ -363,9 +364,9 @@ function SecretField({ sourceId, name, label }: { sourceId: string; name: string
       <Field label={label} hint="Kept only on this computer, in its secret store. Saving replaces the one saved before.">
         <input className="input mono" type="password" autoComplete="off" aria-label={`${sourceId} ${label}`} value={value} onChange={(e) => setValue(e.target.value)} />
       </Field>
-      <button type="button" className="btn" disabled={value.trim() === '' || save.isPending} onClick={() => save.mutate(value.trim(), { onSuccess: () => { setValue(''); showFlash(`${label} saved on this computer.`); } })}>
+      <Button disabled={value.trim() === '' || save.isPending} onClick={() => save.mutate(value.trim(), { onSuccess: () => { setValue(''); showFlash(`${label} saved on this computer.`); } })}>
         Save
-      </button>
+      </Button>
       {save.isError ? <Refusal error={save.error} /> : null}
     </div>
   );
@@ -401,7 +402,7 @@ function AddSource({ view }: { view: IntakeConfigView }): JSX.Element {
         </Field>
       </div>
       {add.isError ? <Refusal error={add.error} /> : null}
-      <div><button type="submit" className="btn" disabled={id.trim() === '' || where === '' || add.isPending}>Add a source</button></div>
+      <div><Button type="submit" disabled={id.trim() === '' || where === '' || add.isPending}>Add a source</Button></div>
     </form>
   );
 }
@@ -411,7 +412,7 @@ function AddSource({ view }: { view: IntakeConfigView }): JSX.Element {
 function CustomSources({ view }: { view: IntakeConfigView }): JSX.Element {
   const custom = view.sources.filter((s) => !isShippedIntakeKind(s.kind));
   return (
-    <div className="card intake-settings__card" aria-label="Custom sources">
+    <Card className="intake-settings__card" aria-label="Custom sources">
       <h3 className="intake-settings__subhead">Custom sources</h3>
       <p className="muted intake-settings__lead">
         A runner of your own pushes signals with a token for its source, over HTTP or with <span className="mono">tandemise intake push</span>, and reads its closures back with <span className="mono">tandemise intake closures</span>.
@@ -421,7 +422,7 @@ function CustomSources({ view }: { view: IntakeConfigView }): JSX.Element {
           {custom.map((s) => <CustomSource key={s.id} source={s} />)}
         </ul>
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -434,12 +435,12 @@ function CustomSource({ source }: { source: IntakeSourceConfig }): JSX.Element {
       <div className="intake-settings__source-head">
         <strong className="mono">{source.id}</strong>
         <span className="muted">{source.instance}</span>
-        <button type="button" className="btn" disabled={mint.isPending} onClick={() => mint.mutate()}>Make a token</button>
+        <Button disabled={mint.isPending} onClick={() => mint.mutate()}>Make a token</Button>
       </div>
       {token !== null ? (
         <div className="intake-settings__token">
           <code className="mono intake-settings__token-value" data-intake-token>{token}</code>
-          <button type="button" className="btn" onClick={() => { void navigator.clipboard.writeText(token); showFlash('Token copied.'); }}>Copy</button>
+          <Button onClick={() => { void navigator.clipboard.writeText(token); showFlash('Token copied.'); }}>Copy</Button>
           <p className="muted intake-settings__token-note">Shown once. It can only push to {source.id} and read its closures. If you lose it, make another.</p>
         </div>
       ) : null}

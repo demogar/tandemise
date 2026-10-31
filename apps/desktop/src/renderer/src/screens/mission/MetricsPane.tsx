@@ -6,6 +6,7 @@ import { LimitFields, limitDraft, limitsFromDraft } from '../../components/Limit
 import { useDaemonMutation } from '../../lib/queries.js';
 import { isTerminalMissionStatus } from '../../lib/domain.js';
 import { dateTime, duration, metric, money } from '../../lib/format.js';
+import { Button, Card } from '@tandemise/design/react';
 
 /**
  * MVP.md §22.2: a value the runtime did not report is *unknown*. Rendering it
@@ -132,9 +133,9 @@ function LimitSection({ detail }: { detail: MissionDetail }): JSX.Element {
         title="Limit"
         meta={meta}
         action={finished || editing ? undefined : (
-          <button type="button" className="btn btn--ghost" onClick={() => { setDraft(limitDraft(limits.limits)); setEditing(true); }}>
+          <Button variant="ghost" onClick={() => { setDraft(limitDraft(limits.limits)); setEditing(true); }}>
             {limits.limits.length === 0 ? 'Set a limit' : 'Change limit'}
-          </button>
+          </Button>
         )}
       />
       {limits.limits.length > 0 ? (
@@ -148,20 +149,20 @@ function LimitSection({ detail }: { detail: MissionDetail }): JSX.Element {
         <Stat label="Cost" value={money(limits.usage.costUsd)} muted={limits.usage.costUsd === null} />
       </div>
       {editing ? (
-        <div className="card" style={{ marginTop: 'var(--s3)' }}>
+        <Card style={{ marginTop: 'var(--s3)' }}>
           <LimitFields draft={draft} onChange={setDraft} suffix="for this mission" />
           {problem ? <p className="field__error">{problem}</p> : null}
           {save.isError ? <ErrorState error={save.error} /> : null}
           <div className="row" style={{ gap: 'var(--s2)', marginTop: 'var(--s3)' }}>
-            <button type="button" className="btn btn--primary" disabled={save.isPending} onClick={submit}>Save limit</button>
+            <Button variant="primary" disabled={save.isPending} onClick={submit}>Save limit</Button>
             {limits.source === 'mission' ? (
-              <button type="button" className="btn" disabled={save.isPending} onClick={() => save.mutate(null, { onSuccess: () => setEditing(false) })}>
+              <Button disabled={save.isPending} onClick={() => save.mutate(null, { onSuccess: () => setEditing(false) })}>
                 Use the project default
-              </button>
+              </Button>
             ) : null}
-            <button type="button" className="btn btn--ghost" onClick={() => setEditing(false)}>Cancel</button>
+            <Button variant="ghost" onClick={() => setEditing(false)}>Cancel</Button>
           </div>
-        </div>
+        </Card>
       ) : null}
     </section>
   );
@@ -173,14 +174,14 @@ function LimitBar({ status }: { status: LimitStatusView }): JSX.Element {
   const width = status.percent === null ? 0 : Math.min(100, status.percent);
   const fill = status.level === 'hard' ? 'var(--status-failed)' : status.level === 'soft' ? 'var(--status-blocked)' : 'var(--status-running)';
   return (
-    <div className="card">
+    <Card>
       <div className="stat__label">{status.label}</div>
       <div className="stat__value">{status.bar}</div>
       <div className="meter" style={{ marginTop: 'var(--s2)' }} aria-label={`${status.label}: ${status.bar}`}>
         <div className="meter__fill" style={{ width: `${width}%`, background: fill }} />
       </div>
       {status.note ? <p className={status.level === 'unmeasured' ? 'muted' : ''} style={{ marginTop: 'var(--s2)', fontSize: 'var(--fs-sm)' }}>{status.note}</p> : null}
-    </div>
+    </Card>
   );
 }
 

@@ -14,6 +14,7 @@ import { Icon } from '../components/Icon.js';
 import { SectionHead } from '../components/primitives.js';
 import { useConnection } from '../lib/connection.js';
 import { useSystem } from '../lib/queries.js';
+import { Button, Card } from '@tandemise/design/react';
 
 /**
  * Settings → About: which code is running, where its data lives, and one
@@ -62,10 +63,10 @@ export function SettingsAbout(): JSX.Element {
         title="About"
         meta={app ? versionWithBuild(app.version, app.build) : undefined}
         action={
-          <button type="button" className="btn" onClick={copy}>
+          <Button onClick={copy}>
             <Icon name={copied === 'copied' ? 'check' : 'file'} size={14} />
             {copied === 'copied' ? 'Copied' : copied === 'failed' ? 'Could not copy' : 'Copy diagnostics'}
-          </button>
+          </Button>
         }
       />
 
@@ -79,7 +80,7 @@ export function SettingsAbout(): JSX.Element {
         </div>
       ) : null}
 
-      <div className="card card--flush">
+      <Card flush>
         <table className="table">
           <tbody>
             <Row label="App" value={app ? versionWithBuild(app.version, app.build) : '—'} />
@@ -95,10 +96,10 @@ export function SettingsAbout(): JSX.Element {
                 <div className="row" style={{ justifyContent: 'space-between' }}>
                   <span className="mono truncate" title={daemon?.home}>{daemon?.home ?? '—'}</span>
                   {daemon ? (
-                    <button type="button" className="btn btn--ghost" onClick={() => void window.tandemise.revealInFinder(daemon.home)}>
+                    <Button variant="ghost" onClick={() => void window.tandemise.revealInFinder(daemon.home)}>
                       <Icon name="folder" size={14} />
                       Show in Finder
-                    </button>
+                    </Button>
                   ) : null}
                 </div>
               </td>
@@ -107,7 +108,7 @@ export function SettingsAbout(): JSX.Element {
             <Row label="Operating system" value={app?.os ?? '—'} />
           </tbody>
         </table>
-      </div>
+      </Card>
 
       <div className="row row--wrap" style={{ marginTop: 'var(--s3)' }}>
         <LinkButton label="Repository" url={TANDEMISE_REPOSITORY_URL} />
@@ -132,9 +133,9 @@ function Row({ label, value }: { label: string; value: string }): JSX.Element {
 
 function LinkButton({ label, url }: { label: string; url: string }): JSX.Element {
   return (
-    <button type="button" className="btn btn--ghost" onClick={() => void window.tandemise.openExternal(url)}>
+    <Button variant="ghost" onClick={() => void window.tandemise.openExternal(url)}>
       <Icon name="externalLink" size={14} />
       {label}
-    </button>
+    </Button>
   );
 }

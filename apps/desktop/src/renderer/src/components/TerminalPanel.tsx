@@ -11,6 +11,7 @@ import { describeError } from '../lib/daemon.js';
 import { useDaemonMutation } from '../lib/queries.js';
 import { closeTerminal, openTerminal } from '../lib/terminal.js';
 import { useActors } from '../lib/team.js';
+import { Button } from '@tandemise/design/react';
 
 /** What a hold changes on the mission: the step's status, the run it stopped, the requests it withdrew. */
 const HOLD_TOPICS = ['tasks', 'missions', 'approvals'] as const;
@@ -84,29 +85,26 @@ export function TerminalPanel({ task, detail }: { task: TaskView; detail: Missio
             {heldBy !== null ? <span className="terminal-panel__holder">Held by {heldBy}</span> : null}
           </div>
           <div className="terminal-panel__actions">
-            <button
-              type="button"
-              className="btn btn--primary"
+            <Button
+              variant="primary"
               disabled={cont.isPending || release.isPending || hold === null}
               title="End your hold and let the agent finish the step from where you left it"
               onClick={() => cont.mutate(undefined)}
             >
               <Icon name="play" size={13} />
               {cont.isPending ? 'Continuing…' : 'Continue'}
-            </button>
-            <button
-              type="button"
-              className="btn"
+            </Button>
+            <Button
               disabled={cont.isPending || release.isPending || hold === null}
               title="End your hold without asking the agent to continue; the step goes back to the queue"
               onClick={() => release.mutate(undefined)}
             >
               {release.isPending ? 'Releasing…' : 'Release'}
-            </button>
-            <button type="button" className="btn btn--ghost" title="The session keeps running; open it again from the step" onClick={closeTerminal}>
+            </Button>
+            <Button variant="ghost" title="The session keeps running; open it again from the step" onClick={closeTerminal}>
               <Icon name="x" size={13} />
               Close terminal
-            </button>
+            </Button>
           </div>
         </header>
 
@@ -145,9 +143,8 @@ export function TerminalPanel({ task, detail }: { task: TaskView; detail: Missio
                 {/* "No, exit" is the question's default, so a session that ended right at it most likely took that. */}
                 {ended.atTrustPrompt ? <p className="terminal-panel__ended-detail">{TRUST_HINT}</p> : null}
               </div>
-              <button
-                type="button"
-                className="btn btn--primary"
+              <Button
+                variant="primary"
                 disabled={reopen.isPending || hold === null}
                 onClick={() => reopen.mutate(undefined, {
                   onSuccess: () => {
@@ -158,7 +155,7 @@ export function TerminalPanel({ task, detail }: { task: TaskView; detail: Missio
               >
                 <Icon name="refresh" size={13} />
                 {reopen.isPending ? 'Opening…' : 'Open the terminal again'}
-              </button>
+              </Button>
             </div>
           ) : null}
         </div>

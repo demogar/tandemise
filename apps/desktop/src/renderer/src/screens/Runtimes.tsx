@@ -8,6 +8,7 @@ import { Empty, ErrorState, Field, SkeletonList, StatusDot, Switch } from '../co
 import { useDaemonMutation, useRuntimes } from '../lib/queries.js';
 import { useWorkspaceId } from '../lib/workspace.js';
 import { dateTime, healthTone, pluralize, shortenPath, titleCase } from '../lib/format.js';
+import { Badge, Button, Card } from '@tandemise/design/react';
 
 export function Runtimes(): JSX.Element {
   const runtimes = useRuntimes();
@@ -26,19 +27,18 @@ export function Runtimes(): JSX.Element {
         subtitle="The agent CLIs on this machine, and how much work each may take."
         actions={
           <>
-            <button type="button" className="btn" onClick={() => setAddingCli(true)}>
+            <Button onClick={() => setAddingCli(true)}>
               <Icon name="plus" size={13} />
               Add CLI runtime
-            </button>
-            <button
-              type="button"
-              className="btn btn--primary"
+            </Button>
+            <Button
+              variant="primary"
               disabled={discover.isPending}
               onClick={() => discover.mutate(undefined, { onSuccess: setDiscovered })}
             >
               <Icon name="search" size={13} />
               {discover.isPending ? 'Scanning…' : 'Discover runtimes'}
-            </button>
+            </Button>
           </>
         }
       />
@@ -51,19 +51,19 @@ export function Runtimes(): JSX.Element {
           {runtimes.isPending ? (
             <SkeletonList rows={3} />
           ) : (runtimes.data ?? []).length === 0 ? (
-            <div className="card">
+            <Card>
               <Empty
                 icon="runtimes"
                 title="No runtimes configured"
                 body="Tandemise routes roles to runtimes, never the other way round. Run discovery to find the agent CLIs already installed, or add a generic CLI runtime by hand."
                 action={
-                  <button type="button" className="btn btn--primary btn--lg" onClick={() => discover.mutate(undefined, { onSuccess: setDiscovered })}>
+                  <Button variant="primary" size="lg" onClick={() => discover.mutate(undefined, { onSuccess: setDiscovered })}>
                     <Icon name="search" size={14} />
                     Discover runtimes
-                  </button>
+                  </Button>
                 }
               />
-            </div>
+            </Card>
           ) : (
             <div className="stack" style={{ gap: 'var(--s4)' }}>
               {(runtimes.data ?? []).map((view) => (
@@ -136,27 +136,26 @@ function RuntimeCard({
             {health.detail} · checked {dateTime(health.checkedAt)}
           </div>
         </div>
-        <button type="button" className="btn btn--ghost" disabled={check.isPending} onClick={() => check.mutate(undefined)}>
+        <Button variant="ghost" disabled={check.isPending} onClick={() => check.mutate(undefined)}>
           <Icon name="refresh" size={13} />
           {check.isPending ? 'Checking…' : 'Check health'}
-        </button>
-        <button type="button" className="btn btn--ghost" onClick={() => onEdit('edit')}>
+        </Button>
+        <Button variant="ghost" onClick={() => onEdit('edit')}>
           <Icon name="wrench" size={13} />
           Configure
-        </button>
-        <button
-          type="button"
-          className="btn btn--ghost"
+        </Button>
+        <Button
+          variant="ghost"
           title={`Add a second ${view.adapterDisplayName} profile starting from this one`}
           onClick={() => onEdit('duplicate')}
         >
           <Icon name="layers" size={13} />
           Duplicate
-        </button>
+        </Button>
         <Switch checked={profile.enabled} label={`Enable ${profile.name}`} onChange={(enabled) => update.mutate({ enabled })} />
-        <button type="button" className="btn btn--icon btn--ghost" aria-label="Remove runtime" onClick={onRemove}>
+        <Button iconOnly variant="ghost" aria-label="Remove runtime" onClick={onRemove}>
           <Icon name="trash" size={14} />
-        </button>
+        </Button>
       </div>
 
       <div className="card__body" style={{ display: 'grid', gap: 'var(--s4)' }}>
@@ -284,7 +283,7 @@ function DiscoveryModal({ results, onClose }: { results: readonly RuntimeDiscove
   );
 
   return (
-    <Modal title="Runtimes on this machine" wide onClose={onClose} footer={<button type="button" className="btn btn--primary" onClick={onClose}>Done</button>}>
+    <Modal title="Runtimes on this machine" wide onClose={onClose} footer={<Button variant="primary" onClick={onClose}>Done</Button>}>
       <div className="stack">
         {results.length === 0 ? (
           <p>No agent runtimes were found on this machine. Install one, or add a generic CLI runtime by hand.</p>
@@ -304,13 +303,13 @@ function DiscoveryModal({ results, onClose }: { results: readonly RuntimeDiscove
                 <span className="chip chip--muted">not found</span>
               ) : (
                 <div className="row" style={{ gap: 'var(--s2)' }}>
-                  {configured(discovery) ? <span className="badge badge--succeeded">Configured</span> : null}
+                  {configured(discovery) ? <Badge tone="succeeded">Configured</Badge> : null}
                   {/* Still offered once configured: a second profile of the same
                       adapter is a normal setup, not a mistake - one login for
                       deep work, another for review. */}
-                  <button type="button" className="btn btn--primary" disabled={create.isPending} onClick={() => create.mutate(discovery, { onSuccess: () => setAdded((prev) => new Set(prev).add(discovery.adapterId)) })}>
+                  <Button variant="primary" disabled={create.isPending} onClick={() => create.mutate(discovery, { onSuccess: () => setAdded((prev) => new Set(prev).add(discovery.adapterId)) })}>
                     {configured(discovery) ? 'Add another' : 'Add'}
-                  </button>
+                  </Button>
                 </div>
               )}
             </div>
@@ -384,17 +383,16 @@ function ProfileModal({ view, mode, onClose }: { view: RuntimeView; mode: Profil
       onClose={onClose}
       footer={
         <>
-          <button type="button" className="btn btn--ghost" onClick={onClose}>
+          <Button variant="ghost" onClick={onClose}>
             Cancel
-          </button>
-          <button
-            type="button"
-            className="btn btn--primary"
+          </Button>
+          <Button
+            variant="primary"
             disabled={name.trim() === '' || save.isPending}
             onClick={() => save.mutate(undefined, { onSuccess: onClose })}
           >
             {save.isPending ? 'Saving…' : duplicating ? 'Create profile' : 'Save'}
-          </button>
+          </Button>
         </>
       }
     >
@@ -500,17 +498,16 @@ function GenericCliModal({ onClose }: { onClose: () => void }): JSX.Element {
       onClose={onClose}
       footer={
         <>
-          <button type="button" className="btn btn--ghost" onClick={onClose}>
+          <Button variant="ghost" onClick={onClose}>
             Cancel
-          </button>
-          <button
-            type="button"
-            className="btn btn--primary"
+          </Button>
+          <Button
+            variant="primary"
             disabled={!name.trim() || !command.trim() || create.isPending}
             onClick={() => create.mutate(undefined, { onSuccess: onClose })}
           >
             {create.isPending ? 'Adding…' : 'Add runtime'}
-          </button>
+          </Button>
         </>
       }
     >

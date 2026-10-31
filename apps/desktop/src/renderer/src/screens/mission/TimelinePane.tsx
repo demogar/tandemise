@@ -8,6 +8,7 @@ import { buildTimeline, rawLines } from '../../lib/events.js';
 import { clockTime, relativeTime } from '../../lib/format.js';
 import { ActorChip } from '../../components/ActorChip.js';
 import { useActors } from '../../lib/team.js';
+import { Badge, Button, Card } from '@tandemise/design/react';
 
 /**
  * The live semantic feed (MVP.md §23.3).
@@ -51,9 +52,8 @@ export function TimelinePane({ detail }: { detail: MissionDetail }): JSX.Element
         </span>
         <div className="spacer" />
         {!follow ? (
-          <button
-            type="button"
-            className="btn btn--ghost"
+          <Button
+            variant="ghost"
             onClick={() => {
               setFollow(true);
               const element = scroller.current;
@@ -62,17 +62,17 @@ export function TimelinePane({ detail }: { detail: MissionDetail }): JSX.Element
           >
             <Icon name="arrowDown" size={13} />
             Jump to latest
-          </button>
+          </Button>
         ) : (
-          <span className="badge badge--running">
+          <Badge tone="running">
             <span className="dot dot--running dot--pulse" />
             Following
-          </span>
+          </Badge>
         )}
-        <button type="button" className={`btn${raw ? ' btn--primary' : ' btn--ghost'}`} onClick={() => setRaw((value) => !value)}>
+        <Button variant={raw ? 'primary' : 'ghost'} onClick={() => setRaw((value) => !value)}>
           <Icon name="terminal" size={13} />
           Raw log
-        </button>
+        </Button>
       </div>
 
       <div className="page" ref={scroller} onScroll={onScroll}>
@@ -105,13 +105,13 @@ export function TimelinePane({ detail }: { detail: MissionDetail }): JSX.Element
               )}
             </div>
           ) : items.length === 0 ? (
-            <div className="card">
+            <Card>
               <Empty
                 icon="pulse"
                 title="Nothing has happened yet"
                 body="When the mission starts, each step appears here in plain language — who did what, which checks ran, and what needs you."
               />
-            </div>
+            </Card>
           ) : (
             <div className="timeline">
               {items.map((item) => (

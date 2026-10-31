@@ -8,6 +8,7 @@ import { Icon } from '../../components/Icon.js';
 import { Field, Segmented } from '../../components/primitives.js';
 import { ESCALATION_OPTIONS, PRESET_LABELS, STAFFING_PRESET_OPTIONS, builtInAssignees, displayedPreset, staffingSummary } from '../../lib/staffing.js';
 import type { Actors } from '../../lib/team.js';
+import { Button } from '@tandemise/design/react';
 
 export type StaffingLevel = 'workspace' | 'mission' | 'task';
 
@@ -260,25 +261,23 @@ function CustomFields({ value, onChange, actors }: { value: StaffingPatch; onCha
               placeholder="always"
               onChange={(event) => setReview(index, { when: event.target.value || 'always' })}
             />
-            <button
-              type="button"
-              className="btn btn--icon btn--ghost"
+            <Button
+              iconOnly variant="ghost"
               aria-label="Remove review"
               onClick={() => onChange({ ...value, reviews: reviews.filter((_, i) => i !== index) })}
             >
               <Icon name="x" size={13} />
-            </button>
+            </Button>
           </div>
         ))}
         <div>
-          <button
-            type="button"
-            className="btn btn--ghost"
+          <Button
+            variant="ghost"
             onClick={() => onChange({ ...value, reviews: [...reviews, { by: 'responsible', mode: 'blocking', when: 'always' }] })}
           >
             <Icon name="plus" size={13} />
             Add review
-          </button>
+          </Button>
         </div>
       </div>
     </>

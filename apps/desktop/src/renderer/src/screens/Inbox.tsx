@@ -18,6 +18,7 @@ import { REQUEST_CHANGES_OPTION, isLimitCard, isPlanFitCard } from '../lib/domai
 import { QuietRow, StalledRow } from './inbox/LivenessRows.js';
 import { ParkedRow } from './inbox/ParkedRow.js';
 import { IntakeDecisionRow } from './inbox/IntakeDecisionRow.js';
+import { Button, Card } from '@tandemise/design/react';
 
 type Filter = 'me' | 'everyone';
 
@@ -75,9 +76,9 @@ export function Inbox({ only }: { only?: 'stalled' } = {}): JSX.Element {
             <div className="banner" style={{ marginBottom: 'var(--s4)' }}>
               <Icon name="alert" size={15} className="dim" />
               <span style={{ flex: 1 }}>Showing stalled missions only: nothing moves them until you act.</span>
-              <button type="button" className="btn" onClick={() => navigate('/inbox')}>
+              <Button onClick={() => navigate('/inbox')}>
                 Show everything
-              </button>
+              </Button>
             </div>
           ) : null}
 
@@ -98,16 +99,16 @@ export function Inbox({ only }: { only?: 'stalled' } = {}): JSX.Element {
 
           {intakeDecisions.length > 0 && only === undefined ? (
             <section className="section" aria-label="Intake decisions" style={{ marginBottom: 'var(--s4)' }}>
-              <div className="card card--flush">
+              <Card flush>
                 {intakeDecisions.map((view) => <IntakeDecisionRow key={view.signalId} view={view} />)}
-              </div>
+              </Card>
             </section>
           ) : null}
 
           {inbox.isPending ? (
             <SkeletonList rows={3} />
           ) : items.length === 0 && intakeDecisions.length > 0 && only === undefined ? null : items.length === 0 ? (
-            <div className="card">
+            <Card>
               <Empty
                 icon="check"
                 title={only === 'stalled' ? 'Nothing is stalled' : filter === 'me' ? 'Nothing is waiting on you' : 'Nothing is waiting on anyone'}
@@ -117,9 +118,9 @@ export function Inbox({ only }: { only?: 'stalled' } = {}): JSX.Element {
                     : 'Approvals, questions, tasks for a person, work to hand back, stalled missions and quiet agents land here, one line each.'
                 }
               />
-            </div>
+            </Card>
           ) : (
-            <div className="card card--flush">
+            <Card flush>
               {items.map((item) => (
                 <div key={item.id}>
                   <InboxRow
@@ -142,7 +143,7 @@ export function Inbox({ only }: { only?: 'stalled' } = {}): JSX.Element {
                   ) : null}
                 </div>
               ))}
-            </div>
+            </Card>
           )}
 
           {decided.length > 0 && only === undefined ? (

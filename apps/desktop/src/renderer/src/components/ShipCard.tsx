@@ -3,6 +3,7 @@ import { useDaemonMutation, useShip } from '../lib/queries.js';
 import { Icon } from './Icon.js';
 import { ErrorState } from './primitives.js';
 import './ShipCard.css';
+import { Button } from '@tandemise/design/react';
 
 /**
  * The ship step (#53 §10): opening the pull request, waiting for CI, then
@@ -34,19 +35,19 @@ function ShipPullRequest({ missionId, pr }: { missionId: string; pr: ShipPullReq
     <div className="ship__pr">
       <div className="ship__row">
         <span className="ship__ref">{pr.repo} #{pr.number}</span>
-        <button type="button" className="btn" title={pr.url} onClick={() => void window.tandemise.openExternal(pr.url)}>
+        <Button title={pr.url} onClick={() => void window.tandemise.openExternal(pr.url)}>
           <Icon name="externalLink" size={13} />
           Open in GitHub
-        </button>
+        </Button>
         {decision?.cardId != null ? (
-          <button type="button" className="btn btn--primary" disabled={merge.isPending} onClick={() => merge.mutate(decision.cardId!)}>
+          <Button variant="primary" disabled={merge.isPending} onClick={() => merge.mutate(decision.cardId!)}>
             Merge
-          </button>
+          </Button>
         ) : null}
         {decision?.canRevert === true ? (
-          <button type="button" className="btn" disabled={revert.isPending || revert.isSuccess} onClick={() => revert.mutate(decision.id)}>
+          <Button disabled={revert.isPending || revert.isSuccess} onClick={() => revert.mutate(decision.id)}>
             {revert.isSuccess ? 'Reverting…' : 'Revert'}
-          </button>
+          </Button>
         ) : null}
       </div>
       {decision === null ? null : (

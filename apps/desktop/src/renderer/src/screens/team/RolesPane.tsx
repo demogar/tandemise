@@ -8,6 +8,7 @@ import { Empty, ErrorState, Field, SkeletonList } from '../../components/primiti
 import { useDaemonMutation, useRoles, useSkills } from '../../lib/queries.js';
 import { useWorkspace } from '../../lib/workspace.js';
 import { titleCase } from '../../lib/format.js';
+import { Badge, Button, Card } from '@tandemise/design/react';
 
 /**
  * What each role is: its instructions, contract and hand-offs.
@@ -43,9 +44,9 @@ export function RolesPane(): JSX.Element {
     return (
       <div className="page">
         <div className="page__inner">
-          <div className="card">
+          <Card>
             <Empty icon="workforce" title="No roles configured" body="The project ships with built-in roles. If this is empty, the daemon has not seeded it yet." />
-          </div>
+          </Card>
         </div>
       </div>
     );
@@ -167,15 +168,15 @@ function RoleEditor({ role, workspaceId }: { role: RoleTemplate; workspaceId: st
       {save.isError ? <ErrorState error={save.error} /> : null}
 
       <div className="row">
-        <button type="button" className="btn btn--primary" disabled={save.isPending} onClick={() => save.mutate(undefined)}>
+        <Button variant="primary" disabled={save.isPending} onClick={() => save.mutate(undefined)}>
           {save.isPending ? 'Saving…' : 'Save role'}
-        </button>
+        </Button>
         {dirty ? <span className="dim" style={{ fontSize: 'var(--fs-xs)' }}>Unsaved changes</span> : null}
         {save.isSuccess && !dirty ? (
-          <span className="badge badge--succeeded">
+          <Badge tone="succeeded">
             <Icon name="check" size={11} />
             Saved
-          </span>
+          </Badge>
         ) : null}
       </div>
     </div>
@@ -248,11 +249,11 @@ function RoleSkills({ pinned, onChange }: { pinned: readonly RoleSkill[]; onChan
                 </div>
                 <div className="list__aside">
                   {newest > pin.version ? (
-                    <button type="button" className="btn btn--ghost" onClick={() => onChange(pinned.map((p) => (p.name === pin.name ? { name: p.name, version: newest } : p)))}>
+                    <Button variant="ghost" onClick={() => onChange(pinned.map((p) => (p.name === pin.name ? { name: p.name, version: newest } : p)))}>
                       Use v{newest}
-                    </button>
+                    </Button>
                   ) : null}
-                  <button type="button" className="btn btn--ghost" onClick={() => onChange(pinned.filter((p) => p.name !== pin.name))}>Remove</button>
+                  <Button variant="ghost" onClick={() => onChange(pinned.filter((p) => p.name !== pin.name))}>Remove</Button>
                 </div>
               </div>
             );
@@ -265,7 +266,7 @@ function RoleSkills({ pinned, onChange }: { pinned: readonly RoleSkill[]; onChan
             <option value="">Choose a skill…</option>
             {attachable.map((s) => <option key={s.id} value={s.name}>{s.name} (v{s.latest.version})</option>)}
           </select>
-          <button type="button" className="btn" disabled={choice === ''} onClick={attach}>Attach</button>
+          <Button disabled={choice === ''} onClick={attach}>Attach</Button>
         </div>
       ) : null}
     </section>

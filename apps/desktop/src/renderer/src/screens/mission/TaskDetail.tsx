@@ -24,6 +24,7 @@ import { ShipCard } from '../../components/ShipCard.js';
 import { HoldButton, NowLine, useHoldActions } from '../../components/TerminalPanel.js';
 import { describeError } from '../../lib/daemon.js';
 import { RememberThis, WhatItKnew } from '../../components/WhatItKnew.js';
+import { Badge, Button, Card } from '@tandemise/design/react';
 
 export function TaskDetail({ task, detail, onClose }: { task: TaskView; detail: MissionDetail; onClose: () => void }): JSX.Element {
   // A note turns the retry into the next round, framed as a request rather than as the failure it follows.
@@ -113,21 +114,20 @@ export function TaskDetail({ task, detail, onClose }: { task: TaskView; detail: 
           </span>
           {waitingOnYou ? <RecordingFor actors={actors} value={recordFor} onChange={setRecordFor} label={unclaimed || takeOver ? 'Claim for' : 'Done by'} eligible={eligible ?? undefined} /> : null}
           {unclaimed || takeOver ? (
-            <button type="button" className="btn" disabled={claim.isPending} onClick={() => claim.mutate(undefined)}>
+            <Button disabled={claim.isPending} onClick={() => claim.mutate(undefined)}>
               <Icon name="plus" size={13} />
               {claim.isPending ? 'Claiming…' : 'Claim'}
-            </button>
+            </Button>
           ) : null}
           {waitingOnYou ? (
-            <button
-              type="button"
-              className="btn btn--primary"
+            <Button
+              variant="primary"
               disabled={result.trim() === '' || complete.isPending}
               onClick={() => complete.mutate(undefined, { onSuccess: onClose })}
             >
               <Icon name="check" size={13} />
               {complete.isPending ? 'Saving…' : 'Mark done'}
-            </button>
+            </Button>
           ) : null}
           {holdFailure ? <span className="field__error hold-refusal" role="alert">{describeError(holdFailure).detail}</span> : null}
           {holdOffered ? <HoldButton task={task} missionId={detail.mission.id} onOpen={onClose} /> : null}
@@ -135,14 +135,14 @@ export function TaskDetail({ task, detail, onClose }: { task: TaskView; detail: 
             <>
               {/* The panel's order: Continue, then Release. Only the holder may continue; anyone else can release. */}
               {task.hold.heldBy === actors.meId ? (
-                <button type="button" className="btn btn--primary" disabled={cont.isPending || release.isPending} onClick={() => cont.mutate(undefined)}>
+                <Button variant="primary" disabled={cont.isPending || release.isPending} onClick={() => cont.mutate(undefined)}>
                   <Icon name="play" size={13} />
                   {cont.isPending ? 'Continuing…' : 'Continue'}
-                </button>
+                </Button>
               ) : null}
-              <button type="button" className="btn" disabled={cont.isPending || release.isPending} onClick={() => release.mutate(undefined)}>
+              <Button disabled={cont.isPending || release.isPending} onClick={() => release.mutate(undefined)}>
                 {release.isPending ? 'Releasing…' : 'Release'}
-              </button>
+              </Button>
             </>
           ) : null}
           {canRequestChanges ? (
@@ -153,9 +153,9 @@ export function TaskDetail({ task, detail, onClose }: { task: TaskView; detail: 
               outputs={liveOutputs(task)}
             />
           ) : null}
-          <button type="button" className="btn btn--primary" onClick={onClose}>
+          <Button variant="primary" onClick={onClose}>
             Close
-          </button>
+          </Button>
         </>
       }
     >
@@ -191,10 +191,10 @@ export function TaskDetail({ task, detail, onClose }: { task: TaskView; detail: 
                 </label>
               ))}
               <div>
-                <button type="button" className="btn" disabled={extra.length === 0 || widen.isPending} onClick={() => widen.mutate(undefined, { onSuccess: onClose })}>
+                <Button disabled={extra.length === 0 || widen.isPending} onClick={() => widen.mutate(undefined, { onSuccess: onClose })}>
                   <Icon name="refresh" size={13} />
                   {widen.isPending ? 'Retrying…' : `Retry with ${extra.length || ''} more`.trim()}
-                </button>
+                </Button>
               </div>
               {widen.isError ? <ErrorState error={widen.error} /> : null}
             </div>
@@ -202,7 +202,7 @@ export function TaskDetail({ task, detail, onClose }: { task: TaskView; detail: 
         ) : null}
 
         {waitingOnYou ? (
-          <div className="card" style={{ borderColor: 'var(--accent-line)' }}>
+          <Card style={{ borderColor: 'var(--accent-line)' }}>
             <div className="stack" style={{ gap: 'var(--s3)' }}>
               <div style={{ fontWeight: 600 }}>
                 {unclaimed
@@ -230,7 +230,7 @@ export function TaskDetail({ task, detail, onClose }: { task: TaskView; detail: 
               {complete.isError ? <ErrorState error={complete.error} /> : null}
               {claim.isError ? <ErrorState error={claim.error} /> : null}
             </div>
-          </div>
+          </Card>
         ) : null}
 
         <div className="row row--wrap">
@@ -258,10 +258,10 @@ export function TaskDetail({ task, detail, onClose }: { task: TaskView; detail: 
           <div className="row" aria-label="Activity">
             <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Last activity {quietFor(task.watch.quietForMs)} ago</span>
             {task.watch.level === 'active' ? null : (
-              <span className="badge badge--blocked" title={`No output for ${quietFor(task.watch.quietForMs)}; quiet after ${quietFor(task.watch.quietAfterMs)}, asked about after ${quietFor(task.watch.silentAfterMs)}.`}>
+              <Badge tone="blocked" title={`No output for ${quietFor(task.watch.quietForMs)}; quiet after ${quietFor(task.watch.quietAfterMs)}, asked about after ${quietFor(task.watch.silentAfterMs)}.`}>
                 <span className="dot dot--blocked" />
                 Quiet
-              </span>
+              </Badge>
             )}
           </div>
         ) : null}
@@ -287,7 +287,7 @@ export function TaskDetail({ task, detail, onClose }: { task: TaskView; detail: 
 
         {/* Under the reason it stopped, so the note can answer it. */}
         {canRetry ? (
-          <div className="card retry-note">
+          <Card className="retry-note">
             <textarea
               className="textarea"
               rows={2}
@@ -299,20 +299,20 @@ export function TaskDetail({ task, detail, onClose }: { task: TaskView; detail: 
             {retryNote.trim().length > 4000 ? <span className="field__error">At most 4000 characters.</span> : null}
             <div className="retry-note__row">
               {retry.isError ? <ErrorState error={retry.error} /> : null}
-              <button type="button" className="btn" disabled={retry.isPending || retryNote.trim().length > 4000} onClick={() => retry.mutate(undefined, { onSuccess: () => setRetryNote('') })}>
+              <Button disabled={retry.isPending || retryNote.trim().length > 4000} onClick={() => retry.mutate(undefined, { onSuccess: () => setRetryNote('') })}>
                 <Icon name="refresh" size={13} />
                 {retry.isPending ? 'Retrying…' : retryNote.trim() === '' ? 'Retry task' : 'Retry with this note'}
-              </button>
+              </Button>
             </div>
-          </div>
+          </Card>
         ) : null}
 
         {canSaveCase ? (
           <div className="row">
-            <button type="button" className="btn btn--ghost" onClick={() => setSavingCase(true)}>
+            <Button variant="ghost" onClick={() => setSavingCase(true)}>
               <Icon name="target" size={13} />
               Save as eval case
-            </button>
+            </Button>
           </div>
         ) : null}
         {savingCase ? <SaveCaseDialog task={task} onClose={() => setSavingCase(false)} /> : null}
@@ -433,7 +433,7 @@ function StaffingBlock({ task, detail, actors }: { task: TaskView; detail: Missi
   const chain = (preview.data?.escalation ?? []).filter((a) => a.id !== responsibleId);
 
   return (
-    <div className="card staffblock">
+    <Card className="staffblock">
       <div className="row row--wrap" style={{ gap: 'var(--s2)', fontSize: 'var(--fs-sm)' }}>
         {task.assignee || task.responsible || task.claimable.length > 0 || task.wouldBe ? (
           <TaskPeople task={task} actors={actors} />
@@ -452,9 +452,9 @@ function StaffingBlock({ task, detail, actors }: { task: TaskView; detail: Missi
         <div className="spacer" />
         {task.staffingOverride ? <span className="chip chip--muted">override</span> : null}
         {started ? null : (
-          <button type="button" className="btn btn--ghost" aria-expanded={editing} onClick={() => setEditing((v) => !v)}>
+          <Button variant="ghost" aria-expanded={editing} onClick={() => setEditing((v) => !v)}>
             {editing ? 'Close' : 'Change'}
-          </button>
+          </Button>
         )}
       </div>
       {chain.length > 0 ? (
@@ -475,13 +475,13 @@ function StaffingBlock({ task, detail, actors }: { task: TaskView; detail: Missi
           />
           {save.isError ? <ErrorState error={save.error} /> : null}
           <div className="row" style={{ justifyContent: 'flex-end' }}>
-            <button type="button" className="btn" disabled={save.isPending} onClick={() => save.mutate(undefined, { onSuccess: () => setEditing(false) })}>
+            <Button disabled={save.isPending} onClick={() => save.mutate(undefined, { onSuccess: () => setEditing(false) })}>
               {save.isPending ? 'Saving…' : 'Save for this task'}
-            </button>
+            </Button>
           </div>
         </div>
       ) : null}
-    </div>
+    </Card>
   );
 }
 
@@ -511,14 +511,13 @@ function FeedbackThread({ task, missionId, actors }: { task: TaskView; missionId
                     <span className="feedback-thread__author">{actorLabel(item.author, actors.meId)}</span>
                     <span className="chip chip--muted feedback-thread__status">{feedbackStatusLabel(item, task)}</span>
                     {item.status === 'open' || item.status === 'queued' ? (
-                      <button
-                        type="button"
-                        className="btn btn--ghost feedback-thread__action"
+                      <Button
+                        variant="ghost" className="feedback-thread__action"
                         disabled={dismiss.isPending}
                         onClick={() => dismiss.mutate(item.id)}
                       >
                         Dismiss
-                      </button>
+                      </Button>
                     ) : null}
                   </div>
                   <p className="feedback-thread__text">{item.text}</p>
@@ -621,10 +620,10 @@ function HandedOver({ inputs, detail }: { inputs: readonly ArtifactView[]; detai
               </div>
             ) : null}
             <div className="row row--wrap">
-              <button type="button" className="btn btn--ghost" onClick={() => setReading(reading === input.id ? null : input.id)}>
+              <Button variant="ghost" onClick={() => setReading(reading === input.id ? null : input.id)}>
                 <Icon name="file" size={13} />
                 {reading === input.id ? 'Hide full doc' : 'Full doc'}
-              </button>
+              </Button>
               {links.map((link, index) => (
                 <HandoffLinkButton key={index} link={link} workspaceId={workspaceId} className="btn btn--ghost" />
               ))}
