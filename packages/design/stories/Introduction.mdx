@@ -1,0 +1,50 @@
+import { Meta } from '@storybook/addon-docs/blocks';
+import { Logo } from '../src/react';
+
+<Meta title="Introduction" />
+
+<div className="sb-row" style={{ gap: 'var(--s3)', marginBottom: 'var(--s4)' }}>
+  <Logo size={40} title="Tandemise" />
+  <span style={{ fontSize: 'var(--fs-xl)', fontWeight: 650 }}>Tandemise design system</span>
+</div>
+
+Every token and component of [`@tandemise/design`](https://github.com/tandemise/tandemise/tree/main/packages/design),
+the system the Tandemise desktop app is built from. Use the toolbar to switch the
+**Theme** (light, dark, or system: no `data-theme`, the OS decides) and the
+**Density** (comfortable or compact). The **Accessibility** panel runs axe on
+every story.
+
+## Where to look
+
+- **Foundations**: colour (the palette, the roles in both themes, every promised
+  contrast pair measured), typography, spacing, radius, elevation, z-index,
+  motion, the focus ring, the icons and the logo. Each page reads its values
+  from the package, so it cannot go stale.
+- **Components**: one page per React component in `@tandemise/design/react`,
+  with controls for every variant, size and state.
+- **In context**: the components composed the way the desktop composes them (a
+  task card, a confirm dialog, a settings section, a project board). Look here
+  first after changing a token.
+
+## Using the package
+
+```tsx
+import '@tandemise/design/tokens.css';
+import '@tandemise/design/base.css';
+import '@tandemise/design/components.css';
+import { Button, Dialog, Field, StatusPill } from '@tandemise/design/react';
+```
+
+The rules (colour is a role, never a hue; raw colours only in `tokens.ts`; no
+`var()` fallbacks; contrast is measured) are in the package README and in
+`docs/DESIGN_SYSTEM.md`. `npm run check:design` enforces them, on these stories
+too.
+
+## Running it
+
+```bash
+npm run build                                  # once: the workspace builds before Storybook starts
+npm run -w @tandemise/design storybook         # http://localhost:6006
+npm run -w @tandemise/design storybook:build   # static site in packages/design/storybook-static
+npm run -w @tandemise/design storybook:a11y    # axe on every story, light and dark, headless (after storybook:build)
+```

@@ -1,0 +1,20 @@
+import { Meta } from '@storybook/addon-docs/blocks';
+import { ControlHeights, DensityDemo, SpaceScale } from './blocks';
+
+<Meta title="Foundations/Spacing" />
+
+# Spacing and density
+
+A 4pt scale. Gaps, padding and margins take a step from it, never a literal.
+
+<SpaceScale />
+
+## Control heights and density
+
+Buttons, inputs and selects take their height from `--control-h-*`.
+`data-density="compact"` (on `<html>` or any element) swaps in the compact set;
+try the **Density** switch in the toolbar.
+
+<ControlHeights />
+
+<DensityDemo />

@@ -1,0 +1,56 @@
+import { Meta } from '@storybook/addon-docs/blocks';
+import { ContrastPairs, Palette, Roles } from './blocks';
+
+<Meta title="Foundations/Colour" />
+
+# Colour
+
+Two layers. The **palette** is hues, derived from five brand anchors in OKLCH;
+only the roles read it. The **roles** say what a colour is for, written once for
+both themes as `light-dark(<light>, <dark>)`. Apps and components read roles
+only: ask for `--status-failed` or `--accent`, never for "red" or a hex value.
+
+## Semantic roles
+
+Each role in both themes, with its resolved value.
+
+### Surfaces
+
+<Roles prefix={['canvas', 'surface', 'scrim']} />
+
+### Text and borders
+
+<Roles prefix={['text', 'border', 'focus-ring']} />
+
+### Accent
+
+<Roles prefix="accent" />
+
+### Status
+
+Every `--status-*` is at least 4.5:1 on `--surface`, so it works as text as well
+as a dot. `-soft` is the wash behind a badge, `-line` its border.
+
+<Roles prefix="status" />
+
+### Risk, presence and tooltips
+
+<Roles prefix={['risk', 'presence', 'tooltip']} />
+
+### Identity tints, the logo and the terminal
+
+<Roles prefix={['tint', 'logo', 'terminal']} />
+
+## Contrast pairs
+
+What the system promises (`CONTRAST_PAIRS` in `src/contrast.ts`), measured here
+in both themes. Each sample is the text role drawn on its surface.
+`npm run check:design` fails the build if any pair drops below its ratio.
+
+<ContrastPairs />
+
+## Palette
+
+The hues behind the roles. Never read these from an app.
+
+<Palette />
