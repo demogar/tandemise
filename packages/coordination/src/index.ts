@@ -5,3 +5,8 @@ export * from './item-ref.js';
 export * from './rules.js';
 export * from './secrets.js';
 export * from './store.js';
+export * from './mailbox.js';
+export * from './handshake.js';
+export * from './retention.js';
+export * from './transfer.js';
+export * from './local.js';

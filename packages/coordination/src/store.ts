@@ -1,12 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import type {
-  ClaimEndReason, ClaimRequest, ClaimView, CoordDeviceView, CoordMemberView, PresenceView, RedeemInviteResponse,
-  RelayErrorReason, RelayRole, RelayTeam,
+  ClaimEndReason, ClaimRequest, ClaimView, CoordDeviceView, CoordMemberView, CreateEndpointRequest, EndpointView, MailboxMessage,
+  PresenceView, RedeemInviteResponse, RelayErrorReason, RelayRole, RelayTeam,
 } from '@tandemise/api-contract/relay';
 import type { SqlHandle, SqlStatement } from './sql.js';
 import { hashSecret, newDeviceToken, newInviteCode, normalizeInviteCode, safeEqualHex } from './secrets.js';
 import { DEFAULT_STALE_AFTER_MS, INVITE_TTL_DAYS, presenceOf, takeOverRefusal } from './rules.js';
 import { normalizeItemRef } from './item-ref.js';
+import * as mailbox from './mailbox.js';
+import { DEFAULT_RETENTION, type EndpointRow, type RetentionPolicy, type StoredRequest } from './mailbox.js';
 
 /** A refusal the store makes on purpose. `reason` is one of the contract's relay reasons. */
 export class CoordError extends Error {
@@ -81,6 +83,9 @@ export class CoordinationStore {
   readonly db: SqlHandle;
   readonly clock: () => Date;
   readonly #statements = new Map<string, SqlStatement>();
+  /** Where webhook URLs point: the relay's public URL, or the daemon's own `/v1`. */
+  hooksBase = '';
+  retention: RetentionPolicy = DEFAULT_RETENTION;
 
   constructor(db: SqlHandle, clock: () => Date = () => new Date()) {
     this.db = db;
@@ -438,5 +443,54 @@ export class CoordinationStore {
   presence(): PresenceView[] {
     return (this.stmt(`SELECT * FROM coord_presence ORDER BY device_id`).all() as { device_id: string; member_id: string; status: 'online' | 'away'; last_seen_at: string }[])
       .map((r) => ({ deviceId: r.device_id, memberId: r.member_id, status: r.status, lastSeenAt: r.last_seen_at }));
+  }
+
+  // ---- endpoints and the mailbox (mailbox.ts)
+
+  createEndpoint(input: CreateEndpointRequest & { createdBy: string | null }, hooksBase?: string): EndpointView {
+    if (hooksBase !== undefined) this.hooksBase = hooksBase;
+    return mailbox.createEndpoint(this, input);
+  }
+
+  disableEndpoint(id: string): void {
+    mailbox.disableEndpoint(this, id);
+  }
+
+  endpointBySlug(slug: string): EndpointRow | null {
+    return mailbox.endpointBySlug(this, slug);
+  }
+
+  endpoint(id: string): EndpointRow | null {
+    return mailbox.endpointRow(this, id);
+  }
+
+  endpoints(projectKeys?: readonly string[]): EndpointView[] {
+    return mailbox.listEndpoints(this, projectKeys);
+  }
+
+  storeRequest(endpointId: string, req: StoredRequest): { id: string } {
+    return mailbox.storeRequest(this, endpointId, req);
+  }
+
+  pull(projectKey: string, deviceId: string, max: number, leaseSeconds: number): MailboxMessage[] {
+    return mailbox.pull(this, projectKey, deviceId, max, leaseSeconds);
+  }
+
+  ack(ids: readonly string[], deviceId: string): { acked: string[]; ignored: string[] } {
+    return mailbox.ack(this, ids, deviceId);
+  }
+
+  retryParked(id: string): void {
+    mailbox.retryParked(this, id);
+  }
+
+  dropParked(id: string): void {
+    mailbox.dropParked(this, id);
+  }
+
+  /** Unacked, unparked messages waiting for a project. */
+  pendingCount(projectKey: string): number {
+    return (this.stmt(`SELECT COUNT(*) AS n FROM coord_mailbox m JOIN coord_endpoints e ON e.id = m.endpoint_id
+                        WHERE e.project_key = ? AND m.acked_at IS NULL AND m.parked_at IS NULL`).get(projectKey) as { n: number }).n;
   }
 }

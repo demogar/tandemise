@@ -143,6 +143,114 @@ section('store');
   check('seq strictly increases across claim, presence and member writes', seq0 < seq1 && seq1 < seqP && seqP < seqM && seqM < s.seq(), [seq0, seq1, seqP, seqM, s.seq()]);
 }
 
+const freshStore = (iso = '2026-10-30T10:00:00Z') => {
+  const db = openDb();
+  C.migrateCoordination(db);
+  const clock = clockAt(iso);
+  const s = new C.CoordinationStore(db, clock);
+  s.ensureTeam('Team');
+  s.hooksBase = 'https://relay.example.com';
+  return { db, clock, s };
+};
+const req = (body, headers = {}) => ({ method: 'POST', query: '', headers: C.filterWebhookHeaders(headers), contentType: 'application/json', body: Buffer.from(body) });
+
+section('mailbox');
+{
+  const { s, clock } = freshStore();
+  const ep = s.createEndpoint({ projectKey: 'p', name: 'Sentry', source: 'sentry', handshake: 'none', createdBy: null });
+  check('an endpoint has a public URL', ep.url === `https://relay.example.com/hooks/${ep.slug}`, ep.url);
+  const headers = C.filterWebhookHeaders({ cookie: 'a', authorization: 'b', 'sentry-hook-signature': 's', 'x-forwarded-for': '1', connection: 'close' });
+  check('cookies, credentials and hop-by-hop headers are dropped; signatures kept', JSON.stringify(Object.keys(headers).sort()) === JSON.stringify(['sentry-hook-signature', 'x-forwarded-for']), headers);
+  const m1 = s.storeRequest(ep.id, req('{"x":1}', { 'sentry-hook-signature': 's' })).id;
+  const a = s.pull('p', 'A', 10, 30);
+  check('device A leases the message', a.length === 1 && a[0].id === m1 && Buffer.from(a[0].bodyBase64, 'base64').toString() === '{"x":1}');
+  check('device B gets nothing while A holds it', s.pull('p', 'B', 10, 30).length === 0);
+  clock.advance(31_000);
+  const b = s.pull('p', 'B', 10, 30);
+  check('after the lease, B gets it, second attempt', b.length === 1 && b[0].attempts === 2, b);
+  const ackA = s.ack([m1], 'A');
+  check('A\'s ack of a lost lease is ignored', ackA.ignored[0] === m1 && ackA.acked.length === 0, ackA);
+  const ackB = s.ack([m1], 'B');
+  check('B\'s ack lands', ackB.acked[0] === m1, ackB);
+  check('and the body is gone', s.db.prepare('SELECT body, body_bytes FROM coord_mailbox WHERE id = ?').get(Number(m1)).body === null);
+  const m2 = s.storeRequest(ep.id, req('{"y":2}')).id;
+  for (let i = 0; i < 10; i++) { s.pull('p', 'A', 10, 1); clock.advance(2000); }
+  check('the 11th pull parks it', s.pull('p', 'A', 10, 1).length === 0);
+  check('the endpoint shows one parked', s.endpoints()[0].parked === 1, s.endpoints()[0]);
+  s.retryParked(m2);
+  check('retry makes it pullable again', s.pull('p', 'A', 10, 30).length === 1);
+  s.ack([m2], 'A');
+  // sweep
+  s.storeRequest(ep.id, req('{"old":1}'));
+  clock.advance(25 * H);
+  let swept = C.sweep(s, C.DEFAULT_RETENTION);
+  check('acked rows older than 24 h are deleted', swept.deletedAcked === 2, swept);
+  clock.advance(14 * 24 * H);
+  swept = C.sweep(s, C.DEFAULT_RETENTION);
+  check('unacked rows older than 14 days are dropped and counted', swept.expiredUnacked === 1 && s.endpoints()[0].droppedCount === 1, { swept, ep: s.endpoints()[0] });
+  // cap
+  const capped = freshStore();
+  capped.s.retention = { ...C.DEFAULT_RETENTION, maxMessages: 3 };
+  const e2 = capped.s.createEndpoint({ projectKey: 'p', name: 'x', source: 'x', handshake: 'none', createdBy: null });
+  const ids = [1, 2, 3, 4].map((n) => capped.s.storeRequest(e2.id, req(`{"n":${n}}`)).id);
+  const left = capped.s.pull('p', 'A', 50, 30).map((m) => m.id);
+  check('the cap drops the oldest unacked', JSON.stringify(left) === JSON.stringify(ids.slice(1)) && capped.s.endpoints()[0].dropFlag === true, { left, ids });
+  // handshakes
+  const q = (o) => new URLSearchParams(o);
+  const hub = { handshake: 'meta_hub', handshakeSecret: 'vt' };
+  const ok = C.handshakeResponse(hub, { method: 'GET', query: q({ 'hub.mode': 'subscribe', 'hub.verify_token': 'vt', 'hub.challenge': '123' }), contentType: null, body: Buffer.alloc(0) });
+  check('meta hub echoes the challenge with the right token', ok?.status === 200 && ok.body === '123', ok);
+  const bad = C.handshakeResponse(hub, { method: 'GET', query: q({ 'hub.mode': 'subscribe', 'hub.verify_token': 'no', 'hub.challenge': '123' }), contentType: null, body: Buffer.alloc(0) });
+  check('and refuses a wrong one', bad?.status === 403, bad);
+  const echo = C.handshakeResponse({ handshake: 'echo_challenge', handshakeSecret: null }, { method: 'POST', query: q({}), contentType: 'application/json', body: Buffer.from('{"type":"url_verification","challenge":"abc"}') });
+  check('echo challenge echoes', echo?.status === 200 && echo.body === 'abc', echo);
+  check('none is never a handshake', C.handshakeResponse({ handshake: 'none', handshakeSecret: null }, { method: 'GET', query: q({ 'hub.mode': 'subscribe' }), contentType: null, body: Buffer.alloc(0) }) === null);
+}
+
+section('transfer');
+{
+  const src = freshStore();
+  const ana = src.s.createMember({ displayName: 'Ana', role: 'admin' });
+  const dev = src.s.createDevice(ana.id, 'laptop').device;
+  for (const n of [7, 8]) src.s.claim({ projectKey: 'p', itemRef: `github:acme/app#${n}`, itemTitle: `#${n}`, itemUrl: null, localRef: `m${n}`, memberId: ana.id, deviceId: dev.id });
+  const ep = src.s.createEndpoint({ projectKey: 'p', name: 'Sentry', source: 'sentry', handshake: 'none', createdBy: ana.id });
+  src.s.storeRequest(ep.id, req('{"hello":1}'));
+  const lines = C.exportLines(src.s);
+  check('the export starts with its meta line', JSON.parse(lines[0]).kind === 'meta' && JSON.parse(lines[0]).schemaVersion === 1);
+  const dst = freshStore();
+  const report = C.importLines(dst.s, lines, 'empty', null);
+  const shape = (s) => s.activeClaims().map((c) => [c.itemRef, c.memberId, c.localRef, c.memberName]);
+  check('active claims round-trip', JSON.stringify(shape(dst.s)) === JSON.stringify(shape(src.s)), { a: shape(src.s), b: shape(dst.s) });
+  check('endpoint slugs round-trip', dst.s.endpoints()[0]?.slug === ep.slug && report.endpoints === 1);
+  const body = dst.s.pull('p', 'A', 10, 30).map((m) => Buffer.from(m.bodyBase64, 'base64').toString());
+  check('message bodies round-trip', JSON.stringify(body) === JSON.stringify(['{"hello":1}']) && report.messages === 1, body);
+  const before = dst.s.seq();
+  check('importing into a store with data is refused', reasonOf(() => C.importLines(dst.s, lines, 'empty', null)) === 'relay_not_empty');
+  check('and writes nothing', dst.s.seq() === before && dst.s.endpoints().length === 1);
+  const bo = dst.s.createMember({ displayName: 'Bo', role: 'member' });
+  const boDev = dst.s.createDevice(bo.id, 'bo').device;
+  const own = C.importLines(dst.s, lines, 'own-claims', { memberId: bo.id, deviceId: boDev.id });
+  check('own-claims reports a held item with its holder', own.claims.length === 2 && own.claims.every((c) => c.result === 'held' && c.holderName === 'Ana'), own);
+}
+
+section('local');
+{
+  const db = openDb();
+  C.migrateCoordination(db);
+  const s = new C.CoordinationStore(db, clockAt('2026-10-30T10:00:00Z'));
+  const l1 = new C.LocalCoordination(s, { displayName: 'Dee', deviceLabel: 'Dee laptop' });
+  new C.LocalCoordination(s, { displayName: 'Dee', deviceLabel: 'Dee laptop' });
+  check('constructing twice makes one member and one device', s.members().length === 1 && s.devices().length === 1, { m: s.members().length, d: s.devices().length });
+  check('the local person is the admin, and online', s.members()[0].role === 'admin' && s.members()[0].presence === 'online');
+  check('status is local', l1.status().kind === 'local' && l1.mode === 'local');
+  const item = { projectKey: 'p', itemRef: 'github:acme/app#7', itemTitle: 'x', itemUrl: null };
+  const first = await l1.claim({ ...item, localRef: 'm1' });
+  const again = await l1.claim({ ...item, localRef: 'm1' });
+  const second = await l1.claim({ ...item, localRef: 'm2' });
+  check('claiming', first.kind === 'claimed' && again.kind === 'claimed' && again.claim.id === first.claim.id);
+  check('a second mission on the same item is held by you', second.kind === 'held_by' && second.self === true && second.sentence === "You're already working on this on Dee laptop.", second);
+}
+
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) {
   console.log(failures.map((f) => `  - ${f}`).join('\n'));
