@@ -15,6 +15,32 @@ up — the branch *is* the reviewable artifact — but nothing removes them eith
 After a dozen missions expect a dozen stale `tandemise/*` branches and their
 worktrees. Remove them with `git worktree remove` and `git branch -D`.
 
+**No OS credential store on Linux or Windows.** On macOS a token you hand
+Tandemise (a YouTrack token, a source's secret) goes in the Keychain. On Linux
+and Windows it is written to `~/.tandemise/secrets.json` in plain text, with
+mode `0600`, and the daemon logs a `secrets.file_backend` warning on start
+(`apps/daemon/src/secrets.ts`). Tokens for `gh` and `claude` are never stored:
+those CLIs keep their own sessions.
+
+**The installers are not signed.** macOS builds are ad-hoc signed and Windows
+builds are unsigned, so Gatekeeper and SmartScreen warn on first open. Signing
+is wired in `.github/workflows/desktop-packages.yml` and turns on when the
+certificates are added as secrets (see CONTRIBUTING.md). v0.9.0 was released
+before the packaging workflow and has no installers.
+
+**Only the Linux installers have been driven end to end.** The AppImage and
+the .deb were run with no Node on `PATH` and driven over CDP through
+connecting, creating a project and typing into a hold terminal
+(`scratch/packaged-live-check.mjs`, evidence in
+`docs/superpowers/evidence/2026-10-31-packaging/`). The macOS and Windows
+installers are built by CI, where arm64 macOS and Windows x64 load the native
+modules as a build-time check; neither has been opened as an app on a real
+machine yet.
+
+**Hold needs Claude Code.** Only a runtime that can resume a session
+interactively can be held: today, Claude Code (and the scripted fake runtime
+used by the checks). Codex and generic CLI runtimes cannot.
+
 ## Behaviour worth knowing
 
 **Non-isolated tasks run in your actual checkout.** Product, design,

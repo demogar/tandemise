@@ -1,7 +1,9 @@
 # Tandemise — Build Brief for Contributors
 
-Read this before writing any code. `MVP.md` at the repo root is the product and
-architecture specification; this file is the engineering contract.
+Read this before writing any code. `MVP.md` at the repo root is the original
+product and architecture specification, and `docs/superpowers/specs/` holds the
+design of each feature built since (the software-factory pivot starts at
+`2026-10-30-tandemise-pivot-notes.md`); this file is the engineering contract.
 
 ## Non-negotiables
 

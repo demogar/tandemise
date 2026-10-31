@@ -6,7 +6,8 @@ node scratch/acceptance/p0/run-all.mjs [--p1 | --p2] [--skip-claude] [--keep-goi
 
 `--keep-painting` (or `ACCEPTANCE_KEEP_PAINTING=1`) is for a machine whose display goes idle during the run: an
 undriven window stops producing frames, and a scenario waiting on one (hold's terminal `paint`) stalls.
-`lib/frame-pump.mjs` then asks the window for a tiny screenshot once a second. Every suite's run-all takes it.
+`lib/frame-pump.mjs` then asks the window for a tiny screenshot once a second. The p0, integrated, hold, brain,
+intake, planner and relay run-alls take it.
 
 Each run starts from a fresh install: a new `TANDEMISE_HOME` behind `/tmp/tdm-p0`, the daemon
 built from this checkout, and the real desktop window (`electron-vite dev`, CDP on 9333). It then

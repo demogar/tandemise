@@ -12,7 +12,10 @@ branch to a release.
 
 ## Development setup
 
-Tandemise needs **Node 22** (see `.nvmrc`) and macOS for the desktop app and native helper.
+Tandemise needs **Node 22** (see `.nvmrc`). Development happens on macOS and
+Linux; only the native helper for macOS app control (`native/macos-helper`,
+`packages/desktop-control`) needs macOS. Windows installers are built in CI
+but the app has not been driven on a real Windows machine yet.
 
 ```bash
 nvm use
@@ -41,13 +44,63 @@ Run what CI runs:
 npm run ci
 ```
 
-That builds every package, enforces the architecture boundaries
-(`npm run check:boundaries`), holds the desktop app to its design system
-(`npm run check:design`, see `docs/DESIGN_SYSTEM.md`), rejects dependencies whose license
-does not fit Apache-2.0 (`npm run check:licenses`), typechecks the desktop app, and runs the offline
-end-to-end checks (`npm run check:offline`). The checks that need a signed-in
-runtime, a browser or macOS permissions are listed in `docs/QUICKSTART.md`.
-Run the ones that cover your change by hand.
+That runs, in order:
+
+| Step | What it fails on |
+| --- | --- |
+| `npm run build` | a TypeScript error in any package or app |
+| `npm run check:boundaries` | a `packages/*` import that is undeclared or goes to an equal or higher layer; a provider module (`electron`, `better-sqlite3`, `child_process`, …) in a core package; a renderer value import of a `@tandemise/*` package that is not a listed pure subpath or a UI package; `@tandemise/design` importing anything outside itself (`react` only under `src/react/`); `apps/relay` importing beyond its allowlist; `packages/application` importing the coordination store instead of `@tandemise/coordination/rules`. It does not read the desktop's main process or the daemon. |
+| `npm run check:design` | the design system rules in `docs/DESIGN_SYSTEM.md`: stale emitted tokens or a contrast pairing below its ratio, a colour literal outside `tokens.ts`, an undefined or fallback `var()`, a React component of `@tandemise/design` with no Storybook story, a token name Tailwind keeps for itself, a native `title` attribute in the renderer (use `Tooltip`) |
+| `npm run check:licenses` | a dependency whose license does not fit Apache-2.0 |
+| `npm run check:windows-hide` | a `node:child_process` call in `apps/*/src` or `packages/*/src` without `windowsHide: true` |
+| `npm run -w @tandemise/desktop typecheck` | a type error in the desktop app |
+| `npm run check:offline` | any offline end-to-end check in `scratch/` (the list is `OFFLINE_CHECKS` in `scripts/run-checks.mjs`). It includes `version-check`: every `apps/*` and `packages/*` package must be listed in `release-please-config.json` and be at the manifest's version. |
+
+`node scripts/run-checks.mjs <name>` runs one offline check. The checks that
+need a signed-in runtime, a browser or macOS permissions are listed in
+`docs/QUICKSTART.md`; run the ones that cover your change by hand.
+`p3-contributions-check` needs a global git identity (CI sets one); do not
+change your own global git config just to make it pass locally.
+
+A change to `packages/design` also needs the Storybook job, which CI runs
+separately. WCAG 2.1 AA is the minimum for every component, in light and dark:
+
+```bash
+npm run -w @tandemise/design storybook:typecheck
+npm run -w @tandemise/design storybook:build
+npm run -w @tandemise/design storybook:a11y      # axe and play functions on every story, light and dark
+```
+
+`storybook:a11y` drives a local Chrome or Chromium (set `CHROME_PATH` to pick
+one). On `main`, CI publishes the Storybook to
+https://tandemise.github.io/tandemise/.
+
+### Proving it in the real app
+
+UI and behaviour changes are proven in the real window, not only by the checks
+above. Each feature has a real-app acceptance suite under `scratch/acceptance/`:
+a fresh `TANDEMISE_HOME`, the daemon from your build, `electron-vite dev` driven
+over CDP, and evidence (`REPORT.md`, screenshots) written to the suite's folder
+or to `docs/superpowers/evidence/`. Run `npm run build` first.
+
+| Suite | Proves |
+| --- | --- |
+| `scratch/acceptance/integrated/run-all.mjs` | the pivot end to end: intake → Board → Start → hold → pull request → tracker → who's working on what |
+| `scratch/acceptance/p0/run-all.mjs` | a mission with your agents, every decision made in the window ([README](scratch/acceptance/p0/README.md)) |
+| `scratch/acceptance/hold/run-all.mjs` | hold and interact; with `claude` on `PATH`, one scenario also on real Claude Code |
+| `scratch/acceptance/brain/run-all.mjs` | two installations sharing one brain |
+| `scratch/acceptance/intake/run-all.mjs` | intake into the tracker and closing the loop (`--real-youtrack` is opt-in) |
+| `scratch/acceptance/planner/run-all.mjs` | lanes, "Why these steps", the ship step and its merge decision |
+| `scratch/acceptance/relay/run-all.mjs` | two windows and one relay |
+| `p3`, `p3-evals`, `p5` … `p16`, `about`, `daemon-retry`, `plan-fit`, `replan` | the earlier features, one suite each |
+
+Most suites take `--keep-going` and `--only=<ids>`. `p0`, `integrated`, `hold`,
+`brain`, `intake`, `planner` and `relay` also take `--keep-painting` (or
+`ACCEPTANCE_KEEP_PAINTING=1`): on a machine whose display goes idle during the
+run, an undriven window stops painting and a scenario that waits for a frame
+(the hold terminal) stalls, so the suite asks the window for a tiny screenshot
+once a second. `scratch/desktop-live-check.mjs` is the smallest example of the
+pattern.
 
 The optional team relay (`apps/relay`) is checked by `relay-check` (the server
 from its build: invites, racing claims, the stream, take-over, the webhook
