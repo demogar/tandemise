@@ -8,7 +8,7 @@ import type {
   ClaimView, CoordDeviceView, CoordMemberView, CreateEndpointRequest, CreateInviteRequest, EndpointView, ImportReport, MailboxMessage, PresenceView,
 } from '@tandemise/api-contract/relay';
 import {
-  ChangeEmitter, CoordinationStore, LocalCoordination, exportLines, filterWebhookHeaders, handshakeResponse, migrateCoordination,
+  ChangeEmitter, CoordinationStore, LocalCoordination, exportLines, filterWebhookHeaders, handshakeResponse, migrateCoordination, parkedMessages,
   migrateCoordinationDaemon, type SqlHandle,
 } from '@tandemise/coordination';
 
@@ -48,9 +48,12 @@ export interface RelayHandle extends CoordinationPort {
   retryParked(id: string): Promise<void>;
   dropParked(id: string): Promise<void>;
   endpoints(): readonly EndpointView[];
+  parked(): Promise<{ id: string; endpointId: string; receivedAt: string; lastDeviceId: string | null }[]>;
   failures(): readonly { id: string; op: string; lastError: string }[];
   /** Back to solo: own active claims become local ones; other rows stay, marked as last seen from the relay. */
   handBack(local: LocalCoordination): void;
+  /** On connect: own local claims become pending relay claims, sent with normal claim semantics. */
+  adoptLocal(localMe: ReturnType<LocalCoordination['me']>): void;
 }
 
 export interface RelayFactoryInput {
@@ -135,7 +138,7 @@ export class SwitchableCoordination implements CoordinationPort, CoordinationCon
   async resume(): Promise<void> {
     const s = this.settings();
     if (s.mode !== 'relay' || !s.relayUrl || !s.deviceTokenRef || this.#factory === null) return;
-    this.#swapIn(this.#factory.create({ store: this.store, url: s.relayUrl, token: () => this.#token(), settings: s, log: this.#log }));
+    void this.#swapIn(this.#factory.create({ store: this.store, url: s.relayUrl, token: () => this.#token(), settings: s, log: this.#log }));
   }
 
   async #token(): Promise<string> {
@@ -145,11 +148,11 @@ export class SwitchableCoordination implements CoordinationPort, CoordinationCon
     return token;
   }
 
-  #swapIn(relay: RelayHandle): void {
+  #swapIn(relay: RelayHandle): Promise<void> {
     this.#relay = relay;
     relay.onChange((t) => this.#emitter.emit(t));
-    void relay.start().catch((e: unknown) => this.#log.warn('relay.start_failed', { error: String(e) }));
     this.#emitter.emit('claims');
+    return relay.start().catch((e: unknown) => this.#log.warn('relay.start_failed', { error: String(e) }));
   }
 
   #current(): CoordinationPort {
@@ -238,8 +241,8 @@ export class SwitchableCoordination implements CoordinationPort, CoordinationCon
     });
     this.#setRelayHandle(`${url.host}/${joined.memberId}`);
     const relay = this.#factory.create({ store: this.store, url: base, token: () => this.#token(), settings: this.settings(), log: this.#log });
-    this.#swapIn(relay);
-    await relay.start().catch(() => undefined);
+    relay.adoptLocal(this.#local.me());
+    await this.#swapIn(relay);
     return relay.status();
   }
 
@@ -249,7 +252,7 @@ export class SwitchableCoordination implements CoordinationPort, CoordinationCon
 
   async importLocal(): Promise<ImportReport> {
     if (this.#relay === null) throw new TandemiseError('PRECONDITION_FAILED', 'Connect to a team relay first.');
-    return this.#relay.importLocal(exportLines(this.store, { claimsOf: this.#local.me().memberId }));
+    return this.#relay.importLocal(exportLines(this.store, { claimsOf: this.#relay.me().memberId }));
   }
 
   async disconnect(): Promise<void> {
@@ -298,6 +301,10 @@ export class SwitchableCoordination implements CoordinationPort, CoordinationCon
 
   endpoints(): readonly EndpointView[] {
     return this.#relay?.endpoints() ?? this.store.endpoints();
+  }
+
+  async parked() {
+    return this.#relay !== null ? this.#relay.parked() : parkedMessages(this.store);
   }
 
   failures() {

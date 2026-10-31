@@ -308,6 +308,16 @@
           "type": "json",
           "path": "package-lock.json",
           "jsonpath": "$.packages[\"apps/relay\"].version"
+        },
+        {
+          "type": "json",
+          "path": "packages/coordination-relay/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "package-lock.json",
+          "jsonpath": "$.packages[\"packages/coordination-relay\"].version"
         }
       ]
     }

@@ -1202,8 +1202,8 @@ export type RoleModelSummaryView = RoleModelSummary;
 /** Where this install's coordination stands: local only, or with a team relay. */
 export type CoordinationStatusView =
   | { readonly kind: 'local' }
-  | { readonly kind: 'connected'; readonly host: string; readonly teamName: string; readonly role: 'admin' | 'member'; readonly offerImport: boolean }
-  | { readonly kind: 'offline'; readonly since: string; readonly pendingOps: number; readonly host: string; readonly teamName: string; readonly role: 'admin' | 'member' }
+  | { readonly kind: 'connected'; readonly host: string; readonly teamName: string; readonly role: 'admin' | 'member'; readonly memberId: string; readonly offerImport: boolean }
+  | { readonly kind: 'offline'; readonly since: string; readonly pendingOps: number; readonly host: string; readonly teamName: string; readonly role: 'admin' | 'member'; readonly memberId: string }
   | { readonly kind: 'refused'; readonly reason: string; readonly host: string };
 
 /** One row of "Who's working on what". */

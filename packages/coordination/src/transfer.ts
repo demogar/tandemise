@@ -76,7 +76,7 @@ export function importLines(
     return { claims, endpoints: 0, messages: 0 };
   }
   return store.tx(() => {
-    if (!store.isEmpty()) throw new CoordError('relay_not_empty', 'This relay already has data, so only your own claims can be brought up.');
+    if (!store.isEmpty(actor?.memberId)) throw new CoordError('relay_not_empty', 'This relay already has data, so only your own claims can be brought up.');
     let endpoints = 0;
     let messages = 0;
     const meta = parsed[0] as Extract<CoordinationExportLine, { kind: 'meta' }>;

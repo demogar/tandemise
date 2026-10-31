@@ -15,7 +15,7 @@ import {
   applySetupRequest, exportSetupRequest, previewSetupRequest,
   parkTaskRequest, handBackRequest, resolveWorkspaceLinkRequest,
   createEvalSuiteRequest, saveEvalCaseRequest, startEvalRunRequest, runScoresQuery,
-  connectRelayRequest, coordinationEndpointRequest, coordinationPullRequest, takeOverClaimRequest,
+  connectRelayRequest, coordinationEndpointRequest, coordinationPullRequest, projectKeyRequest, takeOverClaimRequest,
 } from '@tandemise/api-contract';
 import type { EvalSuiteView } from '@tandemise/api-contract';
 import { normalizeLimits } from '@tandemise/domain';
@@ -426,6 +426,12 @@ export function buildRouter(services: TandemiseServices, options: { readonly tes
     throw TandemiseError.validation('Say which workspace or project.');
   };
   r.get('/v1/coordination/status', () => c.status());
+  r.get('/v1/coordination/project-key', (ctx) => ({ projectKey: c.projectKey(required(ctx, 'workspaceId')) }));
+  r.put('/v1/coordination/project-key', async (ctx) => {
+    const body = await ctx.body(projectKeyRequest);
+    if (!body.workspaceId) throw TandemiseError.validation('Say which workspace.');
+    return { projectKey: c.setProjectKey(body.workspaceId, body.projectKey ?? null) };
+  });
   r.get('/v1/coordination/claims', (ctx) => c.rows(required(ctx, 'workspaceId')));
   r.get('/v1/coordination/members', () => ({ members: c.members(), devices: c.devices() }));
   r.get('/v1/coordination/presence', () => c.presence());
@@ -454,6 +460,7 @@ export function buildRouter(services: TandemiseServices, options: { readonly tes
     return c.createEndpoint({ ...rest, projectKey: projectOf({ workspaceId, projectKey }) });
   });
   r.post('/v1/coordination/endpoints/:id/disable', (ctx) => c.disableEndpoint(ctx.params.id!));
+  r.get('/v1/coordination/messages/parked', () => c.parked());
   r.post('/v1/coordination/messages/:id/retry', (ctx) => c.retryParked(ctx.params.id!));
   r.post('/v1/coordination/messages/:id/drop', (ctx) => c.dropParked(ctx.params.id!));
   r.post('/v1/coordination/mailbox/pull', async (ctx) => {

@@ -23,6 +23,7 @@ export const LAYERS = {
   'integration-mcp': 4,
   browser: 4,
   'desktop-control': 4,
+  'coordination-relay': 4,
   application: 5,
 };
 
@@ -30,7 +31,7 @@ export const LAYERS = {
 export const PROVIDER_PACKAGES = new Set([
   'runtime-claude', 'runtime-codex', 'runtime-generic',
   'execution-local', 'integration-github', 'integration-mcp', 'browser', 'desktop-control',
-  'persistence', 'artifacts',
+  'persistence', 'artifacts', 'coordination-relay',
 ]);
 
 export const PACKAGES = {
@@ -55,6 +56,8 @@ export const PACKAGES = {
   'integration-mcp': { deps: ['shared', 'kernel', 'domain', 'integrations-core'], ext: { zod: '^3.24.1' } },
   browser: { deps: ['shared', 'kernel', 'domain', 'integrations-core'], ext: { playwright: '^1.49.1', zod: '^3.24.1' } },
   'desktop-control': { deps: ['shared', 'domain', 'kernel', 'integrations-core'], ext: {} },
+  // The daemon's relay client (relay spec): a provider, so only bootstrap names it.
+  'coordination-relay': { deps: ['api-contract', 'coordination'], ext: { ws: '^8.18.0' }, dev: { '@types/ws': '^8.5.13' } },
   application: {
     deps: ['shared', 'kernel', 'domain', 'api-contract', 'policy', 'runtimes-core', 'execution-core', 'integrations-core', 'context', 'evaluation', 'coordination'],
     ext: { zod: '^3.24.1', yaml: '^2.9.1' },

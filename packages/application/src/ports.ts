@@ -319,6 +319,8 @@ export interface CoordinationControlPort {
   retryParked(id: string): Promise<void>;
   dropParked(id: string): Promise<void>;
   endpoints(): readonly EndpointView[];
+  /** Webhooks leased ten times without an ack, with the last computer that tried. */
+  parked(): Promise<readonly { readonly id: string; readonly endpointId: string; readonly receivedAt: string; readonly lastDeviceId: string | null }[]>;
   /** Outbox writes that failed for good, in plain words. */
   failures(): readonly { readonly id: string; readonly op: string; readonly lastError: string }[];
   exportLines(): string[];

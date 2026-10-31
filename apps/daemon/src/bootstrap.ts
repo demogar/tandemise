@@ -53,6 +53,7 @@ import { FileWorkflowSource } from './workflow-source.js';
 import { DaemonSkillFiles } from './skill-files.js';
 import { SwitchableCoordination, type RelayFactory } from './coordination.js';
 import type { SqlHandle } from '@tandemise/coordination';
+import { relayFactory } from '@tandemise/coordination-relay';
 
 export const CLOCK = token<Clock>('Clock');
 export const LOGGER = token<Logger>('Logger');
@@ -182,7 +183,8 @@ export function bootstrap(config: DaemonConfig, options: { readonly localPersonN
     clock,
     log,
     localName: options.localPersonName ?? 'You',
-    relayFactory: options.relayFactory ?? null,
+    // The relay client is a provider: bootstrap is the one place that names it.
+    relayFactory: options.relayFactory === undefined ? relayFactory : options.relayFactory,
     setRelayHandle: (handle) => {
       const me = r.resolve(applicationTokens.IDENTITY).localPerson();
       const handles: Record<string, string> = { ...me.handles };

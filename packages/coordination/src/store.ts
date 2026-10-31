@@ -150,10 +150,14 @@ export class CoordinationStore {
     });
   }
 
-  /** No claims, no endpoints, no mailbox rows, and at most one member: safe to import into. */
-  isEmpty(): boolean {
-    const n = (sql: string) => (this.stmt(sql).get() as { n: number }).n;
-    return n(`SELECT COUNT(*) AS n FROM coord_claims`) === 0
+  /**
+   * No claims, no endpoints, no mailbox rows, and at most one member: safe to
+   * import into. Claims of `owner` don't count: a first admin's own claims,
+   * already sent as they connected, come back unchanged in their import.
+   */
+  isEmpty(owner?: string): boolean {
+    const n = (sql: string, ...p: unknown[]) => (this.stmt(sql).get(...p) as { n: number }).n;
+    return n(`SELECT COUNT(*) AS n FROM coord_claims WHERE member_id <> ?`, owner ?? '') === 0
       && n(`SELECT COUNT(*) AS n FROM coord_endpoints`) === 0
       && n(`SELECT COUNT(*) AS n FROM coord_mailbox`) === 0
       && n(`SELECT COUNT(*) AS n FROM coord_members`) <= 1;

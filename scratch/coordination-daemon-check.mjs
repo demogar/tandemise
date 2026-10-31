@@ -64,7 +64,8 @@ export async function daemonFor(name, displayName) {
   mkdirSync(checkout, { recursive: true });
   execFileSync('git', ['init', '-q', '-b', 'main', checkout]);
   execFileSync('git', ['-C', checkout, '-c', 'user.name=check', '-c', 'user.email=check@example.com', 'commit', '-q', '--allow-empty', '-m', 'init']);
-  const repository = r(app.REPO_REPOSITORY).create({ id: `rep_${name}`, workspaceId: ws, name: 'app', path: checkout, defaultBranch: 'main', remoteUrl: null, checks: D.NO_CHECKS });
+  // Both installs check out the same GitHub repository, so their projects match (the remote names it).
+  const repository = r(app.REPO_REPOSITORY).create({ id: `rep_${name}`, workspaceId: ws, name: 'app', path: checkout, defaultBranch: 'main', remoteUrl: 'https://github.com/acme/app.git', checks: D.NO_CHECKS });
   const links = new Map();
   const linkFor = (number) => {
     if (!links.has(number)) {
@@ -151,6 +152,117 @@ if (!onlyRelay) {
   const after = await until(async () => (await a.api('GET', `/v1/coordination/claims?workspaceId=${a.ws}`)).body.length === 0, 3000);
   check('completing the mission releases the claim', after);
   await a.stop();
+}
+
+{
+  const { startRelay, loadRelayConfig } = await import('../apps/relay/dist/main.js');
+  const relayDb = join(mkdtempSync(join(tmpdir(), 'tcd-relay-')), 'relay.db');
+  const relayEnv = (port) => ({ RELAY_DB: relayDb, RELAY_HOST: '127.0.0.1', RELAY_PORT: String(port), RELAY_TEST_CLOCK: '1', RELAY_LOG_LEVEL: 'error', RELAY_TEAM_NAME: 'Acme' });
+  let relay = await startRelay(loadRelayConfig(relayEnv(0)));
+  const port = relay.port;
+  const relayUrl = `http://127.0.0.1:${port}`;
+  const relayCall = async (token, method, path) => {
+    const res = await fetch(`${relayUrl}${path}`, { method, headers: { authorization: `Bearer ${token}`, 'x-tandemise-relay-api': '1' } });
+    return { status: res.status, body: await res.json().catch(() => null) };
+  };
+
+  section('relay: connect, import, and a held item across two daemons');
+  const a = await daemonFor('a', 'Ana');
+  const b = await daemonFor('b', 'Bruno');
+  const projectKey = (await a.api('GET', `/v1/coordination/project-key?workspaceId=${a.ws}`)).body.projectKey;
+  check('both installs name the project by its repository', projectKey === 'github.com/acme/app' && (await b.api('GET', `/v1/coordination/project-key?workspaceId=${b.ws}`)).body.projectKey === projectKey, projectKey);
+  const a7 = await a.mission(7);
+  await a.api('POST', `/v1/missions/${a7}/start`);
+  check('A, solo, holds #7 locally', (await a.api('GET', `/v1/coordination/claims?workspaceId=${a.ws}`)).body?.[0]?.itemKey === 'acme/app#7');
+  const connectA = await a.api('POST', '/v1/coordination/connect', { url: relayUrl, code: relay.bootstrapInvite, displayName: 'Ana', deviceLabel: 'Ana laptop', allowInsecure: false });
+  check('A connects with the bootstrap invite', connectA.status === 200 && connectA.body.kind === 'connected' && connectA.body.role === 'admin', connectA.body);
+  check('…and is offered to bring its local data', connectA.body.offerImport === true, connectA.body);
+  const imported = await a.api('POST', '/v1/coordination/import');
+  check('import goes through', imported.status === 200, imported.body);
+  const settingsA = a.container.resolve(app.SETTINGS_STORE).read().coordination;
+  const tokenA = await a.container.resolve(app.SECRET_STORE).resolve(settingsA.deviceTokenRef);
+  const snapA = await relayCall(tokenA, 'GET', '/relay/v1/snapshot');
+  check('the relay shows #7 held by Ana', snapA.body?.claims?.some((c) => c.itemRef === 'github:acme/app#7' && c.memberName === 'Ana' && c.localRef === a7), snapA.body?.claims);
+  check('A\'s person carries a relay handle', /^127\.0\.0\.1:\d+\/cm_/.test(a.container.resolve(app.IDENTITY).localPerson().handles.relay ?? ''), a.container.resolve(app.IDENTITY).localPerson().handles);
+
+  const invite = await a.api('POST', '/v1/coordination/invites', { role: 'member', displayName: 'Bruno' });
+  check('A invites Bruno through its daemon', invite.status === 200 && /^TRI-/.test(invite.body.code), invite.body);
+  const connectB = await b.api('POST', '/v1/coordination/connect', { url: relayUrl, code: invite.body.code, displayName: 'Bruno', deviceLabel: 'Bruno desktop', allowInsecure: false });
+  check('B connects as a member', connectB.body?.kind === 'connected' && connectB.body.role === 'member', connectB.body);
+  const b7 = await b.mission(7);
+  const refusedB = await b.api('POST', `/v1/missions/${b7}/start`);
+  check('B starting #7 is refused with Ana\'s name', refusedB.status === 409 && refusedB.body.error.message.startsWith('Ana is working on acme/app#7 since'), refusedB.body);
+  check('…with no take-over for a member on a fresh claim', refusedB.body.error.details.takeOver === false, refusedB.body.error.details);
+  const seenByB = await until(async () => (await b.api('GET', `/v1/coordination/claims?workspaceId=${b.ws}`)).body?.find((r) => r.itemKey === 'acme/app#7' && r.memberName === 'Ana'), 2000);
+  check('B\'s Home lists Ana on #7', Boolean(seenByB), seenByB);
+
+  section('offline: both claim #8 while the relay is down (Review Focus 2)');
+  await relay.close();
+  const bOffline = await until(async () => (await b.api('GET', '/v1/coordination/status')).body.kind === 'offline', 5000);
+  check('B goes offline', bOffline);
+  const b8 = await b.mission(8);
+  const startB8 = await b.api('POST', `/v1/missions/${b8}/start`);
+  check('B starts #8 anyway: the claim queues', startB8.status === 200 && b.status(b8) === 'EXECUTING', startB8.body);
+  const b8Detail = await b.api('GET', `/v1/missions/${b8}`);
+  check('…and its mission says pending', b8Detail.body.claim?.state === 'pending', b8Detail.body.claim);
+  const a8 = await a.mission(8);
+  const startA8 = await a.api('POST', `/v1/missions/${a8}/start`);
+  check('A, offline too, starts #8 and queues', startA8.status === 200 && a.status(a8) === 'EXECUTING', startA8.body);
+  relay = await startRelay(loadRelayConfig(relayEnv(port)));
+  const settled = await until(async () => {
+    const snap = await relayCall(tokenA, 'GET', '/relay/v1/snapshot');
+    const holders = (snap.body?.claims ?? []).filter((c) => c.itemRef === 'github:acme/app#8');
+    const da = (await a.api('GET', `/v1/missions/${a8}`)).body.claim;
+    const db = (await b.api('GET', `/v1/missions/${b8}`)).body.claim;
+    return holders.length === 1 && da && db && da.state !== 'pending' && db.state !== 'pending' && { holder: holders[0], da, db };
+  }, 25_000);
+  check('back online: exactly one of them holds #8 on the relay', Boolean(settled), settled);
+  if (settled) {
+    const loserIsA = settled.holder.memberName === 'Bruno';
+    const loser = loserIsA ? settled.da : settled.db;
+    const winnerName = settled.holder.memberName;
+    check('the loser\'s mission shows Unclaimed with the conflict sentence', loser.state === 'unclaimed' && new RegExp(`^${winnerName} started acme/app#8 at \\d\\d:\\d\\d, while you were offline\\.$`).test(loser.sentence), loser);
+    check('…and is still running', (loserIsA ? a.status(a8) : b.status(b8)) === 'EXECUTING');
+  }
+
+  section('completion releases on the relay');
+  await a.complete(a7);
+  const released = await until(async () => !(await relayCall(tokenA, 'GET', '/relay/v1/snapshot')).body?.claims?.some((c) => c.itemRef === 'github:acme/app#7'), 5000);
+  check('completing A\'s #7 mission ends its claim on the relay', released);
+
+  section('webhook: pulled and acked by exactly one daemon');
+  const ep = await a.api('POST', '/v1/coordination/endpoints', { workspaceId: a.ws, name: 'Sentry', source: 'sentry', handshake: 'none' });
+  check('A (admin) creates a relay endpoint', ep.status === 200 && ep.body.url === `${relayUrl}/hooks/${ep.body.slug}`, ep.body);
+  const hook = await fetch(`${relayUrl}/hooks/${ep.body.slug}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"issue":"boom"}' });
+  check('Sentry posts to the relay: 202', hook.status === 202);
+  const [pa, pb] = await Promise.all([
+    a.api('POST', '/v1/coordination/mailbox/pull', { workspaceId: a.ws, max: 10, leaseSeconds: 60 }),
+    b.api('POST', '/v1/coordination/mailbox/pull', { workspaceId: b.ws, max: 10, leaseSeconds: 60 }),
+  ]);
+  const got = [pa, pb].filter((p) => p.body?.length === 1);
+  check('exactly one daemon gets it', got.length === 1 && [pa, pb].some((p) => p.body?.length === 0), [pa.body, pb.body]);
+  const taker = got[0] === pa ? a : b;
+  const ack = await taker.api('POST', '/v1/coordination/mailbox/ack', { ids: [got[0]?.body?.[0]?.id] });
+  check('that one acks it', ack.body?.acked?.length === 1, ack.body);
+  const later = await Promise.all([a, b].map((d) => d.api('POST', '/v1/coordination/mailbox/pull', { workspaceId: d.ws, max: 10, leaseSeconds: 60 })));
+  check('a later pull on either gets nothing', later.every((p) => p.body?.length === 0), later.map((p) => p.body));
+
+  section('disconnect falls back to local and keeps your claims');
+  const a9 = await a.mission(9);
+  await a.api('POST', `/v1/missions/${a9}/start`);
+  const off = await a.api('POST', '/v1/coordination/disconnect');
+  check('A disconnects: local', off.body?.kind === 'local', off.body);
+  const mine = (await a.api('GET', `/v1/coordination/claims?workspaceId=${a.ws}`)).body;
+  check('A\'s own active claims are still listed, as yours', mine.some((r) => r.itemKey === 'acme/app#9' && r.mine), mine);
+  const settingsText = readFileSync(join(a.home, 'settings.json'), 'utf8');
+  check('the device token never reached settings.json', !settingsText.includes(tokenA) && !settingsText.includes('trd_'), settingsText.slice(0, 300));
+  const statusText = JSON.stringify((await b.api('GET', '/v1/coordination/status')).body);
+  check('status does not leak a token', !statusText.includes('trd_'), statusText);
+  check('A\'s relay handle is gone after disconnect', a.container.resolve(app.IDENTITY).localPerson().handles.relay === undefined);
+
+  await a.stop();
+  await b.stop();
+  await relay.close();
 }
 
 console.log(`\n${passed} passed, ${failures.length} failed`);

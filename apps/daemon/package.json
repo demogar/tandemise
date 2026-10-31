@@ -22,6 +22,7 @@
     "@tandemise/context": "*",
     "@tandemise/evaluation": "*",
     "@tandemise/coordination": "*",
+    "@tandemise/coordination-relay": "*",
     "@tandemise/runtime-claude": "*",
     "@tandemise/runtime-codex": "*",
     "@tandemise/runtime-generic": "*",

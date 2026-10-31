@@ -709,6 +709,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
         control: r.tryResolve(t.COORDINATION_CONTROL) ?? null,
         missions: r.resolve(t.MISSION_REPOSITORY),
         issues: r.resolve(t.ISSUE_REPOSITORY),
+        repositories: r.resolve(t.REPO_REPOSITORY),
         settings: r.resolve(t.SETTINGS_STORE),
         recorder: r.resolve(t.EVENT_RECORDER),
         cancelMission: (id, reason) => r.resolve(t.MISSION_SERVICE).cancel(id, reason),

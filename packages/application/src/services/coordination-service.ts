@@ -1,6 +1,6 @@
 import type { Clock, Logger, MissionId } from '@tandemise/shared';
 import { TandemiseError, asId, errorMessage } from '@tandemise/shared';
-import { isTerminalMissionStatus, type IssueRepositoryPort, type Mission, type MissionRepositoryPort, type RunEventRecord } from '@tandemise/domain';
+import { isTerminalMissionStatus, type IssueRepositoryPort, type Mission, type MissionRepositoryPort, type RepoRepositoryPort, type RunEventRecord } from '@tandemise/domain';
 import type {
   CoordinationClaimRowView, CoordinationStatusView, InboxUnclaimedView, MissionClaimView,
 } from '@tandemise/api-contract';
@@ -17,6 +17,8 @@ export interface CoordinationDeps {
   readonly control: CoordinationControlPort | null;
   readonly missions: MissionRepositoryPort;
   readonly issues: Pick<IssueRepositoryPort, 'getLink'>;
+  /** The workspace's repositories: the first one's remote names its project by default. Optional for older harnesses. */
+  readonly repositories?: Pick<RepoRepositoryPort, 'listByWorkspace'>;
   readonly settings: SettingsStorePort;
   readonly recorder: Pick<EventRecorder, 'invalidate'>;
   /** "Stop working on this": cancels the mission. Resolved late, as the mission service composes after this. */
@@ -63,11 +65,32 @@ export class CoordinationService {
     this.deps.recorder.invalidate('coordination', missionId);
   }
 
-  /** The project a workspace's claims belong to: a setting, else the workspace id. */
+  /**
+   * The project a workspace's claims belong to (relay spec, §Data model): the
+   * `coordination.projectKeys` setting, else its first repository's remote
+   * (`github.com/acme/app`, so two people's installs of one repository agree
+   * without setting anything), else the workspace id. #51's brain repo
+   * identity replaces the middle rule.
+   */
   projectKey(workspaceId: string): string {
     const settings = this.deps.settings.read();
     const keys = (settings['coordination'] as { projectKeys?: Record<string, string> } | undefined)?.projectKeys;
-    return keys?.[workspaceId] ?? workspaceId;
+    const set = keys?.[workspaceId];
+    if (set) return set;
+    const remote = this.deps.repositories?.listByWorkspace(asId<'WorkspaceId'>(workspaceId)).find((r) => r.remoteUrl)?.remoteUrl;
+    return remote ? normalizeRemote(remote) : workspaceId;
+  }
+
+  /** Names a workspace's project explicitly; null goes back to the default. */
+  setProjectKey(workspaceId: string, projectKey: string | null): string {
+    const settings = this.deps.settings.read();
+    const current = (settings['coordination'] as Record<string, unknown> | undefined) ?? {};
+    const keys = { ...((current['projectKeys'] as Record<string, string> | undefined) ?? {}) };
+    if (projectKey === null || projectKey.trim() === '') delete keys[workspaceId];
+    else keys[workspaceId] = projectKey.trim();
+    this.deps.settings.write({ coordination: { ...current, projectKeys: keys } });
+    this.#invalidate();
+    return this.projectKey(workspaceId);
   }
 
   /** The tracker item a mission works on, or null. Today that is its GitHub issue link. */
@@ -232,11 +255,11 @@ export class CoordinationService {
     const control = this.deps.control;
     const host = control?.host() ?? '';
     const teamName = control?.teamName() ?? '';
-    const role = port.me().role;
+    const { role, memberId } = port.me();
     switch (s.kind) {
       case 'local': return { kind: 'local' };
-      case 'connected': return { kind: 'connected', host: s.host, teamName: s.teamName, role, offerImport: control?.offerImport() ?? false };
-      case 'offline': return { kind: 'offline', since: s.since, pendingOps: s.pendingOps, host, teamName, role };
+      case 'connected': return { kind: 'connected', host: s.host, teamName: s.teamName, role, memberId, offerImport: control?.offerImport() ?? false };
+      case 'offline': return { kind: 'offline', since: s.since, pendingOps: s.pendingOps, host, teamName, role, memberId };
       case 'refused': return { kind: 'refused', reason: s.reason, host };
     }
   }
@@ -308,8 +331,18 @@ export class CoordinationService {
   retryParked(id: string) { return this.#control().retryParked(id); }
   dropParked(id: string) { return this.#control().dropParked(id); }
   endpoints(): readonly EndpointView[] { return this.deps.control?.endpoints() ?? []; }
+  parked() { return this.#control().parked(); }
   failures() { return this.deps.control?.failures() ?? []; }
   exportLines(): string[] { return this.#control().exportLines(); }
   pull(projectKey: string, max: number, leaseSeconds?: number) { return this.#port().mailbox.pull(projectKey, max, leaseSeconds); }
   ack(ids: readonly string[]) { return this.#port().mailbox.ack(ids); }
+}
+
+/** `https://github.com/Acme/App.git` or an scp-style `user@host:owner/repo` → `github.com/acme/app`. */
+export function normalizeRemote(remote: string): string {
+  let r = remote.trim().replace(/\.git$/, '').replace(/\/+$/, '');
+  const scp = /^[^@/]+@([^:/]+):(.+)$/.exec(r);
+  if (scp) r = `${scp[1]}/${scp[2]}`;
+  else r = r.replace(/^[a-z+]+:\/\//i, '').replace(/^[^@/]+@/, '');
+  return r.toLowerCase();
 }
