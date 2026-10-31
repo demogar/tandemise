@@ -239,6 +239,7 @@ Plain HTTP/JSON under `/relay/v1`, one WebSocket, and the unauthenticated webhoo
 | `POST /relay/v1/endpoints`, `POST /relay/v1/endpoints/:id/disable` | admin | Webhook URLs. |
 | `POST /relay/v1/mailbox/pull` | device | `{ project, max ≤ 50, leaseSeconds ≤ 300 }` → leased messages. |
 | `POST /relay/v1/mailbox/ack` | device | `{ ids }`; only the lease holder can ack. |
+| `POST /relay/v1/leases` | device | `{ project, scope: "source", key, ttlSeconds }` → `{ granted, expiresAt, holderName, deviceLabel }`. A short, in-memory lease (intake spec §3): the holding device renews it, anyone takes a lapsed one. Lost on a relay restart until the next renewal. At most 200 live leases per device (`429`). Added by intake (#52). |
 | `POST /relay/v1/import` | admin | One-shot move from solo (see above). |
 | `GET /relay/v1/stream` | device (WebSocket) | Live changes. |
 | `POST\|PUT\|GET /hooks/:slug` | none (see mailbox) | Webhook ingress. |

@@ -126,6 +126,19 @@ Label a GitHub issue `tandemise` and it becomes a draft mission (queued when it
 says what "done" means); when the work ships, the issue gets the criteria table
 and, if you want, is closed — see [GitHub issues in and out](docs/guides/github-issues.md).
 
+**Intake.** Give a project a primary tracker (YouTrack or GitHub Issues) in
+**Settings → Intake**, and anything that might be work, from Sentry, PostHog,
+a Slack or Discord thread, labelled GitHub issues or a runner of your own,
+lands there once: a new item, or a link to the item that already tracks it.
+Noise is held back with the reason, and an unsure match becomes one Inbox
+question ("Is this the same as GAR-7?"). The **Board** lists your tracker's
+ready, in-progress and in-review items; **Start** makes one a mission (never
+queued behind your back), the tracker follows it in one activity comment and
+its state, and when the item is done the loop closes at every source. Your
+own runner pushes with a per-source token through the `tandemise` CLI
+(`tandemise intake push`, `tandemise intake closures`, `tandemise start
+GAR-12`) — see [Writing an intake runner](docs/intake/README.md).
+
 ## Architecture
 
 ```
@@ -214,6 +227,15 @@ members and per-computer tokens, and holds webhooks for a daemon to pick up.
 It runs no agents and stores no work; losing it never stops local work. See
 [apps/relay/README.md](apps/relay/README.md).
 
+### Hold and interact
+
+When you want to steer an agent's step yourself, **Hold** it in the task
+panel. Tandemise stops the run cleanly and opens the agent's own session in an
+in-app terminal, in the same checkout, so you can work with it directly. When
+you hand it back, the pipeline continues from the work as it now stands; a
+**Release** ends the hold and keeps what you did. See the
+[evidence](docs/superpowers/evidence/2026-10-30-hold/).
+
 ## Guides
 
 Task-oriented, one per concept:
@@ -233,6 +255,7 @@ Task-oriented, one per concept:
 | [Giving your agents your skills](docs/guides/skills.md) | import the skills I already use and pin them to roles and steps |
 | [Score a change before it goes live](docs/guides/evals.md) | save a finished step as a case and try a different model, skill or setup against it |
 | [GitHub issues in and out](docs/guides/github-issues.md) | turn labelled issues into missions and report back on them |
+| [Writing an intake runner](docs/intake/README.md) | push work from a source of my own into the tracker, with the `tandemise` CLI or over HTTP, and close the loop |
 | [Hand work in and back](docs/guides/outside-contributions.md) | start a mission from a file or link I already have, and take a step to another tool and bring it back |
 | [Your setup as code](docs/guides/setup-as-code.md) | keep roles, workflows, routines, limits, skill pins and issue settings in my repository, and import them |
 | [Workflows](docs/WORKFLOWS.md) | write my own process as a file, and see which gate facts exist |

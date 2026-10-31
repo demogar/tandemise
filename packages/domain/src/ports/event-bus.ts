@@ -17,6 +17,8 @@ export type ProjectionTopic =
   | 'integrations' | 'targets' | 'workspaces' | 'decisions' | 'checks' | 'criteria' | 'refinement'
   /** A pull request the ship step opened (#53). */
   | 'ship'
+  /** Intake signals and the Inbox decisions they ask (plan Task 7). */
+  | 'intake'
   /** Claims, members and presence with the team (relay spec). */
   | 'coordination';
 

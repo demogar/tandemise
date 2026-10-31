@@ -35,7 +35,7 @@ export interface EndpointRow {
 interface MailboxRow {
   id: number; endpoint_id: string; received_at: string; method: string; query: string; headers: string;
   content_type: string | null; body: Buffer | null; body_bytes: number; lease_device: string | null; lease_until: string | null;
-  attempts: number; acked_at: string | null; acked_by: string | null; parked_at: string | null; project_key: string;
+  attempts: number; acked_at: string | null; acked_by: string | null; parked_at: string | null; project_key: string; endpoint_name: string;
 }
 
 const HOP_BY_HOP = new Set(['connection', 'keep-alive', 'transfer-encoding', 'upgrade', 'te', 'trailer', 'cookie', 'authorization', 'host', 'content-length']);
@@ -138,7 +138,7 @@ export function storeRequest(store: CoordinationStore, endpointId: string, req: 
 
 function messageFromRow(r: MailboxRow): MailboxMessage {
   return {
-    id: String(r.id), endpointId: r.endpoint_id, projectKey: r.project_key, receivedAt: r.received_at, method: r.method,
+    id: String(r.id), endpointId: r.endpoint_id, endpointName: r.endpoint_name, projectKey: r.project_key, receivedAt: r.received_at, method: r.method,
     query: r.query, headers: JSON.parse(r.headers) as Record<string, string>, contentType: r.content_type,
     bodyBase64: r.body ? Buffer.from(r.body).toString('base64') : '', attempts: r.attempts,
   };
@@ -155,7 +155,7 @@ export function pull(store: CoordinationStore, projectKey: string, deviceId: str
     const nowIso = now.toISOString();
     const until = new Date(now.getTime() + Math.min(leaseSeconds, MAX_LEASE_SECONDS) * 1000).toISOString();
     const candidates = store.stmt(`
-      SELECT m.*, e.project_key FROM coord_mailbox m JOIN coord_endpoints e ON e.id = m.endpoint_id
+      SELECT m.*, e.project_key, e.name AS endpoint_name FROM coord_mailbox m JOIN coord_endpoints e ON e.id = m.endpoint_id
        WHERE e.project_key = ? AND m.acked_at IS NULL AND m.parked_at IS NULL AND (m.lease_until IS NULL OR m.lease_until < ?)
        ORDER BY m.id`).all(projectKey, nowIso) as MailboxRow[];
     const leased: MailboxMessage[] = [];
@@ -210,6 +210,6 @@ export function parkedMessages(store: CoordinationStore, endpointId?: string): {
 
 /** Unacked messages with their bodies, oldest first: what an export carries. */
 export function unackedMessages(store: CoordinationStore): MailboxMessage[] {
-  return (store.stmt(`SELECT m.*, e.project_key FROM coord_mailbox m JOIN coord_endpoints e ON e.id = m.endpoint_id WHERE m.acked_at IS NULL ORDER BY m.id`).all() as MailboxRow[])
+  return (store.stmt(`SELECT m.*, e.project_key, e.name AS endpoint_name FROM coord_mailbox m JOIN coord_endpoints e ON e.id = m.endpoint_id WHERE m.acked_at IS NULL ORDER BY m.id`).all() as MailboxRow[])
     .map(messageFromRow);
 }

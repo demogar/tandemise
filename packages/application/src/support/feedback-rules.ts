@@ -27,6 +27,8 @@ export function feedbackEffectFor(
   switch (task.status) {
     case 'RUNNING':
     case 'AWAITING_INPUT':
+    // A person has the session: the pass that continues from the hold delivers the note.
+    case 'HELD':
       return { kind: 'queue' };
     case 'AWAITING_APPROVAL': {
       // A start card means nothing has run yet: the note waits for round 1 like any other.

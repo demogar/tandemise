@@ -41,6 +41,13 @@ export type EvalTrialId = Brand<string, 'EvalTrialId'>;
 export type PlanDecisionId = Brand<string, 'PlanDecisionId'>;
 export type MergeDecisionId = Brand<string, 'MergeDecisionId'>;
 export type OutcomeId = Brand<string, 'OutcomeId'>;
+export type SignalId = Brand<string, 'SignalId'>;
+export type TrackerItemId = Brand<string, 'TrackerItemId'>;
+export type IntakeLinkId = Brand<string, 'IntakeLinkId'>;
+export type ClosureId = Brand<string, 'ClosureId'>;
+export type IntakeTokenId = Brand<string, 'IntakeTokenId'>;
+export type WebhookMessageId = Brand<string, 'WebhookMessageId'>;
+export type TaskHoldId = Brand<string, 'TaskHoldId'>;
 
 const ALPHABET = '0123456789abcdefghjkmnpqrstvwxyz';
 
@@ -142,6 +149,13 @@ export const ids = {
   planDecision: () => newId<'PlanDecisionId'>('pld'),
   mergeDecision: () => newId<'MergeDecisionId'>('mrg'),
   outcome: () => newId<'OutcomeId'>('out'),
+  signal: () => newId<'SignalId'>('sig'),
+  trackerItem: () => newId<'TrackerItemId'>('tki'),
+  intakeLink: () => newId<'IntakeLinkId'>('iln'),
+  closure: () => newId<'ClosureId'>('clo'),
+  intakeToken: () => newId<'IntakeTokenId'>('itk'),
+  webhookMessage: () => newId<'WebhookMessageId'>('whm'),
+  taskHold: () => newId<'TaskHoldId'>('hld'),
 } as const;
 
 /** Cast a persisted string back to its branded type at a trust boundary. */

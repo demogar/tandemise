@@ -584,7 +584,34 @@ await attempt('review: a person\'s Merge never hangs or sticks', async () => {
   const state = fake.readState(w.ghDir); state.failNext = 'gh: Something went wrong (HTTP 502)'; fake.writeState(w.ghDir, state);
   await w.h.services.approvals.decide(w.caller, card2.id, { optionId: 'approve' });
   await w.h.until(() => w.h.repo.missions.get(m2.id).status === 'COMPLETE', 30000);
-  check('…and is merged on a later look', w.h.repo.missions.get(m2.id).status === 'COMPLETE' && ship2().status === 'SUCCEEDED', [ship2().status, ship2().statusReason]);
+  check('…and is merged on a later look', w.h.repo.missions.get(m2.id).status === 'COMPLETE' && ship2().status === 'SUCCEEDED', [w.h.repo.missions.get(m2.id).status, w.h.repo.missions.get(m2.id).statusReason, ship2().status, ship2().statusReason, w.h.repo.tasks.listByMission(m2.id).map((t) => t.key + ':' + t.status)]);
+});
+
+await attempt('holds reach routing through the real event bus', async () => {
+  section('holds reach routing through the real event bus');
+  const w = await world();
+  const m = await w.mission('fix: typo in the settings title');
+  await w.h.until(() => w.h.repo.tasks.listByMission(m.id).some((t) => t.key !== 'ship' && t.status === 'SUCCEEDED'), 60000);
+  const task = w.h.repo.tasks.listByMission(m.id).find((t) => t.key !== 'ship');
+  // The daemon's own bus and recorder (the harness stubs the bus), wired as module.ts wires them.
+  const { InMemoryEventBus } = await import('../apps/daemon/dist/buses.js');
+  const bus = new InMemoryEventBus();
+  const r = (tok) => w.h.container.resolve(tok);
+  const { systemClock: clock } = await import('@tandemise/shared');
+  const recorder = new app.EventRecorder(r(app.EVENT_REPOSITORY), bus, r(app.PROJECTION_BUS), clock);
+  const outcomes = new app.OutcomeRecorder({
+    outcomes: r(app.OUTCOME_REPOSITORY), bus, tasks: r(app.TASK_REPOSITORY), missions: r(app.MISSION_REPOSITORY),
+    planDecisions: r(app.PLAN_DECISION_REPOSITORY), runScores: r(app.RUN_SCORE_REPOSITORY), recorder, clock: clock, log: { warn: (...a) => console.log('warn', ...a) },
+  });
+  await outcomes.start();
+  const heldRows = () => r(app.OUTCOME_REPOSITORY).listByWorkspace(m.workspaceId, '1970-01-01T00:00:00Z').filter((o) => o.kind === 'held');
+  // Exactly the body HoldService records when a hold ends (#50).
+  recorder.record({ workspaceId: m.workspaceId, missionId: m.id, taskId: task.id }, {
+    type: 'task.hold_ended', holdId: 'hld_check', ending: 'continued', endedBy: null, sessionAfter: null, durationMs: 1000, diffStat: { files: 1 },
+  });
+  await w.h.until(() => heldRows().length > 0, 5000).catch(() => {});
+  check('a task.hold_ended through the daemon bus becomes a held outcome on that step', heldRows().length === 1 && heldRows()[0].step.taskKey === task.key, heldRows());
+  await outcomes.stop();
 });
 
 // @sections

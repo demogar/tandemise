@@ -14,6 +14,7 @@
 export const RUNTIME_CAPABILITIES = [
   'reasoning', 'vision', 'shell', 'filesystem', 'git', 'web', 'browser',
   'mcp', 'structured_output', 'session_resume', 'tool_calling', 'computer_use',
+  'interactive_resume',
 ] as const;
 export type RuntimeCapability = (typeof RUNTIME_CAPABILITIES)[number];
 

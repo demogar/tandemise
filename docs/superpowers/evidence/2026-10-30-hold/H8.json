@@ -1,0 +1,83 @@
+{
+  "id": "H8",
+  "title": "\"Now\": a running step says what it is doing, and the line follows its events",
+  "ok": true,
+  "checks": [
+    {
+      "label": "proof (API): the step runs on the fake runtime",
+      "ok": true,
+      "observed": "Hold fake"
+    },
+    {
+      "label": "the Plan card shows a \"Now\" line while the step runs",
+      "ok": true,
+      "observed": [
+        "Now Reading the onboarding flow",
+        "Now Running npm test",
+        "Now Editing .tandemise/out/DesignBrief.md"
+      ]
+    },
+    {
+      "label": "the line changes as events arrive (at least three different lines)",
+      "ok": true,
+      "observed": [
+        "Now Reading the onboarding flow",
+        "Now Running npm test",
+        "Now Editing .tandemise/out/DesignBrief.md"
+      ]
+    },
+    {
+      "label": "it says what it does in words: \"Running npm test\" for a shell command",
+      "ok": true,
+      "observed": [
+        "Now Reading the onboarding flow",
+        "Now Running npm test",
+        "Now Editing .tandemise/out/DesignBrief.md"
+      ]
+    },
+    {
+      "label": "a file it edits reads relative to its worktree: \"Editing .tandemise/out/DesignBrief.md\"",
+      "ok": true,
+      "observed": [
+        "Now Reading the onboarding flow",
+        "Now Running npm test",
+        "Now Editing .tandemise/out/DesignBrief.md"
+      ]
+    },
+    {
+      "label": "no raw tool names in it",
+      "ok": true,
+      "observed": [
+        "Now Reading the onboarding flow",
+        "Now Running npm test",
+        "Now Editing .tandemise/out/DesignBrief.md"
+      ]
+    },
+    {
+      "label": "the feed card shows the same \"Now\" line",
+      "ok": true,
+      "observed": {
+        "feedNow": "Now Editing .tandemise/out/DesignBrief.md",
+        "last": "Now Editing .tandemise/out/DesignBrief.md"
+      }
+    },
+    {
+      "label": "the task drawer shows it at the top",
+      "ok": true,
+      "observed": "Now Editing .tandemise/out/DesignBrief.md"
+    },
+    {
+      "label": "proof (API): the view says the same",
+      "ok": true,
+      "observed": "Editing .tandemise/out/DesignBrief.md"
+    }
+  ],
+  "notes": [
+    "setup: the Design agent runs on a fake runtime that resumes and opens an interactive session on a PTY"
+  ],
+  "shots": [
+    "/home/demogar/projects/tandemise/tandemise/docs/superpowers/evidence/2026-10-30-hold/H8-plan-card-now.png",
+    "/home/demogar/projects/tandemise/tandemise/docs/superpowers/evidence/2026-10-30-hold/H8-feed-card-now.png",
+    "/home/demogar/projects/tandemise/tandemise/docs/superpowers/evidence/2026-10-30-hold/H8-drawer-now.png"
+  ]
+}

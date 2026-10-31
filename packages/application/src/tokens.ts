@@ -2,9 +2,9 @@ import { token, type Token } from '@tandemise/kernel';
 import type {
   ApprovalRepositoryPort, ArtifactRepositoryPort, ArtifactStorePort, AssignmentRepositoryPort,
   CheckpointRepositoryPort, DecisionRepositoryPort, EvalBlobPort, EvalRepositoryPort, EvaluationRepositoryPort, EventBusPort,
-  EventRepositoryPort, ExecutionTargetRepositoryPort, FeedbackRepositoryPort, IntegrationRepositoryPort,
+  EventRepositoryPort, ExecutionTargetRepositoryPort, FeedbackRepositoryPort, IntegrationRepositoryPort, InteractiveSessionsPort,
   LeaseRepositoryPort, MemberRepositoryPort, MissionCriteriaRepositoryPort, MissionQuestionRepositoryPort, MissionRepositoryPort, LimitRepositoryPort, RoutineRepositoryPort, RunScoreRepositoryPort, SkillRepositoryPort, IssueRepositoryPort, IssueTrackerPort, PullRequestSnapshotPort, PersonRepositoryPort, ProjectionBusPort, RepoRepositoryPort,
-  PlanProposalRepositoryPort, RoleRepositoryPort, RunInputRepositoryPort, RunRepositoryPort, RuntimeProfileRepositoryPort, SecretStorePort,
+  PlanProposalRepositoryPort, TaskHoldRepositoryPort, RoleRepositoryPort, RunInputRepositoryPort, RunRepositoryPort, RuntimeProfileRepositoryPort, SecretStorePort,
   TaskRepositoryPort, UnitOfWork, WorkspaceRepositoryPort, PlanDecisionRepositoryPort, MergeDecisionRepositoryPort, OutcomeRepositoryPort,
 } from '@tandemise/domain';
 import type { ArtifactMeasurePort, ArtifactParserPort, ArtifactTemplatePort, ProcessLivenessPort, SettingsStorePort, SystemEnvironmentPort, WorkflowSourcePort, OAuthCallbackPort, SkillFilesPort } from './ports.js';
@@ -67,6 +67,7 @@ import type { RepositoryProber } from './support/repository-prober.js';
 
 export const UNIT_OF_WORK = token<UnitOfWork>('port.UnitOfWork');
 
+export const INTERACTIVE_SESSIONS = token<InteractiveSessionsPort>('port.InteractiveSessions');
 export const WORKSPACE_REPOSITORY = token<WorkspaceRepositoryPort>('port.WorkspaceRepository');
 export const REPO_REPOSITORY = token<RepoRepositoryPort>('port.RepoRepository');
 export const MISSION_REPOSITORY = token<MissionRepositoryPort>('port.MissionRepository');
@@ -93,6 +94,7 @@ export const PLAN_PROPOSAL_REPOSITORY = token<PlanProposalRepositoryPort>('port.
 export const PLAN_DECISION_REPOSITORY = token<PlanDecisionRepositoryPort>('port.PlanDecisionRepository');
 export const MERGE_DECISION_REPOSITORY = token<MergeDecisionRepositoryPort>('port.MergeDecisionRepository');
 export const OUTCOME_REPOSITORY = token<OutcomeRepositoryPort>('port.OutcomeRepository');
+export const TASK_HOLD_REPOSITORY = token<TaskHoldRepositoryPort>('port.TaskHoldRepository');
 export const MISSION_CRITERIA_REPOSITORY = token<MissionCriteriaRepositoryPort>('port.MissionCriteriaRepository');
 export const MISSION_QUESTION_REPOSITORY = token<MissionQuestionRepositoryPort>('port.MissionQuestionRepository');
 export const LIMIT_REPOSITORY = token<LimitRepositoryPort>('port.LimitRepository');
@@ -189,6 +191,7 @@ export const OAUTH_CALLBACK = token<OAuthCallbackPort>('port.OAuthCallback');
 export const SYSTEM_SERVICE = token<SystemService>('application.SystemService');
 export const WORKSPACE_SERVICE = token<WorkspaceService>('application.WorkspaceService');
 export const MISSION_SERVICE = token<MissionService>('application.MissionService');
+export const HOLD_SERVICE = token<import('./services.js').HoldService>('application.HoldService');
 export const PLANNING_SERVICE = token<PlanningService>('application.PlanningService');
 export const APPROVAL_SERVICE = token<ApprovalService>('application.ApprovalService');
 export const ARTIFACT_SERVICE = token<ArtifactService>('application.ArtifactService');
@@ -265,5 +268,6 @@ export const PERSISTENCE_PORT_TOKENS = {
   FEEDBACK_REPOSITORY,
   RUN_INPUT_REPOSITORY,
   PLAN_PROPOSAL_REPOSITORY,
+  TASK_HOLD_REPOSITORY,
   MISSION_CRITERIA_REPOSITORY,
 } as const satisfies Readonly<Record<string, Token<unknown>>>;

@@ -634,6 +634,27 @@ await attempt('review: brain edits offline and by pull request', async () => {
   clearInterval(keepAlive);
 });
 
+await attempt('a tracker item\'s type profiles the mission', async () => {
+  section('a tracker item\'s type profiles the mission');
+  const keepAlive = setInterval(() => {}, 1000);
+  const { world } = await import('./planner-harness.mjs');
+  const w = await world();
+  const planner = w.h.container.resolve(app.PLANNER_SERVICE);
+  // As intake's Start makes it: a mission pointing at its tracker item (#52).
+  const PS = await import('@tandemise/persistence');
+  const items = w.h.container.resolve(PS.TRACKER_ITEM_REPOSITORY);
+  if (w.h.container.tryResolve(app.TRACKER_ITEM_REPOSITORY) === undefined) w.h.container.bind(app.TRACKER_ITEM_REPOSITORY, () => items, { source: 'check' });
+  const item = items.upsert(w.ws, { ref: 'github:acme/web#7', key: '#7', url: 'https://github.com/acme/web/issues/7', title: 'Settings page title', description: 'It reads Setings', state: 'open', assignee: null, updatedAt: new Date().toISOString(), createdAt: new Date().toISOString(), type: 'Bug' });
+  const made = await w.h.services.missions.create(w.caller, { workspaceId: w.ws, goal: 'The settings page title reads Setings', title: 'Settings page title', workflowPreset: 'auto' });
+  const id = made.id ?? made.mission?.id;
+  const plain = await planner.predict(w.h.repo.missions.get(id));
+  w.h.repo.missions.update(id, { trackerItemId: item.id });
+  const fromTracker = await planner.predict(w.h.repo.missions.get(id));
+  check('a Bug from the tracker profiles as a fix, saying so', fromTracker.profile.type === 'fix' && fromTracker.profile.signals.some((s) => s.name === 'tracker type' && s.value === 'Bug'), fromTracker.profile.signals);
+  check('…which the same text alone does not say', !plain.profile.signals.some((s) => s.name === 'tracker type'), plain.profile.signals);
+  clearInterval(keepAlive);
+});
+
 // @sections
 
 console.log(`\n${passed} passed, ${failures.length} failed`);

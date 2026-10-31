@@ -23,5 +23,6 @@ export const HTTP_STATUS_BY_CODE: Readonly<Record<ErrorCode, number>> = {
   INTEGRATION_FAILED: 502,
   CANCELLED: 499,
   TIMEOUT: 504,
+  RATE_LIMITED: 429,
   INTERNAL: 500,
 };

@@ -5,6 +5,7 @@ export * from './stream.js';
 export * from './errors.js';
 export * from './for-me.js';
 export * from './issues.js';
+export * from './intake.js';
 export * from './notifications.js';
 export * from './about.js';
 export * from './setup.js';

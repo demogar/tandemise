@@ -41,6 +41,10 @@ export * from './entities/notifications.js';
 export * from './entities/skill.js';
 export * from './entities/issue.js';
 export * from './entities/eval.js';
+export * from './entities/intake.js';
+export * from './entities/tracker.js';
+export * from './entities/similarity.js';
+export * from './entities/hold.js';
 export * from './entities/brain.js';
 
 export * from './ports/repositories.js';
@@ -57,6 +61,8 @@ export * from './merge/decide.js';
 export * from './merge/words.js';
 export * from './merge/backtest.js';
 export * from './brain/proposals.js';
+export * from './ports/intake.js';
+export * from './ports/interactive-sessions.js';
 
 export * from './brain/writer.js';
 export * from './brain/scrub.js';

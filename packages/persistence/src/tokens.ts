@@ -4,11 +4,12 @@ import type {
   CheckpointRepositoryPort, DecisionRepositoryPort, EvalRepositoryPort, EvaluationRepositoryPort,
   EventRepositoryPort, ExecutionTargetRepositoryPort, FeedbackRepositoryPort, IntegrationRepositoryPort,
   LeaseRepositoryPort, MemberRepositoryPort, MissionCriteriaRepositoryPort, MissionQuestionRepositoryPort, MissionRepositoryPort, LimitRepositoryPort, PersonRepositoryPort, RoutineRepositoryPort, RunScoreRepositoryPort, SkillRepositoryPort, IssueRepositoryPort,
-  PlanProposalRepositoryPort, RepoRepositoryPort, RoleRepositoryPort, RunInputRepositoryPort,
+  PlanProposalRepositoryPort, TaskHoldRepositoryPort, RepoRepositoryPort, RoleRepositoryPort, RunInputRepositoryPort,
   RunRepositoryPort, RuntimeProfileRepositoryPort, TaskRepositoryPort, UnitOfWork,
   WorkspaceRepositoryPort, PlanDecisionRepositoryPort, MergeDecisionRepositoryPort, OutcomeRepositoryPort,
   WorkspaceBrainRepositoryPort, BrainRecordRepositoryPort,
 } from '@tandemise/domain';
+import type { IntakeRepositoryPort, TrackerItemRepositoryPort, WebhookMailboxPort } from '@tandemise/domain';
 import type { TandemiseDatabase } from './database.js';
 
 /**
@@ -57,5 +58,11 @@ export const EVAL_REPOSITORY = token<EvalRepositoryPort>('persistence.EvalReposi
 export const PLAN_DECISION_REPOSITORY = token<PlanDecisionRepositoryPort>('persistence.PlanDecisionRepository');
 export const MERGE_DECISION_REPOSITORY = token<MergeDecisionRepositoryPort>('persistence.MergeDecisionRepository');
 export const OUTCOME_REPOSITORY = token<OutcomeRepositoryPort>('persistence.OutcomeRepository');
+// Intake (plan Task 2). The application declares the same three names in
+// `intake-tokens.ts`, which is how the daemon's `aliasPorts` binds them.
+export const INTAKE_REPOSITORY = token<IntakeRepositoryPort>('persistence.IntakeRepository');
+export const TRACKER_ITEM_REPOSITORY = token<TrackerItemRepositoryPort>('persistence.TrackerItemRepository');
+export const WEBHOOK_MAILBOX = token<WebhookMailboxPort>('persistence.WebhookMailbox');
+export const TASK_HOLD_REPOSITORY = token<TaskHoldRepositoryPort>('persistence.TaskHoldRepository');
 export const WORKSPACE_BRAIN_REPOSITORY = token<WorkspaceBrainRepositoryPort>('persistence.WorkspaceBrainRepository');
 export const BRAIN_RECORD_REPOSITORY = token<BrainRecordRepositoryPort>('persistence.BrainRecordRepository');

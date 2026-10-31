@@ -1,0 +1,13 @@
+name: Hold pair
+description: Two design steps side by side on a one-slot runtime, so the second waits ready to start.
+steps:
+  - key: design
+    role: design
+    isolation: worktree
+    objective: Design the onboarding.
+    outputs: [DesignBrief]
+  - key: settings
+    role: design
+    isolation: worktree
+    objective: Design the settings page.
+    outputs: [DesignBrief]

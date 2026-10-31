@@ -19,6 +19,7 @@ import { Evals } from './screens/evals/Evals.js';
 import { Integrations } from './screens/Integrations.js';
 import { Settings } from './screens/Settings.js';
 import { Project } from './screens/Project.js';
+import { BOARD_TABS, Board, type BoardTab } from './screens/Board.js';
 import { Brain, normalizeBrainTab } from './screens/Brain.js';
 import { useConnection } from './lib/connection.js';
 import { useDaemonStream } from './lib/stream.js';
@@ -109,6 +110,8 @@ function ProjectShell(): JSX.Element {
         <ErrorBoundary resetKey={location}>
           <Switch>
             <Route path="/" component={Home} />
+            {/* The tracker's board and every intake signal (intake spec §7). */}
+            <Route path="/board/:tab?">{(params) => <Board tab={normalizeBoardTab(params.tab)} />}</Route>
             <Route path="/missions">{() => <Missions />}</Route>
             <Route path="/missions/new" component={NewMission} />
             {/* Home's desk opens the list behind each number (P10). */}
@@ -134,8 +137,9 @@ function ProjectShell(): JSX.Element {
             <Route path="/runtimes" component={Runtimes} />
             <Route path="/integrations" component={Integrations} />
             <Route path="/project" component={Project} />
+            <Route path="/settings">{() => <Settings />}</Route>
+            <Route path="/settings/:section">{(params) => <Settings section={params.section ?? null} />}</Route>
             <Route path="/brain/:tab?">{(params) => <Brain tab={normalizeBrainTab(params.tab)} />}</Route>
-            <Route path="/settings" component={Settings} />
             <Route component={Home} />
           </Switch>
         </ErrorBoundary>
@@ -157,4 +161,8 @@ const TEAM_TABS: readonly TeamTab[] = ['people', 'staffing', 'roles'];
 
 function normalizeTeamTab(value: string | undefined): TeamTab {
   return TEAM_TABS.includes(value as TeamTab) ? (value as TeamTab) : 'people';
+}
+
+function normalizeBoardTab(value: string | undefined): BoardTab {
+  return BOARD_TABS.includes(value as BoardTab) ? (value as BoardTab) : 'board';
 }

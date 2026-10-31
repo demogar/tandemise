@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import type {
-  AgentEvent, RuntimeCapability, RuntimeDiscovery, RuntimeHealth, RuntimeProfile,
+  AgentEvent, InteractiveInvocation, RuntimeCapability, RuntimeDiscovery, RuntimeHealth, RuntimeProfile,
 } from '@tandemise/domain';
 import { NormalizingEventSink, SESSION_NOT_FOUND, classifyAbort } from '@tandemise/runtimes-core';
 import type { AgentRuntimeAdapter, RunRequest } from '@tandemise/runtimes-core';
@@ -20,8 +20,35 @@ export const FAKE_SCRIPT_ENV = 'TANDEMISE_FAKE_SCRIPT';
  * satisfies these capabilities" path.
  */
 export const FAKE_CAPABILITIES: readonly RuntimeCapability[] = [
-  'reasoning', 'shell', 'filesystem', 'git', 'structured_output', 'session_resume', 'tool_calling',
+  'reasoning', 'shell', 'filesystem', 'git', 'structured_output', 'session_resume', 'tool_calling', 'interactive_resume',
 ];
+
+/**
+ * The fake's interactive session, as a script for `node -e`. It reads stdin a
+ * line at a time and writes every reply straight away, because it will run
+ * under a PTY where buffered output would look like a hang.
+ */
+function interactiveScript(sessionFile: string, ref: string | null): string {
+  return `
+const fs = require('fs');
+const path = require('path');
+const readline = require('readline');
+fs.writeFileSync(${JSON.stringify(sessionFile)}, 'fake-session-' + Date.now());
+process.stdout.write('Fake session ' + ${JSON.stringify(ref ?? 'new')} + '\\n');
+const rl = readline.createInterface({ input: process.stdin, terminal: false });
+rl.on('line', (line) => {
+  process.stdout.write('> ' + line + '\\n');
+  if (line.startsWith('write ')) {
+    const name = line.slice(6).trim();
+    fs.writeFileSync(path.resolve(process.cwd(), name), 'written in a held session\\n');
+    process.stdout.write('wrote ' + name + '\\n');
+  } else if (line.trim() === '/exit') {
+    rl.close();
+  }
+});
+rl.on('close', () => process.exit(0));
+`;
+}
 
 export interface FakeRuntimeAdapterOptions {
   readonly clock?: Clock;
@@ -90,6 +117,20 @@ export class FakeRuntimeAdapter implements AgentRuntimeAdapter {
 
   resume(sessionRef: string, request: RunRequest): AsyncIterable<AgentEvent> {
     return this.#run(request, sessionRef);
+  }
+
+  interactive(
+    sessionRef: string | null,
+    request: RunRequest,
+    opts: { readonly sessionFile: string; readonly initialPrompt: string | null },
+  ): InteractiveInvocation {
+    return {
+      file: process.execPath,
+      args: ['-e', interactiveScript(opts.sessionFile, sessionRef)],
+      env: {},
+      cwd: request.workingDirectory,
+      sessionFile: opts.sessionFile,
+    };
   }
 
   /** In-process by design: there is no child to supervise. */

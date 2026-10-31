@@ -20,6 +20,7 @@ const STATUS_WORDS: Readonly<Record<TaskStatus, string>> = {
   AWAITING_HUMAN: 'person step',
   AWAITING_EXTERNAL: 'waiting',
   AWAITING_APPROVAL: 'in review',
+  HELD: 'held by a person',
   BLOCKED: 'blocked',
   SUCCEEDED: 'done',
   FAILED: 'failed',

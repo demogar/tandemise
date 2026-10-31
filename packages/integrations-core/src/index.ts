@@ -38,6 +38,8 @@ export { ToolBroker, unwrapToolResult } from './broker.js';
 
 export { RunScopedToolGateway } from './gateway.js';
 
+export { RateGate, retryAfterMs } from './rate-gate.js';
+
 export type { McpConfigFile, McpGatewayHandle, McpGatewayRequest, McpServerConfig } from './mcp/config.js';
 export { MCP_SERVER_NAME, defaultServerEntryPath, writeMcpGatewayConfig } from './mcp/config.js';
 
@@ -58,6 +60,8 @@ export {
   APPROVAL_GATE, BACKGROUND_PROCESS_LAUNCHER, BUILT_IN_TOOLS, CLOCK, COMMAND_EXECUTOR,
   INTEGRATION_PROVIDER_REGISTRY, INTEGRATION_SOURCE,
   LOGGER, TOOL_AUDIT_SINK, TOOL_BROKER, TOOL_CATALOG, TOOL_POLICY_GATE,
+  PRIMARY_TRACKER_FACTORIES,
+  INTAKE_RUNNERS,
 } from './tokens.js';
 
 export { integrationsCoreModule } from './module.js';

@@ -1,4 +1,5 @@
 import type { EvalTrialId, IssueLinkId, MissionId, RepositoryId, RoutineId, TaskId, WorkspaceId, Timestamp } from '@tandemise/shared';
+import type { TrackerItemId } from '@tandemise/shared';
 import type { Capability } from '../capability.js';
 import type { RoleStaffing } from '../staffing.js';
 import type { MissionPriority } from './backlog.js';
@@ -104,6 +105,8 @@ export interface Mission {
   readonly routineId: RoutineId | null;
   /** The GitHub issue it was created from (P14); absent or null for any other mission. */
   readonly issueLinkId?: IssueLinkId | null;
+  /** The tracker item it was started from (intake, spec §7); absent or null for any other mission. */
+  readonly trackerItemId?: TrackerItemId | null;
   /** Set only on a hidden eval trial mission (P3b). Such a mission is never listed, scheduled or escalated. */
   readonly evalTrialId?: EvalTrialId | null;
   /** A person's Quick or Careful for a factory-planned mission (#53 §4); null: the factory decides. */
@@ -150,6 +153,8 @@ export interface MissionDraft {
   readonly routineId?: RoutineId | null;
   /** Set when an issue creates it (P14). */
   readonly issueLinkId?: IssueLinkId | null;
+  /** Set when Start on a tracker item creates it (intake, spec §7). */
+  readonly trackerItemId?: TrackerItemId | null;
   /** Set only on a hidden eval trial mission (P3b). */
   readonly evalTrialId?: EvalTrialId | null;
   /** A person's Quick or Careful (#53). */

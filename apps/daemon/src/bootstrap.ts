@@ -31,7 +31,10 @@ import {
 } from '@tandemise/integrations-core';
 import { GhBrainHost, GhIssueTracker, GhPullRequestFlow, GhPullRequestSnapshots, githubIntegrationModule } from '@tandemise/integration-github';
 import { mcpIntegrationModule } from '@tandemise/integration-mcp';
+import { youtrackIntegrationModule } from '@tandemise/integration-youtrack';
+import { intakeRunnersModule } from '@tandemise/intake-runners';
 import { browserIntegrationModule } from '@tandemise/browser';
+import { terminalModule, TERMINAL_HOST } from '@tandemise/terminal';
 import { createApplicationModule, createServices, EVAL_RUNNER, SCHEDULER, type TandemiseServices,
   WORKFLOW_SOURCE,
   LOCAL_FACTORY_CONFIG_SOURCE,
@@ -40,6 +43,7 @@ import { createApplicationModule, createServices, EVAL_RUNNER, SCHEDULER, type T
   PULL_REQUEST_SNAPSHOTS, PULL_REQUEST_FLOW, GIT_CREDENTIAL_ENV, pickGitCredentialEnv,
   SETUP_FOLDER,
   EVAL_BLOBS,
+  INTAKE_BLOBS,
 } from '@tandemise/application';
 import * as applicationTokens from '@tandemise/application';
 
@@ -54,6 +58,7 @@ import { FileSetupFolder } from './setup-folder.js';
 import { FileWorkflowSource } from './workflow-source.js';
 import { FileFactoryConfigSource } from './factory-config-source.js';
 import { DaemonSkillFiles } from './skill-files.js';
+import { startWebhookListener, type WebhookListener } from './http/webhook-listener.js';
 import { SwitchableCoordination, type RelayFactory } from './coordination.js';
 import type { SqlHandle } from '@tandemise/coordination';
 import { relayFactory } from '@tandemise/coordination-relay';
@@ -115,8 +120,11 @@ export function bootstrap(config: DaemonConfig, options: { readonly localPersonN
     executionLocalModule,
     integrationsCoreModule,
     githubIntegrationModule,
+    youtrackIntegrationModule,
+    intakeRunnersModule,
     mcpIntegrationModule,
     browserIntegrationModule,
+    terminalModule,
     // The name reaches a fresh database's first person; this layer may run git, the application may not.
     createApplicationModule({
       ...(options.localPersonName === undefined ? {} : { localPersonName: options.localPersonName }),
@@ -171,6 +179,8 @@ export function bootstrap(config: DaemonConfig, options: { readonly localPersonN
   // Eval case inputs (P3b) are content-addressed bytes on disk, the same shape as the skills store.
   // The application module binds an in-memory default; this replaces it with the real one.
   container.rebind(EVAL_BLOBS, () => new FileEvalBlobs(config.paths.evalBlobs), { source: 'bootstrap' });
+  // Inline attachments of intake signals (spec 2026-10-30-intake-design.md §1), the same content-addressed shape on disk.
+  container.rebind(INTAKE_BLOBS, () => new FileEvalBlobs(config.paths.intakeBlobs), { source: 'bootstrap' });
 
   // GitHub issues (P14) go through the same `gh` and command executor as the
   // GitHub tools, so `gh` is found on the daemon's own PATH.
@@ -231,6 +241,29 @@ export function bootstrap(config: DaemonConfig, options: { readonly localPersonN
   lifecycle.add(container.resolve(SCHEDULER));
   // Added after the scheduler, so shutdown stops the runner first; its live trial is left for boot recovery (P3b).
   lifecycle.add(container.resolve(EVAL_RUNNER));
+  // The intake runners (plan Task 10): shutdown stops every poll and socket runner.
+  lifecycle.add(container.resolve(applicationTokens.INTAKE_RUNNER_HOST));
+  // The opt-in webhook listener (intake plan Task 11): only when the local
+  // settings name its port. Added last, so shutdown closes it first.
+  const webhookPort = intakeWebhookPort(container.resolve(applicationTokens.SETTINGS_STORE).read());
+  if (webhookPort !== null) {
+    let listener: WebhookListener | null = null;
+    lifecycle.add({
+      name: 'webhook-listener',
+      start: async () => {
+        listener = await startWebhookListener({
+          port: webhookPort,
+          mailbox: container.resolve(applicationTokens.WEBHOOK_MAILBOX),
+          log: log.child({ component: 'webhook-listener' }),
+          // Ruling 24: only a project on this computer that configures the source; anything else is a 404, stored nowhere.
+          accepts: (workspaceId, sourceId) => container.resolve(applicationTokens.WORKSPACE_REPOSITORY).get(workspaceId) !== undefined
+            && container.resolve(applicationTokens.INTAKE_CONFIG_SOURCE).read(workspaceId).sources.some((s) => s.id === sourceId),
+          clock,
+        });
+      },
+      stop: async () => { await listener?.close(); },
+    });
+  }
   lifecycle.add(container.resolve(applicationTokens.BRAIN_SYNC_LOOP));
   lifecycle.add(container.resolve(applicationTokens.BRAIN_SIGNALS));
   // Holds ending (#50) become outcomes for routing (#53).
@@ -297,8 +330,17 @@ function aliasPorts(container: Container, log: Logger): void {
   bindDirect('SYSTEM_ENVIRONMENT', (r) => createSystemEnvironment(r.resolve(CONFIG), SCHEMA_VERSION));
   bindDirect('PROCESS_LIVENESS', () => processLiveness);
   bindDirect('OAUTH_CALLBACK', () => oauthCallbacks);
+  // The hold service and the terminal socket must share one PTY host: the
+  // service opens the sessions the socket's windows attach to.
+  bindDirect('INTERACTIVE_SESSIONS', (r) => r.resolve(TERMINAL_HOST));
 
   log.debug('bootstrap.ports_bound', { aliased, missing });
+}
+
+/** `intakeWebhookPort` from the local settings: a port number, or null (no listener). */
+function intakeWebhookPort(settings: Record<string, unknown>): number | null {
+  const port = settings['intakeWebhookPort'];
+  return typeof port === 'number' && Number.isInteger(port) && port >= 0 && port <= 65_535 ? port : null;
 }
 
 function isToken(value: unknown): value is Token<unknown> {

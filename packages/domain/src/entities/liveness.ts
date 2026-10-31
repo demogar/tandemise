@@ -58,6 +58,7 @@ export const LIVENESS_RULES: readonly LivenessRule[] = [
   { id: 'T7', subject: 'task', statuses: ['AWAITING_HUMAN'], condition: 'the Inbox step row', kind: 'waiting' },
   { id: 'T8', subject: 'task', statuses: ['AWAITING_EXTERNAL'], condition: 'a wait step polls until its timeout', kind: 'moving' },
   { id: 'T8b', subject: 'task', statuses: ['AWAITING_EXTERNAL'], condition: 'a parked agent task: the person who took it elsewhere is who it waits on', kind: 'waiting' },
+  { id: 'T8c', subject: 'task', statuses: ['HELD'], condition: 'a person has the keyboard on it', kind: 'waiting' },
   { id: 'T9', subject: 'task', statuses: ['AWAITING_APPROVAL'], condition: 'a pending card for it', kind: 'waiting' },
   { id: 'T10', subject: 'task', statuses: ['AWAITING_APPROVAL'], condition: 'no pending card', kind: 'cause' },
   { id: 'T11', subject: 'task', statuses: ['BLOCKED'], condition: 'a pending card for it', kind: 'waiting' },
@@ -167,6 +168,8 @@ export function taskLiveness(
       return (task.executor ?? 'agent') === 'wait' ? { rule: 'T8', standing: movable('moving') } : { rule: 'T8b', standing: 'waiting' };
     case 'AWAITING_APPROVAL':
       return context.carded.has(task.id) ? { rule: 'T9', standing: 'waiting' } : { rule: 'T10', standing: 'cause' };
+    // A person has the keyboard; the step is theirs until they continue or release it.
+    case 'HELD': return { rule: 'T8c', standing: 'waiting' };
     case 'BLOCKED':
       if (context.carded.has(task.id)) return { rule: 'T11', standing: 'waiting' };
       if (task.statusReason?.startsWith(DEPENDENCY_BLOCK_PREFIX) === true) return { rule: 'T12', standing: 'upstream' };

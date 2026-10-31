@@ -86,6 +86,16 @@
   --risk-destructive: var(--status-failed);
   --risk-release: light-dark(var(--signal-violet-deep), var(--signal-violet-bright));
 
+  /* --------------------------------------------------------------- terminal */
+  /* A held step's terminal (TerminalPanel). xterm.js paints on a canvas and
+     takes plain colours, so the panel resolves these through getComputedStyle
+     and hands it the result; solid colours only, so the selection stays
+     legible under the text drawn over it. */
+  --terminal-background: light-dark(var(--paper-0), var(--ink-1000));
+  --terminal-foreground: light-dark(var(--brand-indigo), var(--mint-50));
+  --terminal-cursor: light-dark(var(--indigo-500), var(--brand-mint));
+  --terminal-selection: light-dark(var(--paper-200), var(--ink-700));
+
   /* ------------------------------------------------------------------ brand */
   /* The product mark. Lead wheel, trailing wheel, axle - see Logo.tsx. */
   --logo-lead: light-dark(var(--brand-indigo), var(--brand-mint));

@@ -1,0 +1,175 @@
+/* The Board and its Intake tab (intake spec §7, plan Task 14). Colours only from theme.css roles. */
+.board {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s5);
+}
+
+.board__header {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+}
+
+.board__tracker {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.board__refreshed {
+  flex: 1;
+  font-size: var(--fs-xs);
+  color: var(--text-tertiary);
+}
+
+.board__check {
+  margin-left: auto;
+}
+
+.board[data-checking='true'] .board__group {
+  opacity: 0.7;
+}
+
+.board__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.board__group-title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  margin: 0;
+}
+
+.board__none {
+  margin: 0;
+  font-size: var(--fs-sm);
+}
+
+.board__line {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  min-width: 0;
+}
+
+.board__key {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: var(--fs-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.board__key:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+
+.board__title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.board__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+  margin-top: var(--s1);
+}
+
+.board__assignee {
+  color: var(--text-secondary);
+}
+
+.board__mission {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  color: var(--text-secondary);
+}
+
+.board__mission:hover {
+  color: var(--text);
+}
+
+.board__row[data-startable='false'] .board__start {
+  cursor: not-allowed;
+}
+
+.intake-list__line {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  min-width: 0;
+}
+
+.intake-list__title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.intake-list__source {
+  flex: none;
+}
+
+.intake-list__status[data-tone='failed'] {
+  color: var(--status-failed);
+}
+
+.intake-list__status[data-tone='blocked'] {
+  color: var(--status-blocked);
+}
+
+.intake-list__reason {
+  color: var(--text-tertiary);
+}
+
+.intake-list__when {
+  font-size: var(--fs-xs);
+  min-width: 56px;
+  text-align: right;
+}
+
+/* The Inbox card intake raises (screens/inbox/IntakeDecisionRow.tsx). */
+.intake-decision {
+  cursor: default;
+}
+
+.intake-decision__candidate {
+  margin-top: var(--s1);
+}
+
+.intake-decision__link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  text-align: left;
+}
+
+.intake-decision__link:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+
+.intake-decision__actions {
+  gap: var(--s2);
+}
+
+.intake-decision__when {
+  font-size: var(--fs-xs);
+}

@@ -55,6 +55,8 @@ export interface PlannerDeps {
   readonly clock: Clock;
   readonly log: Logger;
   readonly tiebreak?: TiebreakRunnerPort;
+  /** The type of the tracker item Start made the mission from (#52), mapped by planner.yaml's trackerTypes. */
+  readonly trackerItems?: { get(id: string): { readonly type?: string } | undefined };
   readonly skills?: SkillPinning;
   /** For escalating a running mission and switching its lane (#53 §5.4). Optional for older harnesses. */
   readonly tasks?: TaskRepositoryPort;
@@ -101,6 +103,13 @@ export class PlannerService {
     return mission.workflowPreset === FACTORY_WORKFLOW_ID && !isTrialMission(mission);
   }
 
+  /** The tracker item's type, when Start made this mission from one (null otherwise, or once the item is gone). */
+  #trackerType(mission: Mission): string | null {
+    const id = mission.trackerItemId;
+    if (id === undefined || id === null) return null;
+    return this.deps.trackerItems?.get(id)?.type ?? null;
+  }
+
   /**
    * Loads the factory files and predicts the lane, so the synchronous
    * readiness check can ask `skipsReadiness`. Called before entering PLANNING.
@@ -131,7 +140,7 @@ export class PlannerService {
   async predict(mission: Mission): Promise<{ profile: TaskProfile; lane: Lane; because: string; config: FactoryConfig }> {
     const repositories = this.#orderedRepositories(mission.workspaceId);
     const config = await this.#config(mission.workspaceId, repositories, true);
-    const input = gatherSignals({ mission, criteria: this.deps.criteria.listActive(mission.id), repositories });
+    const input = gatherSignals({ mission, criteria: this.deps.criteria.listActive(mission.id), repositories, trackerType: this.#trackerType(mission) });
     const profile = profileTask(input, config.planner);
     return { profile, config, ...chooseLane(profile, config.planner, input.person) };
   }
@@ -156,7 +165,7 @@ export class PlannerService {
     const scope: EventScope = { workspaceId: mission.workspaceId, missionId: mission.id };
     const config = await this.#config(mission.workspaceId, ctx.repositories, true);
     const criteria = this.deps.criteria.listActive(mission.id);
-    let input: ProfileInput = gatherSignals({ mission, criteria, repositories: ctx.repositories });
+    let input: ProfileInput = gatherSignals({ mission, criteria, repositories: ctx.repositories, trackerType: this.#trackerType(mission) });
     let profile = profileTask(input, config.planner);
 
     let tiebreak: PlanDecision['tiebreak'] = null;
@@ -291,7 +300,7 @@ export class PlannerService {
     const config = await this.#config(mission.workspaceId, repositories, true);
     const before = this.deps.planDecisions.latest(mission.id);
     const criteria = this.deps.criteria.listActive(mission.id);
-    const input = gatherSignals({ mission, criteria, repositories, extraPaths: paths, basis: 'measured' });
+    const input = gatherSignals({ mission, criteria, repositories, extraPaths: paths, basis: 'measured', trackerType: this.#trackerType(mission) });
     const person = options.person ?? mission.laneRequest ?? 'auto';
     const profile = profileTask({ ...input, person }, config.planner);
     const measured = chooseLane(profile, config.planner, person);

@@ -1,7 +1,7 @@
 import type { ArtifactHandoff, ArtifactType, SkillFile, WorkflowDefinition, WorkflowIssue } from '@tandemise/domain';
 import type { Result, Timestamp } from '@tandemise/shared';
 import type {
-  ClaimView, CoordDeviceView, CoordMemberView, CreateEndpointRequest, CreateInviteRequest, EndpointView, ImportReport, MailboxMessage, PresenceView,
+  ClaimView, CoordDeviceView, CoordMemberView, CreateEndpointRequest, CreateInviteRequest, EndpointView, ImportReport, LeaseRequest, LeaseView, MailboxMessage, PresenceView,
 } from '@tandemise/api-contract/relay';
 
 /**
@@ -311,6 +311,12 @@ export interface CoordinationPort {
   claim(input: { readonly projectKey: string; readonly itemRef: string; readonly itemTitle: string; readonly itemUrl: string | null; readonly localRef: string }): Promise<ClaimResult>;
   release(claimId: string, reason: 'done' | 'released'): Promise<void>;
   takeOver(claimId: string, localRef: string): Promise<ClaimResult>;
+  /**
+   * Takes or renews a short lease, `('source', id)` in a project (intake spec
+   * §3, Ruling 22): with the relay, one daemon of the team holds it at a time;
+   * solo it is always granted. Optional: a port without it grants everything.
+   */
+  lease?(input: LeaseRequest): Promise<LeaseView>;
   /** Active claims, from the local copy. */
   claims(projectKey?: string): readonly ClaimView[];
   /** The newest claim, active or ended, tied to a local mission. */

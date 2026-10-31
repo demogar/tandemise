@@ -2,8 +2,9 @@ import type {
   ApprovalId, ArtifactId, CriterionId, FeedbackId, IntegrationId, IssueLinkId, QuestionId, MemberId, MissionId, PersonId, RepositoryId, RoutineId, RuntimeProfileId,
   TaskId, WorkspaceId,
 } from '@tandemise/shared';
+import type { TrackerItemId } from '@tandemise/shared';
 import type {
-  Approval, ArtifactManifest, ExecutionTargetRecord, FeedbackAttachment, Mission, OutsideContribution, PullRequestSnapshot, RoleStaffing, RoleTemplate,
+  Approval, ArtifactManifest, ExecutionTargetRecord, FeedbackAttachment, Mission, MissionTask, OutsideContribution, PullRequestSnapshot, RoleStaffing, RoleTemplate,
   RunEventRecord, RuntimeProfile, StaffingPatch,
 } from '@tandemise/domain';
 import type {
@@ -78,6 +79,16 @@ export interface TandemiseServices {
   readonly contributions: ContributionService;
   /** Eval suites, saving a finished step as a case, and the run-score summary (P3b). */
   readonly evals: import('./services/eval-service.js').EvalService;
+  /** Signals from any source, recorded and landed in the project's primary tracker (intake). */
+  readonly intake: import('./services/intake-service.js').IntakeService;
+  /** The board from the primary tracker, and Start: a mission from one of its items (intake spec §7). */
+  readonly tracker: import('./services/tracker-service.js').TrackerService;
+  /** The shipped intake runners, and "Check sources now" (intake spec §2, plan Task 10). */
+  readonly intakeRunners: import('./intake/runner-host.js').IntakeRunnerHost;
+  /** Closing the loop at every source when the tracker item is done (intake spec §8, plan Task 13). */
+  readonly closures: import('./services/closure-service.js').ClosureService;
+  /** A person taking the keyboard on an agent step, and handing it back. */
+  readonly holds: HoldService;
   /** The project's brain repository: link, sync, memory and promotions (#51). */
   readonly brain: import('./brain/brain-service.js').BrainService;
   /** Who works on which tracker item, alone or with a team relay (relay spec). */
@@ -184,7 +195,7 @@ export interface WorkspaceService {
 export interface MissionService {
   list(filter: { workspaceId?: string; status?: string; limit?: number }): readonly MissionSummary[];
   /** `origin.routineId` marks a mission a routine created (P11). */
-  create(caller: Caller, request: CreateMissionRequest, origin?: { routineId?: RoutineId; issueLinkId?: IssueLinkId }): Promise<Mission>;
+  create(caller: Caller, request: CreateMissionRequest, origin?: { routineId?: RoutineId; issueLinkId?: IssueLinkId; trackerItemId?: TrackerItemId; missionId?: MissionId }): Promise<Mission>;
   start(id: MissionId): Promise<Mission>;
   pause(id: MissionId): Promise<Mission>;
   resume(id: MissionId): Promise<Mission>;
@@ -215,6 +226,30 @@ export interface MissionService {
    */
   handBack(taskId: TaskId, caller: Caller, request: HandBackRequest): Promise<{ task: TaskView; artifacts: ArtifactManifest[] }>;
 }
+
+/**
+ * Hold and interact: a person opens an agent step's own session in a
+ * terminal, then hands it back. Refusals are CONFLICT, in the daemon's words.
+ */
+export interface HoldService {
+  /** Stops the step's run into a resumable state and opens its session in a terminal. */
+  hold(taskId: TaskId, caller: Caller): Promise<TaskView>;
+  /** The holder hands the work back: the agent continues from the session the person ended on. */
+  continue(taskId: TaskId, caller: Caller): Promise<TaskView>;
+  /** Ends the hold without the continuation prompt; anyone who may take the step may release it. */
+  release(taskId: TaskId, caller: Caller): Promise<TaskView>;
+  /** Opens the terminal again for an open hold whose terminal has exited. */
+  reopen(taskId: TaskId, caller: Caller): Promise<TaskView>;
+  /** The open hold whose terminal is running, for the terminal socket; null when there is none. */
+  terminalFor(taskId: TaskId): import('@tandemise/shared').TaskHoldId | null;
+  /** The step's open hold and whether Hold is offered, for its task view. */
+  standing(task: MissionTask, mission: Mission): HoldStanding;
+  /** After recovery, before dispatch: every open hold takes up its checkout leases again and keeps them renewed. */
+  resume(): void;
+}
+
+/** What a task view says about holding the step. */
+export type HoldStanding = Pick<TaskView, 'hold' | 'holdable'>;
 
 export interface PlanningService {
   /** Runs the planner role, validates the result, and stores the plan. */

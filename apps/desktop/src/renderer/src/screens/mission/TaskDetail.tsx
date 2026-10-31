@@ -21,6 +21,8 @@ import { ArtifactReader } from '../artifacts/ArtifactReader.js';
 import { HandoffLinkButton, openableLinks } from '../../components/HandoffLinks.js';
 import { useWorkspaceId } from '../../lib/workspace.js';
 import { ShipCard } from '../../components/ShipCard.js';
+import { HoldButton, NowLine, useHoldActions } from '../../components/TerminalPanel.js';
+import { describeError } from '../../lib/daemon.js';
 import { RememberThis, WhatItKnew } from '../../components/WhatItKnew.js';
 
 export function TaskDetail({ task, detail, onClose }: { task: TaskView; detail: MissionDetail; onClose: () => void }): JSX.Element {
@@ -77,6 +79,10 @@ export function TaskDetail({ task, detail, onClose }: { task: TaskView; detail: 
     detail.mission.id,
   );
   const evaluation = detail.evaluations.find((candidate) => candidate.taskId === task.id);
+  // Hold is an agent's step taken over in its own terminal; a person's or a wait step has no session to hold.
+  const holdOffered = task.executor === 'agent' && !task.coveredBy;
+  const { cont, release } = useHoldActions(task.id, detail.mission.id);
+  const holdFailure = cont.error ?? release.error;
 
   // A worker blocked on a question is answered here, where you are already
   // looking at the task, rather than by sending you to another screen for it.
@@ -123,6 +129,22 @@ export function TaskDetail({ task, detail, onClose }: { task: TaskView; detail: 
               {complete.isPending ? 'Saving…' : 'Mark done'}
             </button>
           ) : null}
+          {holdFailure ? <span className="field__error hold-refusal" role="alert">{describeError(holdFailure).detail}</span> : null}
+          {holdOffered ? <HoldButton task={task} missionId={detail.mission.id} onOpen={onClose} /> : null}
+          {task.hold !== null ? (
+            <>
+              {/* The panel's order: Continue, then Release. Only the holder may continue; anyone else can release. */}
+              {task.hold.heldBy === actors.meId ? (
+                <button type="button" className="btn btn--primary" disabled={cont.isPending || release.isPending} onClick={() => cont.mutate(undefined)}>
+                  <Icon name="play" size={13} />
+                  {cont.isPending ? 'Continuing…' : 'Continue'}
+                </button>
+              ) : null}
+              <button type="button" className="btn" disabled={cont.isPending || release.isPending} onClick={() => release.mutate(undefined)}>
+                {release.isPending ? 'Releasing…' : 'Release'}
+              </button>
+            </>
+          ) : null}
           {canRequestChanges ? (
             <RequestChangesButton
               taskId={task.id}
@@ -138,6 +160,8 @@ export function TaskDetail({ task, detail, onClose }: { task: TaskView; detail: 
       }
     >
       <div className="stack" style={{ gap: 'var(--s4)', color: 'var(--text)' }}>
+        {/* What the agent is doing right now, in words, under the title. */}
+        <NowLine now={task.now} />
         {question !== undefined ? (
           <ApprovalCard
             compact

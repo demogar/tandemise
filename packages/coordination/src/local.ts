@@ -1,4 +1,4 @@
-import type { ClaimView, CoordMemberView, MailboxMessage, PresenceView } from '@tandemise/api-contract/relay';
+import type { ClaimView, CoordMemberView, LeaseView, MailboxMessage, PresenceView } from '@tandemise/api-contract/relay';
 import type { CoordinationStore } from './store.js';
 import { DEFAULT_STALE_AFTER_MS, heldBySentence, takeOverRefusal } from './rules.js';
 
@@ -136,6 +136,11 @@ export class LocalCoordination {
   async release(claimId: string, reason: 'done' | 'released'): Promise<void> {
     this.store.release(claimId, reason, { memberId: this.#me.memberId, role: 'admin' });
     this.#emitter.emit('claims');
+  }
+
+  /** Solo, this daemon is the only one running its sources: a lease is always granted (intake spec §3). */
+  async lease(input: { readonly ttlSeconds: number }): Promise<LeaseView> {
+    return { granted: true, expiresAt: new Date(this.store.clock().getTime() + input.ttlSeconds * 1000).toISOString(), holderName: null, deviceLabel: null };
   }
 
   async takeOver(claimId: string, localRef: string): Promise<ClaimResult> {

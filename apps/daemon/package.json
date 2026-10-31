@@ -5,6 +5,9 @@
   "private": true,
   "type": "module",
   "main": "./dist/main.js",
+  "bin": {
+    "tandemise": "./dist/cli.js"
+  },
   "scripts": {
     "build": "tsc -b"
   },
@@ -28,13 +31,16 @@
     "@tandemise/runtime-generic": "*",
     "@tandemise/execution-local": "*",
     "@tandemise/integration-github": "*",
+    "@tandemise/integration-youtrack": "*",
+    "@tandemise/intake-runners": "*",
     "@tandemise/browser": "*",
     "@tandemise/desktop-control": "*",
     "@tandemise/application": "*",
     "zod": "^3.24.1",
     "ws": "^8.22.0",
     "yaml": "^2.9.1",
-    "@tandemise/integration-mcp": "*"
+    "@tandemise/integration-mcp": "*",
+    "@tandemise/terminal": "*"
   },
   "devDependencies": {
     "@types/ws": "^8.5.13"

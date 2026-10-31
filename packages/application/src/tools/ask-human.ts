@@ -113,6 +113,11 @@ export interface AskHumanDeps {
  */
 export function createAskHumanTool(deps: AskHumanDeps): IntegrationTool {
   const park = (task: MissionTask, question: string): void => {
+    // Only a running task waits on its question (a second question refreshes
+    // the line). A held one has a person in its session already, and any other
+    // status is not this run's to change.
+    const status = deps.tasks.get(task.id)?.status;
+    if (status !== 'RUNNING' && status !== 'AWAITING_INPUT') return;
     deps.tasks.update(task.id, {
       status: 'AWAITING_INPUT',
       statusReason: `Waiting for your answer: ${summarize(question, 160)}`,

@@ -80,6 +80,11 @@ export interface SchedulerDeps {
    */
   readonly syncIssues?: () => void;
   /**
+   * Intake's background pass (plan Task 7): finishes links a crash left
+   * pending and retries signals the tracker could not take. Returns at once.
+   */
+  readonly syncIntake?: () => void;
+  /**
    * The hard-limit admission rule (P8): null when work may start in the
    * mission, else why not (and the stop is applied). Optional so harnesses
    * built before limits still compose; the module always passes it.
@@ -192,8 +197,9 @@ export class SchedulerService implements LifecycleComponent {
     for (const task of this.deps.tasks.listByMission(missionId)) this.cancelTask(task.id);
   }
 
-  cancelTask(taskId: TaskId): void {
-    this.#active.get(taskId)?.abort();
+  /** `reason` tells the run why it stopped: a hold (`TaskHeld`) keeps its session; a plain cancel does not. */
+  cancelTask(taskId: TaskId, reason?: Error): void {
+    this.#active.get(taskId)?.abort(reason);
   }
 
   /**
@@ -227,6 +233,7 @@ export class SchedulerService implements LifecycleComponent {
     await this.#fireRoutines();
     // In the background: a draft it adds is pulled on a later pass.
     this.#syncIssues();
+    this.#syncIntake();
     // Before dispatch: a slot freed by the last pass is filled from the backlog
     // now, and the mission it pulls is planning by the time this pass reconciles.
     await this.#pullBacklog();
@@ -511,7 +518,13 @@ export class SchedulerService implements LifecycleComponent {
         this.wake();
       })
       .catch((e: unknown) => {
-        this.#setStatus(this.deps.tasks.get(task.id) ?? task, scopeOf(mission), 'BLOCKED', `The ship step failed: ${errorMessage(e)}`);
+        const current = this.deps.tasks.get(task.id) ?? task;
+        // Once its pull request is open and waiting, a failed call to GitHub is retried on the next look, not a blocked step.
+        if (current.status === 'AWAITING_EXTERNAL' || current.status === 'AWAITING_APPROVAL') {
+          this.deps.log.warn('ship.look_failed', { missionId: mission.id, taskId: task.id, error: errorMessage(e) });
+          return;
+        }
+        this.#setStatus(current, scopeOf(mission), 'BLOCKED', `The ship step failed: ${errorMessage(e)}`);
       })
       .finally(() => {
         this.#waiting.delete(task.id);
@@ -738,6 +751,15 @@ export class SchedulerService implements LifecycleComponent {
     } catch (e) {
       // Issue sync talks to GitHub; nothing it does may stop the pass.
       this.deps.log.warn('scheduler.issue_sync_failed', { error: errorMessage(e) });
+    }
+  }
+
+  #syncIntake(): void {
+    try {
+      this.deps.syncIntake?.();
+    } catch (e) {
+      // Intake talks to the tracker; nothing it does may stop the pass.
+      this.deps.log.warn('scheduler.intake_sync_failed', { error: errorMessage(e) });
     }
   }
 

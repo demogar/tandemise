@@ -44,12 +44,16 @@ export { SqliteFeedbackRepository } from './repositories/feedback-repository.js'
 export { SqliteRunInputRepository } from './repositories/run-input-repository.js';
 export { SqlitePlanProposalRepository } from './repositories/plan-proposal-repository.js';
 export { SqlitePlanDecisionRepository, SqliteMergeDecisionRepository, SqliteOutcomeRepository } from './repositories/planner-repositories.js';
+export { SqliteTaskHoldRepository } from './repositories/task-hold-repository.js';
 export { SqliteMissionCriteriaRepository } from './repositories/mission-criteria-repository.js';
 export { SqliteMissionQuestionRepository } from './repositories/mission-question-repository.js';
 export { SqliteLimitRepository } from './repositories/limit-repository.js';
 export { SqliteRoutineRepository } from './repositories/routine-repository.js';
 export { SqliteSkillRepository } from './repositories/skill-repository.js';
 export { SqliteIssueRepository } from './repositories/issue-repository.js';
+export { SqliteIntakeRepository } from './repositories/intake-repository.js';
+export { SqliteTrackerItemRepository } from './repositories/tracker-item-repository.js';
+export { SqliteWebhookMailbox } from './repositories/webhook-inbox-repository.js';
 export { SqliteRunScoreRepository } from './repositories/run-score-repository.js';
 export { SqliteEvalRepository } from './repositories/eval-repository.js';
 export { createUnitOfWork } from './repositories/unit-of-work.js';
