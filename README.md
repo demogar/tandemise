@@ -105,6 +105,15 @@ live in your repository as `.tandemise/` files: export them, commit them, import
 them on another machine with a preview of every change — see
 [Your setup as code](docs/guides/setup-as-code.md).
 
+How much process a task gets is decided per task: with **Let the factory
+decide** (the default), a tiny fix plans at once into one step and a pull
+request, while a change to migrations, auth or payments gets a spec, review,
+verification and a plan you approve — every choice shown with its reasons.
+The ship step opens the pull request itself, waits for CI, and then either asks
+for your review or, once you turn auto-merge on for the project, merges low-risk
+changes on its own from measured facts, never from what an agent says — see
+[The factory](docs/FACTORY.md).
+
 Label a GitHub issue `tandemise` and it becomes a draft mission (queued when it
 says what "done" means); when the work ships, the issue gets the criteria table
 and, if you want, is closed — see [GitHub issues in and out](docs/guides/github-issues.md).
@@ -210,6 +219,7 @@ Task-oriented, one per concept:
 | [Hand work in and back](docs/guides/outside-contributions.md) | start a mission from a file or link I already have, and take a step to another tool and bring it back |
 | [Your setup as code](docs/guides/setup-as-code.md) | keep roles, workflows, routines, limits, skill pins and issue settings in my repository, and import them |
 | [Workflows](docs/WORKFLOWS.md) | write my own process as a file, and see which gate facts exist |
+| [The factory](docs/FACTORY.md) | see why a task got its steps, models and gates, and decide when Tandemise may merge on its own |
 
 ## Repository layout
 

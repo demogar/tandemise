@@ -38,12 +38,12 @@ try {
   ev.check('…and lists the Security review step', measured.includes('Security review · role model'), measured);
   await shot(c, ev, 'measured');
 
-  const shipped = await until(async () => { const v = await ship(c, id); return v.stage === 'opened' && v; }, { label: 'ship opened', timeoutMs: 120_000 });
+  const shipped = await until(async () => { const v = await ship(c, id); return v.prs.length > 0 && v; }, { label: 'ship opened', timeoutMs: 120_000 });
   ev.check('GET /ship: the pull request opened after the review', shipped.prs.length === 1, shipped);
   const tasks = await c.tasks(id);
   const reviewDone = Date.parse(tasks.security_review.finishedAt);
-  const shipDone = Date.parse(Object.values(tasks).find((t) => t.executor === 'ship').finishedAt);
-  ev.check('…and the ship step finished after the security review', shipDone >= reviewDone, { reviewDone: tasks.security_review.finishedAt, shipDone: new Date(shipDone).toISOString() });
+  const opened = (await c.events(id)).find((e) => e.body?.type === 'ship.pr_opened');
+  ev.check('…and only after the security review finished', opened !== undefined && Date.parse(opened.createdAt) >= reviewDone, { reviewDone: tasks.security_review.finishedAt, opened: opened?.createdAt });
 } catch (e) {
   ev.check(`scenario ran to the end (${e.message.split('\n')[0]})`, false);
 }

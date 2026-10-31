@@ -103,7 +103,7 @@ const results = readdirSync(EVIDENCE).filter((f) => f.endsWith('.json')).map((f)
 const order = ['PM1', 'PM2', 'PM3', 'PM4', 'PM5', 'PM6', 'PM7', 'PM8', 'PM9', 'PM10'];
 results.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
 const lines = [
-  '# Planner acceptance (#53, PR 1)',
+  '# Planner acceptance (#53)',
   '',
   `Run: ${new Date().toISOString()} · build ${execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: repoRoot }).toString().trim()} · fresh install at ${real}`,
   `Result: **${failed ? `${keepGoing ? 'FAILED at' : 'STOPPED at'} ${failed}` : results.every((r) => r.ok) ? 'ALL PASS' : 'FAILURES'}** (${results.filter((r) => r.ok).length}/${results.length} scenarios)`,

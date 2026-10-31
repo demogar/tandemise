@@ -146,3 +146,9 @@ spec (`docs/superpowers/specs/2026-10-30-planner-and-merge-design.md`).
   code. A proposal's history comes from the PRs on its branch
   (`PullRequestPort.listByHead`, "Evidence: N outcomes" in the body), so no new table
   is needed. The sweep runs from the scheduler's pass, once a day.
+- Ruling (Task 19): REPORT.md is the acceptance harness's own summary of the
+  full PM1–PM10 run (10/10 on build 27a306a), copied into this folder. PM1, PM4 and
+  PM6 were not run against real Claude Code: the planner harness has no
+  real-runtime mode, and the scripted agent drives every scenario. PM6 now checks
+  that the PR opened after the security review finished, since a ship step goes
+  on to wait for CI and the review instead of ending when it opens.

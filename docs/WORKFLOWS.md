@@ -182,6 +182,9 @@ one that can never pass, saying why:
 A workflow file with such a gate is listed under New mission with the reason,
 and nothing plans from it until it is fixed.
 
+The factory's own rules (`planner.yaml`, `routing.yaml`, `merge.yaml`) are described in
+[The factory](FACTORY.md); the facts they read are in the last table below.
+
 The table below is generated from `GATE_FACT_VOCABULARY`
 (`packages/domain/src/gate-facts.ts`) by `node scripts/gate-facts-doc.mjs
 --write`; the offline checks fail when it drifts.
