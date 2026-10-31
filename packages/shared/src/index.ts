@@ -5,3 +5,4 @@ export * from './logger.js';
 export * from './redact.js';
 export * from './result.js';
 export * from './paths.js';
+export * from './own-node.js';

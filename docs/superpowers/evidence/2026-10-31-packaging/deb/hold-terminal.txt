@@ -1,0 +1,41 @@
+Fake session sess-packaged
+hello from the packaged app
+> hello from the packaged app
+write packaged.txt
+> write packaged.txt
+wrote packaged.txt
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

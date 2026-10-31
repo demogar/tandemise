@@ -80,7 +80,7 @@ export class FileSetupFolder implements SetupFolderPort {
     if (paths.length === 0) return warnings;
     try {
       // Exit 1 means "nothing ignored"; only a real failure lands in catch.
-      const { stdout } = await run('git', ['-C', repositoryPath, 'check-ignore', '--verbose', '--', ...paths]).catch((e: { code?: number; stdout?: string }) => {
+      const { stdout } = await run('git', ['-C', repositoryPath, 'check-ignore', '--verbose', '--', ...paths], { windowsHide: true }).catch((e: { code?: number; stdout?: string }) => {
         if (e.code === 1) return { stdout: '' };
         throw e;
       });
@@ -120,7 +120,7 @@ export class FileSetupFolder implements SetupFolderPort {
       // No ignore file: nothing of ours to repair.
     }
     try {
-      const { stdout } = await run('git', ['-C', repositoryPath, 'rev-parse', '--git-common-dir']);
+      const { stdout } = await run('git', ['-C', repositoryPath, 'rev-parse', '--git-common-dir'], { windowsHide: true });
       const common = stdout.trim();
       const exclude = join(isAbsolute(common) ? common : join(repositoryPath, common), 'info', 'exclude');
       const text = await readFile(exclude, 'utf8').catch(() => null);

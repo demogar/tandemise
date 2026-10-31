@@ -54,7 +54,7 @@ class KeychainSecretStore implements SecretStorePort {
     // milliseconds on the user's own machine.
     await run('security', [
       'add-generic-password', '-a', ref, '-s', SERVICE, '-w', value, '-U',
-    ]).catch((e: unknown) => {
+    ], { windowsHide: true }).catch((e: unknown) => {
       throw new TandemiseError('INTERNAL', 'Could not write to the macOS Keychain.', { cause: e });
     });
     this.#index.add(ref, name);
@@ -64,7 +64,7 @@ class KeychainSecretStore implements SecretStorePort {
 
   async resolve(ref: string): Promise<string | undefined> {
     try {
-      const { stdout } = await run('security', ['find-generic-password', '-a', ref, '-s', SERVICE, '-w']);
+      const { stdout } = await run('security', ['find-generic-password', '-a', ref, '-s', SERVICE, '-w'], { windowsHide: true });
       return stdout.replace(/\n$/, '');
     } catch {
       // A missing item is an ordinary outcome (the user deleted it in Keychain
@@ -74,7 +74,7 @@ class KeychainSecretStore implements SecretStorePort {
   }
 
   async remove(ref: string): Promise<void> {
-    await run('security', ['delete-generic-password', '-a', ref, '-s', SERVICE]).catch(() => undefined);
+    await run('security', ['delete-generic-password', '-a', ref, '-s', SERVICE], { windowsHide: true }).catch(() => undefined);
     this.#index.remove(ref);
   }
 

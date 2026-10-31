@@ -21,12 +21,12 @@ RUN mkdir -p /manifests && cp package.json package-lock.json /manifests/ \
 FROM node:22-bookworm-slim AS runtime
 ENV NODE_ENV=production
 WORKDIR /app
-# Only three workspaces are installed, production dependencies only. better-sqlite3's install script
-# fetches its prebuilt binary for this Node and libc, so the image carries no compiler.
+# Only three workspaces are installed, production dependencies only. better-sqlite3 (13+, N-API)
+# carries prebuilt binaries for every platform and libc in its package and loads the matching one,
+# so nothing is compiled or downloaded and the image carries no compiler.
 COPY --from=build /manifests/ ./
 RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund \
       -w @tandemise/relay -w @tandemise/coordination -w @tandemise/api-contract \
- && npm rebuild better-sqlite3 \
  && npm cache clean --force \
  && rm -rf /root/.npm /tmp/*
 COPY --from=build /src/packages/api-contract/dist ./packages/api-contract/dist

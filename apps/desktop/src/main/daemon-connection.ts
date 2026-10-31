@@ -6,12 +6,21 @@ import { join, resolve } from 'node:path';
 import { EventEmitter } from 'node:events';
 import { app } from 'electron';
 import type { DaemonConnection, DaemonStatus } from '../shared/bridge.js';
-import { LOGIN_PATH_MARKER, parseLoginShellPath, resolveDaemonNode, type NodeResolution } from './node-runtime.js';
+import { LOGIN_PATH_MARKER, bundledDaemonNode, daemonNeedsReplacing, parseLoginShellPath, resolveDaemonNode, type NodeResolution } from './node-runtime.js';
 
 const TANDEMISE_HOME = process.env['TANDEMISE_HOME'] ?? join(homedir(), '.tandemise');
 const HANDSHAKE_FILE = join(TANDEMISE_HOME, 'daemon.json');
 /** Which Node started the daemon, and anything the daemon said on stderr while starting. */
 const LAUNCH_LOG = join(TANDEMISE_HOME, 'logs', 'daemon-launch.log');
+
+/** How long an old daemon gets to shut down cleanly after an update (its own grace is 15s). */
+const REPLACE_TIMEOUT_MS = 20_000;
+
+/** How long the update notice stays on screen at least. */
+const UPDATE_NOTICE_MIN_MS = 3_000;
+
+/** The words the window shows while an updated app replaces the old daemon. */
+export const RESTARTING_AFTER_UPDATE = 'Tandemise was updated; restarting its background service…';
 
 /** Poll budget for a daemon we just spawned. Generous: first start compiles nothing but does open a database. */
 const SPAWN_POLL_INTERVAL_MS = 250;
@@ -52,24 +61,49 @@ export class DaemonConnector extends EventEmitter {
   }
 
   async #discover(): Promise<DaemonStatus> {
+    /** Set when an update made us replace the daemon; the notice stays up long enough to read. */
+    let noticeSince: number | null = null;
     const existing = await readHandshake();
     if (existing && (await isReachable(existing))) {
-      return this.#set('connected', existing, `Connected to daemon on ${existing.url}.`);
+      const replace = daemonNeedsReplacing({
+        packaged: app.isPackaged,
+        entryOverride: Boolean(process.env['TANDEMISE_DAEMON_ENTRY']),
+        appVersion: app.getVersion(),
+        daemonVersion: existing.version,
+      });
+      if (!replace) return this.#set('connected', connectionOf(existing), `Connected to daemon on ${existing.url}.`);
+      this.#set('spawning', null, RESTARTING_AFTER_UPDATE);
+      noticeSince = Date.now();
+      logLaunch(`replacing the daemon of version ${existing.version ?? '(unknown)'} (pid ${existing.pid}) with this app's ${app.getVersion()}`);
+      if (!(await stopDaemon(existing))) {
+        return this.#set(
+          'unavailable',
+          null,
+          `Tandemise was updated, but its background service from version ${existing.version ?? 'an older release'} (process ${existing.pid}) did not stop. End that process, then press Retry.`,
+        );
+      }
     }
 
     // Either no handshake file, or a stale one pointing at a dead process. Both
     // mean "no daemon"; a stale file is not an error worth showing the user.
-    const entry = daemonEntryPoint();
-    if (!entry) {
+    // A packaged app starts the daemon it carries, on its own Node; a checkout
+    // starts apps/daemon's build on a system Node (node-runtime.ts).
+    const daemon = locateDaemon();
+    if (daemon === null) {
       return this.#set(
         'unavailable',
         null,
-        'Its build was not found at apps/daemon/dist/main.js, so there was nothing to start. Run `npm run build` in the repository, then retry.',
+        app.isPackaged
+          ? `This copy of Tandemise is missing its daemon (${bundledDaemonEntry()}). Reinstall it from the GitHub releases page.`
+          : 'Its build was not found at apps/daemon/dist/main.js, so there was nothing to start. Run `npm run build` in the repository, then retry.',
       );
     }
+    const { entry } = daemon;
 
     this.#set('spawning', null, 'Starting the Tandemise daemon…');
-    const node = await findDaemonNode();
+    const node = daemon.bundled
+      ? bundledDaemonNode({ execPath: process.execPath, nodeVersion: process.versions.node })
+      : await findDaemonNode();
     if (!node.ok) {
       logLaunch(`no usable Node: ${node.message} Tried: ${describeTried(node)}`);
       return this.#set('unavailable', null, node.message);
@@ -98,6 +132,9 @@ export class DaemonConnector extends EventEmitter {
         `Started the daemon but it did not report a connection within ${SPAWN_POLL_TIMEOUT_MS / 1000}s. Check ${LAUNCH_LOG} and the logs next to it.`,
       );
     }
+    // Replacing a daemon takes well under a second, often before the window
+    // has even loaded; the person should still see why the app paused.
+    if (noticeSince !== null) await delay(Math.max(0, UPDATE_NOTICE_MIN_MS - (Date.now() - noticeSince)));
     return this.#set('connected', started, `Connected to daemon on ${started.url}.`);
   }
 
@@ -135,7 +172,7 @@ export class DaemonConnector extends EventEmitter {
       return;
     }
     if (current?.url === next.url && current.token === next.token && this.#status.phase === 'connected') return;
-    this.#set('connected', next, `Connected to daemon on ${next.url}.`);
+    this.#set('connected', connectionOf(next), `Connected to daemon on ${next.url}.`);
   }
 
   #set(phase: DaemonStatus['phase'], connection: DaemonConnection | null, detail: string): DaemonStatus {
@@ -145,7 +182,16 @@ export class DaemonConnector extends EventEmitter {
   }
 }
 
-async function readHandshake(): Promise<DaemonConnection | null> {
+/** The handshake as the daemon wrote it; `version` is null for daemons older than the field. */
+interface Handshake extends DaemonConnection {
+  readonly version: string | null;
+}
+
+function connectionOf(h: Handshake): DaemonConnection {
+  return { url: h.url, token: h.token, pid: h.pid, startedAt: h.startedAt };
+}
+
+async function readHandshake(): Promise<Handshake | null> {
   let raw: string;
   try {
     raw = await readFile(HANDSHAKE_FILE, 'utf8');
@@ -159,9 +205,50 @@ async function readHandshake(): Promise<DaemonConnection | null> {
     return null;
   }
   if (typeof parsed !== 'object' || parsed === null) return null;
-  const { url, token, pid, startedAt } = parsed as Record<string, unknown>;
+  const { url, token, pid, startedAt, version } = parsed as Record<string, unknown>;
   if (typeof url !== 'string' || typeof token !== 'string' || typeof pid !== 'number') return null;
-  return { url, token, pid, startedAt: typeof startedAt === 'string' ? startedAt : new Date(0).toISOString() };
+  return {
+    url, token, pid,
+    startedAt: typeof startedAt === 'string' ? startedAt : new Date(0).toISOString(),
+    version: typeof version === 'string' ? version : null,
+  };
+}
+
+/**
+ * Stops a daemon cleanly and waits for it to go. It is asked over HTTP
+ * (POST /v1/daemon/shutdown), which runs the same coordinated shutdown as
+ * SIGTERM and also works on Windows; a daemon too old to have that route gets
+ * SIGTERM. True once the process is gone.
+ */
+async function stopDaemon(daemon: Handshake): Promise<boolean> {
+  let asked = false;
+  try {
+    const response = await fetch(`${daemon.url}/v1/daemon/shutdown`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${daemon.token}` },
+      signal: AbortSignal.timeout(5_000),
+    });
+    asked = response.ok;
+  } catch {
+    asked = false;
+  }
+  if (!asked) {
+    try {
+      process.kill(daemon.pid, 'SIGTERM');
+    } catch {
+      // Already gone, or not ours to signal; the wait below tells which.
+    }
+  }
+  const deadline = Date.now() + REPLACE_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    if (!isProcessAlive(daemon.pid)) {
+      logLaunch(`the old daemon (pid ${daemon.pid}) stopped`);
+      return true;
+    }
+    await delay(SPAWN_POLL_INTERVAL_MS);
+  }
+  logLaunch(`the old daemon (pid ${daemon.pid}) did not stop within ${REPLACE_TIMEOUT_MS / 1000}s`);
+  return false;
 }
 
 /**
@@ -191,10 +278,29 @@ function isProcessAlive(pid: number): boolean {
   }
 }
 
-/** `apps/daemon/dist/main.js`, relative to the packaged or checked-out app. */
-function daemonEntryPoint(): string | null {
+/**
+ * Which daemon to start. `TANDEMISE_DAEMON_ENTRY` wins (and is run like a
+ * checkout's, on a system Node); then a packaged app's own copy; then
+ * `apps/daemon/dist/main.js` in the checkout the app was started from.
+ */
+function locateDaemon(): { entry: string; bundled: boolean } | null {
   const override = process.env['TANDEMISE_DAEMON_ENTRY'];
-  if (override) return existsSync(override) ? override : null;
+  if (override) return existsSync(override) ? { entry: override, bundled: false } : null;
+  if (app.isPackaged) {
+    const entry = bundledDaemonEntry();
+    return existsSync(entry) ? { entry, bundled: true } : null;
+  }
+  const entry = checkoutDaemonEntry();
+  return entry === null ? null : { entry, bundled: false };
+}
+
+/** Staged into `resources/daemon` at packaging time (apps/desktop/scripts/stage-daemon.mjs). */
+function bundledDaemonEntry(): string {
+  return join(process.resourcesPath, 'daemon', 'dist', 'main.js');
+}
+
+/** `apps/daemon/dist/main.js`, relative to the checked-out app. */
+function checkoutDaemonEntry(): string | null {
   // In dev, __dirname is apps/desktop/out|dist/main; four levels up is the repo root.
   const candidates = [
     resolve(process.cwd(), 'apps/daemon/dist/main.js'),
@@ -210,9 +316,9 @@ interface Launch {
 }
 
 /**
- * The Node the daemon runs on. Not `process.execPath`: that is Electron's own
- * Node, whose native ABI does not match the better-sqlite3 build `npm install`
- * made, so the daemon could not open its database (see node-runtime.ts).
+ * The Node a checkout's daemon runs on: the developer's own Node first, the
+ * way `npm run daemon` would run it, Electron's only as a fallback (see
+ * node-runtime.ts).
  */
 async function findDaemonNode(): Promise<NodeResolution> {
   const env = process.env;
@@ -231,7 +337,7 @@ async function findDaemonNode(): Promise<NodeResolution> {
       }
     },
     versionOf: (path) => {
-      const out = spawnSync(path, ['--version'], { encoding: 'utf8', timeout: 5_000, env: withoutElectronNode(env) });
+      const out = spawnSync(path, ['--version'], { encoding: 'utf8', timeout: 5_000, env: withoutElectronNode(env), windowsHide: true });
       return out.status === 0 ? out.stdout.trim() : null;
     },
   });
@@ -248,7 +354,7 @@ function readLoginShellPath(): Promise<string | null> {
     execFile(
       shell,
       ['-ilc', `printf '%s' "${LOGIN_PATH_MARKER}$PATH${LOGIN_PATH_MARKER}"`],
-      { timeout: 5_000, encoding: 'utf8', env: withoutElectronNode(process.env) },
+      { timeout: 5_000, encoding: 'utf8', env: withoutElectronNode(process.env), windowsHide: true },
       (_error, stdout) => done(parseLoginShellPath(typeof stdout === 'string' ? stdout : '')),
     );
   });
@@ -268,7 +374,12 @@ async function spawnDaemon(entry: string, node: Extract<NodeResolution, { ok: tr
   let exited = false;
   const child = spawn(node.command, [entry], {
     detached: true,
+    // Not the app's working directory: a packaged app may have been started
+    // from anywhere, and the daemon outlives it.
+    ...(app.isPackaged ? { cwd: homedir() } : {}),
     stdio: ['ignore', 'ignore', stderr ?? 'ignore'],
+    // The daemon is a console program to Windows; it must not get a window.
+    windowsHide: true,
     // A packaged app's daemon never opens test routes, whatever the environment says.
     env: { ...withoutElectronNode(process.env), ...node.env, ...(app.isPackaged ? { TANDEMISE_PACKAGED: '1', TANDEMISE_TEST_ROUTES: '0' } : {}) },
   });
@@ -324,7 +435,7 @@ async function pollForHandshake(launch: Launch): Promise<DaemonConnection | 'exi
   while (Date.now() < deadline) {
     await delay(SPAWN_POLL_INTERVAL_MS);
     const connection = await readHandshake();
-    if (connection && (await isReachable(connection))) return connection;
+    if (connection && (await isReachable(connection))) return connectionOf(connection);
     if (launch.exited()) return 'exited';
   }
   return null;

@@ -14,7 +14,7 @@
   "dependencies": {
     "@tandemise/api-contract": "*",
     "@tandemise/coordination": "*",
-    "better-sqlite3": "^11.7.0",
+    "better-sqlite3": "^13.0.3",
     "ws": "^8.22.0",
     "zod": "^3.24.1"
   },
