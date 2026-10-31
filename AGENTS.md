@@ -58,3 +58,4 @@ Conventional Commits, same as PR titles. Write a `## What and why` and
   `docs/superpowers/plans/`, acceptance evidence in `docs/superpowers/evidence/`.
 - Each sub-project is specced and planned before code is written, then proven
   in the real app.
+- The brain clone lives under `TANDEMISE_HOME/brains/`; the daemon owns it.

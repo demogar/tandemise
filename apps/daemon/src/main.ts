@@ -1,6 +1,6 @@
 import { mkdirSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { errorMessage } from '@tandemise/shared';
+import { TandemiseError, asId, errorMessage } from '@tandemise/shared';
 import { API_VERSION } from '@tandemise/api-contract';
 import { loadConfig } from './config.js';
 import { COORDINATION_SWITCH, bootstrap } from './bootstrap.js';
@@ -12,7 +12,8 @@ import {
 } from './http/identity.js';
 import { installShutdownHandlers } from './lifecycle.js';
 import { adoptGitName, gitUserName } from './local-person.js';
-import { EVAL_RUNNER, RECOVERY_SERVICE } from '@tandemise/application';
+import { EVAL_RUNNER, EVENT_RECORDER, MISSION_REPOSITORY, RECOVERY_SERVICE } from '@tandemise/application';
+import type { TandemiseEventBody } from '@tandemise/domain';
 import type { Container } from '@tandemise/kernel';
 
 /**
@@ -23,6 +24,19 @@ import type { Container } from '@tandemise/kernel';
  * anything, and only then publish the connection file - because the moment that
  * file exists, the desktop will start making requests.
  */
+/** Records an event body on a mission, as another feature would (test routes only). */
+function recordTestEvent(container: Container) {
+  return (missionId: string, taskId: string | null, body: Record<string, unknown>): { recorded: true } => {
+    const mission = container.resolve(MISSION_REPOSITORY).get(asId<'MissionId'>(missionId));
+    if (mission === undefined) throw TandemiseError.notFound('Mission', missionId);
+    container.resolve(EVENT_RECORDER).record(
+      { workspaceId: mission.workspaceId, missionId: mission.id, taskId: taskId === null ? null : asId<'TaskId'>(taskId) },
+      body as unknown as TandemiseEventBody,
+    );
+    return { recorded: true };
+  };
+}
+
 export async function startDaemon(overrides: Parameters<typeof loadConfig>[0] = {}): Promise<{
   url: string;
   stop: () => Promise<void>;
@@ -75,9 +89,13 @@ export async function startDaemon(overrides: Parameters<typeof loadConfig>[0] = 
   if (replanned.length > 0) log.info('planning.resumed', { missions: replanned });
 
   const token = loadOrCreateToken(config.home);
+  // Test routes only on request, and never in a packaged app.
+  const testEvents = process.env['TANDEMISE_TEST_ROUTES'] === '1' && process.env['TANDEMISE_PACKAGED'] !== '1'
+    ? recordTestEvent(container)
+    : null;
   const coordination = container.resolve(COORDINATION_SWITCH);
   await coordination.resume();
-  const router = buildRouter(services, { testClock, coordination });
+  const router = buildRouter(services, { testClock, testEvents, coordination });
 
   let stream: StreamServer | undefined;
   const http = new HttpServer({

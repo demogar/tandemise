@@ -8,7 +8,8 @@ import { useEvalCases, useRoles, useSkills } from '../../lib/queries.js';
 import { evalsHref } from './link.js';
 import { Refusal, useEvalMutation } from './shared.js';
 
-type Kind = EvalCandidate['kind'];
+/** A brain candidate is started by a promotion, never from this form (#51). */
+type Kind = Exclude<EvalCandidate['kind'], 'brain'>;
 
 const KINDS: readonly { value: Kind; label: string }[] = [
   { value: 'models', label: 'Models' },
@@ -43,7 +44,7 @@ export function RunForm({ suites, suiteId: initialSuiteId, candidate, onStarted,
   onCancel: () => void;
 }): JSX.Element {
   const [suiteId, setSuiteId] = useState(initialSuiteId ?? suites[0]?.id ?? '');
-  const [kind, setKind] = useState<Kind>(candidate?.kind ?? 'models');
+  const [kind, setKind] = useState<Kind>(candidate === undefined || candidate === null || candidate.kind === 'brain' ? 'models' : candidate.kind);
   const [models, setModels] = useState<Record<string, string>>({});
   const [skills, setSkills] = useState<Record<string, readonly Pin[]>>({});
   const [folder, setFolder] = useState(candidate?.kind === 'setup' ? candidate.folder : '');

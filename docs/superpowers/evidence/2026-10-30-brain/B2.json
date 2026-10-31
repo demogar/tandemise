@@ -1,0 +1,48 @@
+{
+  "id": "B2",
+  "title": "A second home uses the existing brain and gets the same factory",
+  "ok": true,
+  "checks": [
+    {
+      "label": "the preview lists the items, item by item",
+      "ok": true,
+      "observed": [
+        "Developer: Change",
+        "Project settings: Same",
+        "Work-in-progress limit: Same",
+        "Monthly limits: Same",
+        "Default mission limits: Same",
+        "Architect: Same",
+        "Product Designer: Same",
+        "Finance Analyst: Same",
+        "Product Manager: Same",
+        "QA Engineer: Same",
+        "Release Manager: Same",
+        "Reviewer: Same"
+      ]
+    },
+    {
+      "label": "the Developer is a Change (brain-model is new here)",
+      "ok": true,
+      "observed": [
+        "Developer: Change"
+      ]
+    },
+    {
+      "label": "home 2 is linked to the same remote",
+      "ok": true,
+      "observed": "Brain\ngithub.com/garipass/brain\n\nUp to date (last synced 21:08).\n\n0 rules files · 0 lessons\n\nSync now\nOpen the brain\nUnlink"
+    },
+    {
+      "label": "Team → Roles → Developer shows home 1's model (brain-model)",
+      "ok": true,
+      "observed": "brain-model"
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/home/demogar/projects/tandemise/tandemise/.claude/worktrees/agent-a4b7a8777ac07d5f4/docs/superpowers/evidence/2026-10-30-brain/B2-preview.png",
+    "/home/demogar/projects/tandemise/tandemise/.claude/worktrees/agent-a4b7a8777ac07d5f4/docs/superpowers/evidence/2026-10-30-brain/B2-linked.png",
+    "/home/demogar/projects/tandemise/tandemise/.claude/worktrees/agent-a4b7a8777ac07d5f4/docs/superpowers/evidence/2026-10-30-brain/B2-team-roles.png"
+  ]
+}

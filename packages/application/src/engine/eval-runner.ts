@@ -179,7 +179,9 @@ export class EvalRunner implements LifecycleComponent {
     const variantRole = run.variants[trial.variant]?.roles[kase.snapshot.step.roleId];
     if (variantRole === undefined) return null;
     const { knowledge, decisions, answers } = kase.snapshot.mission;
-    const context: TrialContext = { role: variantRole.role, knowledge, decisions, answers };
+    // A brain promotion's candidate trials read its rules, and no lessons (#51).
+    const brainRules = trial.variant === 'candidate' && run.candidate.kind === 'brain' ? run.candidate.rules : undefined;
+    const context: TrialContext = { role: variantRole.role, knowledge, decisions, answers, ...(brainRules === undefined ? {} : { brainRules }) };
     // Only the live trial is cached: any other is read from the repositories, and the cache never grows.
     if (this.#live?.trialId === trialId) this.#contexts.set(trialId, context);
     return context;

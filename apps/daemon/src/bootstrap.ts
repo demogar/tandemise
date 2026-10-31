@@ -23,12 +23,12 @@ import {
   executionCoreModule, PROCESS_SUPERVISOR,
   CLOCK as EXECUTION_CLOCK, LOGGER as EXECUTION_LOGGER, PATHS as EXECUTION_PATHS,
 } from '@tandemise/execution-core';
-import { executionLocalModule } from '@tandemise/execution-local';
+import { GitBrainRepo, executionLocalModule } from '@tandemise/execution-local';
 import {
   integrationsCoreModule,
   BACKGROUND_PROCESS_LAUNCHER, COMMAND_EXECUTOR as TOOL_COMMAND_EXECUTOR,
 } from '@tandemise/integrations-core';
-import { GhIssueTracker, GhPullRequestSnapshots, githubIntegrationModule } from '@tandemise/integration-github';
+import { GhBrainHost, GhIssueTracker, GhPullRequestSnapshots, githubIntegrationModule } from '@tandemise/integration-github';
 import { mcpIntegrationModule } from '@tandemise/integration-mcp';
 import { browserIntegrationModule } from '@tandemise/browser';
 import { createApplicationModule, createServices, EVAL_RUNNER, SCHEDULER, type TandemiseServices,
@@ -173,6 +173,20 @@ export function bootstrap(config: DaemonConfig, options: { readonly localPersonN
   // remote, so it may use their ssh-agent or askpass helper. Given to that
   // fetch alone, read when it runs; the tool runner's allowlist stays as it is.
   container.bind(GIT_CREDENTIAL_ENV, () => () => pickGitCredentialEnv(process.env), { source: 'bootstrap' });
+  // The brain (#51): git with the person's credential variables (and their own
+  // git config location, when they moved it), and gh for repositories and PRs.
+  container.rebind(applicationTokens.BRAIN_REPO, (r) => new GitBrainRepo(r.resolve(PROCESS_SUPERVISOR), log.child({ component: 'brain-git' }), () => ({
+    ...pickGitCredentialEnv(process.env),
+    ...(process.env['GIT_CONFIG_GLOBAL'] === undefined ? {} : { GIT_CONFIG_GLOBAL: process.env['GIT_CONFIG_GLOBAL'] }),
+  })), { source: 'bootstrap' });
+  // The reflector's evidence: a task's changes since its last commit, untracked files included when added.
+  container.bind(applicationTokens.BRAIN_WORKTREE_DIFF, (r) => async (directory: string) => {
+    const supervisor = r.resolve(PROCESS_SUPERVISOR);
+    const run = (args: string[]) => supervisor.run({ command: 'git', args: ['--no-pager', ...args], cwd: directory, env: { GIT_TERMINAL_PROMPT: '0' }, timeoutMs: 30_000, label: 'brain diff' });
+    const head = await run(['diff', 'HEAD']);
+    return head.exitCode === 0 ? head.stdout : (await run(['diff'])).stdout;
+  }, { source: 'bootstrap' });
+  container.rebind(applicationTokens.BRAIN_HOST, (r) => new GhBrainHost(r.resolve(TOOL_COMMAND_EXECUTOR)), { source: 'bootstrap' });
 
   // Who works on what with the team (relay spec): one switch, bound to both
   // coordination ports, over the persistence database's own handle.
@@ -207,6 +221,8 @@ export function bootstrap(config: DaemonConfig, options: { readonly localPersonN
   lifecycle.add(container.resolve(SCHEDULER));
   // Added after the scheduler, so shutdown stops the runner first; its live trial is left for boot recovery (P3b).
   lifecycle.add(container.resolve(EVAL_RUNNER));
+  lifecycle.add(container.resolve(applicationTokens.BRAIN_SYNC_LOOP));
+  lifecycle.add(container.resolve(applicationTokens.BRAIN_SIGNALS));
 
   return { container, services, lifecycle, events, projections, log, testClock };
 }

@@ -97,6 +97,11 @@ export interface EvalServiceDeps {
   readonly skills: Pick<SkillService, 'catalog' | 'pinsFor' | 'missing'>;
   /** A `.tandemise` folder's files, for a setup candidate (`SetupService.readFolder`). */
   readonly readSetupFolder: (path: string) => Promise<{ readonly files: Readonly<Record<string, string>> }>;
+  /** A brain candidate (#51): `factory/` and `memory/rules` at a branch. Optional: absent, the candidate is refused. */
+  readonly readBrainCandidate?: (workspaceId: WorkspaceId, ref: string) => Promise<{
+    readonly files: Readonly<Record<string, string>>;
+    readonly rules: readonly { readonly path: string; readonly text: string }[];
+  }>;
   readonly runner: () => EvalRunnerControl;
 }
 
@@ -283,11 +288,15 @@ export class EvalService {
       baseline[roleId] = { role: structuredClone(role), pins };
     }
     const candidate = await this.#candidateRoles(workspaceId, baseline, req.candidate);
+    // A brain candidate carries its rules, so each candidate trial reads them (#51).
+    const stored: EvalCandidate = req.candidate.kind === 'brain' && this.deps.readBrainCandidate !== undefined
+      ? { ...req.candidate, rules: (await this.deps.readBrainCandidate(workspaceId, req.candidate.ref)).rules }
+      : req.candidate;
 
     const now = this.deps.clock.now();
     const run = this.deps.evals.insertRun({
       id: ids.evalRun(), suiteId, workspaceId, status: 'queued', reason: null, repeats, spendCapUsd: cap,
-      candidate: req.candidate,
+      candidate: stored,
       variants: { baseline: { label: 'baseline', roles: baseline }, candidate: { label: 'candidate', roles: candidate } },
       scorecard: null, startedBy: caller.personId, createdAt: now, startedAt: null, finishedAt: null,
     });
@@ -407,7 +416,12 @@ export class EvalService {
 
     let files: Readonly<Record<string, string>>;
     try {
-      files = (await this.deps.readSetupFolder(candidate.folder)).files;
+      if (candidate.kind === 'brain') {
+        if (this.deps.readBrainCandidate === undefined) throw new Error('This daemon cannot read a brain candidate.');
+        files = (await this.deps.readBrainCandidate(workspaceId, candidate.ref)).files;
+      } else {
+        files = (await this.deps.readSetupFolder(candidate.folder)).files;
+      }
     } catch (e) {
       throw new EvalError('setup_invalid', errorMessage(e));
     }

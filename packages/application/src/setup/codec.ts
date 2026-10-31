@@ -30,6 +30,12 @@ export const SETUP_ROLES_DIR = 'roles';
 export const SETUP_WORKFLOWS_DIR = 'workflows';
 export const SETUP_SKILLS_FILE = 'skills.lock';
 export const SETUP_ISSUES_FILE = 'issues.yaml';
+/** The primary tracker and its state mapping (#52 owns the schema); carried byte for byte. */
+export const SETUP_TRACKER_FILE = 'tracker.yaml';
+/** Intake sources (#52 owns the schema); carried byte for byte. */
+export const SETUP_INTAKE_FILE = 'intake.yaml';
+/** The MCP servers and integrations the project needs, never a credential (#51 spec §2). */
+export const SETUP_MCPS_FILE = 'mcps.yaml';
 /** The note an imported routine carries until the person turns it on. */
 export const IMPORTED_ROUTINE_NOTE = 'Imported — review and turn on';
 /** The same note on a repository's imported GitHub issue settings. */
@@ -106,6 +112,18 @@ export interface WorkflowSetup {
   readonly content: string;
 }
 
+/**
+ * An integration the project needs (#51 spec §2): by provider and name, with
+ * the capabilities the factory enables and how to connect it. Never `env`,
+ * `headers` or a credential reference.
+ */
+export interface McpSetup {
+  readonly name: string;
+  readonly provider: string;
+  readonly capabilities: readonly string[];
+  readonly connect: { readonly kind: 'cli'; readonly command: string } | { readonly kind: 'mcp'; readonly url: string } | { readonly kind: 'mcp'; readonly command: string };
+}
+
 /** A section left out is "no opinion": an import without `routines.yaml` touches no routine. */
 export interface SetupSnapshot {
   readonly project: ProjectSetup | null;
@@ -114,6 +132,12 @@ export interface SetupSnapshot {
   readonly routines: readonly RoutineSetup[] | null;
   readonly skills: readonly SkillLockEntry[] | null;
   readonly issues: readonly IssueSetup[] | null;
+  /** The MCPs the project needs (brain). Optional so a P15 snapshot is unchanged. */
+  readonly mcps?: readonly McpSetup[] | null;
+  /** `tracker.yaml`'s raw text, carried byte for byte (#52 owns its meaning). */
+  readonly tracker?: string | null;
+  /** `intake.yaml`'s raw text, carried byte for byte (#52 owns its meaning). */
+  readonly intake?: string | null;
 }
 
 export interface SetupFile {
@@ -227,6 +251,13 @@ function routineEntry(routine: RoutineSetup, scrub: Scrubber): Record<string, un
   };
 }
 
+function mcpEntry(mcp: McpSetup, scrub: Scrubber): Record<string, unknown> {
+  const connect = mcp.connect.kind === 'cli'
+    ? { kind: 'cli', command: scrub.text(mcp.connect.command) }
+    : 'url' in mcp.connect ? { kind: 'mcp', url: scrub.text(mcp.connect.url) } : { kind: 'mcp', command: scrub.text(mcp.connect.command) };
+  return { name: scrub.text(mcp.name), provider: mcp.provider, capabilities: [...mcp.capabilities].sort(), connect };
+}
+
 function projectEntry(project: ProjectSetup, scrub: Scrubber): Record<string, unknown> {
   const knowledge: Record<string, string> = {};
   for (const key of KNOWLEDGE_KEYS) {
@@ -272,6 +303,20 @@ export function renderSetup(snapshot: SetupSnapshot): RenderedSetup {
   if (snapshot.issues !== null && snapshot.issues.length > 0) {
     const repositories = [...snapshot.issues].sort((a, b) => a.repository.localeCompare(b.repository)).map(issueEntry);
     files.push({ path: SETUP_ISSUES_FILE, content: yaml({ repositories }) });
+  }
+  // The brain's files (#51): written only when non-empty, so a P15 export
+  // without them is byte-identical to before.
+  if (snapshot.mcps !== undefined && snapshot.mcps !== null && snapshot.mcps.length > 0) {
+    const scrub = new Scrubber();
+    const mcps = [...snapshot.mcps].sort((a, b) => a.name.localeCompare(b.name)).map((m) => mcpEntry(m, scrub));
+    files.push({ path: SETUP_MCPS_FILE, content: yaml({ mcps }) });
+    declare(SETUP_MCPS_FILE, scrub);
+  }
+  if (snapshot.tracker !== undefined && snapshot.tracker !== null && snapshot.tracker.trim() !== '') {
+    files.push({ path: SETUP_TRACKER_FILE, content: snapshot.tracker });
+  }
+  if (snapshot.intake !== undefined && snapshot.intake !== null && snapshot.intake.trim() !== '') {
+    files.push({ path: SETUP_INTAKE_FILE, content: snapshot.intake });
   }
   if (snapshot.project !== null) {
     const scrub = new Scrubber();
@@ -359,6 +404,19 @@ const issuesFile = z.object({
     postComments: z.boolean().default(true),
     workflow: z.string().min(1).max(200).nullable().default(null),
   })).default([]),
+});
+
+const mcpsFile = z.object({
+  mcps: z.array(z.object({
+    name: z.string().trim().min(1).max(120),
+    provider: z.string().trim().min(1).max(60),
+    capabilities: z.array(z.string().min(1)).default([]),
+    connect: z.union([
+      z.object({ kind: z.literal('cli'), command: z.string().min(1).max(200) }),
+      z.object({ kind: z.literal('mcp'), url: z.string().min(1).max(2048) }),
+      z.object({ kind: z.literal('mcp'), command: z.string().min(1).max(2048) }),
+    ]),
+  }).strict()).default([]),
 });
 
 const routineFile = z.object({
@@ -540,7 +598,27 @@ export function readSetup(files: Readonly<Record<string, string>>): ReadSetup {
     }
   }
 
-  return { snapshot: { project, roles, workflows, routines, skills, issues: issueSettings }, problems };
+  let mcps: McpSetup[] | null = null;
+  const mcpsText = files[SETUP_MCPS_FILE];
+  if (mcpsText !== undefined) {
+    try {
+      const parsed = mcpsFile.safeParse(parseYaml(mcpsText) ?? {});
+      if (!parsed.success) problems.push({ file: SETUP_MCPS_FILE, item: null, message: issues(parsed.error) });
+      else mcps = parsed.data.mcps.map((m) => ({ name: m.name, provider: m.provider, capabilities: m.capabilities, connect: m.connect }));
+    } catch (e) {
+      problems.push({ file: SETUP_MCPS_FILE, item: null, message: `Not valid YAML: ${firstLine(e)}` });
+    }
+  }
+
+  return {
+    snapshot: {
+      project, roles, workflows, routines, skills, issues: issueSettings,
+      ...(mcps === null ? {} : { mcps }),
+      ...(files[SETUP_TRACKER_FILE] === undefined ? {} : { tracker: files[SETUP_TRACKER_FILE] }),
+      ...(files[SETUP_INTAKE_FILE] === undefined ? {} : { intake: files[SETUP_INTAKE_FILE] }),
+    },
+    problems,
+  };
 }
 
 /** A workflow file's problems, from the one workflow validator (gates included). */
@@ -561,7 +639,7 @@ function firstLine(e: unknown): string {
 
 // ---------------------------------------------------------------------- diff
 
-export type SetupItemKind = 'settings' | 'wip' | 'monthly_limits' | 'mission_limits' | 'role' | 'workflow' | 'routine' | 'skill' | 'issues';
+export type SetupItemKind = 'settings' | 'wip' | 'monthly_limits' | 'mission_limits' | 'role' | 'workflow' | 'routine' | 'skill' | 'issues' | 'mcps' | 'tracker' | 'intake';
 export type SetupAction = 'add' | 'change' | 'remove' | 'same';
 export type SetupChoice = 'mine' | 'theirs';
 
@@ -595,6 +673,8 @@ export interface SetupDiffContext {
   readonly stored: ReadonlySet<string>;
   /** The project's repository names. */
   readonly repositories: readonly string[];
+  /** The integrations connected for the project on this machine, for `mcps.yaml` rows (#51). */
+  readonly integrations?: readonly { readonly provider: string; readonly name: string }[];
 }
 
 const NO_CONTEXT: SetupDiffContext = { library: [], stored: new Set(), repositories: [] };
@@ -866,6 +946,30 @@ export function diffSetup(mine: SetupSnapshot, read: ReadSetup, context: SetupDi
         push({ id, kind: 'issues', name, action, detail: action === 'same' ? '' : fieldChanges(a, b), problem: action === 'same' ? null : problem, notes: action === 'same' ? [] : notes });
       }
     }
+  }
+
+  // The brain's files (#51). Tracker and intake compare raw text; #52 owns
+  // what they mean, so they are shown, never applied to rows.
+  const raw: { kind: 'tracker' | 'intake'; name: string; file: string; mine: string | null | undefined; theirs: string | null | undefined }[] = [
+    { kind: 'tracker', name: 'Tracker and state mapping', file: SETUP_TRACKER_FILE, mine: mine.tracker, theirs: theirs.tracker },
+    { kind: 'intake', name: 'Intake sources', file: SETUP_INTAKE_FILE, mine: mine.intake, theirs: theirs.intake },
+  ];
+  for (const r of raw) {
+    if (r.theirs === undefined || r.theirs === null) continue;
+    const m = (r.mine ?? '').replace(/\r\n/g, '\n');
+    const t = r.theirs.replace(/\r\n/g, '\n');
+    const action: SetupAction = m === '' ? 'add' : m === t ? 'same' : 'change';
+    push({ id: `${r.kind}:project`, kind: r.kind, name: r.name, action, detail: action === 'same' ? '' : `${r.file} ${action === 'add' ? 'is new' : 'differs'}.`, problem: null, notes: [] });
+  }
+  // MCPs: nothing to apply. A row says what this machine still has to connect.
+  const mcpsProblem = problemFor(SETUP_MCPS_FILE, null);
+  if (mcpsProblem !== null) push({ id: 'mcps:(file)', kind: 'mcps', name: SETUP_MCPS_FILE, action: 'change', detail: '', problem: mcpsProblem, notes: [] });
+  for (const mcp of [...(theirs.mcps ?? [])].sort((a, b) => a.name.localeCompare(b.name))) {
+    const connected = (context.integrations ?? []).some((i) => i.provider === mcp.provider && i.name === mcp.name);
+    push({
+      id: `mcps:${mcp.name}`, kind: 'mcps', name: mcp.name, action: connected ? 'same' : 'add',
+      detail: connected ? '' : `This project needs ${mcp.name}. Connect it.`, problem: null, notes: [], choice: null,
+    });
   }
   return items;
 }

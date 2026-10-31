@@ -1,14 +1,15 @@
 import { join, sep } from 'node:path';
 import type {
-  IssueRepositoryPort, RepoRepositoryPort, Repository, RoleTemplate, RoutineRepositoryPort, RuntimeProfileRepositoryPort, SkillFile,
+  IntegrationRepositoryPort, IssueRepositoryPort, RepoRepositoryPort, Repository, RoleTemplate, RoutineRepositoryPort, RuntimeProfileRepositoryPort, SkillFile,
   UnitOfWork, WorkspaceKnowledge,
 } from '@tandemise/domain';
 import type {
   ApplySetupRequest, SetupApplyView, SetupExportRecord, SetupExportView, SetupPreviewView, SetupStatusView, UpdateWorkspaceRequest,
 } from '@tandemise/api-contract';
 import type { Clock, Logger, RoutineId, WorkspaceId } from '@tandemise/shared';
-import { TandemiseError, asId } from '@tandemise/shared';
+import { TandemiseError, asId, redactSecrets } from '@tandemise/shared';
 import type { SettingsStorePort, SetupFolderPort, WorkflowSourcePort } from '../ports.js';
+import { listProjectWorkflows, type BrainWorkflowReader } from '../brain/workflows.js';
 import type { RoleService, WorkspaceService } from '../services.js';
 import type { EventRecorder } from '../support/event-recorder.js';
 import type { Caller } from '../support/identity.js';
@@ -18,7 +19,7 @@ import type { IssueService } from './issue-service.js';
 import {
   IMPORTED_ROUTINE_NOTE, SETUP_DIR, SETUP_ROLES_DIR, SETUP_WORKFLOWS_DIR, diffSetup, readSetup, renderSetup, setupCounts, setupHash,
   skillAvailability, skillItemId,
-  type IssueSetup, type ProjectSetup, type RoleSetup, type RoutineSetup, type SetupChoice, type SetupDiffContext, type SetupItem,
+  type IssueSetup, type McpSetup, type ProjectSetup, type RoleSetup, type RoutineSetup, type SetupChoice, type SetupDiffContext, type SetupItem,
   type SetupSnapshot, type SkillLockEntry, type SkillPinSetup, type WorkflowSetup,
 } from '../setup/codec.js';
 
@@ -33,8 +34,12 @@ export interface SetupDeps {
   readonly skills: Pick<SkillService, 'library' | 'versionFor' | 'adoptStored' | 'content'>;
   /** GitHub issue settings (P14), per repository. */
   readonly issueSettings: Pick<IssueRepositoryPort, 'listSettings'>;
-  readonly issues: Pick<IssueService, 'importSettings'>;
+  readonly issues: Pick<IssueService, 'importSettings' | 'configure'>;
+  /** The project's integrations, for `mcps.yaml` (#51). Optional: P15 alone does not need it. */
+  readonly integrations?: Pick<IntegrationRepositoryPort, 'listByWorkspace'>;
   readonly workflows: WorkflowSourcePort;
+  /** The project's brain, whose workflows come first (#51). */
+  readonly brain?: BrainWorkflowReader;
   readonly folder: SetupFolderPort;
   readonly settings: SettingsStorePort;
   readonly unitOfWork: UnitOfWork;
@@ -67,7 +72,82 @@ const KNOWLEDGE_KEYS: readonly (keyof WorkspaceKnowledge)[] = [
  * shown as "Needs import", never applied, because its runs would refuse.
  */
 export class SetupService {
+  /** Projects whose rows are being refreshed from their brain: their edits must not write back (#51). */
+  readonly #applyingFromBrain = new Set<WorkspaceId>();
+
   constructor(private readonly deps: SetupDeps) {}
+
+  /** True while `applyFiles(.., { mode: 'brain' })` runs for this project: the write-through guard. */
+  isApplyingFromBrain(workspaceId: WorkspaceId): boolean {
+    return this.#applyingFromBrain.has(workspaceId);
+  }
+
+  /** The project's setup as a snapshot; with `mcps`, also the integrations it needs (#51). */
+  async snapshotFor(workspaceId: WorkspaceId, opts: { readonly mcps: boolean }): Promise<SetupSnapshot> {
+    const { snapshot } = await this.#snapshot(workspaceId);
+    return opts.mcps ? { ...snapshot, mcps: this.#mcps(workspaceId) } : snapshot;
+  }
+
+  /** The preview of a set of setup files (path → text, relative to the setup root), as a brain's `factory/`. */
+  async previewFiles(workspaceId: WorkspaceId, files: Readonly<Record<string, string>>): Promise<{ hash: string; items: readonly SetupItem[] }> {
+    return this.#itemsFor(workspaceId, files);
+  }
+
+  /**
+   * Applies setup files. `import` is P15's apply. `brain` is the cache refresh
+   * of a linked project (#51 spec §3): every difference is taken, workflows
+   * stay in the brain, routines and issue syncs keep this machine's switch,
+   * tracker/intake/mcps are never rows, and the project is marked so its own
+   * edit hooks don't write the change back to the brain.
+   */
+  async applyFiles(
+    caller: Caller,
+    workspaceId: WorkspaceId,
+    files: Readonly<Record<string, string>>,
+    opts: { readonly choices: Readonly<Record<string, SetupChoice>>; readonly mode: 'import' | 'brain' },
+  ): Promise<SetupApplyView & { readonly problems: readonly string[] }> {
+    const { items } = await this.#itemsFor(workspaceId, files);
+    if (opts.mode === 'import') return { ...(await this.#applyItems(caller, workspaceId, files, items, opts.choices)), problems: [] };
+    this.#applyingFromBrain.add(workspaceId);
+    try {
+      const problems: string[] = [];
+      const taken: Record<string, SetupChoice> = {};
+      const skipped = new Set(['workflow', 'tracker', 'intake', 'mcps']);
+      const usable = items.filter((item) => {
+        if (item.action === 'same' || skipped.has(item.kind)) return false;
+        if (item.problem !== null) { problems.push(`${item.name}: ${item.problem}`); return false; }
+        taken[item.id] = 'theirs';
+        return true;
+      });
+      const view = await this.#applyItems(caller, workspaceId, files, usable, taken, 'brain');
+      return { ...view, problems };
+    } finally {
+      this.#applyingFromBrain.delete(workspaceId);
+    }
+  }
+
+  #mcps(workspaceId: WorkspaceId): McpSetup[] {
+    const out: McpSetup[] = [];
+    for (const i of this.deps.integrations?.listByWorkspace(workspaceId) ?? []) {
+      const url = typeof i.config['url'] === 'string' ? i.config['url'] : null;
+      const command = typeof i.config['command'] === 'string' ? i.config['command'] : null;
+      // No machine path leaves this machine (#51 spec §1): a command's own path becomes its name, and a
+      // command or URL that still names a path or carries a credential is left out.
+      const portable = (text: string): string | null => {
+        const cleaned = text.trim().replace(/^(~?\/[^\s]*\/)([^/\s]+)/, '$2');
+        if (/(^|[\s'"=])~?\/[^\s]+\/[^\s]*/.test(cleaned) || /[A-Za-z]:\\/.test(cleaned)) return null;
+        if (redactSecrets(cleaned) !== cleaned) return null;
+        return cleaned;
+      };
+      const safeUrl = url === null ? null : portable(url.replace(/^https?:\/\/[^/]+/, (h) => h.replace(/\/\/[^@/]+@/, '//')));
+      const safeCommand = command === null ? null : portable(command);
+      const connect: McpSetup['connect'] | null = i.providerId === 'github' ? { kind: 'cli', command: 'gh' }
+        : safeUrl !== null ? { kind: 'mcp', url: url!.startsWith('http') ? url!.replace(/\/\/[^@/]+@/, '//') : safeUrl } : safeCommand !== null ? { kind: 'mcp', command: safeCommand } : null;
+      if (connect === null) continue;
+      out.push({ name: i.name, provider: i.providerId, capabilities: [...i.enabledCapabilities], connect });
+    }
+    return out;
+  }
 
   status(workspaceId: WorkspaceId): SetupStatusView {
     this.deps.workspaces.view(workspaceId);
@@ -126,7 +206,18 @@ export class SetupService {
     if (hash !== request.hash) {
       throw new TandemiseError('CONFLICT', 'The files changed since the preview. Preview again.', { details: { expected: request.hash, found: hash } });
     }
-    const choices = request.choices ?? {};
+    const read = await this.readFolder(request.path);
+    return this.#applyItems(caller, workspaceId, read.files, items, request.choices ?? {});
+  }
+
+  async #applyItems(
+    caller: Caller,
+    workspaceId: WorkspaceId,
+    files: Readonly<Record<string, string>>,
+    items: readonly SetupItem[],
+    choices: Readonly<Record<string, SetupChoice>>,
+    mode: 'import' | 'brain' = 'import',
+  ): Promise<SetupApplyView> {
     const taken: SetupItem[] = [];
     for (const item of items) {
       const choice: SetupChoice | null = item.action === 'same' ? null : (choices[item.id] ?? item.choice);
@@ -137,8 +228,7 @@ export class SetupService {
     const kept = items.filter((i) => i.action !== 'same').length - taken.length;
     if (taken.length === 0) return { applied: 0, kept, lines: [] };
 
-    const read = await this.readFolder(request.path);
-    const theirs = readSetup(read.files).snapshot;
+    const theirs = readSetup(files).snapshot;
     const { workflowSources } = await this.#snapshot(workspaceId);
     const stored = await this.#storedFiles(workspaceId, taken, theirs);
 
@@ -164,7 +254,7 @@ export class SetupService {
     const staged = await this.deps.folder.stage({ write, remove });
 
     try {
-      this.deps.unitOfWork.transaction(() => this.#applyRows(caller, workspaceId, taken, theirs, stored));
+      this.deps.unitOfWork.transaction(() => this.#applyRows(caller, workspaceId, taken, theirs, stored, mode));
     } catch (e) {
       await staged.discard();
       throw e;
@@ -172,7 +262,7 @@ export class SetupService {
     await staged.commit();
     this.deps.recorder.invalidate('workspaces');
     this.deps.recorder.invalidate('missions');
-    this.deps.log.info('setup.applied', { workspaceId, applied: taken.length, kept, hash });
+    this.deps.log.info('setup.applied', { workspaceId, applied: taken.length, kept, mode });
     return {
       applied: taken.length,
       kept,
@@ -182,7 +272,7 @@ export class SetupService {
 
   // ------------------------------------------------------------------ rows
 
-  #applyRows(caller: Caller, workspaceId: WorkspaceId, taken: readonly SetupItem[], theirs: SetupSnapshot, stored: ReadonlyMap<string, readonly SkillFile[]>): void {
+  #applyRows(caller: Caller, workspaceId: WorkspaceId, taken: readonly SetupItem[], theirs: SetupSnapshot, stored: ReadonlyMap<string, readonly SkillFile[]>, mode: 'import' | 'brain'): void {
     const workspace = this.deps.workspaces.view(workspaceId).workspace;
     const patch: { -readonly [K in keyof UpdateWorkspaceRequest]: UpdateWorkspaceRequest[K] } = {};
     const project = theirs.project;
@@ -215,12 +305,15 @@ export class SetupService {
           break;
         }
         case 'issues':
-          this.#applyIssues(caller, workspaceId, item, theirs);
+          this.#applyIssues(caller, workspaceId, item, theirs, mode);
           break;
         case 'routine':
-          this.#applyRoutine(caller, workspaceId, item, theirs);
+          this.#applyRoutine(caller, workspaceId, item, theirs, mode);
           break;
         case 'workflow':
+        case 'tracker':
+        case 'intake':
+        case 'mcps':
           break;
       }
     }
@@ -256,19 +349,23 @@ export class SetupService {
     return out;
   }
 
-  #applyIssues(caller: Caller, workspaceId: WorkspaceId, item: SetupItem, theirs: SetupSnapshot): void {
+  #applyIssues(caller: Caller, workspaceId: WorkspaceId, item: SetupItem, theirs: SetupSnapshot, mode: 'import' | 'brain'): void {
     const name = item.id.slice('issues:'.length);
     const settings = theirs.issues?.find((i) => i.repository === name);
     const repository = this.deps.repositories.listByWorkspace(workspaceId).find((r) => r.name === name);
     if (settings === undefined || repository === undefined) return;
-    this.deps.issues.importSettings(caller, repository.id, {
+    const request = {
       githubRepo: settings.githubRepo,
       label: settings.label,
       pollMinutes: settings.pollMinutes,
       closeOnComplete: settings.closeOnComplete,
       postComments: settings.postComments,
       workflowPreset: settings.workflow,
-    });
+    };
+    // From the brain, an existing sync keeps this machine's switch (#51 spec §1).
+    const existing = mode === 'brain' ? this.deps.issueSettings.listSettings(workspaceId).find((s) => s.repositoryId === repository.id) : undefined;
+    if (existing !== undefined) this.deps.issues.configure(caller, repository.id, { ...request, enabled: existing.enabled });
+    else this.deps.issues.importSettings(caller, repository.id, request);
   }
 
   #applyRole(workspaceId: WorkspaceId, item: SetupItem, theirs: SetupSnapshot, stored: ReadonlyMap<string, readonly SkillFile[]>): void {
@@ -300,7 +397,7 @@ export class SetupService {
     });
   }
 
-  #applyRoutine(caller: Caller, workspaceId: WorkspaceId, item: SetupItem, theirs: SetupSnapshot): void {
+  #applyRoutine(caller: Caller, workspaceId: WorkspaceId, item: SetupItem, theirs: SetupSnapshot, mode: 'import' | 'brain'): void {
     const name = item.id.slice('routine:'.length);
     const existing = this.deps.routines.list(workspaceId).find((r) => r.name === name);
     if (item.action === 'remove') {
@@ -318,29 +415,38 @@ export class SetupService {
       limits: routine.limits === null ? null : [...routine.limits],
       workflowPreset: routine.workflow,
       schedule: routine.schedule,
-      // Nothing starts running because of an import (spec §5, ruling 4).
-      enabled: false,
+      // Nothing starts running because of an import (spec §5, ruling 4). From a
+      // brain, a routine this machine already has keeps its own switch (#51).
+      enabled: mode === 'brain' && existing !== undefined ? existing.enabled : false,
     };
     const id: RoutineId = existing === undefined
       ? this.deps.routineService.create(caller, workspaceId, fields).routine.id
       : this.deps.routineService.update(existing.id, fields).routine.id;
-    this.deps.routines.update(id, { lastDetail: IMPORTED_ROUTINE_NOTE, lastOutcome: null });
+    if (mode === 'import' || existing === undefined) this.deps.routines.update(id, { lastDetail: IMPORTED_ROUTINE_NOTE, lastOutcome: null });
   }
 
   // -------------------------------------------------------------- gathering
 
   async #previewItems(workspaceId: WorkspaceId, path: string): Promise<{ folder: string; hash: string; items: readonly SetupItem[]; ignored: readonly string[] }> {
     const read = await this.readFolder(path);
-    const parsed = readSetup(read.files);
+    const { hash, items } = await this.#itemsFor(workspaceId, read.files);
+    return { folder: read.root, hash, items, ignored: read.ignored };
+  }
+
+  async #itemsFor(workspaceId: WorkspaceId, files: Readonly<Record<string, string>>): Promise<{ hash: string; items: readonly SetupItem[] }> {
+    const parsed = readSetup(files);
     const { snapshot } = await this.#snapshot(workspaceId);
     const items = diffSetup(snapshot, parsed, await this.#diffContext(workspaceId, parsed.snapshot)).map((item) => this.#withRoutineProblem(item, parsed.snapshot));
-    const hash = setupHash(Object.entries(read.files).map(([p, content]) => ({ path: p, content })));
-    return { folder: read.root, hash, items, ignored: read.ignored };
+    const hash = setupHash(Object.entries(files).map(([p, content]) => ({ path: p, content })));
+    return { hash, items };
   }
 
   async #diffContext(workspaceId: WorkspaceId, theirs: SetupSnapshot): Promise<SetupDiffContext> {
     const library = this.deps.skills.library(workspaceId);
-    const context = { library, stored: new Set<string>(), repositories: this.deps.repositories.listByWorkspace(workspaceId).map((r) => r.name) };
+    const context = {
+      library, stored: new Set<string>(), repositories: this.deps.repositories.listByWorkspace(workspaceId).map((r) => r.name),
+      integrations: (this.deps.integrations?.listByWorkspace(workspaceId) ?? []).map((i) => ({ provider: i.providerId, name: i.name })),
+    };
     const wanted = [...(theirs.skills ?? []), ...(theirs.roles ?? []).flatMap((r) => r.skills)];
     for (const pin of wanted) {
       if (context.stored.has(pin.hash) || skillAvailability(pin, context) === 'library') continue;
@@ -361,10 +467,11 @@ export class SetupService {
   }
 
   /** A `.tandemise` folder's files (path → text); refuses a path that holds none. Also what an eval setup candidate reads (P3b). */
-  async readFolder(path: string): Promise<{ root: string; files: Readonly<Record<string, string>>; ignored: readonly string[] }> {
-    const read = await this.deps.folder.read(path);
+  async readFolder(path: string, opts?: { readonly root?: string }): Promise<{ root: string; files: Readonly<Record<string, string>>; ignored: readonly string[] }> {
+    const read = await this.deps.folder.read(path, opts);
     if (read === null) {
-      throw TandemiseError.validation(`There is no ${SETUP_DIR} folder in ${path}. Choose the repository folder that holds it, or the ${SETUP_DIR} folder itself.`);
+      const dir = opts?.root ?? SETUP_DIR;
+      throw TandemiseError.validation(`There is no ${dir} folder in ${path}. Choose the repository folder that holds it, or the ${dir} folder itself.`);
     }
     return read;
   }
@@ -434,7 +541,7 @@ export class SetupService {
       workflow: r.workflowPreset,
       schedule: r.schedule,
     }));
-    const loaded = await this.deps.workflows.list(view.repositories.map((r) => r.path));
+    const loaded = (await listProjectWorkflows({ workflows: this.deps.workflows, brain: this.deps.brain }, workspaceId, view.repositories.map((r) => r.path))).workflows;
     const workflowSources = new Map<string, string>();
     const workflows: WorkflowSetup[] = [];
     for (const w of loaded) {

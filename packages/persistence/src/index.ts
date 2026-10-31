@@ -52,3 +52,4 @@ export { SqliteIssueRepository } from './repositories/issue-repository.js';
 export { SqliteRunScoreRepository } from './repositories/run-score-repository.js';
 export { SqliteEvalRepository } from './repositories/eval-repository.js';
 export { createUnitOfWork } from './repositories/unit-of-work.js';
+export { SqliteBrainRecordRepository, SqliteWorkspaceBrainRepository } from './repositories/brain-repository.js';

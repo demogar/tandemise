@@ -4,6 +4,7 @@ import type { WorkflowSummary } from '@tandemise/api-contract';
 import type { WorkflowService } from '../services.js';
 import type { WorkflowSourcePort } from '../ports.js';
 import { WORKFLOW_PRESETS } from '../planning/presets.js';
+import { listProjectWorkflows, type BrainWorkflowReader } from '../brain/workflows.js';
 
 /**
  * What this project can run.
@@ -21,11 +22,13 @@ export class WorkflowServiceImpl implements WorkflowService {
   constructor(
     private readonly workflows: WorkflowSourcePort,
     private readonly repositories: RepoRepositoryPort,
+    /** The project's brain, whose workflows come first (#51). */
+    private readonly brain?: BrainWorkflowReader,
   ) {}
 
   async list(workspaceId: WorkspaceId): Promise<readonly WorkflowSummary[]> {
     const paths = this.repositories.listByWorkspace(workspaceId).map((r) => r.path);
-    const authored = await this.workflows.list(paths);
+    const authored = (await listProjectWorkflows({ workflows: this.workflows, brain: this.brain }, workspaceId, paths)).workflows;
 
     const own: WorkflowSummary[] = authored.map((loaded) => ({
       id: loaded.id,

@@ -4,6 +4,7 @@ import { accessSync, appendFileSync, closeSync, constants, existsSync, mkdirSync
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { EventEmitter } from 'node:events';
+import { app } from 'electron';
 import type { DaemonConnection, DaemonStatus } from '../shared/bridge.js';
 import { LOGIN_PATH_MARKER, parseLoginShellPath, resolveDaemonNode, type NodeResolution } from './node-runtime.js';
 
@@ -268,7 +269,8 @@ async function spawnDaemon(entry: string, node: Extract<NodeResolution, { ok: tr
   const child = spawn(node.command, [entry], {
     detached: true,
     stdio: ['ignore', 'ignore', stderr ?? 'ignore'],
-    env: { ...withoutElectronNode(process.env), ...node.env },
+    // A packaged app's daemon never opens test routes, whatever the environment says.
+    env: { ...withoutElectronNode(process.env), ...node.env, ...(app.isPackaged ? { TANDEMISE_PACKAGED: '1', TANDEMISE_TEST_ROUTES: '0' } : {}) },
   });
   if (stderr !== null) closeSync(stderr);
   child.once('exit', () => {

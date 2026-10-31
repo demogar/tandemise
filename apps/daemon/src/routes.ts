@@ -26,6 +26,7 @@ import { CONTRIBUTION_BODY, HANDLED, Router, formatZodIssues, type RequestContex
 import { createInviteRequest, mailboxAckRequest } from '@tandemise/api-contract/relay';
 import { MAX_BODY_BYTES } from '@tandemise/coordination';
 import type { SwitchableCoordination } from './coordination.js';
+import { brainRoutes } from './brain-routes.js';
 
 /**
  * The daemon's HTTP surface.
@@ -35,7 +36,12 @@ import type { SwitchableCoordination } from './coordination.js';
  * way means the API is a projection of the application layer rather than a
  * second place where mission rules live.
  */
-export function buildRouter(services: TandemiseServices, options: { readonly testClock?: AdjustableClock | null; readonly coordination?: SwitchableCoordination } = {}): Router {
+export function buildRouter(services: TandemiseServices, options: {
+  readonly testClock?: AdjustableClock | null;
+  readonly coordination?: SwitchableCoordination;
+  /** Test-only event recording (TANDEMISE_TEST_ROUTES=1); null in every real daemon. */
+  readonly testEvents?: ((missionId: string, taskId: string | null, body: Record<string, unknown>) => unknown) | null;
+} = {}): Router {
   const r = new Router();
 
   /**
@@ -177,6 +183,7 @@ export function buildRouter(services: TandemiseServices, options: { readonly tes
     services.setup.preview(asId(ctx.params.id!), (await ctx.body(previewSetupRequest)).path));
   r.post('/v1/workspaces/:id/setup/apply', async (ctx) =>
     services.setup.apply(ctx.caller, asId(ctx.params.id!), await ctx.body(applySetupRequest)));
+  brainRoutes(r, services);
 
   // -------------------------------------------------------------- evals (P3b)
   // Suites of frozen cases, saving a finished gated step as one, and trying a
@@ -237,6 +244,14 @@ export function buildRouter(services: TandemiseServices, options: { readonly tes
       const { advanceMs } = await ctx.body(advanceClockRequest);
       const offsetMs = testClock.advance(advanceMs);
       return { now: testClock.now(), offsetMs };
+    });
+  }
+  const testEvents = options.testEvents ?? null;
+  if (testEvents !== null) {
+    // Test-only (#51 acceptance): records an event body on a mission, as another feature would.
+    r.post('/v1/test/events', async (ctx) => {
+      const body = (await ctx.body(z.object({ missionId: z.string().min(1), taskId: z.string().min(1).optional(), body: z.record(z.string(), z.unknown()) })));
+      return testEvents(body.missionId, body.taskId ?? null, body.body);
     });
   }
 

@@ -1,0 +1,82 @@
+{
+  "id": "B4",
+  "title": "A hold that changed a file teaches a lesson, shown on the feed and in Lessons",
+  "ok": true,
+  "checks": [
+    {
+      "label": "the mission ran",
+      "ok": true,
+      "observed": "COMPLETE"
+    },
+    {
+      "label": "proof (API): an active lesson, from your hold",
+      "ok": true,
+      "observed": {
+        "id": "acceptance-69237f:01m67vh5wn8yr8txg3jt",
+        "kind": "lesson",
+        "text": "Keep the header sticky on mobile.",
+        "scope": {
+          "role": "development"
+        },
+        "state": "active",
+        "helpful": 0,
+        "harmful": 0,
+        "net": 0,
+        "addedAt": "2026-10-31T02:10:01.749Z",
+        "lastConfirmedAt": "2026-10-31T02:10:01.749Z",
+        "missions": [
+          "B4 hello page mvvrjxlp"
+        ],
+        "invalidAt": null,
+        "supersededBy": null,
+        "retired": null,
+        "promoted": null,
+        "flags": {
+          "harmful": false,
+          "stale": false
+        },
+        "scopeLabel": "Developer",
+        "sourceLabel": "your hold",
+        "sourceMission": "B4 hello page mvvrjxlp",
+        "runLink": {
+          "missionId": "msn_01m67vh01as5dctzyn3z",
+          "taskId": "tsk_01m67vh055cv2t8twx2e",
+          "runId": "run_01m67vh34p80m03cxk2h"
+        },
+        "loadedIn": {
+          "runs": 0,
+          "passedFirstTime": 0
+        },
+        "notes": []
+      }
+    },
+    {
+      "label": "the mission timeline shows \"Learned: … (from your hold)\"",
+      "ok": true,
+      "observed": "Learned: 'Keep the header sticky on mobile.' (from your hold)\n09:10:02 PM\n·\nTandemise"
+    },
+    {
+      "label": "Brain → Lessons lists it as active",
+      "ok": true,
+      "observed": [
+        {
+          "text": "Keep the header sticky on mobile.",
+          "counters": "+0 / −0",
+          "state": "active"
+        }
+      ]
+    },
+    {
+      "label": "with its source \"your hold\"",
+      "ok": true
+    }
+  ],
+  "notes": [
+    "substitution: #50 is not merged, so the hold record is published through POST /v1/test/events (task.hold_ended, ending continued, 1 file changed)",
+    "real Claude Code was not run for B4: the hold itself (#50) is what drives a real session, and it is not on this branch"
+  ],
+  "shots": [
+    "/home/demogar/projects/tandemise/tandemise/.claude/worktrees/agent-a4b7a8777ac07d5f4/docs/superpowers/evidence/2026-10-30-brain/B4-timeline-learned.png",
+    "/home/demogar/projects/tandemise/tandemise/.claude/worktrees/agent-a4b7a8777ac07d5f4/docs/superpowers/evidence/2026-10-30-brain/B4-lessons.png"
+  ]
+}
