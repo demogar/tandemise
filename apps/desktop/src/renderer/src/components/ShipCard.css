@@ -29,6 +29,15 @@
   background: var(--status-succeeded);
 }
 
+.ship[data-stage='ci'] .ship__dot,
+.ship[data-stage='review'] .ship__dot {
+  background: var(--status-running);
+}
+
+.ship[data-stage='merged'] .ship__dot {
+  background: var(--status-succeeded);
+}
+
 .ship[data-stage='blocked'] .ship__dot {
   background: var(--status-failed);
 }
@@ -45,6 +54,12 @@
 
 .ship__pr {
   display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.ship__row {
+  display: flex;
   align-items: center;
   gap: var(--s3);
 }
@@ -53,4 +68,32 @@
   font-family: var(--font-mono);
   font-size: var(--fs-xs);
   color: var(--text-secondary);
+}
+
+.ship__decision {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  color: var(--text-secondary);
+}
+
+.ship__reasons {
+  margin: 0;
+  padding-left: var(--s4);
+  color: var(--text);
+}
+
+.ship__score,
+.ship__would,
+.ship__policy,
+.ship__error {
+  margin: 0;
+}
+
+.ship__policy {
+  font-size: var(--fs-xs);
+}
+
+.ship__error {
+  color: var(--status-failed);
 }

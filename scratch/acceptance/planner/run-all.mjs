@@ -55,7 +55,7 @@ git(project, 'remote', 'add', 'origin', 'git@github.com:acme/web.git');
 
 log('setup');
 execFileSync(process.execPath, [join(here, '../p0/setup.mjs'), LINK], {
-  env: { ...process.env, PATH: `${ghBin}:${process.env.PATH}`, SCRIPTED_DELAY_MS: '1200', SCRIPTED_STATE_DIR: `${LINK}/scripted-state` },
+  env: { ...process.env, PATH: `${ghBin}:${process.env.PATH}`, SCRIPTED_DELAY_MS: '1200', TANDEMISE_SHIP_POLL_MS: '1500', SCRIPTED_STATE_DIR: `${LINK}/scripted-state` },
   stdio: ['ignore', 'pipe', 'inherit'],
 });
 // GitHub, offline: the registered remote URL stays acme/web, while pushes go to a bare repository.
@@ -75,7 +75,7 @@ desktop.unref();
 
 const keepGoing = process.argv.includes('--keep-going');
 const only = process.argv.find((a) => a.startsWith('--only='))?.slice('--only='.length).split(',');
-const scenarios = ['pm01.mjs', 'pm06.mjs', 'pm07.mjs', 'pm10.mjs'].filter((file) => !only || only.some((o) => file.includes(o)));
+const scenarios = ['pm01.mjs', 'pm02.mjs', 'pm05.mjs', 'pm06.mjs', 'pm07.mjs', 'pm10.mjs'].filter((file) => !only || only.some((o) => file.includes(o)));
 
 let failed = null;
 for (const file of scenarios) {
@@ -100,7 +100,7 @@ if (!process.argv.includes('--hold')) {
 
 // ---------------------------------------------------------------- summary
 const results = readdirSync(EVIDENCE).filter((f) => f.endsWith('.json')).map((f) => JSON.parse(readFileSync(join(EVIDENCE, f), 'utf8')));
-const order = ['PM1', 'PM6', 'PM7', 'PM10'];
+const order = ['PM1', 'PM2', 'PM3', 'PM4', 'PM5', 'PM6', 'PM7', 'PM8', 'PM9', 'PM10'];
 results.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
 const lines = [
   '# Planner acceptance (#53, PR 1)',

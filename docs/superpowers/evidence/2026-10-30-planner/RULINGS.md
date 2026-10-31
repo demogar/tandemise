@@ -119,3 +119,9 @@ spec (`docs/superpowers/specs/2026-10-30-planner-and-merge-design.md`).
   author email can't tell them apart). `history.*` facts are filled from the
   fold here rather than in Task 18. Task 13's checks were written after the
   ship-step code, so there was no red run for them.
+- Ruling (Task 14): PM2 asserts "would have merged: score 1 of 2", not the
+  spec's "0 of 2": under the shipped policy a quick-lane change has no independent
+  review, which scores 1 (`review.independent != PASS`). The fake gh gains
+  `defaultChecks` per repository so an acceptance run can make CI green on every
+  commit. The PM2 and PM5 scenarios were written after the code they test, so
+  there was no red run for them.

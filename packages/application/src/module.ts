@@ -1041,6 +1041,8 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       planDecisions: r.resolve(t.PLAN_DECISION_REPOSITORY),
       events: r.resolve(t.EVENT_REPOSITORY),
       recorder: r.resolve(t.EVENT_RECORDER),
+      approvals: r.resolve(t.APPROVAL_REPOSITORY),
+      mergeDecisions: r.resolve(t.MERGE_DECISION_REPOSITORY),
       factorySource: r.resolve(t.FACTORY_CONFIG_SOURCE),
     }), { source: SOURCE });
 

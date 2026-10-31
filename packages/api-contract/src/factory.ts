@@ -59,13 +59,35 @@ export interface PlanDecisionView {
   readonly measured: boolean;
 }
 
-export type ShipStage = 'none' | 'waiting' | 'opening' | 'opened' | 'skipped' | 'blocked' | 'cancelled';
+export type ShipStage = 'none' | 'waiting' | 'opening' | 'opened' | 'ci' | 'review' | 'merged' | 'skipped' | 'blocked' | 'cancelled';
+
+/** The latest merge decision on a pull request, in words (#53 §8.6, §10). */
+export interface ShipDecisionView {
+  readonly id: string;
+  readonly verdict: 'merge' | 'ask';
+  readonly headSha: string;
+  /** "Risk score 1 of 2 allowed". */
+  readonly scoreLine: string;
+  /** Why it asks, in the daemon's words; empty for a merge. */
+  readonly reasons: readonly string[];
+  /** The score lines that counted: "over 100 lines changed (+1)". */
+  readonly factors: readonly string[];
+  /** "would have merged: score 0 of 2" when auto-merge is off; null otherwise. */
+  readonly wouldHave: string | null;
+  readonly policyRef: string;
+  /** The pending Review and merge card, when there is one. */
+  readonly cardId: string | null;
+  readonly mergedBy: string | null;
+  readonly mergeSha: string | null;
+  readonly canRevert: boolean;
+}
 
 export interface ShipPullRequestView {
   readonly repo: string;
   readonly number: number;
   readonly url: string;
   readonly state: 'opening' | 'opened';
+  readonly decision: ShipDecisionView | null;
 }
 
 /** `GET /v1/missions/:id/ship` (part 1: pull requests only). */

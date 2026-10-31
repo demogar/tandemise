@@ -1,11 +1,13 @@
-import { useShip } from '../lib/queries.js';
+import type { ShipPullRequestView } from '@tandemise/api-contract';
+import { useDaemonMutation, useShip } from '../lib/queries.js';
 import { Icon } from './Icon.js';
 import { ErrorState } from './primitives.js';
 import './ShipCard.css';
 
 /**
- * The ship step (#53 §10), part 1: "Opening the pull request", then "Pull
- * request opened" with a way to it. The headline and status are the daemon's.
+ * The ship step (#53 §10): opening the pull request, waiting for CI, then
+ * either "Waiting for your review" with the reasons and Merge, or merged.
+ * Every headline, reason and line is the daemon's.
  */
 export function ShipCard({ missionId }: { missionId: string }): JSX.Element | null {
   const ship = useShip(missionId);
@@ -19,15 +21,43 @@ export function ShipCard({ missionId }: { missionId: string }): JSX.Element | nu
         <span className="ship__headline">{view.headline}</span>
       </div>
       <p className="ship__status">{view.status}</p>
-      {view.prs.map((pr) => (
-        <div key={`${pr.repo}#${pr.number}`} className="ship__pr">
-          <span className="ship__ref">{pr.repo} #{pr.number}</span>
-          <button type="button" className="btn" title={pr.url} onClick={() => void window.tandemise.openExternal(pr.url)}>
-            <Icon name="externalLink" size={13} />
-            Open in GitHub
-          </button>
-        </div>
-      ))}
+      {view.prs.map((pr) => <ShipPullRequest key={`${pr.repo}#${pr.number}`} missionId={missionId} pr={pr} />)}
     </section>
+  );
+}
+
+function ShipPullRequest({ missionId, pr }: { missionId: string; pr: ShipPullRequestView }): JSX.Element {
+  const merge = useDaemonMutation((daemon, cardId: string) => daemon.decideApproval(cardId, { optionId: 'approve' }), ['ship', 'approvals', 'tasks'], missionId);
+  const decision = pr.decision;
+  return (
+    <div className="ship__pr">
+      <div className="ship__row">
+        <span className="ship__ref">{pr.repo} #{pr.number}</span>
+        <button type="button" className="btn" title={pr.url} onClick={() => void window.tandemise.openExternal(pr.url)}>
+          <Icon name="externalLink" size={13} />
+          Open in GitHub
+        </button>
+        {decision?.cardId != null ? (
+          <button type="button" className="btn btn--primary" disabled={merge.isPending} onClick={() => merge.mutate(decision.cardId!)}>
+            Merge
+          </button>
+        ) : null}
+      </div>
+      {decision === null ? null : (
+        <div className="ship__decision" data-verdict={decision.verdict}>
+          {decision.reasons.length > 0 ? (
+            <ul className="ship__reasons">
+              {decision.reasons.map((r) => <li key={r}>{r}</li>)}
+            </ul>
+          ) : null}
+          <p className="ship__score">{decision.scoreLine}{decision.factors.length > 0 ? `: ${decision.factors.join(', ')}` : ''}</p>
+          {decision.wouldHave === null ? null : (
+            <p className="ship__would">What would have happened with auto-merge on: {decision.wouldHave}</p>
+          )}
+          <p className="ship__policy">Checked {decision.headSha.slice(0, 7)} · policy {decision.policyRef}</p>
+          {merge.isError ? <p className="ship__error">{(merge.error as Error).message}</p> : null}
+        </div>
+      )}
+    </div>
   );
 }

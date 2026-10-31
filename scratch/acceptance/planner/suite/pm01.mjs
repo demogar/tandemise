@@ -52,14 +52,13 @@ try {
   const shipped = await until(async () => {
     const view = await ship(c, id);
     if (view.stage === 'opening') sawOpening = view;
-    return view.stage === 'opened' && view;
+    return view.prs.length > 0 && view;
   }, { label: 'ship opened', timeoutMs: 120_000 });
   if (sawOpening !== null) ev.note(`saw the ship step opening: ${sawOpening.status}`);
-  ev.check(`GET /ship: opened, one pull request on ${REPO}`, shipped.prs.length === 1 && shipped.prs[0].repo === REPO && shipped.prs[0].state === 'opened', shipped);
-  ev.check('…headline "Pull request opened"', shipped.headline === 'Pull request opened', shipped.headline);
-
-  const card = await shipCardText(c, id, (t) => t.includes('Pull request opened'));
-  ev.check('ship card reads "Pull request opened" with Open in GitHub', card.includes('Pull request opened') && card.includes('Open in GitHub') && card.includes(`${REPO} #${shipped.prs[0].number}`), card);
+  ev.check(`GET /ship: one pull request opened on ${REPO}`, shipped.prs.length === 1 && shipped.prs[0].repo === REPO && shipped.prs[0].state === 'opened', shipped);
+  // With no CI on this repository the ship step goes straight on to its decision.
+  const card = await shipCardText(c, id, (t) => t.includes('Open in GitHub'));
+  ev.check('ship card shows the pull request with Open in GitHub', card.includes('Open in GitHub') && card.includes(`${REPO} #${shipped.prs[0].number}`), card);
   await shot(c, ev, 'ship-card');
 
   const created = ghCalls().filter((x) => x.args[0] === 'pr' && x.args[1] === 'create');

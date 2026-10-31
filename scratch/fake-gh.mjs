@@ -209,7 +209,8 @@ function main(argv) {
     const path = (endpoint ?? '').split('?')[0];
     let c = /^repos\/([^/]+\/[^/]+)\/commits\/([0-9a-f]+)\/check-runs$/.exec(path);
     if (c) {
-      const runs = (repoOf(c[1]).checks ?? {})[c[2]] ?? [];
+      // A repository's `defaultChecks` stand for every commit that has none of its own.
+      const runs = (repoOf(c[1]).checks ?? {})[c[2]] ?? repoOf(c[1]).defaultChecks ?? [];
       out({ check_runs: runs.map((k) => ({ name: k.name, status: k.status ?? 'completed', conclusion: k.conclusion ?? null, details_url: k.link ?? null, output: { summary: null, text: k.logTail ?? null } })) });
       return;
     }

@@ -3,10 +3,10 @@ import type {
   ShipPullRequestView, ShipView,
 } from '@tandemise/api-contract';
 import {
-  bucketWords, chooseRung, isTerminalMissionStatus, laneBecauseSentence, laneLine, moduleSentence, profileChips, profileLine, routeReasonWords,
+  AUTO_MERGE_OFF, wouldHaveLine, bucketWords, chooseRung, isTerminalMissionStatus, laneBecauseSentence, laneLine, moduleSentence, profileChips, profileLine, routeReasonWords,
   signalSentence, stepClassWords, stepLine, tiebreakSentence, STEP_CLASSES,
   type BucketModelStats, type EventRepositoryPort, type OutcomeStats, type RoutingConfig, type StepClass, type MissionRepositoryPort, type MissionTask, type PlanDecision, type PlanDecisionRepositoryPort,
-  type ProfileSignal, type TaskRepositoryPort,
+  type ProfileSignal, type TaskRepositoryPort, type ApprovalRepositoryPort, type MergeDecisionRepositoryPort,
 } from '@tandemise/domain';
 import { TandemiseError, type MissionId, type WorkspaceId } from '@tandemise/shared';
 import { FACTORY_FILES, type FactoryConfigSourcePort, type FactoryFileName } from '../ports.js';
@@ -28,6 +28,8 @@ export interface FactoryServiceDeps {
   readonly events: Pick<EventRepositoryPort, 'listByMission'>;
   readonly recorder: EventRecorder;
   /** Where "Write the defaults" writes the factory files. */
+  readonly approvals: Pick<ApprovalRepositoryPort, 'list'>;
+  readonly mergeDecisions: MergeDecisionRepositoryPort;
   readonly factorySource: Pick<FactoryConfigSourcePort, 'write'>;
 }
 
@@ -175,7 +177,27 @@ export class FactoryService {
     for (const event of this.deps.events.listByMission(missionId, { semanticOnly: true })) {
       if (event.body.type !== 'ship.pr_opened') continue;
       const { repo, number, url } = event.body;
-      opened.set(`${repo}#${number}`, { repo, number, url, state: 'opened' });
+      opened.set(`${repo}#${number}`, { repo, number, url, state: 'opened', decision: null });
+    }
+    const pending = this.deps.approvals.list({ missionId, statuses: ['PENDING'] }).filter((a) => a.taskId === ship?.id);
+    for (const [key, pr] of opened) {
+      const d = this.deps.mergeDecisions.latestFor(missionId, pr.repo);
+      if (d === undefined || d.prNumber !== pr.number) continue;
+      const card = pending.find((a) => a.evidence.some((e) => e.label === 'Decision' && e.value === d.id));
+      opened.set(key, {
+        ...pr,
+        decision: {
+          id: d.id, verdict: d.verdict, headSha: d.headSha,
+          scoreLine: `Risk score ${d.score} of ${d.allowed ?? 0} allowed`,
+          reasons: d.reasons,
+          factors: d.factors.filter((f) => f.kind === 'score' && f.matched).map((f) => `${f.why ?? f.rule} (+${f.points})`),
+          wouldHave: d.reasons.includes(AUTO_MERGE_OFF) ? wouldHaveLine(d) : null,
+          policyRef: d.policyRef,
+          cardId: card?.id ?? null,
+          mergedBy: d.mergedBy, mergeSha: d.mergeSha,
+          canRevert: d.mergeSha !== null,
+        },
+      });
     }
     const prs = [...opened.values()];
     return { missionId, taskId: ship?.id ?? null, prs, ...shipStage(ship, prs.length) };
@@ -184,10 +206,18 @@ export class FactoryService {
 
 function shipStage(ship: MissionTask | undefined, prs: number): Pick<ShipView, 'stage' | 'headline' | 'status'> {
   if (ship === undefined) return { stage: 'none', headline: 'No pull request', status: 'This mission has no ship step.' };
-  if (prs > 0 && ship.status !== 'RUNNING') {
+  if (ship.status === 'SUCCEEDED' && (ship.statusReason ?? '').startsWith('Merged')) {
+    return { stage: 'merged', headline: (ship.statusReason ?? '').startsWith('Merged on its own') ? 'Merged on its own' : 'Merged', status: ship.statusReason ?? 'Merged.' };
+  }
+  if (prs > 0 && !['RUNNING', 'AWAITING_EXTERNAL', 'AWAITING_APPROVAL', 'BLOCKED'].includes(ship.status)) {
     return { stage: 'opened', headline: 'Pull request opened', status: prs === 1 ? 'The pull request is open on GitHub.' : `${prs} pull requests are open on GitHub.` };
   }
   switch (ship.status) {
+    case 'AWAITING_EXTERNAL':
+      if ((ship.statusReason ?? '').startsWith('Waiting for CI')) return { stage: 'ci', headline: ship.statusReason!, status: 'The pull request is open; Tandemise decides once CI is green on its head commit.' };
+      return { stage: 'review', headline: ship.statusReason ?? 'Waiting for you to merge it in GitHub.', status: 'Tandemise finishes when GitHub says it merged.' };
+    case 'AWAITING_APPROVAL':
+      return { stage: 'review', headline: 'Waiting for your review', status: ship.statusReason ?? 'The merge policy asks for a review.' };
     case 'RUNNING':
       return { stage: 'opening', headline: 'Opening the pull request', status: ship.statusReason ?? 'Opening the pull request.' };
     case 'SUCCEEDED':
