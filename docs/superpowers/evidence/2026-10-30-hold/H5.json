@@ -16,8 +16,8 @@
       "label": "proof: a new daemon is up",
       "ok": true,
       "observed": {
-        "old": 3650836,
-        "now": 3656182
+        "old": 3817088,
+        "now": 3821933
       }
     },
     {
@@ -32,10 +32,10 @@
       "label": "proof (API): its terminal is not open",
       "ok": true,
       "observed": {
-        "holdId": "hld_01m67z0phvnya17jq4ar",
-        "heldBy": "mem_01m67yyyc0gv4gmzpfn2",
+        "holdId": "hld_01m680ycmft9s5tbt076",
+        "heldBy": "mem_01m680wmdtfqmdfsv8bf",
         "heldByName": "Demostenes Garcia",
-        "startedAt": "2026-10-31T03:10:56.060Z",
+        "startedAt": "2026-10-31T03:44:37.519Z",
         "terminalOpen": false
       }
     },
@@ -53,24 +53,24 @@
       "label": "the terminal opens again on the session the first terminal captured, not the run's",
       "ok": true,
       "observed": {
-        "resumed": "Fake session fake-session-1793416256221\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
-        "before": "sess-hold-run_01m67yz5w94qqwvthfrr"
+        "resumed": "Fake session fake-session-1793418277681\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+        "before": "sess-hold-run_01m680wvxz9cng3kzsay"
       }
     },
     {
       "label": "proof (API): its terminal is open again, same hold",
       "ok": true,
       "observed": {
-        "holdId": "hld_01m67z0phvnya17jq4ar",
-        "heldBy": "mem_01m67yyyc0gv4gmzpfn2",
+        "holdId": "hld_01m680ycmft9s5tbt076",
+        "heldBy": "mem_01m680wmdtfqmdfsv8bf",
         "heldByName": "Demostenes Garcia",
-        "startedAt": "2026-10-31T03:10:56.060Z",
+        "startedAt": "2026-10-31T03:44:37.519Z",
         "terminalOpen": true
       }
     }
   ],
   "notes": [
-    "daemon 3650836 stopped"
+    "daemon 3817088 stopped"
   ],
   "shots": [
     "/home/demogar/projects/tandemise/tandemise/docs/superpowers/evidence/2026-10-30-hold/H5-daemon-gone.png",
