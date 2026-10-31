@@ -38,6 +38,8 @@ export { ToolBroker, unwrapToolResult } from './broker.js';
 
 export { RunScopedToolGateway } from './gateway.js';
 
+export { RateGate, retryAfterMs } from './rate-gate.js';
+
 export type { McpConfigFile, McpGatewayHandle, McpGatewayRequest, McpServerConfig } from './mcp/config.js';
 export { MCP_SERVER_NAME, defaultServerEntryPath, writeMcpGatewayConfig } from './mcp/config.js';
 

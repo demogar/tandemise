@@ -609,3 +609,45 @@ was ambiguous or wrong, decided against the spec
     a passing failure keeps the backoff". The fakes gained `failIdentify(code)` (Discord), `failOpen(error)` and
     `disconnect(reason)` (Slack), and `releases`/`setReleases` and `pageSize`/`setPageSize` with Sentry's `Link`
     header (Sentry).
+- Ruling 26 (the minor review findings on PR #73): decided from spec §2, §3, §6, §8 and Rulings 22, 24 and 25:
+  - **Revoking a push token.** `IntakeService.revokeToken` (and `DELETE /v1/intake/tokens/:id`) looks the token up
+    (`tokens.byId`, new on the port) and requires a seat in its project (`requireSeat`). A token of a project the
+    caller has no seat in is `NOT_FOUND`, worded as for an id that never existed, so a token id says nothing about
+    another project.
+  - **GitHub comments, every page.** `GhIssueTracker.comments` runs `gh api --paginate …/comments?per_page=100` and
+    reads gh's pages printed back to back (`[…][…]`), so a marker comment past the first 100 is found and edited, not
+    posted again. P14 issue sync reads the same way. `fake-gh` serves pages only when a check sets `pageSize` in its
+    state (one page without `--paginate`, all of them with it); otherwise its output is unchanged.
+  - **Duplicates, once.** GitHub's `markDuplicate` writes "Duplicate of #n." through the marker mechanism
+    (`<!-- tandemise:duplicate -->`, the signed-in user's comment only, edited when found), then closes. The marker
+    is the adapter's own lookup and is not stored, so `tracker_comments`' marker CHECK in 024 is unchanged.
+    YouTrack's `duplicates X` command is idempotent (its links are a set; the fake now models that) and posts no
+    comment; asserted by sending it twice.
+  - **Rate limits.** `RateGate` (`@tandemise/integrations-core`) is one tracker adapter instance's wait (the resolver
+    caches one instance per project). YouTrack: a 429 waits its `Retry-After` (seconds or an HTTP date; 60 s without
+    one; capped at an hour). GitHub: `gh` failing with "secondary rate limit", "API rate limit exceeded" or HTTP 429
+    waits 60 s (gh shows no `Retry-After`); every `gh` call of the tracker, searches and comments included, goes
+    through it. While the wait lasts calls are refused without being sent, as a retryable `INTEGRATION_FAILED`:
+    "YouTrack asked Tandemise to slow down; it waits 30 s before asking again." (GitHub likewise, counting down).
+  - **`trigger.react`.** A source's `trigger.react?: boolean` (default true; zod and the domain type) switches the
+    chat acknowledgements off: with `false` Slack makes no `reactions.add`/`reactions.remove` at intake or closure,
+    and Discord adds no 👀. The reply in the thread is unchanged.
+  - **A delivery waits for its secret.** The host's webhook context notes each secret a runner asks for and does not
+    get. A delivery the runner then refuses with `PRECONDITION_FAILED` is "waiting": the runner's words (which name
+    the secret, e.g. "Save the Sentry client secret for this source in Settings → Intake first.") go on `last_error`,
+    and it is not acked. Locally it stays claimed while the drain pulls on (up to 10 batches, so waiting deliveries
+    never fill a batch ahead of the others) and is released at the end of the drain; from the relay it is not acked
+    and not recorded as handled, so the relay hands it out again. Any other refusal is acked as before (Ruling 24).
+  - **Only a running daemon pulls the relay.** Before pulling a project key the host asks whether it runs at least
+    one of those projects' sources: on here, read by a shipped runner, not stopped for good (Ruling 25), and its
+    lease held. A lease got or refused in the last 30 s is taken as it was; otherwise it is asked, as the pass
+    would. A daemon that runs none pulls nothing, which retires Ruling 24's known cost.
+  - **Proof.** intake-check (a stranger's revoke is NOT_FOUND and the token still works; an unknown id is NOT_FOUND),
+    intake-tracker-check (a marker comment on page 2 edited via `--paginate`; `markDuplicate` twice adds no comment
+    on GitHub and no second link on YouTrack; YouTrack 429 + Retry-After 30 then refused for 20 s without a request,
+    then asked again; gh's secondary limit and "API rate limit exceeded" likewise), intake-runners-check ("slack:
+    trigger.react false …": filed and closed, no reaction calls; "webhooks: a delivery whose source lacks its secret
+    waits for it": not acked, the client secret named, read once saved; the relay section: Bruno, who runs no
+    source of the project, makes no mailbox pull). Two existing assertions moved with the behaviour: the 61-delivery
+    PostHog burst saves its webhook secret first, and the unconfigured endpoint is parked after nine more of Ana's
+    drains (Bruno no longer leases it).

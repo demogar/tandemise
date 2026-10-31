@@ -1,6 +1,6 @@
 import type { Closure, ClosureResult, IntakeRunner, RunnerContext, RunnerHandle, RunnerSignal } from '@tandemise/domain';
 import { TandemiseError, errorMessage } from '@tandemise/shared';
-import { replyAddress, replyPrefix, replyText, mentionTriggers, splitInstance, titleOf, triggerEmoji } from './chat.js';
+import { reacts, replyAddress, replyPrefix, replyText, mentionTriggers, splitInstance, titleOf, triggerEmoji } from './chat.js';
 import { MAX_DESCRIPTION, SourceHttp, closureFailure, cut, record, secretMissing, text, tokenRefused } from './http.js';
 import { SerialQueue, SocketLoop, fatalSocketError } from './socket.js';
 
@@ -151,7 +151,7 @@ export class SlackRunner implements IntakeRunner {
         const posted = await slack.write('chat.postMessage', { channel: thread.channel, thread_ts: thread.id, text: replyText(closure), unfurl_links: false });
         externalId = text(posted['ts']) ?? null;
       }
-      if (closure.kind === 'done') await swapReaction(slack, thread.channel, thread.id, ctx);
+      if (closure.kind === 'done' && reacts(ctx.source)) await swapReaction(slack, thread.channel, thread.id, ctx);
       return { ok: true, externalId };
     } catch (e) {
       return closureFailure(e);
@@ -256,7 +256,7 @@ class SlackListener {
     if (permalink === undefined) throw new TandemiseError('INTEGRATION_FAILED', 'Slack gave no link to the thread.', { retryable: true });
     const signal = threadSignal(ctx.source.instance, target.channel, rootTs, permalink, thread, target.user);
     const result = await ctx.push(signal);
-    if (result.status === 'rejected') return;
+    if (result.status === 'rejected' || !reacts(ctx.source)) return;
     const code = await slack.tryWrite('reactions.add', { channel: target.channel, timestamp: rootTs, name: 'eyes' });
     if (code !== null && code !== 'already_reacted') ctx.log.warn('intake.slack_reaction_failed', { error: code });
   }

@@ -168,7 +168,8 @@ export interface IntakeSourceConfig {
   readonly instance: string;
   readonly every?: IntakeSourceCadence;
   readonly filter?: NoiseRules;
-  readonly trigger?: { readonly emoji?: string; readonly mention?: boolean; readonly label?: string };
+  /** `react: false` (Ruling 26): a chat source files and closes without reacting to the message. */
+  readonly trigger?: { readonly emoji?: string; readonly mention?: boolean; readonly label?: string; readonly react?: boolean };
   readonly create?: { readonly type?: string; readonly fields?: Readonly<Record<string, string>> };
   readonly closeOnDone: boolean;
   readonly closeWontDo: boolean;

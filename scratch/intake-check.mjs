@@ -625,6 +625,15 @@ section('ingest: validate and record, in process');
     const revoked = intake.mintToken(caller, ws, 'custom-feed');
     intake.revokeToken(caller, revoked.id);
     check('a revoked token resolves to nothing', intake.resolveToken(revoked.token) === null);
+    // Ruling 26: revoking takes a seat in the token's project. Anyone else is
+    // told there is no such token, so a token id says nothing about a project.
+    const kept = intake.mintToken(caller, ws, 'custom-feed');
+    const stranger = { personId: 'person_stranger' };
+    const foreignRevoke = await refusal(() => intake.revokeToken(stranger, kept.id));
+    check("revoking a token of a project the caller has no seat in is NOT_FOUND, and the token still works",
+      foreignRevoke?.code === 'NOT_FOUND' && intake.resolveToken(kept.token) !== null, { code: foreignRevoke?.code, message: foreignRevoke?.message });
+    const unknownRevoke = await refusal(() => intake.revokeToken(caller, 'itk_nope'));
+    check('revoking a token that does not exist is NOT_FOUND', unknownRevoke?.code === 'NOT_FOUND', unknownRevoke?.code);
   } catch (e) {
     check('the ingest section ran', false, String(e?.stack ?? e));
   } finally {

@@ -42,6 +42,8 @@ export interface YouTrackTrackerOptions {
   readonly token: string;
   readonly timeoutMs?: number;
   readonly fetch?: typeof fetch;
+  /** For tests only: the clock YouTrack's `Retry-After` waits are measured on (Ruling 26). */
+  readonly now?: () => number;
 }
 
 /**
@@ -67,6 +69,7 @@ export class YouTrackTracker implements PrimaryTracker {
       token: options.token,
       ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
       ...(options.fetch !== undefined ? { fetch: options.fetch } : {}),
+      ...(options.now !== undefined ? { now: options.now } : {}),
     });
     this.#project = options.project;
   }

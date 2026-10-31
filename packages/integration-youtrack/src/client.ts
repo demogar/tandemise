@@ -1,4 +1,5 @@
 import { TandemiseError } from '@tandemise/shared';
+import { RateGate, retryAfterMs } from '@tandemise/integrations-core';
 import type { z } from 'zod';
 
 /** Plan Task 4: a 401 or 403 means the token, and the person can fix that. */
@@ -16,7 +17,12 @@ export interface YouTrackClientOptions {
   readonly timeoutMs?: number;
   /** For tests only; the global `fetch` otherwise. */
   readonly fetch?: typeof fetch;
+  /** For tests only; `Date.now` otherwise. The clock `Retry-After` waits are measured on. */
+  readonly now?: () => number;
 }
+
+/** A 429 without `Retry-After` waits this long (Ruling 26). */
+const DEFAULT_RATE_WAIT_MS = 60_000;
 
 type Query = Readonly<Record<string, string | number | undefined>>;
 
@@ -32,12 +38,17 @@ export class YouTrackClient {
   readonly #token: string;
   readonly #timeoutMs: number;
   readonly #fetch: typeof fetch;
+  readonly #now: () => number;
+  /** YouTrack's "slow down" (a 429), honoured by every request of this client (Ruling 26). */
+  readonly #gate: RateGate;
 
   constructor(options: YouTrackClientOptions) {
     this.base = options.url.replace(/\/+$/, '');
     this.#token = options.token;
     this.#timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.#fetch = options.fetch ?? fetch;
+    this.#now = options.now ?? Date.now;
+    this.#gate = new RateGate('YouTrack', this.#now);
   }
 
   get<T>(path: string, query: Query, schema: z.ZodType<T, z.ZodTypeDef, unknown>): Promise<T> {
@@ -65,6 +76,8 @@ export class YouTrackClient {
     const headers: Record<string, string> = { Authorization: `Bearer ${this.#token}`, Accept: 'application/json' };
     if (typeof body === 'string') headers['Content-Type'] = 'application/json';
 
+    // Still inside a wait YouTrack asked for: refused here, not sent.
+    this.#gate.check();
     let res: Response;
     try {
       res = await this.#fetch(url, { method, headers, body, signal: AbortSignal.timeout(this.#timeoutMs) });
@@ -82,6 +95,10 @@ export class YouTrackClient {
     const text = await res.text().catch(() => '');
     if (res.status === 401 || res.status === 403) {
       throw new TandemiseError('INTEGRATION_FAILED', YOUTRACK_TOKEN_REFUSED, { retryable: false, details: { method, path, status: res.status } });
+    }
+    if (res.status === 429) {
+      const wait = retryAfterMs(res.headers.get('retry-after'), this.#now()) ?? DEFAULT_RATE_WAIT_MS;
+      throw this.#gate.wait(wait);
     }
     if (res.status === 404) {
       throw new TandemiseError('NOT_FOUND', `YouTrack has nothing at ${path}.`, { details: { method, path, status: 404 } });

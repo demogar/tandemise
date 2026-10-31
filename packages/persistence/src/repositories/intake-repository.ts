@@ -448,6 +448,10 @@ export class SqliteIntakeRepository implements IntakeRepositoryPort {
         const row = this.#tokenByHash.get({ hash: tokenHash });
         return row === undefined ? undefined : tokenFromRow(row);
       },
+      byId: (id) => {
+        const row = this.#tokenById.get({ id });
+        return row === undefined ? undefined : tokenFromRow(row);
+      },
       revoke: (id: IntakeTokenId) => {
         if (this.#tokenById.get({ id }) === undefined) throw TandemiseError.notFound('Intake token', id);
         this.#revokeToken.run({ id, now: this.#clock.now() });

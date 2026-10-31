@@ -638,7 +638,9 @@ try {
       check('…per source: another source still takes one', other.status === 202, other.status);
       const inboxRows = (where = '1') => { const db = new Database(createPaths(d4.home).db, { readonly: true }); try { return db.prepare(`SELECT COUNT(*) AS n FROM intake_webhook_inbox WHERE ${where}`).get().n; } finally { db.close(); } };
       check('…so the mailbox holds the 61 taken and the 2 before', inboxRows() === 63, inboxRows());
-      // The host reads 20 a drain.
+      // The host reads 20 a drain. PostHog's secret is saved first: without it the
+      // deliveries would wait for it rather than be read (Ruling 26).
+      await d4.services.intake.saveSourceSecret(d4.caller, ws, 'posthog-app', { name: 'webhookSecret', value: 'whsec_posthog' });
       for (let i = 0; i < 4; i++) { d4.host.tick(); await d4.settle(); }
       check('the host reads them all; done rows stay a while', inboxRows('done_at IS NULL') === 0 && inboxRows() === 63, { open: inboxRows('done_at IS NULL'), all: inboxRows() });
       advance(25 * 3_600_000);
@@ -659,8 +661,13 @@ try {
       const { sharedTeam } = await import('./shared-coordination.mjs');
       relayTeam = sharedTeam(clock);
       const PK = 'github.com/acme/hooks';
+      // Ruling 26: each daemon's relay mailbox pulls, counted.
+      const pulls = {};
       const host = async (name) => {
         const port = relayTeam.join(name, `${name}'s laptop`);
+        const pull = port.mailbox.pull;
+        pulls[name] = 0;
+        port.mailbox.pull = (...args) => { pulls[name] += 1; return pull(...args); };
         const d = await open({ bindings: (c) => c.bind(app.COORDINATION, () => port, { source: 'check' }) });
         relayPair.push(d);
         const w = (await d.services.workspaces.create(d.caller, { name: `${name}'s hooks` })).workspace.id;
@@ -702,8 +709,13 @@ try {
       check('…and Ana reads it once his lease on it runs out', ana.d.repo.findSignal(ana.ws, 'sentry:acme/web:403') !== undefined && relayState()['sentry-web'] === '0 pending, 0 parked', relayState());
 
       // The relay's own semantics for what nobody reads: leased ten times without an ack, it is parked ("couldn't be processed").
-      for (let i = 0; i < 8; i++) { advance(61_000); ana.d.host.tick(); await ana.d.settle(); }
+      // Ana's pulls only: Bruno, who runs no source of the project, pulls nothing (Ruling 26).
+      for (let i = 0; i < 9; i++) { advance(61_000); ana.d.host.tick(); await ana.d.settle(); }
       check('the unconfigured endpoint\'s delivery is parked by the relay after ten leases, recorded for Settings', relayState()['not-a-source'] === '0 pending, 1 parked', relayState());
+      // Ruling 26: only a daemon that runs one of the project's sources (on, and holding its lease) pulls the
+      // project's mailbox, so a teammate's daemon spends none of the relay's ten tries on deliveries it would not read.
+      check("Bruno's daemon, which runs no source of the project (Ana holds the lease), never pulled the relay's mailbox; Ana's did",
+        pulls.Bruno === 0 && pulls.Ana > 0, pulls);
     } catch (e) {
       check('the relay mailbox section ran', false, String(e?.stack ?? e));
     } finally {
@@ -1248,6 +1260,82 @@ try {
       await d8?.dispose();
       await slack8.close();
       await discord8.close();
+    }
+  }
+
+  // ------------------------------------------------------------------ Ruling 26: Slack without reactions
+  // `trigger.react: false`: the thread is filed and closed as usual, and the
+  // runner never touches its reactions (no :eyes:, no swap at closure).
+  {
+    const slack9 = await startFakeSlack({ workspace: 'acme' });
+    const SL9 = { id: 'slack-quiet', kind: 'slack', instance: 'acme.slack.com#support', api: slack9.url, trigger: { react: false }, closeOnDone: true, closeWontDo: false };
+    const secrets9 = { appToken: 'xapp-test', botToken: 'xoxb-test' };
+    const reactionCalls = () => slack9.calls.filter((c) => c.path === '/reactions.add' || c.path === '/reactions.remove').length;
+    let d9 = null;
+    try {
+      section('slack: trigger.react false files and closes without touching reactions (Ruling 26)');
+      d9 = await open();
+      const ws = (await d9.services.workspaces.create(d9.caller, { name: 'Quiet' })).workspace.id;
+      d9.config.write(ws, { tracker: ytTracker(fake.url), intake: { sources: [SL9], dailyCap: 20, similarity: { link: 0.85, ask: 0.55 } } });
+      await d9.resolver.saveCredential(ws, 'perm:test');
+      for (const [name, value] of Object.entries(secrets9)) await d9.services.intake.saveSourceSecret(d9.caller, ws, 'slack-quiet', { name, value });
+      d9.host.tick();
+      await d9.settle();
+      check('the socket opens', await until(() => slack9.open === 1), slack9.open);
+      const root9 = slack9.postMessage({ channel: 'C0SUPPORT', user: 'U0SAM', text: 'Quiet channel export times out' });
+      slack9.emit({ type: 'reaction_added', user: 'U0SAM', reaction: 'tandemise', item: { type: 'message', channel: 'C0SUPPORT', ts: root9.ts }, event_ts: root9.ts });
+      const fp9 = `slack:acme.slack.com#support:C0SUPPORT:${root9.ts}`;
+      await until(() => ['created', 'linked'].includes(d9.repo.findSignal(ws, fp9)?.status));
+      await d9.settle();
+      const s9 = d9.repo.findSignal(ws, fp9);
+      check('a :tandemise: reaction still files the thread', ['created', 'linked'].includes(s9?.status), s9 && { status: s9.status, reason: s9.reason });
+      const closed9 = await new R.SlackRunner().close({
+        kind: 'done', signal: { fingerprint: s9?.fingerprint, key: s9?.key, url: s9?.url, instance: s9?.instance, title: s9?.title, reply: s9?.reply },
+        item: { key: 'GAR-9', url: `${fake.url}/issue/GAR-9` }, prUrl: null, commit: null,
+      }, runnerCtx(ws, SL9, secrets9));
+      check('…closing still replies in the thread', closed9?.ok === true && slack9.calls.filter((c) => c.path === '/chat.postMessage').length === 1, closed9);
+      check('…and neither intake nor closure calls reactions.add or reactions.remove', reactionCalls() === 0, slack9.calls.filter((c) => c.path.startsWith('/reactions.')).map((c) => c.body));
+    } catch (e) {
+      check('the react: false section ran', false, String(e?.stack ?? e));
+    } finally {
+      await d9?.dispose();
+      await slack9.close();
+    }
+  }
+
+  // ------------------------------------------------------------------ Ruling 26: a delivery waits for its secret
+  // A webhook delivery whose runner fails only because a secret was never
+  // saved is left in the mailbox, not acked, and the source says which one.
+  {
+    const s10 = await startFakeSentry({ token: 'sntrys_test', org: 'acme', project: 'web' });
+    const S10 = { id: 'sentry-hooks', kind: 'sentry', instance: 'acme/web', api: s10.url, every: '10m', closeOnDone: false, closeWontDo: false };
+    let d10 = null;
+    try {
+      section('webhooks: a delivery whose source lacks its secret waits for it (Ruling 26)');
+      d10 = await open();
+      const ws = (await d10.services.workspaces.create(d10.caller, { name: 'Waiting' })).workspace.id;
+      d10.config.write(ws, { tracker: ytTracker(fake.url), intake: { sources: [S10], dailyCap: 20, similarity: { link: 0.85, ask: 0.55 } } });
+      await d10.resolver.saveCredential(ws, 'perm:test');
+      // The poll's token is saved; the webhook's client secret is not.
+      await d10.services.intake.saveSourceSecret(d10.caller, ws, 'sentry-hooks', { name: 'token', value: 'sntrys_test' });
+      const body10 = new TextEncoder().encode(JSON.stringify({ action: 'created', data: { issue: { id: '1001', title: 'Waited for its secret', culprit: 'wait.ts', level: 'error', count: '12', userCount: 3, web_url: 'https://acme.sentry.io/issues/1001/' } } }));
+      d10.mailbox.put({ workspaceId: ws, sourceId: 'sentry-hooks', headers: { 'sentry-hook-signature': sentrySignature(body10, 'whsec_later') }, body: body10 });
+      const open10 = () => { const db = new Database(createPaths(d10.home).db, { readonly: true }); try { return db.prepare('SELECT COUNT(*) AS n FROM intake_webhook_inbox WHERE done_at IS NULL').get().n; } finally { db.close(); } };
+      for (let i = 0; i < 2; i++) { advance(1_000); d10.host.tick(); await d10.settle(); }
+      check('the delivery is not acked: it is still waiting in the mailbox', open10() === 1, open10());
+      check('…and the source says which secret is missing: Save the Sentry client secret for this source in Settings → Intake first.',
+        d10.repo.source(ws, 'sentry-hooks')?.lastError === 'Save the Sentry client secret for this source in Settings → Intake first.', d10.repo.source(ws, 'sentry-hooks')?.lastError);
+      check('…nothing was filed', d10.repo.findSignal(ws, 'sentry:acme/web:1001') === undefined);
+      await d10.services.intake.saveSourceSecret(d10.caller, ws, 'sentry-hooks', { name: 'clientSecret', value: 'whsec_later' });
+      advance(1_000);
+      d10.host.tick();
+      await d10.settle();
+      check('once the secret is saved, the same delivery is read and acked', d10.repo.findSignal(ws, 'sentry:acme/web:1001') !== undefined && open10() === 0, { open: open10(), error: d10.repo.source(ws, 'sentry-hooks')?.lastError });
+    } catch (e) {
+      check('the missing-secret delivery section ran', false, String(e?.stack ?? e));
+    } finally {
+      await d10?.dispose();
+      await s10.close();
     }
   }
 } finally {

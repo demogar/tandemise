@@ -72,6 +72,8 @@ export async function startFakeYouTrack(options = {}) {
   /** every request: { method, path, query (URLSearchParams), authorization, accept } */
   const calls = [];
   const delays = new Map();
+  /** path → seconds: the next request there answers 429 with that Retry-After (Ruling 26). */
+  const limits = new Map();
   let nextIssue = 1;
   let nextComment = 1;
   let lastTime = 0;
@@ -165,7 +167,8 @@ export async function startFakeYouTrack(options = {}) {
     if (tokens[0] === 'duplicates') {
       const of = findIssue(tokens[1]);
       if (!of) return `Unknown issue ${tokens[1]}`;
-      issue.links.push({ type: 'duplicates', of: of.idReadable });
+      // A link set, as YouTrack's: the same command again adds nothing.
+      if (!issue.links.some((l) => l.type === 'duplicates' && l.of === of.idReadable)) issue.links.push({ type: 'duplicates', of: of.idReadable });
       if (states.includes('Duplicate')) {
         issue.state = 'Duplicate';
         issue.resolved = now();
@@ -249,6 +252,14 @@ export async function startFakeYouTrack(options = {}) {
       if (delay !== undefined) {
         delays.delete(delayKey);
         await new Promise((r) => setTimeout(r, delay));
+      }
+      const limit = limits.get(path);
+      if (limit !== undefined) {
+        limits.delete(path);
+        if (res.destroyed) return;
+        res.writeHead(429, { 'content-type': 'application/json', 'retry-after': String(limit) });
+        res.end(JSON.stringify({ error: 'Too Many Requests' }));
+        return;
       }
       if (req.headers.authorization !== `Bearer ${token}`) return fail(401, 'Unauthorized', 'You are not logged in.');
       const json = () => (raw.length === 0 ? {} : JSON.parse(raw.toString('utf8')));
@@ -351,6 +362,8 @@ export async function startFakeYouTrack(options = {}) {
      * before it is read, so what it sees is the state after the wait.
      */
     delayNext(path, ms, method) { delays.set(method === undefined ? path : `${method} ${path}`, ms); },
+    /** The next request to `path` answers 429 with `Retry-After: <seconds>` (Ruling 26). */
+    rateLimitNext(path, seconds) { limits.set(path, seconds); },
     /**
      * YouTrack goes away: the port stops answering, and everything it holds
      * stays, so `restart()` brings back the same YouTrack on the same URL.

@@ -5,7 +5,7 @@ import {
   type AttachmentRef, type PrimaryTracker, type PrimaryTrackerFactory, type SourceEntry, type TrackerConfig,
   type TrackerDescription, type TrackerItem, type TrackerRef, type UpstreamComment,
 } from '@tandemise/domain';
-import type { CommandExecutor } from '@tandemise/integrations-core';
+import { RateGate, type CommandExecutor } from '@tandemise/integrations-core';
 import { gh, ghJson, type GhContext } from './gh.js';
 import { GhIssueTracker } from './issues.js';
 
@@ -39,7 +39,20 @@ export interface GhPrimaryTrackerConfig {
    * these it carries (plan Task 5).
    */
   readonly stateLabels: readonly string[];
+  /** For tests only; `Date.now` otherwise. The clock rate-limit waits are measured on (Ruling 26). */
+  readonly now?: () => number;
 }
+
+/**
+ * What `gh` prints when GitHub limits the caller: the secondary limit ("You
+ * have exceeded a secondary rate limit"), the primary one ("API rate limit
+ * exceeded"), or a plain 429. `gh` shows no `Retry-After`, so the wait is a
+ * minute (Ruling 26).
+ */
+const GH_RATE_LIMITED = /secondary rate limit|api rate limit exceeded|rate limit exceeded|HTTP 429/i;
+const GH_RATE_WAIT_MS = 60_000;
+/** The one duplicate note per issue, found again by this marker so a repeated merge edits it (Ruling 26). */
+const DUPLICATE_MARKER = 'tandemise:duplicate';
 
 /**
  * GitHub Issues as a project's primary tracker (spec §6, plan Task 5), over
@@ -64,8 +77,10 @@ export class GhPrimaryTracker implements PrimaryTracker {
   #viewer: Promise<string> | null = null;
 
   constructor(exec: CommandExecutor, config: GhPrimaryTrackerConfig, timeoutMs = 60_000) {
-    this.#issues = new GhIssueTracker(exec, timeoutMs);
-    this.#ctx = { exec };
+    // Every gh call of this tracker, its comments included, goes through one rate gate (Ruling 26).
+    const paced = pacedExecutor(exec, new RateGate('GitHub', config.now ?? Date.now));
+    this.#issues = new GhIssueTracker(paced, timeoutMs);
+    this.#ctx = { exec: paced };
     this.#repo = config.repo;
     this.#stateLabels = config.stateLabels;
     this.#timeoutMs = timeoutMs;
@@ -185,10 +200,15 @@ export class GhPrimaryTracker implements PrimaryTracker {
     ], this.#opts());
   }
 
-  /** GitHub has no native duplicate link: a plain comment says which, then the duplicate is closed. */
+  /**
+   * GitHub has no native duplicate link: a comment says which, then the
+   * duplicate is closed. The comment carries its own marker, so a repeated
+   * merge edits it instead of adding another (Ruling 26).
+   */
   async markDuplicate(dup: TrackerRef, of: TrackerRef): Promise<void> {
     const number = this.#number(dup);
-    await this.#issues.postComment({ repo: this.#repo, number, body: `Duplicate of #${this.#number(of)}.` });
+    const own = await this.#ownComment(number, DUPLICATE_MARKER);
+    await this.#write(number, DUPLICATE_MARKER, `Duplicate of #${this.#number(of)}.`, own?.id);
     await gh(this.#ctx, ['issue', 'close', String(number), '--repo', this.#repo], this.#opts());
   }
 
@@ -288,6 +308,22 @@ export class GhPrimaryTracker implements PrimaryTracker {
       throw e;
     }
   }
+}
+
+/**
+ * `exec` behind the tracker's rate gate (Ruling 26): while GitHub's wait
+ * lasts no `gh` runs, and a run that `gh` reports rate-limited starts the
+ * wait and fails in the gate's plain sentence rather than as a refusal.
+ */
+function pacedExecutor(exec: CommandExecutor, gate: RateGate): CommandExecutor {
+  return {
+    run: async (req) => {
+      gate.check();
+      const result = await exec.run(req);
+      if (result.exitCode !== 0 && GH_RATE_LIMITED.test(result.stderr)) throw gate.wait(GH_RATE_WAIT_MS);
+      return result;
+    },
+  };
 }
 
 function isClosed(raw: RawItem): boolean {

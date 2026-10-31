@@ -1,6 +1,6 @@
 import type { Closure, ClosureResult, IntakeRunner, RunnerContext, RunnerHandle, RunnerSignal } from '@tandemise/domain';
 import { TandemiseError, errorMessage } from '@tandemise/shared';
-import { mentionTriggers, replyAddress, replyPrefix, replyText, splitInstance, titleOf, triggerEmoji } from './chat.js';
+import { mentionTriggers, reacts, replyAddress, replyPrefix, replyText, splitInstance, titleOf, triggerEmoji } from './chat.js';
 import { MAX_DESCRIPTION, SourceHttp, closureFailure, cut, isoTime, record, secretMissing, text } from './http.js';
 import { SerialQueue, SocketLoop, fatalSocketError } from './socket.js';
 
@@ -256,7 +256,7 @@ class DiscordListener {
     const signal = messageSignal(ctx.source.instance, placeOf(ctx).guild, channel, message, reporter);
     if (signal === null) return;
     const result = await ctx.push(signal);
-    if (result.status === 'rejected') return;
+    if (result.status === 'rejected' || !reacts(ctx.source)) return;
     try {
       await http.sendJson('PUT', `/channels/${enc(channel)}/messages/${enc(messageId)}/reactions/${enc(ACK_EMOJI)}/@me`, undefined);
     } catch (e) {

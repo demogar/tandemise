@@ -320,6 +320,8 @@ export const intakeSourceFile = z
         emoji: z.string().min(1).max(100).optional(),
         mention: z.boolean().optional(),
         label: z.string().min(1).max(100).optional(),
+        // Ruling 26: Slack and Discord acknowledge with reactions unless this is false.
+        react: z.boolean().optional(),
       })
       .strict()
       .optional(),

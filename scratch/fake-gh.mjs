@@ -11,7 +11,9 @@
 //   gh issue view N --repo o/r --json …
 //   gh issue close N --repo o/r
 //   gh api user
-//   gh api [--hostname h] repos/o/r/issues/N/comments?per_page=100
+//   gh api [--hostname h] [--paginate] repos/o/r/issues/N/comments?per_page=100
+//     (with `pageSize` in the state: one page without --paginate, every page
+//     printed back to back with it, as gh prints them)
 //   gh api [--hostname h] -X POST repos/o/r/issues/N/comments -f body=…
 //   gh api [--hostname h] -X PATCH repos/o/r/issues/comments/ID -f body=…
 //
@@ -282,7 +284,18 @@ function main(argv) {
     if (m) {
       const r = (state.repos[m[1]] ??= { issues: [], comments: {} });
       const list = (r.comments[m[2]] ??= []);
-      if (method === 'GET') { out(list); return; }
+      if (method === 'GET') {
+        // `state.pageSize` (a check sets it) makes GitHub's paging visible: without
+        // --paginate only the first page; with it every page, each printed as its
+        // own JSON array one after another, as gh does. Unset, the whole list.
+        const size = state.pageSize;
+        if (size === undefined) { out(list); return; }
+        if (!rest.includes('--paginate')) { out(list.slice(0, size)); return; }
+        const pages = [];
+        for (let i = 0; i < list.length; i += size) pages.push(JSON.stringify(list.slice(i, i + size)));
+        process.stdout.write(`${pages.length === 0 ? '[]' : pages.join('')}\n`);
+        return;
+      }
       if (method === 'POST') {
         if (body === undefined) fail('fake gh: POST needs -f body=');
         const comment = { id: state.nextCommentId++, body, user: { login: state.login } };

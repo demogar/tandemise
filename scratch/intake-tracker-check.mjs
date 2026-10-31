@@ -12,7 +12,7 @@ import { execFile } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { addComment, calls, commentsOf, installFakeGh, putLabels, readState } from './fake-gh.mjs';
+import { addComment, calls, commentsOf, installFakeGh, putLabels, readState, writeState } from './fake-gh.mjs';
 import { startFakeYouTrack } from './fake-youtrack.mjs';
 
 let passed = 0;
@@ -152,6 +152,12 @@ try {
 
   await yt.markDuplicate(second.ref, ref);
   check('markDuplicate(GAR-2, GAR-1) sends the command duplicates GAR-1 to GAR-2', fake.commands.at(-1)?.query === 'duplicates GAR-1' && fake.commands.at(-1)?.issues[0].idReadable === 'GAR-2', fake.commands.at(-1));
+  // Ruling 26: a repeated merge. YouTrack's links are a set, so the same command again changes nothing and comments nothing.
+  const gar2Comments = (fake.comments.get('GAR-2') ?? []).length;
+  await yt.markDuplicate(second.ref, ref);
+  check('markDuplicate again: still one duplicates link on GAR-2, and no comment',
+    fake.issues.get('GAR-2')?.links.filter((l) => l.type === 'duplicates').length === 1 && (fake.comments.get('GAR-2') ?? []).length === gar2Comments,
+    { links: fake.issues.get('GAR-2')?.links, comments: (fake.comments.get('GAR-2') ?? []).length });
   await yt.assign(ref, 'ana');
   check('assign() sends the command Assignee <login>', fake.commands.at(-1)?.query === 'Assignee ana' && (await yt.get(ref)).assignee === 'ana');
   check('viewer() is the signed-in login', (await yt.viewer()) === 'tandemise-bot');
@@ -197,6 +203,23 @@ try {
   check('the factory builds a working tracker from the config and the credential', built !== undefined && (await built.viewer()) === 'tandemise-bot');
   const noToken = await refusal(() => factory.create(mapping({}), undefined));
   check('the factory refuses without a credential', noToken?.code === 'PRECONDITION_FAILED', noToken?.message);
+
+  // Ruling 26: a 429 with Retry-After makes this tracker wait, refusing in plain words rather than asking again.
+  let ytNow = Date.parse('2026-10-30T12:00:00Z');
+  const paced = new Y.YouTrackTracker({ url: fake.url, project: 'GAR', token: 'perm:test', now: () => ytNow });
+  fake.rateLimitNext('/api/issues', 30);
+  const slowed = await refusal(() => paced.search({ text: 'Fresh', limit: 5 }));
+  check('YouTrack answers 429 with Retry-After: 30 → a retryable INTEGRATION_FAILED: YouTrack asked Tandemise to slow down; it waits 30 s before asking again.',
+    slowed?.code === 'INTEGRATION_FAILED' && slowed?.retryable === true && slowed?.message === 'YouTrack asked Tandemise to slow down; it waits 30 s before asking again.', { code: slowed?.code, retryable: slowed?.retryable, message: slowed?.message });
+  const askedBefore = fake.calls.length;
+  ytNow += 10_000;
+  const held = await refusal(() => paced.get(ref));
+  check('…10 s later the next call is refused without asking YouTrack: it waits 20 s',
+    held?.code === 'INTEGRATION_FAILED' && held?.retryable === true && held?.message === 'YouTrack asked Tandemise to slow down; it waits 20 s before asking again.' && fake.calls.length === askedBefore,
+    { message: held?.message, asked: fake.calls.length - askedBefore });
+  ytNow += 21_000;
+  const resumed = await refusal(() => paced.search({ text: 'Fresh', limit: 5 }));
+  check('…and once the wait is over it asks again', resumed === null && fake.calls.length === askedBefore + 1, { error: resumed?.message, asked: fake.calls.length - askedBefore });
 
   fake.delayNext('/api/users/me', 300);
   const slow = new Y.YouTrackTracker({ url: fake.url, project: 'GAR', token: 'perm:test', timeoutMs: 50 });
@@ -292,6 +315,24 @@ try {
   await gt.comment(other.ref, { marker: 'tandemise:activity', body: 'ours' });
   check("another user's comment with the marker is not adopted", commentsOf(GH, 'acme/web', 2).length === 2 && commentsOf(GH, 'acme/web', 2)[0].body.endsWith('I copied the marker.'));
 
+  // Ruling 26: the marker comment is looked for on every page of the issue's comments, not the first only.
+  const paged = await gt.create({ title: 'Many comments', description: 'x' });
+  const pagedNumber = Number(paged.key.slice(1));
+  for (let i = 0; i < 3; i++) addComment(GH, 'acme/web', pagedNumber, `chatter ${i}`, 'someone-else');
+  await gt.comment(paged.ref, { marker: 'tandemise:activity', body: 'first' });
+  writeState(GH, { ...readState(GH), pageSize: 2 });
+  const pagesBefore = calls(GH).length;
+  await gt.comment(paged.ref, { marker: 'tandemise:activity', body: 'second' });
+  const pagedComments = commentsOf(GH, 'acme/web', pagedNumber);
+  check('a marker comment on the second page (GitHub pages comments) is found and edited, not posted again',
+    pagedComments.length === 4 && pagedComments.filter((c) => c.body.startsWith('<!-- tandemise:activity -->')).length === 1 && pagedComments[3].body.endsWith('second'),
+    pagedComments.map((c) => c.body));
+  check('…read with gh api --paginate', calls(GH).slice(pagesBefore).some((c) => c.args[0] === 'api' && c.args.includes('--paginate') && c.args.some((a) => a.includes(`/issues/${pagedNumber}/comments`))),
+    calls(GH).slice(pagesBefore).map((c) => c.args.join(' ')));
+  const { pageSize: _pageSize, ...unpaged } = readState(GH);
+  writeState(GH, unpaged);
+  await gt.transition(paged.ref, 'closed');
+
   await gt.link(made.ref, { url: 'https://slack.test/g', title: 'Slack thread', context: 'Ana: broken' });
   await gt.link(made.ref, { url: 'https://slack.test/g', title: 'Slack thread', context: 'Ana: broken again' });
   const ghSources = commentsOf(GH, 'acme/web', 1).filter((c) => c.body.startsWith('<!-- tandemise:sources -->'));
@@ -300,7 +341,12 @@ try {
 
   await gt.markDuplicate(other.ref, made.ref);
   const dupComments = commentsOf(GH, 'acme/web', 2);
-  check('markDuplicate(#2, #1) comments "Duplicate of #1." and closes #2', dupComments.at(-1)?.body === 'Duplicate of #1.' && (await gt.get(other.ref)).state === 'closed', dupComments.at(-1));
+  check('markDuplicate(#2, #1) comments "Duplicate of #1." under its marker and closes #2',
+    dupComments.at(-1)?.body === '<!-- tandemise:duplicate -->\n\nDuplicate of #1.' && (await gt.get(other.ref)).state === 'closed', dupComments.at(-1));
+  // Ruling 26: a repeated merge edits that comment rather than adding one.
+  await gt.markDuplicate(other.ref, made.ref);
+  const dupAgain = commentsOf(GH, 'acme/web', 2);
+  check('markDuplicate again adds no comment', dupAgain.length === dupComments.length && dupAgain.filter((c) => c.body.includes('Duplicate of #1.')).length === 1, dupAgain.map((c) => c.body));
 
   const board = await gt.board({ query: 'is:open', limit: 50 });
   check("board() runs the team's query: the closed duplicate is not on it", eq(board.map((i) => i.key), ['#1']), board.map((i) => i.key));
@@ -311,6 +357,24 @@ try {
     && gt.refFromUrl('https://github.com/acme/other/issues/12') === null
     && gt.refFromUrl('https://github.com/acme/web/pull/12') === null
     && gt.refFromUrl('https://s.test/1') === null);
+  // Ruling 26: GitHub's rate limits (gh reports them on stderr) make this tracker wait, not ask again.
+  let ghNow = Date.parse('2026-10-30T12:00:00Z');
+  const ghPaced = new G.GhPrimaryTracker(exec, { repo: 'acme/web', stateLabels: G.githubStateLabels(GH_STATES), now: () => ghNow });
+  writeState(GH, { ...readState(GH), failNext: 'gh: You have exceeded a secondary rate limit. Please wait a few minutes before you try again. (HTTP 403)' });
+  const ghSlowed = await refusal(() => ghPaced.search({ text: 'checkout breaks', limit: 5 }));
+  check('gh reports a secondary rate limit → a retryable INTEGRATION_FAILED: GitHub asked Tandemise to slow down; it waits 60 s before asking again.',
+    ghSlowed?.code === 'INTEGRATION_FAILED' && ghSlowed?.retryable === true && ghSlowed?.message === 'GitHub asked Tandemise to slow down; it waits 60 s before asking again.', { code: ghSlowed?.code, retryable: ghSlowed?.retryable, message: ghSlowed?.message });
+  const ghAsked = calls(GH).length;
+  ghNow += 15_000;
+  const ghHeld = await refusal(() => ghPaced.search({ url: 'https://s.test/gh1', limit: 5 }));
+  check('…15 s later the next search is refused without running gh: it waits 45 s',
+    ghHeld?.retryable === true && ghHeld?.message === 'GitHub asked Tandemise to slow down; it waits 45 s before asking again.' && calls(GH).length === ghAsked, { message: ghHeld?.message, ran: calls(GH).length - ghAsked });
+  ghNow += 46_000;
+  check('…and once the wait is over gh runs again', eq((await ghPaced.search({ text: 'checkout breaks', limit: 5 })).map((i) => i.key), ['#1']) && calls(GH).length === ghAsked + 1);
+  writeState(GH, { ...readState(GH), failNext: 'gh: API rate limit exceeded for user ID 1. (HTTP 403)' });
+  const ghPrimary = await refusal(() => ghPaced.search({ text: 'checkout breaks', limit: 5 }));
+  check('"API rate limit exceeded" waits too', ghPrimary?.retryable === true && ghPrimary?.message === 'GitHub asked Tandemise to slow down; it waits 60 s before asking again.', ghPrimary?.message);
+
   const gone = await refusal(() => gt.get(D.trackerRef('github', 'acme/web#404')));
   check('get() of a missing issue is NOT_FOUND', gone?.code === 'NOT_FOUND', { code: gone?.code, message: gone?.message });
   const noRepo = await refusal(() => G.githubTrackerFactory(() => exec).create({ ...ghConfig(), repo: undefined }, undefined));

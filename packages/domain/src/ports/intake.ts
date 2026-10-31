@@ -101,6 +101,8 @@ export interface IntakeRepositoryPort {
     create(workspaceId: WorkspaceId, sourceId: string, tokenHash: string, createdBy: string | null): IntakeTokenRow;
     /** Revoked tokens are returned too, with `revokedAt` set: the caller refuses them. */
     byHash(tokenHash: string): IntakeTokenRow | undefined;
+    /** Revoked tokens too; undefined for an id that never existed. */
+    byId(id: IntakeTokenId): IntakeTokenRow | undefined;
     revoke(id: IntakeTokenId): void;
     list(workspaceId: WorkspaceId): readonly IntakeTokenRow[];
   };

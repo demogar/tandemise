@@ -18,6 +18,15 @@ export function mentionTriggers(source: IntakeSourceConfig): boolean {
 }
 
 /**
+ * Whether the runner acknowledges with reactions (`:eyes:` when filed, swapped
+ * for `:white_check_mark:` when done): on unless the source sets
+ * `trigger.react: false` (Ruling 26), for a channel that wants no bot marks.
+ */
+export function reacts(source: IntakeSourceConfig): boolean {
+  return source.trigger?.react !== false;
+}
+
+/**
  * The first line of a message as a signal's title: mentions taken out (the
  * app's own name is not the work), cut at the contract's 200. The fallback
  * when nothing is left keeps the title required by the contract.

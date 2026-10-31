@@ -52,6 +52,8 @@ export interface IntakeRunnerHostDeps {
 const DEFAULT_EVERY_MINUTES = 10;
 /** Plan Task 10: the mailbox is drained 20 deliveries at a time. */
 const MAILBOX_BATCH = 20;
+/** Ruling 26: at most this many batches a drain, pulled on only past deliveries waiting for a secret. */
+const MAILBOX_ROUNDS = 10;
 /** A refused source claim is asked again no sooner than this, so a busy relay is not asked every tick. */
 const CLAIM_RETRY_MS = 30_000;
 /**
@@ -442,13 +444,28 @@ export class IntakeRunnerHost {
   // ------------------------------------------------------------------ the mailbox
 
   async #drain(): Promise<void> {
+    // Deliveries waiting for a secret (Ruling 26): kept claimed while this drain
+    // pulls on, so they never fill a batch ahead of the others, then released.
+    const waiting: WebhookMessage[] = [];
     try {
       this.#releaseStale();
       this.#prune();
-      const messages = this.deps.mailbox.pull(MAILBOX_BATCH);
-      for (const message of messages) await this.#deliver(message);
+      for (let round = 0; round < MAILBOX_ROUNDS; round++) {
+        const messages = this.deps.mailbox.pull(MAILBOX_BATCH);
+        for (const message of messages) {
+          if ((await this.#deliver(message)) === 'waiting') waiting.push(message);
+        }
+        if (messages.length < MAILBOX_BATCH || waiting.length === 0) break;
+      }
     } catch (e) {
       this.deps.log.warn('intake.mailbox_drain_failed', { error: errorMessage(e) });
+    }
+    for (const message of waiting) {
+      try {
+        this.deps.mailbox.release(message.id);
+      } catch (e) {
+        this.deps.log.warn('intake.mailbox_release_failed', { error: errorMessage(e) });
+      }
     }
     await this.#drainRelay();
   }
@@ -474,43 +491,67 @@ export class IntakeRunnerHost {
     if (freed > 0) this.deps.log.info('intake.webhook_claims_released', { count: freed });
   }
 
-  async #deliver(message: WebhookMessage): Promise<void> {
+  /** One local delivery: acked when done, left claimed (`'waiting'`) when its source lacks a secret (Ruling 26). */
+  async #deliver(message: WebhookMessage): Promise<'done' | 'waiting'> {
     const { workspaceId } = message;
     const source = this.#sourceIn(workspaceId, message.sourceId);
     if (source === null) {
       this.deps.mailbox.ack(message.id);
       this.deps.log.warn('intake.webhook_unknown_source', { workspaceId, sourceId: message.sourceId });
-      return;
+      return 'done';
     }
     const runner = this.deps.runners().find((r) => r.kind === source.kind);
     if (runner?.fromWebhook === undefined) {
       this.deps.mailbox.ack(message.id);
       this.#save(workspaceId, source, { lastError: NO_RUNNER_FOR_SOURCE });
-      return;
+      return 'done';
     }
     if (!this.#on(workspaceId, source.id)) {
       this.deps.mailbox.ack(message.id);
       this.deps.log.info('intake.webhook_source_off', { workspaceId, sourceId: source.id });
-      return;
+      return 'done';
     }
-    await this.#read(workspaceId, source, runner, { headers: message.headers, body: message.body, receivedAt: message.receivedAt });
+    const read = await this.#read(workspaceId, source, runner, { headers: message.headers, body: message.body, receivedAt: message.receivedAt });
+    if (read === 'waiting') return 'waiting';
     this.deps.mailbox.ack(message.id);
+    return 'done';
   }
 
   /**
    * One delivery through its source's runner and into the pipeline. Never
    * throws: a delivery the runner refuses would be refused again, so it is
    * done all the same, with the runner's words on the source's `last_error`.
+   *
+   * Except one refused only because a secret the runner asked for was never
+   * saved on this machine (Ruling 26): that is `'waiting'`, left for the
+   * caller to keep, since saving the secret makes the same delivery readable.
+   * The runner's words, which name the secret, go on `last_error` all the same.
    */
-  async #read(workspaceId: WorkspaceId, source: IntakeSourceConfig, runner: IntakeRunner, req: RunnerWebhookRequest): Promise<void> {
-    if (runner.fromWebhook === undefined) return;
+  async #read(workspaceId: WorkspaceId, source: IntakeSourceConfig, runner: IntakeRunner, req: RunnerWebhookRequest): Promise<'done' | 'waiting'> {
+    if (runner.fromWebhook === undefined) return 'done';
+    const missing: string[] = [];
     try {
-      const ctx = this.#context(workspaceId, source, new AbortController().signal);
+      const base = this.#context(workspaceId, source, new AbortController().signal);
+      const ctx: RunnerContext = {
+        ...base,
+        secrets: {
+          get: async (name) => {
+            const value = await base.secrets.get(name);
+            if (value === undefined || value === '') missing.push(name);
+            return value;
+          },
+        },
+      };
       const signals = await runner.fromWebhook(req, ctx);
       for (const signal of signals) await ctx.push(signal);
+      return 'done';
     } catch (e) {
       this.#save(workspaceId, source, { lastError: errorMessage(e) });
-      this.deps.log.warn('intake.webhook_failed', { workspaceId, sourceId: source.id, error: errorMessage(e) });
+      const waiting = missing.length > 0 && e instanceof TandemiseError && e.code === 'PRECONDITION_FAILED';
+      this.deps.log.warn(waiting ? 'intake.webhook_waits_for_secret' : 'intake.webhook_failed', {
+        workspaceId, sourceId: source.id, error: errorMessage(e), ...(waiting ? { secrets: missing } : {}),
+      });
+      return waiting ? 'waiting' : 'done';
     }
   }
 
@@ -546,9 +587,12 @@ export class IntakeRunnerHost {
         projects.set(key, [...(projects.get(key) ?? []), workspace.id]);
       }
       for (const [projectKey, workspaceIds] of projects) {
+        // Ruling 26: only a daemon that runs one of the project's sources pulls,
+        // so the others spend none of the relay's ten tries per delivery.
+        const leases = new Map<string, Promise<boolean>>();
+        if (!(await this.#runsAny(workspaceIds, leases))) continue;
         const messages = await relay.pull(projectKey, MAILBOX_BATCH, RELAY_LEASE_SECONDS);
         if (messages.length === 0) continue;
-        const leases = new Map<string, Promise<boolean>>();
         const done: string[] = [];
         for (const message of messages) {
           if (await this.#deliverRelayed(projectKey, workspaceIds, message, leases)) done.push(message.id);
@@ -559,6 +603,33 @@ export class IntakeRunnerHost {
       // The relay unreachable, or an ack lost: what was leased comes back, and what was read is recognised (`handled`).
       this.deps.log.warn('intake.relay_mailbox_drain_failed', { error: errorMessage(e) });
     }
+  }
+
+  /**
+   * Whether this daemon runs at least one source of these projects: on here,
+   * read by a shipped runner, and its lease held (Ruling 26). A lease got or
+   * refused in the last 30 s is taken as it was, so an idle tick does not ask
+   * the relay; otherwise it is asked, as the pass would. The answers fill
+   * `leases` for the deliveries that follow.
+   */
+  async #runsAny(workspaceIds: readonly WorkspaceId[], leases: Map<string, Promise<boolean>>): Promise<boolean> {
+    const nowMs = this.deps.clock.epochMs();
+    for (const workspaceId of workspaceIds) {
+      for (const { source } of this.#runnable(workspaceId, this.deps.config.read(workspaceId).sources)) {
+        const key = keyOf(workspaceId, source.id);
+        // Stopped for good (Ruling 25): its lease is left to lapse, not taken here.
+        if ((this.#running.get(key)?.stoppedWith ?? null) !== null) continue;
+        const held = this.#heldAtMs.get(key);
+        const refused = this.#refusedAtMs.get(key);
+        let lease: Promise<boolean>;
+        if (held !== undefined && nowMs - held < CLAIM_RETRY_MS) lease = Promise.resolve(true);
+        else if (refused !== undefined && nowMs - refused < CLAIM_RETRY_MS) lease = Promise.resolve(false);
+        else lease = this.#claimed(workspaceId, source.id);
+        leases.set(key, lease);
+        if (await lease) return true;
+      }
+    }
+    return false;
   }
 
   /**
@@ -598,7 +669,9 @@ export class IntakeRunnerHost {
       leases.set(leaseKey, lease);
     }
     if (!(await lease)) return false;
-    await this.#read(workspaceId, source, runner, { headers: message.headers, body: Buffer.from(message.bodyBase64, 'base64'), receivedAt: message.receivedAt });
+    const read = await this.#read(workspaceId, source, runner, { headers: message.headers, body: Buffer.from(message.bodyBase64, 'base64'), receivedAt: message.receivedAt });
+    // Waiting for a secret (Ruling 26): not acked, so the relay hands it out again.
+    if (read === 'waiting') return false;
     this.deps.mailbox.recordHandled({ key, workspaceId, sourceId: source.id });
     return true;
   }

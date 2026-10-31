@@ -800,9 +800,21 @@ export class IntakeService {
     return { id: row.id, token };
   }
 
-  revokeToken(_caller: Caller, id: IntakeTokenId): void {
+  /**
+   * Revoking takes a seat in the token's project (Ruling 26). Anyone else is
+   * told there is no such token, as for an id that never existed, so a token
+   * id says nothing about another project.
+   */
+  revokeToken(caller: Caller, id: IntakeTokenId): void {
+    const row = this.deps.intake.tokens.byId(id);
+    if (row === undefined) throw TandemiseError.notFound('Intake token', id);
+    try {
+      requireSeat(this.deps, row.workspaceId, caller);
+    } catch {
+      throw TandemiseError.notFound('Intake token', id);
+    }
     this.deps.intake.tokens.revoke(id);
-    this.deps.log.info('intake.token_revoked', { tokenId: id });
+    this.deps.log.info('intake.token_revoked', { workspaceId: row.workspaceId, tokenId: id });
   }
 
   /** The scope an intake token grants, or null for anything else, revoked tokens included. */
