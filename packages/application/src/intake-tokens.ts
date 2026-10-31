@@ -4,6 +4,7 @@ import type {
   WebhookMailboxPort,
 } from '@tandemise/domain';
 import type { IntakeService } from './services/intake-service.js';
+import type { TrackerService } from './services/tracker-service.js';
 import type { TrackerResolver } from './intake/tracker-resolver.js';
 
 /**
@@ -30,3 +31,5 @@ export const TRACKER_RESOLVER = token<TrackerResolver>('application.TrackerResol
 export const INTAKE_SIMILARITY = token<IntakeSimilarity>('port.IntakeSimilarity');
 /** Who works on what across daemons (plan Global Constraints): always granted locally; the relay (#54) rebinds it. */
 export const INTAKE_CLAIMS = token<IntakeClaimsPort>('port.IntakeClaims');
+/** The board from the primary tracker, and Start (plan Task 8). */
+export const TRACKER_SERVICE = token<TrackerService>('application.TrackerService');

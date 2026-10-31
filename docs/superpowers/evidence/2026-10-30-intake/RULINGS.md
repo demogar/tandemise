@@ -200,3 +200,45 @@ was ambiguous or wrong, decided against the spec
     `received` with that reason and its pending link, which the retry finishes.
   - The daily cap counts from the UTC day start. `ProjectionTopic` gains `'intake'`, so the desktop's
     `TOPIC_KEYS` gains its line (it is an exhaustive record).
+- Ruling 13 (the board and Start, Task 8): decided from spec §3, §7 and §9:
+  - **The cache keeps what is pointed at.** A refresh forgets an item the board query no longer returns,
+    except one a mission (in any status) or a signal's link points at: forgetting it would null
+    `missions.tracker_item_id` and drop the signal's chip. `TrackerService` passes those refs in `keepRefs`, so
+    `removeMissing` keeps its plain meaning (the store check still pins it). A kept item the cache still holds as
+    unresolved is read again (`get`) on each refresh so its state stays true; once cached as resolved it is not
+    read again until the query returns it. The board lists the cached items in a mapped ready, in-progress or
+    in-review state.
+  - **Duplicates.** Unresolved items joined by any shared Sources URL are one group; the oldest survives, ties to the
+    lower key. Each newer one has every URL of its Sources section linked to the survivor (its signal's own entry
+    when this daemon has the signal, else `Merged from <key>` with the item's title), is marked its duplicate (or
+    moved to the first `wont_do` state without `markDuplicate`; with none mapped it is left and logged), and this
+    daemon's links move over. A daemon that finds a kept item turned `wont_do` searches the tracker by its linked
+    signal's URL for the oldest other unresolved item and moves the links there. Each moved signal keeps its
+    status and reads "Merged <newer> into <older>; same source."
+  - **The race check delays the create, not the search.** The fake waits before it reads its state, so a delayed
+    search would see the other daemon's item and link to it. Delaying the first `POST /api/issues` lets both daemons'
+    searches miss; `delayNext` gained an optional method. The check runs the race twice so both paths are pinned:
+    the merging daemon owns the survivor (the other follows), and the merging daemon owns the duplicate (it moves
+    its own link).
+  - **Start.** One Start or refresh at a time per project, so a second Start of an item waits and finds the first's
+    mission. Order: a cached item's open mission, the fresh `get`, its open mission again, in progress, the claim;
+    a resolved item is not refused (the plan is silent). The claim is released when creating the mission throws.
+    A key not cached is read as `youtrack:<KEY>` or `github:<repo>#<n>` (`#42` and `42` alike).
+  - **Words.** The goal names the starter by their person's display name. It leaves out an empty description and an
+    empty Sources list, each source reads `- <label> · <instance> · <signal title> · <impact words> · <url>`, and a
+    goal past 8000 characters ends in `…`. Start writes only the activity comment's first line,
+    "Started in Tandemise by <starter>: <mission title>." (Task 9's), and only when the item has none yet. The
+    tracker login is the local setting `trackerLogins: { <workspace>: <login> }`. Failures after the commit are
+    noted on the mission: the plan's "Couldn't move <key> to <state> in <label>: <message>.", and likewise
+    "Couldn't assign <key> to <login> in <label>: <message>." and "Couldn't comment on <key> in <label>: <message>."
+    The tick tries again once a minute while the mission is open and the item is still ready and never written, or
+    has no activity comment.
+  - **The board.** `refreshedAt` is the last refresh in memory, else (after a restart) the newest cached row's.
+    A refresh never throws for the tracker: `problem` reads "Couldn't reach <label>: <message>. Tandemise will try
+    again." (or "Set this project's tracker first."). Chips: `N events` when the signal counts events, `thread` for
+    Slack and Discord, `#<key>` for GitHub, else its impact words or instance; a `source_is_item` link has no chip.
+    Board changes invalidate the `intake` topic. The CLI's `start` needs the daemon token: "An intake token can only
+    push signals. Start from the machine running Tandemise."
+  - **PLANNING.** In the in-process check no planner runtime is composed, so the preset plans the mission inside
+    `create` and Start answers `AWAITING_PLAN_APPROVAL` rather than `PLANNING`. The check asserts it left DRAFT
+    through planning and was never queued.

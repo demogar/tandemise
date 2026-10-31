@@ -213,9 +213,11 @@ export async function startFakeYouTrack(options = {}) {
     const fail = (status, error, description) => send(status, { error, error_description: description });
     try {
       const raw = await readBody(req);
-      const delay = delays.get(path);
+      // A delay for this method and path wins over one for the path alone.
+      const delayKey = delays.has(`${req.method} ${path}`) ? `${req.method} ${path}` : path;
+      const delay = delays.get(delayKey);
       if (delay !== undefined) {
-        delays.delete(path);
+        delays.delete(delayKey);
         await new Promise((r) => setTimeout(r, delay));
       }
       if (req.headers.authorization !== `Bearer ${token}`) return fail(401, 'Unauthorized', 'You are not logged in.');
@@ -314,8 +316,11 @@ export async function startFakeYouTrack(options = {}) {
     putIssue,
     putComment,
     setState,
-    /** The next request to `path` waits `ms` before it is answered. */
-    delayNext(path, ms) { delays.set(path, ms); },
+    /**
+     * The next request to `path` (only a `method` one, when named) waits `ms`
+     * before it is read, so what it sees is the state after the wait.
+     */
+    delayNext(path, ms, method) { delays.set(method === undefined ? path : `${method} ${path}`, ms); },
     /**
      * YouTrack goes away: the port stops answering, and everything it holds
      * stays, so `restart()` brings back the same YouTrack on the same URL.

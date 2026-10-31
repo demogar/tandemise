@@ -2,6 +2,7 @@ import type {
   ApprovalId, ArtifactId, CriterionId, FeedbackId, IntegrationId, IssueLinkId, QuestionId, MemberId, MissionId, PersonId, RepositoryId, RoutineId, RuntimeProfileId,
   TaskId, WorkspaceId,
 } from '@tandemise/shared';
+import type { TrackerItemId } from '@tandemise/shared';
 import type {
   Approval, ArtifactManifest, ExecutionTargetRecord, FeedbackAttachment, Mission, OutsideContribution, PullRequestSnapshot, RoleStaffing, RoleTemplate,
   RunEventRecord, RuntimeProfile, StaffingPatch,
@@ -72,6 +73,8 @@ export interface TandemiseServices {
   readonly evals: import('./services/eval-service.js').EvalService;
   /** Signals from any source, recorded and landed in the project's primary tracker (intake). */
   readonly intake: import('./services/intake-service.js').IntakeService;
+  /** The board from the primary tracker, and Start: a mission from one of its items (intake spec §7). */
+  readonly tracker: import('./services/tracker-service.js').TrackerService;
 }
 
 /** One contribution pinned as Evidence, with what a caller needs to type it next. */
@@ -174,7 +177,7 @@ export interface WorkspaceService {
 export interface MissionService {
   list(filter: { workspaceId?: string; status?: string; limit?: number }): readonly MissionSummary[];
   /** `origin.routineId` marks a mission a routine created (P11). */
-  create(caller: Caller, request: CreateMissionRequest, origin?: { routineId?: RoutineId; issueLinkId?: IssueLinkId }): Promise<Mission>;
+  create(caller: Caller, request: CreateMissionRequest, origin?: { routineId?: RoutineId; issueLinkId?: IssueLinkId; trackerItemId?: TrackerItemId }): Promise<Mission>;
   start(id: MissionId): Promise<Mission>;
   pause(id: MissionId): Promise<Mission>;
   resume(id: MissionId): Promise<Mission>;

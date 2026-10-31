@@ -17,6 +17,7 @@ import {
   createEvalSuiteRequest, saveEvalCaseRequest, startEvalRunRequest, runScoresQuery,
   ACCEPTED_INTAKE_SCHEMAS, intakeSignalsQuery, mintIntakeTokenRequest,
   decideIntakeSignalRequest,
+  startBoardItemRequest,
 } from '@tandemise/api-contract';
 import type { EvalSuiteView } from '@tandemise/api-contract';
 import { normalizeLimits } from '@tandemise/domain';
@@ -176,6 +177,17 @@ export function buildRouter(services: TandemiseServices, options: { readonly tes
   r.post('/v1/intake/signals/:id/decide', async (ctx) =>
     services.intake.decide(ctx.caller, asId(ctx.params.id!), (await ctx.body(decideIntakeSignalRequest)).decision));
   r.post('/v1/intake/signals/:id/retry', (ctx) => services.intake.retry(ctx.caller, asId(ctx.params.id!)));
+  // The board from the primary tracker, and Start (plan Task 8). Start names
+  // the item in the body: a GitHub ref holds `/` and `#`.
+  r.get('/v1/workspaces/:id/board', (ctx) => services.tracker.board(asId(ctx.params.id!)));
+  r.post('/v1/workspaces/:id/board/refresh', (ctx) => services.tracker.refreshBoard(asId(ctx.params.id!)));
+  r.post('/v1/workspaces/:id/board/start', async (ctx) => {
+    const workspaceId = asId<'WorkspaceId'>(ctx.params.id!);
+    const mission = await services.tracker.start(ctx.caller, workspaceId, (await ctx.body(startBoardItemRequest)).key);
+    const summary = services.missions.list({ workspaceId }).find((s) => s.mission.id === mission.id);
+    if (summary === undefined) throw TandemiseError.notFound('Mission', mission.id);
+    return summary;
+  });
 
   // Skills (P13): the project's library, imported by content hash and pinned per run.
   r.get('/v1/workspaces/:id/skills', (ctx) => services.skills.list(asId(ctx.params.id!)));

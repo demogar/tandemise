@@ -642,7 +642,7 @@ const pipeline = await (async () => {
    * are handed in, so a second container on the same home is the same daemon
    * restarted. `providers` are the tracker modules it composes.
    */
-  async function open({ home, settings, secrets, providers }) {
+  async function open({ home, settings, secrets, providers, bindings }) {
     const paths = createPaths(home);
     mkdirSync(paths.root, { recursive: true });
     const container = new Container();
@@ -677,6 +677,7 @@ const pipeline = await (async () => {
     container.bind(app.SETTINGS_STORE, () => settings, { source: 'check' });
     container.bind(app.SYSTEM_ENVIRONMENT, () => app.describeEnvironment({ home, schemaVersion: 1 }), { source: 'check' });
     container.bind(app.PROCESS_LIVENESS, () => app.osProcessLiveness, { source: 'check' });
+    bindings?.(container);
     const services = app.createServices(container);
     return {
       container, services, intake: services.intake,
@@ -939,6 +940,208 @@ try {
   await fake.close();
   for (const h of homes) rmSync(h, { recursive: true, force: true });
   rmSync(pipeline.ghRoot, { recursive: true, force: true });
+}
+
+// ------------------------------------------------------------------ the board (Task 8)
+// The board cache: the tracker's board query, grouped by mapped state, with
+// the sources each item came from. Then Review Focus 2: two daemons racing on
+// one signal leave at most one unresolved item once a board refresh runs.
+section('board: the cache, grouped by mapped state, and duplicate merging (Task 8)');
+const boardHomes = [];
+const boardHome = () => { const h = pipeline.mkdtempSync(join(pipeline.tmpdir(), 'tdi-board-')); boardHomes.push(h); return h; };
+const fakeB = await pipeline.startFakeYouTrack({ project: 'GAR', token: 'perm:test', login: 'tandemise-bot' });
+const fakeR = await pipeline.startFakeYouTrack({ project: 'GAR', token: 'perm:test', login: 'tandemise-bot' });
+const SAFARI = 'Checkout fails on Safari';
+const DONE_WHEN = 'Clicking Pay on Safari does nothing.\n\n## Done when\n- [ ] Checkout works on Safari';
+const boardDaemon = { home: boardHome(), settings: pipeline.app.createMemorySettingsStore(), secrets: pipeline.memorySecrets() };
+let BD = null;
+let boardWs = null;
+try {
+  fakeB.putIssue({ summary: SAFARI, description: DONE_WHEN, state: 'Open' });
+  fakeB.putIssue({ summary: 'Search ignores the date filter', description: 'Filter by date returns everything.', state: 'In Progress', assignee: 'ana' });
+  fakeB.putIssue({ summary: 'Export to CSV is slow', description: 'It takes a minute.', state: 'In Review' });
+  BD = await pipeline.open({ ...boardDaemon, providers: [pipeline.Y.youtrackIntegrationModule] });
+  boardWs = await pipeline.configureYouTrack(BD, fakeB.url);
+  // The person who starts items: the goal and the activity comment name them.
+  BD.container.resolve(pipeline.app.PERSON_REPOSITORY).update(BD.caller.personId, { displayName: 'Demo' });
+  const tracker = BD.services.tracker;
+  check('the services expose the tracker service', tracker !== undefined && typeof tracker?.refreshBoard === 'function');
+  const before = tracker.board(boardWs);
+  check('before a refresh the board is empty and says it was never read', before.refreshedAt === null && before.groups.ready.length === 0 && before.trackerLabel === 'YouTrack', before);
+  const board = await tracker.refreshBoard(boardWs);
+  const keys = (list) => list.map((i) => i.key);
+  check('refreshBoard groups GAR-1 / GAR-2 / GAR-3 as ready / in progress / in review',
+    eq(keys(board.groups.ready), ['GAR-1']) && eq(keys(board.groups.inProgress), ['GAR-2']) && eq(keys(board.groups.inReview), ['GAR-3']) && board.problem === null && board.refreshedAt !== null, board);
+  const gar2 = board.groups.inProgress[0];
+  check("…an item shows its state and assignee, and one in progress can't be started", gar2?.state === 'In Progress' && gar2?.assignee === 'ana' && gar2?.startable.ok === false && gar2?.startable.reason === 'Already in progress' && gar2?.mission === null, gar2);
+  check('…a ready item can be started', board.groups.ready[0]?.startable.ok === true && board.groups.ready[0]?.url.endsWith('/issue/GAR-1'), board.groups.ready[0]);
+
+  // A Sentry signal with GAR-1's title links to it: its chip reads "Sentry · 132 events".
+  const r = await BD.intake.ingest({ workspaceId: boardWs, sourceId: 'sentry-web', tokenId: null }, pipeline.sentry({ title: SAFARI }));
+  await BD.intake.settle();
+  check('a Sentry signal with the same title links to GAR-1', BD.repo.linkFor(r.signalId)?.itemRef === 'youtrack:GAR-1', BD.repo.linkFor(r.signalId));
+  const chips = tracker.board(boardWs).groups.ready[0]?.sources;
+  check("GAR-1's chips show Sentry · 132 events", eq(chips, [{ label: 'Sentry', detail: '132 events' }]), chips);
+
+  // An item the board query no longer returns stays cached while a signal points at it.
+  fakeB.setState('GAR-1', 'Fixed');
+  const afterFix = await tracker.refreshBoard(boardWs);
+  check('a resolved item leaves the board…', !afterFix.groups.ready.some((i) => i.key === 'GAR-1'), afterFix.groups.ready);
+  check('…but stays in the cache, re-read, while a signal links to it', BD.items.byKey(boardWs, 'GAR-1')?.state === 'Fixed', BD.items.byKey(boardWs, 'GAR-1'));
+  fakeB.setState('GAR-1', 'Open');
+  await tracker.refreshBoard(boardWs);
+} catch (e) {
+  check('the board section ran', false, String(e?.stack ?? e));
+}
+
+// Review Focus 2: two daemons, two fresh databases, one tracker, one signal.
+try {
+  const RA = await pipeline.open({ home: boardHome(), settings: pipeline.app.createMemorySettingsStore(), secrets: pipeline.memorySecrets(), providers: [pipeline.Y.youtrackIntegrationModule] });
+  const RB = await pipeline.open({ home: boardHome(), settings: pipeline.app.createMemorySettingsStore(), secrets: pipeline.memorySecrets(), providers: [pipeline.Y.youtrackIntegrationModule] });
+  try {
+    const wsA = await pipeline.configureYouTrack(RA, fakeR.url);
+    const wsB = await pipeline.configureYouTrack(RB, fakeR.url);
+    const daemons = [{ name: 'A', d: RA, ws: wsA }, { name: 'B', d: RB, ws: wsB }];
+    /**
+     * One race. Which daemon's create lands first is the event loop's call, so
+     * the roles are named after it: "A" refreshes first, then "B". With
+     * `firstOwnsOlder`, A is the daemon whose item survived (the plan's case: A
+     * merges, B follows the duplicate to the survivor); otherwise A owns the
+     * newer item and moves its own link while it merges.
+     */
+    const race = async (n, firstOwnsOlder) => {
+      const url = `https://acme.sentry.io/issues/race-${n}/`;
+      const signal = pipeline.sentry({ key: `race-${n}`, url, title: n === 1 ? 'Cart badge shows a stale count' : 'Coupon field rejects valid codes' });
+      // The first create waits 200 ms before YouTrack reads it, so the other
+      // daemon's searches run before either item exists: both miss, both create.
+      fakeR.delayNext('/api/issues', 200, 'POST');
+      const ids = await Promise.all(daemons.map(({ d, ws }) => d.intake.ingest({ workspaceId: ws, sourceId: 'sentry-web', tokenId: null }, signal)));
+      await Promise.all(daemons.map(({ d }) => d.intake.settle()));
+      const carrying = () => [...fakeR.issues.values()].filter((i) => i.description.includes(url));
+      const both = carrying().sort((a, b) => a.created - b.created);
+      check(`race ${n}: both daemons missed and created, so two items carry the URL`, both.length === 2 && daemons.every(({ d }, i) => d.repo.getSignal(ids[i].signalId).status === 'created'), both.map((i) => i.idReadable));
+      const [older, newer] = both.map((i) => i.idReadable);
+      const ownsOlder = daemons.findIndex(({ d }, i) => d.repo.linkFor(ids[i].signalId)?.itemRef === `youtrack:${older}`);
+      const order = (ownsOlder === 0) === firstOwnsOlder ? [0, 1] : [1, 0];
+      const [A, B] = order.map((i, role) => ({ ...daemons[i], name: role === 0 ? 'A' : 'B', signalId: ids[i].signalId }));
+      const link = (x) => x.d.repo.linkFor(x.signalId)?.itemRef;
+
+      await A.d.services.tracker.refreshBoard(A.ws);
+      check(`race ${n}: A's refresh marks the newer item a duplicate of the older (duplicates ${older} on ${newer})`,
+        fakeR.commands.some((c) => c.query === `duplicates ${older}` && c.issues[0]?.idReadable === newer), fakeR.commands);
+      const sources = (fakeR.comments.get(older) ?? []).find((c) => c.text.startsWith('<!-- tandemise:sources -->'));
+      check(`race ${n}: the older item's sources comment holds the URL`, sources?.text.includes(url) === true, fakeR.comments.get(older));
+      check(`race ${n}: A's link points to the older item`, link(A) === `youtrack:${older}`, link(A));
+
+      await B.d.services.tracker.refreshBoard(B.ws);
+      check(`race ${n}: after B's refresh B's link points to the older item`, link(B) === `youtrack:${older}`, link(B));
+      const moved = [A, B].filter((x) => x.d.repo.getSignal(x.signalId).reason !== null).map((x) => ({ daemon: x.name, reason: x.d.repo.getSignal(x.signalId).reason }));
+      check(`race ${n}: the moved signal (${firstOwnsOlder ? "B's" : "A's"}) says "Merged ${newer} into ${older}; same source."`,
+        eq(moved, [{ daemon: firstOwnsOlder ? 'B' : 'A', reason: `Merged ${newer} into ${older}; same source.` }]), moved);
+      const unresolvedWithUrl = carrying().filter((i) => i.resolved === null).map((i) => i.idReadable);
+      check(`race ${n}: exactly one unresolved item carries the URL`, eq(unresolvedWithUrl, [older]), unresolvedWithUrl);
+      const commands = fakeR.commands.length;
+      await A.d.services.tracker.refreshBoard(A.ws);
+      await B.d.services.tracker.refreshBoard(B.ws);
+      check(`race ${n}: later refreshes merge nothing again`, fakeR.commands.length === commands, fakeR.commands.slice(commands));
+    };
+    await race(1, true);
+    await race(2, false);
+  } finally {
+    await RA.intake.settle();
+    await RB.intake.settle();
+    await RA.container.dispose();
+    await RB.container.dispose();
+  }
+} catch (e) {
+  check('the race section ran', false, String(e?.stack ?? e));
+}
+
+// ------------------------------------------------------------------ Start (Task 8)
+// Review Focus 4: Start makes exactly one mission, never queued; a second
+// Start, or an item already in progress, is refused with the exact sentence,
+// and P7's pull never picks the mission.
+section('start: one mission from a tracker item, never queued (Task 8)');
+try {
+  if (BD === null || boardWs === null) throw new Error('the board section did not open its daemon');
+  const tracker = BD.services.tracker;
+  const missions = BD.container.resolve(pipeline.app.MISSION_REPOSITORY);
+  const criteria = BD.container.resolve(pipeline.app.MISSION_CRITERIA_REPOSITORY);
+  const fromTracker = () => missions.list({ workspaceId: boardWs }).filter((m) => m.trackerItemId !== null && m.trackerItemId !== undefined);
+  const refusal = async (key) => { try { await tracker.start(BD.caller, boardWs, key); return null; } catch (e) { return e; } };
+
+  const mission = await tracker.start(BD.caller, boardWs, 'GAR-1');
+  await BD.intake.settle();
+  await tracker.settle();
+  const gar1 = BD.items.byKey(boardWs, 'GAR-1');
+  const stored = missions.get(mission.id);
+  check('Start GAR-1 makes exactly one mission, with its tracker item', fromTracker().length === 1 && stored?.trackerItemId === gar1?.id, fromTracker().map((m) => m.trackerItemId));
+  // planNow: planning began at once. With no planner runtime here the preset
+  // plans it in the same call, so it is already past PLANNING (RULINGS ruling 13).
+  const planned = missions.get(mission.id);
+  check('…never queued, and planned at once (its Done-when was parsed)', stored?.queuedAt === null && ['PLANNING', 'AWAITING_PLAN_APPROVAL'].includes(mission.status) && planned?.queuedAt === null, { queuedAt: stored?.queuedAt, status: mission.status });
+  check("…its goal starts 'YouTrack GAR-1, started by Demo: '", stored?.goal.startsWith('YouTrack GAR-1, started by Demo: ') === true, stored?.goal);
+  check('…quotes the task as written and lists its sources', stored?.goal.includes(`The task as written in the tracker:\n\n${SAFARI}\n\n${DONE_WHEN}`) === true && stored?.goal.includes('\n\nSources:\n- Sentry · acme/web · ') === true, stored?.goal);
+  check('…its title is the item title', stored?.title === SAFARI, stored?.title);
+  const ledger = criteria.listActive(mission.id);
+  check("…its ledger has 'Checkout works on Safari', decided by the tracker", ledger.some((c) => c.statement === 'Checkout works on Safari' && c.decidedBy === 'tracker'), ledger);
+  check('…YouTrack shows GAR-1 In Progress', fakeB.issues.get('GAR-1')?.state === 'In Progress', fakeB.issues.get('GAR-1')?.state);
+  const activity = (fakeB.comments.get('GAR-1') ?? []).filter((c) => c.text.startsWith('<!-- tandemise:activity -->'));
+  check('…with one activity comment', activity.length === 1 && activity[0].text.includes(`Started in Tandemise by Demo: ${SAFARI}.`), fakeB.comments.get('GAR-1'));
+  check('…and the written state is remembered', BD.items.byKey(boardWs, 'GAR-1')?.writtenState === 'In Progress', BD.items.byKey(boardWs, 'GAR-1'));
+  const row = tracker.board(boardWs).groups.inProgress.find((i) => i.key === 'GAR-1');
+  check('…the board shows its mission, and it cannot be started again', row?.mission?.id === mission.id && row?.startable.ok === false && row?.startable.reason === 'Has a mission', row);
+
+  const second = await refusal('GAR-1');
+  check(`a second Start of GAR-1 is refused: "GAR-1 already has a mission: ${SAFARI}."`, second?.code === 'CONFLICT' && second?.message === `GAR-1 already has a mission: ${SAFARI}.` && fromTracker().length === 1, { code: second?.code, message: second?.message });
+  const busy = await refusal('GAR-2');
+  check('Start of GAR-2 (In Progress, ana) is refused: "GAR-2 is already in progress (ana)."', busy?.code === 'CONFLICT' && busy?.message === 'GAR-2 is already in progress (ana).' && fromTracker().length === 1, { code: busy?.code, message: busy?.message });
+
+  // No Done-when: a draft, not queued, and never pulled.
+  fakeB.putIssue({ summary: 'Claims are checked', description: 'Two people, one item.', state: 'Open' });
+  fakeB.putIssue({ summary: 'Dark mode toggle forgets its choice', description: 'It resets after a reload.', state: 'Open' });
+  const draft = await tracker.start(BD.caller, boardWs, 'GAR-5');
+  check('an item with no criteria starts as a DRAFT, not queued', draft.status === 'DRAFT' && missions.get(draft.id)?.queuedAt === null, { status: draft.status, queuedAt: missions.get(draft.id)?.queuedAt });
+  const pulled = await BD.services.backlog.pull();
+  check("P7's pull never picks it", pulled.length === 0, pulled);
+  const scheduler = BD.container.resolve(pipeline.app.SCHEDULER);
+  for (let i = 0; i < 3; i++) await scheduler.tick();
+  await BD.intake.settle();
+  await tracker.settle();
+  check('…and it is still a DRAFT after three scheduler ticks', missions.get(draft.id)?.status === 'DRAFT' && missions.get(draft.id)?.queuedAt === null, missions.get(draft.id)?.status);
+} catch (e) {
+  check('the start section ran', false, String(e?.stack ?? e));
+} finally {
+  await BD?.intake?.settle?.();
+  await BD?.services?.tracker?.settle?.();
+  await BD?.container.dispose();
+}
+
+// The claim refuses: Start says the claim's own words and makes nothing.
+try {
+  const refusing = (c) => c.rebind(pipeline.app.INTAKE_CLAIMS, () => ({
+    source: async () => true,
+    item: async () => ({ ok: false, reason: 'Ana is working on GAR-4 since 10:42.' }),
+    releaseItem: async () => {},
+  }), { source: 'check' });
+  const RD = await pipeline.open({ ...boardDaemon, providers: [pipeline.Y.youtrackIntegrationModule], bindings: refusing });
+  try {
+    const missions = RD.container.resolve(pipeline.app.MISSION_REPOSITORY);
+    const before = missions.list({ workspaceId: boardWs }).length;
+    let refused = null;
+    try { await RD.services.tracker.start(RD.caller, boardWs, 'GAR-4'); } catch (e) { refused = e; }
+    check('with the claim refused, Start says exactly "Ana is working on GAR-4 since 10:42."', refused?.code === 'CONFLICT' && refused?.message === 'Ana is working on GAR-4 since 10:42.' && missions.list({ workspaceId: boardWs }).length === before, { code: refused?.code, message: refused?.message });
+    check('…and GAR-4 is not moved', fakeB.issues.get('GAR-4')?.state === 'Open', fakeB.issues.get('GAR-4')?.state);
+  } finally {
+    await RD.services.tracker.settle();
+    await RD.container.dispose();
+  }
+} catch (e) {
+  check('the claims section ran', false, String(e?.stack ?? e));
+} finally {
+  await fakeB.close();
+  await fakeR.close();
+  for (const h of boardHomes) rmSync(h, { recursive: true, force: true });
 }
 
 console.log(`\n${passed} passed, ${failures.length} failed`);

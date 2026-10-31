@@ -75,6 +75,7 @@ import { StaffingResolver } from './engine/staffing-resolver.js';
 import { DEFAULT_LOCAL_PERSON_NAME, LocalIdentity } from './support/identity.js';
 import * as it from './intake-tokens.js';
 import { IntakeService } from './services/intake-service.js';
+import { TrackerService } from './services/tracker-service.js';
 import { LocalIntakeConfigSource } from './intake/config-source.js';
 import { MemoryBlobs } from './intake/memory-blobs.js';
 import { TrackerResolver } from './intake/tracker-resolver.js';
@@ -386,7 +387,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       // Resolved per pass: issue sync creates missions through the mission service too.
       syncIssues: () => r.resolve(t.ISSUE_SERVICE).tick(),
       // Resolved per pass: intake retries and recovers in the background (plan Task 7).
-      syncIntake: () => r.resolve(it.INTAKE_SERVICE).tick(),
+      syncIntake: () => { r.resolve(it.INTAKE_SERVICE).tick(); r.resolve(it.TRACKER_SERVICE).tick(); },
       pullBacklog: () => r.resolve(t.BACKLOG_SERVICE).pull(),
       limits: r.resolve(t.LIMIT_SERVICE),
       // Resolved per pass, like the backlog: it reads the planner, composed after this.
@@ -907,6 +908,26 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       clock: clock(r),
       log: log(r).child({ component: 'intake' }),
     }), { source: SOURCE });
+    // The board and Start (plan Task 8): missions are made only through the
+    // mission service, resolved per call since it is composed with the API services.
+    bind(it.TRACKER_SERVICE, (r) => new TrackerService({
+      config: r.resolve(it.INTAKE_CONFIG_SOURCE),
+      trackers: r.resolve(it.TRACKER_RESOLVER),
+      items: r.resolve(it.TRACKER_ITEM_REPOSITORY),
+      intake: r.resolve(it.INTAKE_REPOSITORY),
+      missions: r.resolve(t.MISSION_REPOSITORY),
+      createMission: (caller, request, origin) => r.resolve(t.MISSION_SERVICE).create(caller, request, origin),
+      claims: r.resolve(it.INTAKE_CLAIMS),
+      settings: r.resolve(t.SETTINGS_STORE),
+      members: r.resolve(t.MEMBER_REPOSITORY),
+      people: r.resolve(t.PERSON_REPOSITORY),
+      workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
+      recorder: r.resolve(t.EVENT_RECORDER),
+      projections: r.resolve(t.PROJECTION_BUS),
+      unitOfWork: r.resolve(t.UNIT_OF_WORK),
+      clock: clock(r),
+      log: log(r).child({ component: 'intake' }),
+    }), { source: SOURCE });
 
     // Default: no disk. The daemon rebinds it; a harness without one can still
     // compose, and setup as code answers that there is no folder.
@@ -1009,6 +1030,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       contributions: r.resolve(t.CONTRIBUTION_SERVICE),
       evals: r.resolve(t.EVAL_SERVICE),
       intake: r.resolve(it.INTAKE_SERVICE),
+      tracker: r.resolve(it.TRACKER_SERVICE),
     }), { source: SOURCE });
   });
 }

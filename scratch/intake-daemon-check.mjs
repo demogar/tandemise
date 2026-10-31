@@ -10,6 +10,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { startFakeYouTrack } from './fake-youtrack.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = join(here, '..');
@@ -38,6 +39,7 @@ section('daemon: intake config, tokens, pushes and the CLI');
   delete process.env.TANDEMISE_URL;
   const { startDaemon } = await import('../apps/daemon/dist/main.js');
   let daemon;
+  let fake;
   try {
     daemon = await startDaemon({ home, logLevel: 'error', tickIntervalMs: 200 });
     const token = JSON.parse(readFileSync(join(home, 'daemon.json'), 'utf8')).token;
@@ -142,10 +144,30 @@ section('daemon: intake config, tokens, pushes and the CLI');
     // k1 was pushed before: since Task 7 its answer carries why it still waits (this daemon has no YouTrack token).
     check('--project names it', named.code === 0 && named.stdout.split('\n')[0] === 'custom:custom-feed:k1: received'
       && /^ {2}Couldn't reach YouTrack: .* Tandemise will try again\.$/.test(named.stdout.split('\n')[1] ?? ''), named);
+
+    // 8. `tandemise start <key>` (plan Task 8), against a fake YouTrack.
+    fake = await startFakeYouTrack({ project: 'GAR', token: 'perm:test', login: 'tandemise-bot' });
+    fake.putIssue({ summary: 'Checkout fails on Safari', description: '## Done when\n- [ ] Checkout works on Safari', state: 'Open' });
+    const app = await import('@tandemise/application');
+    await daemon.container.resolve(app.TRACKER_RESOLVER).saveCredential(ws, 'perm:test');
+    const toFake = await call('PUT', `/v1/workspaces/${ws}/intake/config`, { tracker: { ...config.tracker, url: fake.url } });
+    check('the project now points at the fake YouTrack', toFake.status === 200 && toFake.body?.tracker?.url === fake.url, toFake);
+    const refreshed = await call('POST', `/v1/workspaces/${ws}/board/refresh`);
+    check('POST board/refresh answers the board with GAR-1 ready', refreshed.status === 200 && refreshed.body?.trackerLabel === 'YouTrack' && refreshed.body?.groups?.ready?.some((i) => i.key === 'GAR-1' && i.startable.ok === true), refreshed);
+    const boardRead = await call('GET', `/v1/workspaces/${ws}/board`);
+    check('GET board reads the cache', boardRead.status === 200 && boardRead.body?.groups?.ready?.some((i) => i.key === 'GAR-1'), boardRead);
+    const started = await cli(['start', 'GAR-1', '--project', ws], env);
+    check('tandemise start GAR-1 prints Started GAR-1: <mission title>', started.code === 0 && started.stdout.trim() === 'Started GAR-1: Checkout fails on Safari', started);
+    check('…and YouTrack shows GAR-1 In Progress', fake.issues.get('GAR-1')?.state === 'In Progress', fake.issues.get('GAR-1')?.state);
+    const startedAgain = await cli(['start', 'GAR-1', '--project', ws], env);
+    check("a second start exits 1 with the daemon's words", startedAgain.code === 1 && startedAgain.stderr.trim() === 'GAR-1 already has a mission: Checkout fails on Safari.', startedAgain);
+    const viaRoute = await call('POST', `/v1/workspaces/${ws}/board/start`, { key: 'GAR-1' });
+    check('POST board/start refuses it as 409 too', viaRoute.status === 409 && viaRoute.body?.error?.message === 'GAR-1 already has a mission: Checkout fails on Safari.', viaRoute);
   } catch (e) {
     check('the daemon section ran', false, String(e?.stack ?? e));
   } finally {
     await daemon?.stop();
+    await fake?.close();
     rmSync(root, { recursive: true, force: true });
   }
 }

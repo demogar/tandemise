@@ -197,3 +197,59 @@ export function stateMappingProblem(
   }
   return null;
 }
+
+// ------------------------------------------------------------------ Start (spec §7, plan Task 8)
+
+/** `mission_criteria.decided_by` for the Done-when lines parsed from a tracker item, as P14's `ISSUE_CRITERIA_AUTHOR`. */
+export const TRACKER_CRITERIA_AUTHOR = 'tracker';
+/** A mission goal's limit (the create request's). */
+const MAX_TRACKER_GOAL = 8000;
+
+/** One linked signal, as the goal lists it: `- <label> · <instance> · <context>`. */
+export interface TrackerGoalSource {
+  readonly label: string;
+  readonly instance: string;
+  readonly context: string;
+}
+
+/**
+ * The goal of a mission started from a tracker item (spec §7 step 3): the item
+ * attributed to who started it and quoted as data, then each source's context.
+ *
+ *     YouTrack GAR-12, started by Ana: <url>
+ *
+ *     The task as written in the tracker:
+ *
+ *     <title>
+ *
+ *     <description>
+ *
+ *     Sources:
+ *     - Sentry · acme/web · 132 events, 41 users
+ *
+ * It names the starter rather than the spec's "you": teammates and agents read
+ * the goal too. An empty description or no linked signal leaves its part out,
+ * and the whole is cut to 8000 characters, the create request's limit.
+ */
+export function trackerGoal(input: {
+  readonly label: string;
+  readonly key: string;
+  readonly starterName: string;
+  readonly url: string;
+  readonly title: string;
+  readonly description: string;
+  readonly sources: readonly TrackerGoalSource[];
+}): string {
+  const parts = [`${input.label} ${input.key}, started by ${input.starterName}: ${input.url}`, 'The task as written in the tracker:', oneLine(input.title)];
+  const description = input.description.replace(/\r\n?/g, '\n').trim();
+  if (description.length > 0) parts.push(description);
+  let goal = parts.join('\n\n');
+  if (input.sources.length > 0) {
+    goal += `\n\nSources:\n${input.sources.map((s) => `- ${[s.label, s.instance, oneLine(s.context)].filter((x) => x !== '').join(' · ')}`).join('\n')}`;
+  }
+  return goal.length <= MAX_TRACKER_GOAL ? goal : `${goal.slice(0, MAX_TRACKER_GOAL - 1)}…`;
+}
+
+function oneLine(text: string): string {
+  return text.replace(/\s+/g, ' ').trim();
+}

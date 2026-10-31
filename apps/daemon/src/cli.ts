@@ -5,8 +5,8 @@
  *
  * It holds no state and no rules: it reads the daemon's connection file (or
  * an intake token from the environment), calls one route, and prints the
- * daemon's own words. Plan Task 3 ships `intake push`; `start` and
- * `intake closures` come with the tasks that add their routes.
+ * daemon's own words. Plan Task 3 ships `intake push`, Task 8 `start`;
+ * `intake closures` comes with the task that adds its route.
  *
  * Exit codes: 0 when the daemon accepted the request, 1 when it refused (or
  * cannot be reached), 2 for a usage error.
@@ -14,12 +14,13 @@
 import { readFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 import { defaultRoot } from '@tandemise/shared';
-import { API_VERSION, API_VERSION_HEADER, INTAKE_SCHEMA_V1, type IngestResultView } from '@tandemise/api-contract';
+import { API_VERSION, API_VERSION_HEADER, INTAKE_SCHEMA_V1, type IngestResultView, type MissionSummary } from '@tandemise/api-contract';
 import { readConnectionFile } from './http/identity.js';
 
 const USAGE = `Usage:
   tandemise intake push --source <id> --file <signal.json> [--project <id>]
   tandemise intake push --source <id> --title <text> --url <https link> --key <id> [--description <text>] [--project <id>]
+  tandemise start <key> [--project <id>]
 
 Connects with $TANDEMISE_HOME/daemon.json, or with TANDEMISE_URL and
 TANDEMISE_INTAKE_TOKEN when both are set.`;
@@ -41,6 +42,7 @@ async function main(argv: readonly string[]): Promise<number> {
     return group === undefined ? 2 : 0;
   }
   if (group === 'intake' && command === 'push') return intakePush(rest);
+  if (group === 'start') return start(argv.slice(1));
   throw new UsageError(`Unknown command '${[group, command].filter(Boolean).join(' ')}'.`);
 }
 
@@ -75,6 +77,30 @@ async function intakePush(args: readonly string[]): Promise<number> {
     process.stdout.write(`${r.fingerprint ?? '(unreadable signal)'}: ${r.status}\n`);
     if (r.reason !== null) process.stdout.write(`  ${r.reason}\n`);
   }
+  return 0;
+}
+
+/** Starts a tracker item as a mission (plan Task 8), with the daemon token only. */
+async function start(args: readonly string[]): Promise<number> {
+  let values: Record<string, string | undefined>;
+  let positionals: string[];
+  try {
+    ({ values, positionals } = parseArgs({
+      args: [...args],
+      options: { project: { type: 'string' } },
+      strict: true,
+      allowPositionals: true,
+    }) as { values: Record<string, string | undefined>; positionals: string[] });
+  } catch (e) {
+    throw new UsageError(e instanceof Error ? e.message : String(e));
+  }
+  const key = positionals[0];
+  if (key === undefined || key === '' || positionals.length > 1) throw new UsageError('Name one item to start, e.g. tandemise start GAR-12.');
+  const connection = connect();
+  if (connection.intakeToken) throw new Refusal('An intake token can only push signals. Start from the machine running Tandemise.');
+  const project = values['project'] ?? (await onlyProject(connection));
+  const answer = (await call(connection, 'POST', `/v1/workspaces/${encodeURIComponent(project)}/board/start`, { key })) as MissionSummary;
+  process.stdout.write(`Started ${key}: ${answer.mission.title}\n`);
   return 0;
 }
 

@@ -96,6 +96,8 @@ export { INTAKE_RETRY_EVERY_MS } from './services/intake-service.js';
 export { createDraft, impactWords, linkContext, sourceEntry } from './intake/item-text.js';
 export type { ItemDraft } from './intake/item-text.js';
 export type { IntakeDeps, IntakeScope } from './services/intake-service.js';
+export { BOARD_REFRESH_EVERY_MS, TRACKER_LOGINS_SETTINGS_KEY, TrackerService } from './services/tracker-service.js';
+export type { TrackerServiceDeps } from './services/tracker-service.js';
 export { INTAKE_SETTINGS_KEY, LocalIntakeConfigSource } from './intake/config-source.js';
 export { SlidingWindowLimit } from './intake/rate-limit.js';
 export { MemoryBlobs } from './intake/memory-blobs.js';

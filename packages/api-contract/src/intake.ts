@@ -504,6 +504,15 @@ export const decideIntakeSignalRequest = z
   .strict();
 export type DecideIntakeSignalRequest = z.infer<typeof decideIntakeSignalRequest>;
 
+/**
+ * `POST /v1/workspaces/:id/board/start` (plan Task 8): the item's key in the
+ * body, since a GitHub ref holds `/` and `#`.
+ */
+export const startBoardItemRequest = z
+  .object({ key: z.string().trim().min(1, 'Name the item to start.').max(200) })
+  .strict();
+export type StartBoardItemRequest = z.infer<typeof startBoardItemRequest>;
+
 /** The answer to minting: the token is shown this once, and only its sha256 is kept (spec §2). */
 export interface IntakeTokenMintedView {
   readonly id: string;
