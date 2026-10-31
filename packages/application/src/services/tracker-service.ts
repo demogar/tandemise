@@ -5,7 +5,7 @@ import type {
   TaskRepositoryPort, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
 import {
-  activityCommentBody, activityMilestone, activityMilestoneOf, activityStepState, decideTrackerWriteBack, isTerminalMissionStatus, parseCriteria,
+  FACTORY_WORKFLOW_ID, activityCommentBody, activityMilestone, activityMilestoneOf, activityStepState, decideTrackerWriteBack, isTerminalMissionStatus, parseCriteria,
   parseSourcesSection, sourceLabel, trackerGoal, trackerLabel, trackerRef,
 } from '@tandemise/domain';
 import type { BoardItemView, BoardView, CreateMissionRequest } from '@tandemise/api-contract';
@@ -29,6 +29,12 @@ export interface TrackerServiceDeps {
   readonly missions: Pick<MissionRepositoryPort, 'list' | 'get'>;
   /** `MissionService.create`, the only way a mission is made (spec §7 step 3). Resolved per call. */
   readonly createMission: (caller: Caller, request: CreateMissionRequest, origin: { trackerItemId: TrackerItemId; missionId?: MissionId }) => Promise<Mission>;
+  /**
+   * Plans a factory mission Start made with no Done-when line (#53 §4): the
+   * quick and standard lanes plan at once; a careful one is refused by the
+   * readiness gate and stays a draft to refine. Resolved per call.
+   */
+  readonly planDraft?: (missionId: MissionId) => Promise<unknown>;
   /** Who works on what across daemons; always granted without the relay (#54). */
   readonly claims: IntakeClaimsPort;
   /** Personal settings: `trackerLogins[<workspace>]`, the person's login in the tracker. */
@@ -410,7 +416,8 @@ export class TrackerService {
 
     const label = trackerLabel(config.kind);
     const criteria = parseCriteria(fresh.description);
-    const workflow = fresh.type === undefined ? undefined : config.workflows?.[fresh.type];
+    // The brain's mapping by item type when it names one, else the factory decides (#53: Start → profile → lane).
+    const workflow = (fresh.type === undefined ? undefined : config.workflows?.[fresh.type]) ?? FACTORY_WORKFLOW_ID;
     const request: CreateMissionRequest = {
       workspaceId,
       title: missionTitle(fresh),
@@ -423,7 +430,7 @@ export class TrackerService {
       // found; without one the mission opens as a draft to refine. Never
       // `queued`: a started item is the person's work, not the backlog's.
       ...(criteria.length > 0 ? { planNow: true } : {}),
-      ...(workflow === undefined ? {} : { workflowPreset: workflow }),
+      workflowPreset: workflow,
     };
     let mission: Mission;
     try {
@@ -433,6 +440,15 @@ export class TrackerService {
       // the same person holds for another mission on this item stays (Ruling 27).
       await this.deps.claims.releaseItem(item.ref, 'released', missionId).catch(() => {});
       throw e;
+    }
+    if (criteria.length === 0 && workflow === FACTORY_WORKFLOW_ID && this.deps.planDraft !== undefined) {
+      // The quick and standard lanes don't ask for Done-when lines (#53 §4, which changes #52 §7 here);
+      // the careful lane does, and its refusal leaves the draft for the person to refine.
+      try {
+        await this.deps.planDraft(mission.id);
+      } catch (e) {
+        this.deps.log.info('tracker.start_left_draft', { workspaceId, missionId: mission.id, reason: errorMessage(e) });
+      }
     }
     this.deps.log.info('tracker.started', { workspaceId, ref: item.ref, missionId: mission.id, criteria: criteria.length });
     await this.#writeStart(workspaceId, tracker, config, item, mission);

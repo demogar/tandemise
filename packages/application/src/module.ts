@@ -1172,6 +1172,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       intake: r.resolve(it.INTAKE_REPOSITORY),
       missions: r.resolve(t.MISSION_REPOSITORY),
       createMission: (caller, request, origin) => r.resolve(t.MISSION_SERVICE).create(caller, request, origin),
+      planDraft: (missionId) => r.resolve(t.PLANNING_SERVICE).begin(missionId),
       claims: r.resolve(it.INTAKE_CLAIMS),
       settings: r.resolve(t.SETTINGS_STORE),
       members: r.resolve(t.MEMBER_REPOSITORY),
