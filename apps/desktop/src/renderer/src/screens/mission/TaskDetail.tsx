@@ -131,12 +131,13 @@ export function TaskDetail({ task, detail, onClose }: { task: TaskView; detail: 
           {holdOffered ? <HoldButton task={task} missionId={detail.mission.id} onOpen={onClose} /> : null}
           {task.hold !== null ? (
             <>
-              <button type="button" className="btn" disabled={cont.isPending || release.isPending} onClick={() => release.mutate(undefined)}>
-                {release.isPending ? 'Releasing…' : 'Release'}
-              </button>
+              {/* The panel's order: Continue, then Release. */}
               <button type="button" className="btn btn--primary" disabled={cont.isPending || release.isPending} onClick={() => cont.mutate(undefined)}>
                 <Icon name="play" size={13} />
                 {cont.isPending ? 'Continuing…' : 'Continue'}
+              </button>
+              <button type="button" className="btn" disabled={cont.isPending || release.isPending} onClick={() => release.mutate(undefined)}>
+                {release.isPending ? 'Releasing…' : 'Release'}
               </button>
             </>
           ) : null}

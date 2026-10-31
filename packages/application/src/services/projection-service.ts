@@ -600,17 +600,17 @@ export class ProjectionServiceImpl implements ProjectionService {
         watch: this.deps.liveness?.watchOf(task, latestRun) ?? null,
         coveredBy: this.#coveredBy(task, intakeByType),
         parkedExternal: parkedView(parkedExternalOf(task, parkLog)),
-        now: this.#now(task, latestRun),
+        now: this.#now(task, latestRun, target?.workingDirectory ?? null),
         ...(this.deps.holds?.standing(task, mission) ?? NO_HOLDS),
       };
     });
   }
 
   /** One indexed read per live agent step; every other step has no "Now". */
-  #now(task: MissionTask, run: Run | null): string | null {
+  #now(task: MissionTask, run: Run | null, workingDirectory: string | null): string | null {
     if (task.executor !== 'agent' || task.status !== 'RUNNING' || run === null || !LIVE_RUN_STATUSES.includes(run.status)) return null;
     const latest = this.deps.events.latestByRun(run.id, NOW_EVENT_TYPES);
-    return nowLine(latest === undefined ? null : latest.body as AgentEvent);
+    return nowLine(latest === undefined ? null : latest.body as AgentEvent, workingDirectory);
   }
 
   /**

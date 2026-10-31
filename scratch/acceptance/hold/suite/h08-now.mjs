@@ -37,6 +37,7 @@ while (Date.now() < deadline) {
 ev.check('the Plan card shows a "Now" line while the step runs', seen.length > 0, seen);
 ev.check('the line changes as events arrive (at least three different lines)', new Set(seen).size >= 3, seen);
 ev.check('it says what it does in words: "Running npm test" for a shell command', seen.some((l) => l === 'Now Running npm test'), seen);
+ev.check('a file it edits reads relative to its worktree: "Editing .tandemise/out/DesignBrief.md"', seen.includes('Now Editing .tandemise/out/DesignBrief.md'), seen);
 ev.check('no raw tool names in it', seen.every((l) => !/\b(Bash|Write|tool\.started)\b/.test(l)), seen);
 
 await openFeed(c, missionId);

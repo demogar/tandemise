@@ -103,13 +103,19 @@ function inputField(summary: string, names: readonly string[]): string | null {
 }
 
 /** The "Now" line on a running step: what the agent is doing, from its latest event, never a raw tool name. */
-export function nowLine(event: AgentEvent | null): string {
+export function nowLine(event: AgentEvent | null, workingDirectory: string | null = null): string {
   if (event === null) return 'Starting…';
+  // A path inside the step's own checkout reads relative to it: "Editing src/app/page.tsx", not the worktree's full path.
+  const shown = (path: string): string => {
+    const root = workingDirectory?.replace(/\/+$/, '') ?? null;
+    return root !== null && root !== '' && path.startsWith(`${root}/`) ? path.slice(root.length + 1) : path;
+  };
   switch (event.type) {
     case 'tool.started': {
       const tool = event.tool;
       if (tool.startsWith('mcp__tandemise')) return 'Using a Tandemise tool';
-      const path = inputField(event.inputSummary, ['file_path', 'path', 'notebook_path']);
+      const raw = inputField(event.inputSummary, ['file_path', 'path', 'notebook_path']);
+      const path = raw === null ? null : shown(raw);
       switch (tool) {
         case 'Edit': case 'MultiEdit': case 'Write': case 'NotebookEdit':
           return cut(path === null ? 'Editing files' : `Editing ${path}`);
@@ -127,7 +133,7 @@ export function nowLine(event: AgentEvent | null): string {
       const text = event.text.replace(/\s+/g, ' ').trim();
       return text === '' ? 'Working…' : cut(text);
     }
-    case 'file.changed': return cut(`Editing ${event.path}`);
+    case 'file.changed': return cut(`Editing ${shown(event.path)}`);
     default: return 'Working…';
   }
 }

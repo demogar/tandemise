@@ -34,29 +34,29 @@
     {
       "label": "a fresh session starts (nothing to resume)",
       "ok": true,
-      "observed": "Fake session new\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
+      "observed": "Fake session new\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
     },
     {
       "label": "proof (DB): a hold from READY, with no session before it",
       "ok": true,
       "observed": {
-        "id": "hld_01m67xnpa7m0hkzssk0b",
-        "heldBy": "mem_01m67xb142hsmj76myye",
+        "id": "hld_01m67z93zqx4nsgnk6gd",
+        "heldBy": "mem_01m67yyyc0gv4gmzpfn2",
         "fromStatus": "READY",
-        "profileId": "rt_01m67xnbsp7tdwdg0a0e",
+        "profileId": "rt_01m67z8semarhqfq8cv4",
         "sessionBefore": null,
         "sessionAfter": null,
         "endedAt": null,
         "ending": null,
         "consumedAt": null,
         "diffStat": null,
-        "dir": "/tmp/tdm-hold/home/workspaces/ws_01m67xb142hsmj76myyd/missions/msn_01m67xndw19veh51thbb/holds/hld_01m67xnpa7m0hkzssk0b"
+        "dir": "/tmp/tdm-hold/home/workspaces/ws_01m67yyyc0gv4gmzpfn1/missions/msn_01m67z8vh09y52sh6sqv/holds/hld_01m67z93zqx4nsgnk6gd"
       }
     },
     {
       "label": "proof (API): its worktree was provisioned",
       "ok": true,
-      "observed": "/tmp/tdm-hold/home/workspaces/ws_01m67xb142hsmj76myyd/missions/msn_01m67xndw19veh51thbb/worktrees/two-pages-mvvsvzul-settings-addg434n"
+      "observed": "/tmp/tdm-hold/home/workspaces/ws_01m67yyyc0gv4gmzpfn1/missions/msn_01m67z8vh09y52sh6sqv/worktrees/two-pages-mvvtw44b-settings-45etarg1"
     },
     {
       "label": "proof (disk): the session works in that worktree",

@@ -131,7 +131,8 @@ function refreshNow(queryClient: QueryClient, record: RunEventRecord): void {
   if (record.runId === null || !NOW_EVENT_TYPES.has(record.body.type) || nowRefresh.has(record.missionId)) return;
   nowRefresh.set(record.missionId, setTimeout(() => {
     nowRefresh.delete(record.missionId);
-    void queryClient.invalidateQueries({ queryKey: keys.mission(record.missionId), exact: true });
+    // A refetch still in flight is left to finish: cancelling it every second would starve a slow mission view.
+    void queryClient.invalidateQueries({ queryKey: keys.mission(record.missionId), exact: true }, { cancelRefetch: false });
   }, NOW_REFRESH_MS));
 }
 

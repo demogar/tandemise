@@ -11,12 +11,12 @@
     {
       "label": "the session reports the file written",
       "ok": true,
-      "observed": "Fake session sess-hold-run_01m67xb8nbc62b5974gj\nhello from the panel\n> hello from the panel\nwrite d.txt\n> write d.txt\nwrote d.txt\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
+      "observed": "Fake session sess-hold-run_01m67yz5w94qqwvthfrr\nhello from the panel\n> hello from the panel\nwrite d.txt\n> write d.txt\nwrote d.txt\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
     },
     {
       "label": "proof (disk): d.txt is in the step's worktree",
       "ok": true,
-      "observed": "/tmp/tdm-hold/home/workspaces/ws_01m67xb142hsmj76myyd/missions/msn_01m67xb5jj7y1qxsk2dr/worktrees/onboarding-hold-slow-now-mvvsosg9-design-5bp3wyhy/d.txt"
+      "observed": "/tmp/tdm-hold/home/workspaces/ws_01m67yyyc0gv4gmzpfn1/missions/msn_01m67yz2sddn8wh55a4h/worktrees/onboarding-hold-slow-now-mvvtp90k-design-n5mdahrn/d.txt"
     },
     {
       "label": "proof (disk): with what the session wrote",

@@ -27,12 +27,12 @@
     {
       "label": "the panel says who holds it: \"Held by You\"",
       "ok": true,
-      "observed": "designHeld by YouContinueReleaseClose terminal"
+      "observed": "designHeld by YouContinueReleaseClose terminalClaude Code may ask whether to trust this folder — choose “Yes, I trust this folder”. Tandemise created it for this task."
     },
     {
       "label": "it offers Continue, Release and Close terminal",
       "ok": true,
-      "observed": "designHeld by YouContinueReleaseClose terminal"
+      "observed": "designHeld by YouContinueReleaseClose terminalClaude Code may ask whether to trust this folder — choose “Yes, I trust this folder”. Tandemise created it for this task."
     },
     {
       "label": "proof (API): the step is HELD, its terminal open",
@@ -40,10 +40,10 @@
       "observed": {
         "status": "HELD",
         "hold": {
-          "holdId": "hld_01m67xcsapn1fs8jg9qw",
-          "heldBy": "mem_01m67xb142hsmj76myye",
+          "holdId": "hld_01m67z0phvnya17jq4ar",
+          "heldBy": "mem_01m67yyyc0gv4gmzpfn2",
           "heldByName": "Demostenes Garcia",
-          "startedAt": "2026-10-31T02:42:34.966Z",
+          "startedAt": "2026-10-31T03:10:56.060Z",
           "terminalOpen": true
         }
       }
@@ -52,14 +52,14 @@
       "label": "proof (DB): the run it stopped ended RESUMABLE",
       "ok": true,
       "observed": {
-        "id": "run_01m67xb8nbc62b5974gj",
+        "id": "run_01m67yz5w94qqwvthfrr",
         "attempt": 1,
         "status": "RESUMABLE",
         "round": 1,
         "purpose": "round",
-        "sessionId": "sess-hold-run_01m67xb8nbc62b5974gj",
-        "profileId": "rt_01m67xb3g2q6h2qxsf5w",
-        "startedAt": "2026-10-31T02:41:45.150Z",
+        "sessionId": "sess-hold-run_01m67yz5w94qqwvthfrr",
+        "profileId": "rt_01m67yz0pwzr5a1jkdb8",
+        "startedAt": "2026-10-31T03:10:06.237Z",
         "errorCode": "CANCELLED",
         "errorMessage": "Run cancelled"
       }
@@ -69,30 +69,30 @@
       "ok": true,
       "observed": {
         "hold": {
-          "id": "hld_01m67xcsapn1fs8jg9qw",
-          "heldBy": "mem_01m67xb142hsmj76myye",
+          "id": "hld_01m67z0phvnya17jq4ar",
+          "heldBy": "mem_01m67yyyc0gv4gmzpfn2",
           "fromStatus": "RUNNING",
-          "profileId": "rt_01m67xb3g2q6h2qxsf5w",
-          "sessionBefore": "sess-hold-run_01m67xb8nbc62b5974gj",
+          "profileId": "rt_01m67yz0pwzr5a1jkdb8",
+          "sessionBefore": "sess-hold-run_01m67yz5w94qqwvthfrr",
           "sessionAfter": null,
           "endedAt": null,
           "ending": null,
           "consumedAt": null,
           "diffStat": null,
-          "dir": "/tmp/tdm-hold/home/workspaces/ws_01m67xb142hsmj76myyd/missions/msn_01m67xb5jj7y1qxsk2dr/holds/hld_01m67xcsapn1fs8jg9qw"
+          "dir": "/tmp/tdm-hold/home/workspaces/ws_01m67yyyc0gv4gmzpfn1/missions/msn_01m67yz2sddn8wh55a4h/holds/hld_01m67z0phvnya17jq4ar"
         },
-        "session": "sess-hold-run_01m67xb8nbc62b5974gj"
+        "session": "sess-hold-run_01m67yz5w94qqwvthfrr"
       }
     },
     {
       "label": "the terminal shows the session it resumed",
       "ok": true,
-      "observed": "Fake session sess-hold-run_01m67xb8nbc62b5974gj\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
+      "observed": "Fake session sess-hold-run_01m67yz5w94qqwvthfrr\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
     },
     {
       "label": "what you type reaches the session (it echoes it back)",
       "ok": true,
-      "observed": "Fake session sess-hold-run_01m67xb8nbc62b5974gj\nhello from the panel\n> hello from the panel\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
+      "observed": "Fake session sess-hold-run_01m67yz5w94qqwvthfrr\nhello from the panel\n> hello from the panel\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n"
     }
   ],
   "notes": [

@@ -9,45 +9,50 @@
       "observed": {
         "run": "RESUMABLE",
         "hold": {
-          "id": "hld_01m67xxc30mr50945c6x",
-          "heldBy": "mem_01m67xx2q10y635q7kbk",
+          "id": "hld_01m67zcsd1dsjj08ws6v",
+          "heldBy": "mem_01m67yyyc0gv4gmzpfn2",
           "fromStatus": "RUNNING",
-          "profileId": "rt_01m67xx52zyny0nbp1kv",
-          "sessionBefore": "135c0f0a-6d74-40de-ab29-209be00ba15a",
+          "profileId": "rt_01m67zcjd1kt6f5we8gq",
+          "sessionBefore": "ff852bdd-9222-440e-9f5d-3fe0d5c01efa",
           "sessionAfter": null,
           "endedAt": null,
           "ending": null,
           "consumedAt": null,
           "diffStat": null,
-          "dir": "/tmp/tdm-hold/home/workspaces/ws_01m67xx2q0r1nx5z3z66/missions/msn_01m67xx75g9p5kcvq6p3/holds/hld_01m67xxc30mr50945c6x"
+          "dir": "/tmp/tdm-hold/home/workspaces/ws_01m67yyyc0gv4gmzpfn1/missions/msn_01m67zcmfdv0pkkx9js6/holds/hld_01m67zcsd1dsjj08ws6v"
         }
       }
     },
     {
-      "label": "you answered its question in the terminal, and the session went on",
+      "label": "while Claude asks to trust the folder, the panel says how to answer",
       "ok": true,
-      "observed": "    stop: <only when the steps after yours should not run as planned: why, in one sentence, at most 200 characters; otherwise delete this line>\n  flows:\n    - <named user flow, e.g. \"First-run onboarding\">\n  accessibility:\n    - <a concrete requirement, e.g. \"All controls reachable by keyboard in DO"
+      "observed": "designHeld by YouContinueReleaseClose terminalClaude Code may ask whether to trust this folder — choose “Yes, I trust this folder”. Tandemise created it for this task."
     },
     {
-      "label": "the panel shows Claude Code's own interactive session",
+      "label": "Enter on \"No, exit\": the panel says \"The session ended.\" and repeats how to answer, next to \"Open the terminal again\"",
       "ok": true,
-      "observed": "    stop: <only when the steps after yours should not run as planned: why, in one sentence, at most 200 characters; otherwise delete this line>\n  flows:\n    - <named user flow, e.g. \"First-run onboarding\">\n  accessibility:\n    - <a concrete requirement, e.g. \"All controls reachable by keyboard in DOM order\">\n  openQuestions:\n    - <a choice that needs a human, or delete this key's items if there are none>\n  ---\n\n  ## Flows and states\n  <Each flow, step by step, with its empty / loading / error / success states.>\n\n  ## Design references\n  <Links to Figma frames, existing screens, or prototypes."
+      "observed": "designHeld by YouContinueReleaseClose terminalThe session ended.Claude Code may ask whether to trust this folder — choose “Yes, I trust this folder”. Tandemise created it for this task.Open the terminal again"
+    },
+    {
+      "label": "the panel shows Claude Code's own session, ready for you (\"? for shortcuts\")",
+      "ok": true,
+      "observed": "          ◐ medium · /effort\n──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n❯\n──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────\n  ⏸ manual mode on · ? for shortcuts · ← for agents"
     },
     {
       "label": "proof (DB): the terminal's session was captured",
       "ok": true,
       "observed": {
-        "id": "hld_01m67xxc30mr50945c6x",
-        "heldBy": "mem_01m67xx2q10y635q7kbk",
+        "id": "hld_01m67zcsd1dsjj08ws6v",
+        "heldBy": "mem_01m67yyyc0gv4gmzpfn2",
         "fromStatus": "RUNNING",
-        "profileId": "rt_01m67xx52zyny0nbp1kv",
-        "sessionBefore": "135c0f0a-6d74-40de-ab29-209be00ba15a",
-        "sessionAfter": "135c0f0a-6d74-40de-ab29-209be00ba15a",
-        "endedAt": "2026-10-31T02:51:50.040Z",
+        "profileId": "rt_01m67zcjd1kt6f5we8gq",
+        "sessionBefore": "ff852bdd-9222-440e-9f5d-3fe0d5c01efa",
+        "sessionAfter": "ff852bdd-9222-440e-9f5d-3fe0d5c01efa",
+        "endedAt": "2026-10-31T03:17:40.621Z",
         "ending": "continued",
         "consumedAt": null,
         "diffStat": "{\"files\":0,\"insertions\":0,\"deletions\":0}",
-        "dir": "/tmp/tdm-hold/home/workspaces/ws_01m67xx2q0r1nx5z3z66/missions/msn_01m67xx75g9p5kcvq6p3/holds/hld_01m67xxc30mr50945c6x"
+        "dir": "/tmp/tdm-hold/home/workspaces/ws_01m67yyyc0gv4gmzpfn1/missions/msn_01m67zcmfdv0pkkx9js6/holds/hld_01m67zcsd1dsjj08ws6v"
       }
     },
     {
@@ -62,14 +67,14 @@
       "label": "proof (DB): the continuation ran on Claude Code and took the hold",
       "ok": true,
       "observed": {
-        "id": "run_01m67xxr0vvmh7gwjdd6",
+        "id": "run_01m67zd2c6ref8ykxb9b",
         "attempt": 2,
         "status": "SUCCEEDED",
         "round": 1,
         "purpose": "retry",
-        "sessionId": "135c0f0a-6d74-40de-ab29-209be00ba15a",
-        "profileId": "rt_01m67xx52zyny0nbp1kv",
-        "startedAt": "2026-10-31T02:51:50.701Z",
+        "sessionId": "ff852bdd-9222-440e-9f5d-3fe0d5c01efa",
+        "profileId": "rt_01m67zcjd1kt6f5we8gq",
+        "startedAt": "2026-10-31T03:17:41.400Z",
         "errorCode": null,
         "errorMessage": null
       }
@@ -86,22 +91,23 @@
       "label": "proof (DB): it resumed the captured session",
       "ok": true,
       "observed": {
-        "pass": "135c0f0a-6d74-40de-ab29-209be00ba15a",
-        "captured": "135c0f0a-6d74-40de-ab29-209be00ba15a"
+        "pass": "ff852bdd-9222-440e-9f5d-3fe0d5c01efa",
+        "captured": "ff852bdd-9222-440e-9f5d-3fe0d5c01efa"
       }
     },
     {
       "label": "proof (API): its DesignBrief was harvested",
       "ok": true,
-      "observed": "First-run onboarding note"
+      "observed": "Onboarding note — first-run welcome"
     }
   ],
   "notes": [
     "setup: the Design agent runs on Claude Code",
-    "session before 135c0f0a-6d74-40de-ab29-209be00ba15a, captured 135c0f0a-6d74-40de-ab29-209be00ba15a (kept by --resume)"
+    "session before ff852bdd-9222-440e-9f5d-3fe0d5c01efa, captured ff852bdd-9222-440e-9f5d-3fe0d5c01efa (kept by --resume)"
   ],
   "shots": [
     "/home/demogar/projects/tandemise/tandemise/docs/superpowers/evidence/2026-10-30-hold/H3-claude-claude-trust.png",
+    "/home/demogar/projects/tandemise/tandemise/docs/superpowers/evidence/2026-10-30-hold/H3-claude-claude-exited-at-trust.png",
     "/home/demogar/projects/tandemise/tandemise/docs/superpowers/evidence/2026-10-30-hold/H3-claude-claude-in-panel.png",
     "/home/demogar/projects/tandemise/tandemise/docs/superpowers/evidence/2026-10-30-hold/H3-claude-claude-done.png"
   ]

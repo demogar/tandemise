@@ -4,7 +4,7 @@
 // ends with its output as usual. Spends real usage; skipped with --skip-claude.
 import { context } from '../../p0/lib/ctx.mjs';
 import { Evidence } from '../../p0/lib/evidence.mjs';
-import { SCRIPTS, newMission, fakeProfile, holdFromCard, holdsOf, panelButton, panelLabel, pressKey, screenText, stepOf, useRuntimes, waitStep, shoot } from '../common.mjs';
+import { SCRIPTS, newMission, fakeProfile, holdFromCard, holdsOf, panelButton, panelLabel, panelText, pressKey, screenText, stepOf, useRuntimes, waitStep, shoot } from '../common.mjs';
 
 const c = await context();
 const { page, api, until, sleep } = c;
@@ -29,20 +29,32 @@ const [hold] = holdsOf(c, running.id);
 const stopped = c.runs(running.id).at(-1);
 ev.check('proof (DB): the Claude run ended RESUMABLE and the hold starts from its session', stopped.status === 'RESUMABLE' && hold?.sessionBefore === stopped.sessionId, { run: stopped.status, hold });
 
-// Claude's own interactive screen. A first visit to a folder asks whether to trust it; you answer in the terminal.
+// Claude's own interactive screen. A first visit to a folder asks whether to trust it, and the panel says how to answer.
 const painted = await until(async () => { const t = await screenText(c); return t.trim().length > 40 && t; }, { label: 'Claude on screen', timeoutMs: 60_000 }).catch(() => '');
-// A first visit to a folder asks whether to trust it; you answer in the terminal: down to "Yes, I trust this folder", Enter.
-if (/trust/i.test(painted)) {
-  await sleep(1500);
-  await pressKey(c, 'ArrowDown');
+const hint = 'Claude Code may ask whether to trust this folder';
+if (/trust this folder|Quick safety check/i.test(painted)) {
+  const shown = await panelText(c);
+  ev.check('while Claude asks to trust the folder, the panel says how to answer', shown.includes(hint), shown.slice(0, 300));
   await shoot(c, ev, 'claude-trust');
+  // First the easy mistake: Enter on the default, "No, exit". Claude ends, and the panel says what happened and how to go on.
+  await c.sleep(1500);
   await pressKey(c, 'Enter');
-  await until(async () => !/Quick safety check/.test(await screenText(c)), { label: 'trust answered', timeoutMs: 20_000 }).catch(() => null);
+  const endedText = await until(async () => { const t = await panelText(c); return t.includes('The session ended.') && t; }, { label: 'Claude exits', timeoutMs: 30_000 }).catch(() => panelText(c));
+  ev.check('Enter on "No, exit": the panel says "The session ended." and repeats how to answer, next to "Open the terminal again"',
+    endedText.includes('The session ended.') && endedText.includes(hint) && endedText.includes('Open the terminal again'), endedText.slice(0, 400));
+  await shoot(c, ev, 'claude-exited-at-trust');
+  await panelButton(c, 'Open the terminal again');
+  await until(async () => /trust this folder|Quick safety check/i.test(await screenText(c)), { label: 'the trust question again', timeoutMs: 60_000 });
+  // Then the answer: down to "Yes, I trust this folder", then Enter.
+  await c.sleep(1500);
+  await pressKey(c, 'ArrowDown');
+  await pressKey(c, 'Enter');
+} else {
+  ev.note('Claude did not ask to trust the folder this time');
 }
-await sleep(6000);
-const screen = await screenText(c);
-ev.check('you answered its question in the terminal, and the session went on', !/Quick safety check/.test(screen), screen.slice(0, 300));
-ev.check('the panel shows Claude Code\'s own interactive session', screen.trim().length > 40, screen.slice(0, 600));
+// Claude's own prompt line, once it is ready for you.
+const ready = await until(async () => { const t = await screenText(c); return /for shortcuts/.test(t) && t; }, { label: 'Claude ready for input', timeoutMs: 60_000 }).catch(() => screenText(c));
+ev.check('the panel shows Claude Code\'s own session, ready for you ("? for shortcuts")', /for shortcuts/.test(ready), ready.slice(-400));
 await shoot(c, ev, 'claude-in-panel');
 
 await panelButton(c, 'Continue');

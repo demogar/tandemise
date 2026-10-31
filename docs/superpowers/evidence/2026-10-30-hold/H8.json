@@ -14,7 +14,7 @@
       "observed": [
         "Now Reading the onboarding flow",
         "Now Running npm test",
-        "Now Editing /tmp/tdm-hold/home/workspaces/ws_01m67xb142hsmj76myyd/missions/msn_01m6…"
+        "Now Editing .tandemise/out/DesignBrief.md"
       ]
     },
     {
@@ -23,7 +23,7 @@
       "observed": [
         "Now Reading the onboarding flow",
         "Now Running npm test",
-        "Now Editing /tmp/tdm-hold/home/workspaces/ws_01m67xb142hsmj76myyd/missions/msn_01m6…"
+        "Now Editing .tandemise/out/DesignBrief.md"
       ]
     },
     {
@@ -32,7 +32,16 @@
       "observed": [
         "Now Reading the onboarding flow",
         "Now Running npm test",
-        "Now Editing /tmp/tdm-hold/home/workspaces/ws_01m67xb142hsmj76myyd/missions/msn_01m6…"
+        "Now Editing .tandemise/out/DesignBrief.md"
+      ]
+    },
+    {
+      "label": "a file it edits reads relative to its worktree: \"Editing .tandemise/out/DesignBrief.md\"",
+      "ok": true,
+      "observed": [
+        "Now Reading the onboarding flow",
+        "Now Running npm test",
+        "Now Editing .tandemise/out/DesignBrief.md"
       ]
     },
     {
@@ -41,26 +50,26 @@
       "observed": [
         "Now Reading the onboarding flow",
         "Now Running npm test",
-        "Now Editing /tmp/tdm-hold/home/workspaces/ws_01m67xb142hsmj76myyd/missions/msn_01m6…"
+        "Now Editing .tandemise/out/DesignBrief.md"
       ]
     },
     {
       "label": "the feed card shows the same \"Now\" line",
       "ok": true,
       "observed": {
-        "feedNow": "Now Editing /tmp/tdm-hold/home/workspaces/ws_01m67xb142hsmj76myyd/missions/msn_01m6…",
-        "last": "Now Editing /tmp/tdm-hold/home/workspaces/ws_01m67xb142hsmj76myyd/missions/msn_01m6…"
+        "feedNow": "Now Editing .tandemise/out/DesignBrief.md",
+        "last": "Now Editing .tandemise/out/DesignBrief.md"
       }
     },
     {
       "label": "the task drawer shows it at the top",
       "ok": true,
-      "observed": "Now Editing /tmp/tdm-hold/home/workspaces/ws_01m67xb142hsmj76myyd/missions/msn_01m6…"
+      "observed": "Now Editing .tandemise/out/DesignBrief.md"
     },
     {
       "label": "proof (API): the view says the same",
       "ok": true,
-      "observed": "Editing /tmp/tdm-hold/home/workspaces/ws_01m67xb142hsmj76myyd/missions/msn_01m6…"
+      "observed": "Editing .tandemise/out/DesignBrief.md"
     }
   ],
   "notes": [

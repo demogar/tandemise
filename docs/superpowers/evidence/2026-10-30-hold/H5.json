@@ -8,16 +8,16 @@
       "ok": true
     },
     {
-      "label": "the panel says the session ended (or the window says the daemon is gone)",
+      "label": "the window says the daemon is gone",
       "ok": true,
-      "observed": "The Tandemise daemon is not running\n\nThe daemon stopped. Waiting for it to come back, or press retry to start one.\n\nLooking for the handshake file at\n/tmp/tdm-hold/home/daemon.json\nRetry\n\nTandemise will try to start the daemon for you. If that keeps failing, start it by hand with npm run daemon and "
+      "observed": "The Tandemise daemon is not running"
     },
     {
       "label": "proof: a new daemon is up",
       "ok": true,
       "observed": {
-        "old": 3529154,
-        "now": 3538278
+        "old": 3650836,
+        "now": 3656182
       }
     },
     {
@@ -32,15 +32,20 @@
       "label": "proof (API): its terminal is not open",
       "ok": true,
       "observed": {
-        "holdId": "hld_01m67xcsapn1fs8jg9qw",
-        "heldBy": "mem_01m67xb142hsmj76myye",
+        "holdId": "hld_01m67z0phvnya17jq4ar",
+        "heldBy": "mem_01m67yyyc0gv4gmzpfn2",
         "heldByName": "Demostenes Garcia",
-        "startedAt": "2026-10-31T02:42:34.966Z",
+        "startedAt": "2026-10-31T03:10:56.060Z",
         "terminalOpen": false
       }
     },
     {
-      "label": "the panel says \"The session ended.\" and offers \"Open the terminal again\"",
+      "label": "back on the mission, the panel says \"The session ended.\" and offers \"Open the terminal again\"",
+      "ok": true,
+      "observed": "designHeld by YouContinueReleaseClose terminalThe session ended.This step has no open terminal. Hold it, or open its terminal again.Open the terminal again"
+    },
+    {
+      "label": "with the daemon's own words for why: there is no terminal open for this step",
       "ok": true,
       "observed": "designHeld by YouContinueReleaseClose terminalThe session ended.This step has no open terminal. Hold it, or open its terminal again.Open the terminal again"
     },
@@ -48,24 +53,24 @@
       "label": "the terminal opens again on the session the first terminal captured, not the run's",
       "ok": true,
       "observed": {
-        "resumed": "Fake session fake-session-1793414555126\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
-        "before": "sess-hold-run_01m67xb8nbc62b5974gj"
+        "resumed": "Fake session fake-session-1793416256221\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+        "before": "sess-hold-run_01m67yz5w94qqwvthfrr"
       }
     },
     {
       "label": "proof (API): its terminal is open again, same hold",
       "ok": true,
       "observed": {
-        "holdId": "hld_01m67xcsapn1fs8jg9qw",
-        "heldBy": "mem_01m67xb142hsmj76myye",
+        "holdId": "hld_01m67z0phvnya17jq4ar",
+        "heldBy": "mem_01m67yyyc0gv4gmzpfn2",
         "heldByName": "Demostenes Garcia",
-        "startedAt": "2026-10-31T02:42:34.966Z",
+        "startedAt": "2026-10-31T03:10:56.060Z",
         "terminalOpen": true
       }
     }
   ],
   "notes": [
-    "daemon 3529154 stopped"
+    "daemon 3650836 stopped"
   ],
   "shots": [
     "/home/demogar/projects/tandemise/tandemise/docs/superpowers/evidence/2026-10-30-hold/H5-daemon-gone.png",

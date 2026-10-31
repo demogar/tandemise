@@ -19,6 +19,25 @@ const HOLD_TOPICS = ['tasks', 'missions', 'approvals'] as const;
 const STALE_VIEW_GRACE_MS = 5000;
 
 /**
+ * How long a session counts as just started: the time in which Claude Code
+ * asks, on a first visit to a folder, whether to trust it. Every hold opens in
+ * a checkout Tandemise made for the step, so a first hold meets that question.
+ */
+const YOUNG_SESSION_MS = 30_000;
+
+/** Claude Code's folder-trust question, as its screen words it. */
+const TRUST_PROMPT = /trust this folder|Quick safety check/i;
+
+/** Said above the terminal while that question may be on screen, and again if the session ended at it. */
+const TRUST_HINT = 'Claude Code may ask whether to trust this folder — choose “Yes, I trust this folder”. Tandemise created it for this task.';
+
+/** What a session's end tells the panel: the daemon's words ('' for none), and whether it ended young or at the trust question. */
+interface SessionEnd {
+  readonly message: string;
+  readonly atTrustPrompt: boolean;
+}
+
+/**
  * A held step's terminal, over the whole mission screen.
  *
  * It is a window onto the daemon's terminal, nothing more: keystrokes go out
@@ -33,7 +52,9 @@ export function TerminalPanel({ task, detail }: { task: TaskView; detail: Missio
   const reopen = useDaemonMutation((daemon) => daemon.reopenTerminal(task.id), HOLD_TOPICS, missionId);
   // Bumped to attach a fresh socket after the terminal was opened again.
   const [attachment, setAttachment] = useState(0);
-  const [ended, setEnded] = useState<string | null>(null);
+  const [ended, setEnded] = useState<SessionEnd | null>(null);
+  // While a session is young, or its screen shows the trust question, the panel says how to answer it.
+  const [trustHint, setTrustHint] = useState(false);
   const hold = task.hold;
 
   // The hold ended (here, in another window, or by someone else): there is no terminal left to show.
@@ -106,14 +127,23 @@ export function TerminalPanel({ task, detail }: { task: TaskView; detail: Missio
           </div>
         ) : null}
 
+        {trustHint && ended === null ? (
+          <p className="terminal-panel__hint" role="note">
+            <Icon name="info" size={13} />
+            <span>{TRUST_HINT}</span>
+          </p>
+        ) : null}
+
         <div className="terminal-panel__body" data-ended={ended !== null}>
-          <TerminalView key={attachment} taskId={task.id} onEnded={setEnded} />
+          <TerminalView key={attachment} taskId={task.id} onEnded={setEnded} onTrustHint={setTrustHint} />
           {ended !== null ? (
             <div className="terminal-panel__ended" role="status">
               <div className="terminal-panel__ended-words">
                 <p className="terminal-panel__ended-text">The session ended.</p>
                 {/* The daemon's own words, when it said more than that (no terminal after a restart, say). */}
-                {ended !== '' ? <p className="terminal-panel__ended-detail">{ended}</p> : null}
+                {ended.message !== '' ? <p className="terminal-panel__ended-detail">{ended.message}</p> : null}
+                {/* "No, exit" is the question's default, so a session that ended right at it most likely took that. */}
+                {ended.atTrustPrompt ? <p className="terminal-panel__ended-detail">{TRUST_HINT}</p> : null}
               </div>
               <button
                 type="button"
@@ -140,14 +170,21 @@ export function TerminalPanel({ task, detail }: { task: TaskView; detail: Missio
 /**
  * The xterm.js surface and its socket, for one attachment. The daemon repaints
  * the scrollback on attach, so a new attachment starts from a blank screen.
+ * `onEnded` hears how the session ended; `onTrustHint` whether the folder-trust
+ * question may be on screen (the session is young, or its output asks it).
  */
-/** `onEnded` gets the daemon's reason when it gave one, and '' when the session simply ended. */
-function TerminalView({ taskId, onEnded }: { taskId: string; onEnded: (message: string) => void }): JSX.Element {
+function TerminalView({ taskId, onEnded, onTrustHint }: {
+  taskId: string;
+  onEnded: (end: SessionEnd) => void;
+  onTrustHint: (show: boolean) => void;
+}): JSX.Element {
   // Keyed by the address, not the client object: the client is rebuilt on unrelated status changes.
   const url = useDaemon().terminalUrl(taskId);
   const host = useRef<HTMLDivElement>(null);
   const ended = useRef(onEnded);
   ended.current = onEnded;
+  const hint = useRef(onTrustHint);
+  hint.current = onTrustHint;
 
   useEffect(() => {
     const element = host.current;
@@ -167,10 +204,29 @@ function TerminalView({ taskId, onEnded }: { taskId: string; onEnded: (message: 
     socket.binaryType = 'arraybuffer';
     const encoder = new TextEncoder();
     let over = false;
+    // The last few screens of output as plain text, to tell when the trust question is showing.
+    const decoder = new TextDecoder();
+    let tail = '';
+    let young = true;
+    let ran = false;
+    // When the question was last on screen: leaving it redraws the screen, so the words are gone by the time the session ends.
+    let trustSeenAt: number | null = null;
+    const trustShowing = (): boolean => {
+      if (!TRUST_PROMPT.test(tail)) return false;
+      trustSeenAt = Date.now();
+      return true;
+    };
+    const trustRecent = (): boolean => trustSeenAt !== null && Date.now() - trustSeenAt < TRUST_RECENT_MS;
+    const updateHint = (): void => hint.current(young || trustShowing());
+    const youth = setTimeout(() => { young = false; updateHint(); }, YOUNG_SESSION_MS);
+    updateHint();
     const finish = (message: string): void => {
       if (over) return;
       over = true;
-      ended.current(message);
+      // A session that ran and ended young, or just after the question was showing, most likely ended at it.
+      // One that never ran here (no terminal, the daemon's words say why) did not.
+      ended.current({ message, atTrustPrompt: ran && message === '' && (young || trustShowing() || trustRecent()) });
+      hint.current(false);
     };
     const sendSize = (): void => {
       if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }));
@@ -188,7 +244,12 @@ function TerminalView({ taskId, onEnded }: { taskId: string; onEnded: (message: 
     };
     socket.onmessage = (frame) => {
       if (frame.data instanceof ArrayBuffer) {
-        term.write(new Uint8Array(frame.data));
+        const bytes = new Uint8Array(frame.data);
+        ran = true;
+        term.write(bytes);
+        // Escape sequences out, so a redraw that moves the cursor between words still reads as the words.
+        tail = (tail + decoder.decode(bytes, { stream: true }).replace(ESCAPES, '')).slice(-TAIL_CHARS);
+        updateHint();
         return;
       }
       const control = parseControl(frame.data);
@@ -214,6 +275,7 @@ function TerminalView({ taskId, onEnded }: { taskId: string; onEnded: (message: 
 
     return () => {
       over = true;
+      clearTimeout(youth);
       scheme.removeEventListener('change', retheme);
       stamps.disconnect();
       observer.disconnect();
@@ -240,11 +302,12 @@ export function HoldButton({ task, missionId, className = 'btn', onOpen }: {
   /** Called once the terminal is to be shown, so a drawer can step out of its way. */
   onOpen?: () => void;
 }): JSX.Element {
-  const hold = useDaemonMutation((daemon) => daemon.holdTask(task.id), HOLD_TOPICS, missionId);
   const show = (): void => {
     openTerminal(task.id);
     onOpen?.();
   };
+  // Opened from the hook's own success, not the click's: a card or drawer that unmounts while the hold settles still opens it.
+  const hold = useDaemonMutation((daemon) => daemon.holdTask(task.id), HOLD_TOPICS, missionId, () => openTerminal(task.id));
   if (task.hold !== null) {
     return (
       <button type="button" className={className} onClick={show}>
@@ -261,7 +324,7 @@ export function HoldButton({ task, missionId, className = 'btn', onOpen }: {
         className={className}
         disabled={!task.holdable.ok || hold.isPending}
         title={reason}
-        onClick={() => hold.mutate(undefined, { onSuccess: show })}
+        onClick={() => hold.mutate(undefined, { onSuccess: () => onOpen?.() })}
       >
         <Icon name="pause" size={13} />
         {hold.isPending ? 'Holding…' : 'Hold'}
@@ -288,6 +351,13 @@ export function NowLine({ now, className = '' }: { now: string | null; className
     </p>
   );
 }
+
+/** Enough plain output to hold a full-screen question, and little enough that it scrolls out once answered. */
+const TAIL_CHARS = 2000;
+/** How recently the trust question must have been on screen for an ending to count as at it. */
+const TRUST_RECENT_MS = 15_000;
+// eslint-disable-next-line no-control-regex
+const ESCAPES = /\u001b\[[0-?]*[ -/]*[@-~]|\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)|\u001b[@-_]/g;
 
 type Control = { type: 'exit'; code: number | null } | { type: 'error'; message: string };
 

@@ -21,9 +21,13 @@ const oldPid = c.env.pid;
 process.kill(oldPid, 'SIGTERM');
 await c.until(() => { try { process.kill(oldPid, 0); return false; } catch { return true; } }, { label: 'daemon stopped', timeoutMs: 20_000 });
 ev.note(`daemon ${oldPid} stopped`);
-const ended = await c.until(async () => (await panelText(c)).includes('The session ended.') && panelText(c), { label: 'the panel notices', timeoutMs: 15_000 })
-  .catch(async () => c.page.text('body'));
-ev.check('the panel says the session ended (or the window says the daemon is gone)', /The session ended\.|daemon/i.test(ended), ended.slice(0, 300));
+// The window swaps to its daemon-down state as soon as the daemon goes, taking the mission screen (and the panel on it) with it;
+// what the panel says about the dropped socket is asserted once the window is back, below.
+// Then the window itself: the daemon is gone, said in the sidebar or on the not-running screen.
+const DOWN = /The Tandemise daemon is not running|Connecting to the daemon…|Daemon offline|Reconnecting…/;
+const down = await c.until(async () => { const t = await c.page.text('body'); return DOWN.test(t) && t; }, { label: 'the window notices', timeoutMs: 30_000 })
+  .catch(() => c.page.text('body'));
+ev.check('the window says the daemon is gone', DOWN.test(down), down.match(DOWN)?.[0] ?? down.slice(0, 200));
 await shoot(c, ev, 'daemon-gone');
 
 // The same daemon command the run started with, against the same home.
@@ -51,7 +55,8 @@ if ((await panelLabel(c)) === '') {
 }
 await c.until(async () => (await panelText(c)).includes('Open the terminal again'), { label: 'reopen offered', timeoutMs: 20_000 });
 const offer = await panelText(c);
-ev.check('the panel says "The session ended." and offers "Open the terminal again"', offer.includes('The session ended.') && offer.includes('Open the terminal again'), offer);
+ev.check('back on the mission, the panel says "The session ended." and offers "Open the terminal again"', offer.includes('The session ended.') && offer.includes('Open the terminal again'), offer);
+ev.check('with the daemon\'s own words for why: there is no terminal open for this step', offer.includes('This step has no open terminal.'), offer);
 await shoot(c, ev, 'session-ended');
 
 await panelButton(c, 'Open the terminal again');
