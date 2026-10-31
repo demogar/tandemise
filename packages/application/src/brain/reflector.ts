@@ -76,10 +76,21 @@ export function buildReflectorPrompt(input: ReflectorInput): string {
   ].join('\n');
 }
 
-/** The last fenced block of the reply, parsed and validated; null when there is none or it is invalid. */
+/**
+ * The fenced block that ends the reply. A runtime may stream the reply as many
+ * messages (one per line), so they are joined first; anything after the last
+ * block means the reply did not end with its answer.
+ */
+export function lastFencedBlock(text: string): string | undefined {
+  const blocks = [...text.matchAll(/```(?:json)?[ \t]*\n([\s\S]*?)```/g)];
+  const last = blocks.at(-1);
+  if (last === undefined || last.index === undefined) return undefined;
+  return text.slice(last.index + last[0].length).trim() === '' ? last[1] : undefined;
+}
+
+/** The fenced block that ends the reply, parsed and validated. */
 export function parseReflectorReply(text: string): { output: ReflectorOutput } | { problem: string } {
-  const blocks = [...text.matchAll(/```(?:json)?\s*\n([\s\S]*?)```/g)];
-  const raw = blocks.at(-1)?.[1];
+  const raw = lastFencedBlock(text);
   if (raw === undefined) return { problem: 'The reflector replied without a JSON block.' };
   let parsed: unknown;
   try {
@@ -152,6 +163,5 @@ export async function reflect(deps: ReflectorDeps, ctx: { workspace: Workspace; 
     failure = errorMessage(e);
   }
   if (failure !== null) return { passId, profileId: profile.id, model, usage, result: { problem: `The reflector failed: ${failure}` } };
-  // The answer is the last message; earlier ones are the model thinking aloud.
-  return { passId, profileId: profile.id, model, usage, result: parseReflectorReply(chunks.at(-1) ?? '') };
+  return { passId, profileId: profile.id, model, usage, result: parseReflectorReply(chunks.join('\n')) };
 }

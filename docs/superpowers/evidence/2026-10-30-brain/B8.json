@@ -1,0 +1,36 @@
+{
+  "id": "B8",
+  "title": "Offline, work goes on from your copy of the brain",
+  "ok": true,
+  "checks": [
+    {
+      "label": "Brain → Sync says it is working from your copy",
+      "ok": true,
+      "observed": "Working from your copy of the brain (last synced 20:38). Couldn't reach github.com."
+    },
+    {
+      "label": "the task still runs to the end",
+      "ok": true,
+      "observed": [
+        "COMPLETE",
+        "SUCCEEDED"
+      ]
+    },
+    {
+      "label": "and the Sync tab still says so",
+      "ok": true,
+      "observed": "Working from your copy of the brain (last synced 20:39). Couldn't reach github.com."
+    },
+    {
+      "label": "back online, it is up to date again",
+      "ok": true,
+      "observed": "Up to date (last synced 20:39)."
+    }
+  ],
+  "notes": [
+    "renamed the bare repository behind github.com/garipass/brain"
+  ],
+  "shots": [
+    "/home/demogar/projects/tandemise/tandemise/.claude/worktrees/agent-a4b7a8777ac07d5f4/docs/superpowers/evidence/2026-10-30-brain/B8-offline.png"
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "id": "B5",
+  "title": "The next run on the step loads the lesson, and the task shows what it knew",
+  "ok": true,
+  "checks": [
+    {
+      "label": "the mission ran",
+      "ok": true,
+      "observed": "COMPLETE"
+    },
+    {
+      "label": "\"What it knew\" lists the lesson",
+      "ok": true,
+      "observed": "What it knew\n\nLoaded 1 rules file and 1 lesson. Brain commit 0e1f7b9.\n\nmemory/rules/project.md\n\nKeep the header sticky on mobile.\nDeveloper\nFrom your hold · B4 hello page mvvqcvw3\n+0 / −0\nLoaded in 1 run, 1 passed first time\nOpen the run\nHelpful\nNot helpful\nMake this a rule\nRetire"
+    },
+    {
+      "label": "and memory/rules/project.md",
+      "ok": true
+    },
+    {
+      "label": "in plain words",
+      "ok": true,
+      "observed": "What it knew\n\nLoaded 1 rules file and 1 lesson. Brain commit 0e1f7b9.\n\nmemory/rules/project.md\n\nKeep the header sticky o"
+    },
+    {
+      "label": "proof (API): runs.brain.loaded has the lesson id",
+      "ok": true,
+      "observed": [
+        "acceptance-ae1976:01m67skwh84rnfyxq6rj"
+      ]
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/home/demogar/projects/tandemise/tandemise/.claude/worktrees/agent-a4b7a8777ac07d5f4/docs/superpowers/evidence/2026-10-30-brain/B5-what-it-knew.png"
+  ]
+}

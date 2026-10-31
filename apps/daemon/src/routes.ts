@@ -236,6 +236,11 @@ export function buildRouter(services: TandemiseServices, options: { readonly tes
       const offsetMs = testClock.advance(advanceMs);
       return { now: testClock.now(), offsetMs };
     });
+    // Test-only (#51 acceptance): records an event body on a mission, as another feature would.
+    r.post('/v1/test/events', async (ctx) => {
+      const body = (await ctx.body(z.object({ missionId: z.string().min(1), taskId: z.string().min(1).optional(), body: z.record(z.string(), z.unknown()) })));
+      return services.brain.recordForTest(body.missionId, body.taskId ?? null, body.body);
+    });
   }
 
   r.post('/v1/missions/:id/plan', (ctx) => services.planning.begin(asId(ctx.params.id!)));

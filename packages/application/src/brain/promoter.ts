@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { z } from 'zod';
 import type { RoleTemplate, RunUsage, RuntimeProfile, Workspace } from '@tandemise/domain';
 import { errorMessage, ids } from '@tandemise/shared';
-import type { ReflectorDeps } from './reflector.js';
+import { lastFencedBlock, type ReflectorDeps } from './reflector.js';
 
 export const PROMOTER_WALL_TIME_MS = 300_000;
 
@@ -38,8 +38,7 @@ export function buildPromoterPrompt(input: PromoterInput): string {
 }
 
 export function parsePromoterReply(text: string): { output: PromoterOutput } | { problem: string } {
-  const blocks = [...text.matchAll(/```(?:json)?\s*\n([\s\S]*?)```/g)];
-  const raw = blocks.at(-1)?.[1];
+  const raw = lastFencedBlock(text);
   if (raw === undefined) return { problem: 'The promoter replied without a JSON block.' };
   try {
     const parsed = promoterOutputSchema.safeParse(JSON.parse(raw));
@@ -93,5 +92,5 @@ export async function promote(deps: ReflectorDeps, ctx: { workspace: Workspace; 
     failure = errorMessage(e);
   }
   if (failure !== null) return { passId, profileId: profile.id, model, usage, result: { problem: `The promoter failed: ${failure}` } };
-  return { passId, profileId: profile.id, model, usage, result: parsePromoterReply(chunks.at(-1) ?? '') };
+  return { passId, profileId: profile.id, model, usage, result: parsePromoterReply(chunks.join('\n')) };
 }

@@ -186,6 +186,8 @@ export class BrainSignals implements LifecycleComponent {
         op: 'vote' as const, id: t.id, vote: t.tag as 'helpful' | 'harmful', why: 'reflector' as const, mission: mission.title,
       })),
     ], { actor: 'reflector', missionId: mission.id });
+    // A person's correction loads from the next run, so it is committed now (spec §6: active at once).
+    if (signal !== 'gate' && added.some((e) => e.op === 'add')) await this.deps.brain.flush(mission.workspaceId);
     if (signal === 'gate') return;
     for (const event of added) {
       if (event.op !== 'add') continue;
