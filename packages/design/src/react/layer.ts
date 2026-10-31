@@ -41,9 +41,25 @@ export function trapTarget<T>(focusables: readonly T[], active: T | null, backwa
   return null;
 }
 
+/**
+ * Where focus goes when a layer opens. A selector list is one CSS selector, so
+ * its first match in document order wins; to rank choices, pass them as an
+ * array: the first selector with a match inside the panel wins.
+ */
+export type InitialFocus = string | readonly string[];
+
+/** The element initial focus lands on: the first selector, in order, with a match inside `panel`. */
+export function initialFocusTarget(panel: ParentNode, initialFocus: InitialFocus): HTMLElement | null {
+  for (const selector of typeof initialFocus === 'string' ? [initialFocus] : initialFocus) {
+    const match = panel.querySelector<HTMLElement>(selector);
+    if (match) return match;
+  }
+  return null;
+}
+
 export interface DialogLayerOptions {
-  /** Where focus goes when the layer opens: the first match inside the panel. */
-  initialFocus?: string;
+  /** Where focus goes when the layer opens (see `InitialFocus`). */
+  initialFocus?: InitialFocus;
   /** Keep Tab inside the panel. On for a modal layer. */
   trapFocus?: boolean;
   /** Return focus to whatever had it before the layer opened, when it closes. */
@@ -64,6 +80,9 @@ export function useDialogLayer(
 ): void {
   const dismiss = useRef(onDismiss);
   dismiss.current = onDismiss;
+  // An array written inline is a new object on every render; key the effect on
+  // its contents so a re-render neither reorders the stack nor steals focus.
+  const focusKey = typeof initialFocus === 'string' ? initialFocus : initialFocus.join('\u0000');
   useEffect(() => {
     const token = {};
     layers.push(token);
@@ -89,11 +108,11 @@ export function useDialogLayer(
     };
     document.addEventListener('keydown', onKeyDown, true);
     // Nothing matching: focus stays where it was, and the first Tab pulls it in.
-    panel.current?.querySelector<HTMLElement>(initialFocus)?.focus();
+    if (panel.current) initialFocusTarget(panel.current, focusKey.split('\u0000'))?.focus();
     return () => {
       document.removeEventListener('keydown', onKeyDown, true);
       layers.splice(layers.indexOf(token), 1);
       if (restoreFocus && opener?.isConnected) opener.focus();
     };
-  }, [panel, initialFocus, trapFocus, restoreFocus]);
+  }, [panel, focusKey, trapFocus, restoreFocus]);
 }

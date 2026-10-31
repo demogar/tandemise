@@ -112,6 +112,12 @@ const has = (markup, ...needles) => needles.every((n) => markup.includes(n));
   ok('trap: focus outside the dialog is pulled in (first, or last going back)', ui.trapTarget([a, b, c], 'outside', false) === a && ui.trapTarget([a, b, c], null, true) === c);
   ok('trap: a dialog with one control keeps focus on it', ui.trapTarget([a], a, false) === a && ui.trapTarget([a], a, true) === a);
   ok('trap: nothing focusable gives nothing to move to', ui.trapTarget([], null, false) === null);
+  // Initial focus ranks its selectors: a [data-autofocus] after other buttons
+  // still wins (a selector list would have taken the first button).
+  const panel = { querySelector: (sel) => ({ '[data-autofocus]': 'confirm', [ui.FOCUSABLE_SELECTOR]: 'cancel' })[sel] ?? null };
+  ok('initial focus: [data-autofocus] wins over an earlier control', ui.initialFocusTarget(panel, ['[data-autofocus]', ui.FOCUSABLE_SELECTOR]) === 'confirm');
+  ok('initial focus: no [data-autofocus] falls back to the first control', ui.initialFocusTarget({ querySelector: (sel) => (sel === ui.FOCUSABLE_SELECTOR ? 'cancel' : null) }, ['[data-autofocus]', ui.FOCUSABLE_SELECTOR]) === 'cancel');
+  ok('initial focus: a single selector is one querySelector, nothing matching gives nothing', ui.initialFocusTarget({ querySelector: () => null }, '[data-autofocus]') === null);
   ok('FOCUSABLE_SELECTOR skips disabled controls and tabindex=-1', ui.FOCUSABLE_SELECTOR.includes('button:not([disabled])') && ui.FOCUSABLE_SELECTOR.includes('[tabindex]:not([tabindex="-1"])'));
   ok('no layer is open after a server render (effects do not run)', ui.openLayerCount() === 0);
 }
