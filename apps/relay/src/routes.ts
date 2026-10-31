@@ -31,6 +31,8 @@ export interface Route {
   readonly segments: readonly string[];
   readonly auth: Auth;
   readonly handler: (ctx: RouteContext) => Answer | Promise<Answer>;
+  /** The JSON body cap; 1 MiB unless the route says otherwise (import). */
+  readonly maxBytes?: number;
 }
 
 export interface RouteDeps {
@@ -43,8 +45,8 @@ export interface RouteDeps {
   readonly redeemLocked: (ip: string) => boolean;
 }
 
-export function route(method: Route['method'], pattern: string, auth: Auth, handler: Route['handler']): Route {
-  return { method, segments: pattern.split('/').filter(Boolean), auth, handler };
+export function route(method: Route['method'], pattern: string, auth: Auth, handler: Route['handler'], opts: { maxBytes?: number } = {}): Route {
+  return { method, segments: pattern.split('/').filter(Boolean), auth, handler, ...(opts.maxBytes === undefined ? {} : { maxBytes: opts.maxBytes }) };
 }
 
 export function matchRoute(routes: readonly Route[], method: string, pathname: string): { route: Route; params: Record<string, string> } | null {
@@ -67,8 +69,8 @@ export function matchRoute(routes: readonly Route[], method: string, pathname: s
   return null;
 }
 
-export async function parseBody<T>(req: IncomingMessage, schema: z.ZodType<T, z.ZodTypeDef, unknown>): Promise<T> {
-  const raw = await readJson(req);
+export async function parseBody<T>(req: IncomingMessage, schema: z.ZodType<T, z.ZodTypeDef, unknown>, maxBytes?: number): Promise<T> {
+  const raw = await readJson(req, maxBytes);
   const parsed = schema.safeParse(raw);
   if (!parsed.success) {
     throw new RelayError(400, 'VALIDATION', parsed.error.issues.map((i) => (i.path.length ? `${i.path.join('.')}: ${i.message}` : i.message)).join('; '));

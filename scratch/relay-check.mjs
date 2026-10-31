@@ -235,6 +235,23 @@ const twice = await fcall('POST', '/relay/v1/import', { token: admin, body: { li
 check('a second import is 409 relay_not_empty', twice.status === 409 && twice.body.error.details.reason === 'relay_not_empty', twice.body);
 await fresh.close();
 
+section('import: bigger than a JSON body, and malformed');
+const bigRelay = await startRelay(loadRelayConfig(env({ RELAY_DB: join(tmp, 'big.db') })));
+const bigBase = `http://127.0.0.1:${bigRelay.port}`;
+const bcall = (method, path, opts) => fetch(`${bigBase}${path}`, { method, headers: { 'x-tandemise-relay-api': '1', 'content-type': 'application/json', ...(opts?.token ? { authorization: `Bearer ${opts.token}` } : {}) }, ...(opts?.raw ? { body: opts.raw } : opts?.body ? { body: JSON.stringify(opts.body) } : {}) })
+  .then(async (r) => ({ status: r.status, body: await r.json().catch(() => null) }));
+const bigAdmin = (await bcall('POST', '/relay/v1/invites/redeem', { body: { code: bigRelay.bootstrapInvite, displayName: 'Dee', deviceLabel: 'Dee laptop' } })).body.deviceToken;
+const garbage = await bcall('POST', '/relay/v1/import', { token: bigAdmin, body: { lines: ['{"kind":"meta","schemaVersion":1,"teamName":"x"}', '{"kind":"claim","itemRef":42}'] } });
+check('a malformed export line is a 400, not a 500', garbage.status === 400 && garbage.body?.error?.details?.reason === 'import_invalid', garbage);
+const bigLines = [
+  JSON.stringify({ kind: 'meta', schemaVersion: 1, teamName: 'Solo' }),
+  JSON.stringify({ kind: 'endpoint', id: 'e1', projectKey: 'p', slug: 'bigslug000000000000000', name: 'Sentry', source: 'sentry', handshake: 'none', handshakeSecret: null, createdAt: '2026-10-30T09:00:00.000Z', disabledAt: null }),
+  ...[1, 2].map((n) => JSON.stringify({ kind: 'message', id: String(n), endpointId: 'e1', receivedAt: '2026-10-30T09:40:00.000Z', method: 'POST', query: '', headers: {}, contentType: 'text/plain', bodyBase64: Buffer.alloc(900_000, 97).toString('base64'), attempts: 0 })),
+];
+const bigImport = await bcall('POST', '/relay/v1/import', { token: bigAdmin, raw: JSON.stringify({ lines: bigLines }) });
+check('an import over 1 MiB (two 900 KB webhooks) goes through', bigImport.status === 200 && bigImport.body?.messages === 2, { status: bigImport.status, body: bigImport.body });
+await bigRelay.close();
+
 section('cli');
 const cli = (...args) => execFileSync(process.execPath, ['apps/relay/dist/cli.js', ...args], { env: { ...process.env, RELAY_DB: join(tmp, 'relay.db'), RELAY_LOG_LEVEL: 'error' } }).toString();
 const cliCode = cli('invite', '--role', 'admin', '--name', 'Ops').trim();
@@ -259,6 +276,23 @@ await call('POST', '/relay/v1/test/advance-clock', { token: A, body: { ms: 120_0
 const bad = [];
 for (let i = 0; i < 11; i++) bad.push((await call('GET', '/relay/v1/snapshot', { token: `trd_bad${i}` })).status);
 check('ten bad tokens are 401, the eleventh 429', bad.slice(0, 10).every((s) => s === 401) && bad[10] === 429, bad);
+const spoofed = await call('GET', '/relay/v1/snapshot', { token: 'trd_bad', headers: { 'x-forwarded-for': '203.0.113.9' } });
+check('a forged X-Forwarded-For does not escape the lock (proxy not trusted)', spoofed.status === 429, spoofed.status);
+
+section('trusted proxy and a bounded limiter');
+const H = await import('../apps/relay/dist/http.js');
+const RL = await import('../apps/relay/dist/rate-limit.js');
+const fakeReq = { headers: { 'x-forwarded-for': '203.0.113.9, 10.0.0.1' }, socket: { remoteAddress: '172.18.0.3' } };
+check('without RELAY_TRUST_PROXY the socket address counts', H.clientIp(fakeReq, false) === '172.18.0.3');
+check('with it, the first X-Forwarded-For hop', H.clientIp(fakeReq, true) === '203.0.113.9' && loadRelayConfig(env({ RELAY_TRUST_PROXY: '1' })).trustProxy === true && loadRelayConfig(env()).trustProxy === false);
+let fakeNow = 0;
+const limiter = new RL.FailedAuthLimiter(() => fakeNow);
+for (let i = 0; i < 500; i++) limiter.fail(`198.51.100.${i}`);
+for (let i = 0; i < 10; i++) limiter.fail('192.0.2.1');
+check('the limiter tracks what failed', limiter.size >= 500 && limiter.locked('192.0.2.1'), limiter.size);
+fakeNow += 11 * 60_000;
+limiter.sweep();
+check('…and forgets it once the windows and locks are over', limiter.size === 0 && !limiter.locked('192.0.2.1'), limiter.size);
 
 await relay.close();
 console.log(`\n${passed} passed, ${failures.length} failed`);

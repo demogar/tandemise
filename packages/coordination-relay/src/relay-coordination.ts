@@ -13,6 +13,8 @@ import { Outbox, type DrainResult, type OutboxRow } from './outbox.js';
 import { RelayStream } from './stream.js';
 
 const FIRST_RETRY_MS = 1000;
+/** The note on outbox rows still unsent when the person disconnected. */
+export const ABANDONED = 'Not sent: you disconnected before the team relay heard about it.';
 const MAX_RETRY_MS = 300_000;
 /** A connected daemon re-reads its snapshot this often; it is also what keeps it "seen". */
 const RESNAPSHOT_MS = 5 * 60_000;
@@ -52,6 +54,8 @@ export class RelayCoordination {
   #resnapshotTimer: ReturnType<typeof setInterval> | null = null;
   #stopped = false;
   #syncing: Promise<void> | null = null;
+  /** Something asked for a sync while one was running: run again once it ends, so nothing it asked for is missed. */
+  #dirty = false;
   #endpoints: EndpointView[] = [];
   #lastPresence: 'online' | 'away' = 'online';
   #snapshot: RelaySnapshot | null = null;
@@ -94,7 +98,17 @@ export class RelayCoordination {
   }
 
   #sync(): Promise<void> {
-    this.#syncing ??= this.#doSync().finally(() => { this.#syncing = null; });
+    if (this.#syncing !== null) {
+      this.#dirty = true;
+      return this.#syncing;
+    }
+    const run = async (): Promise<void> => {
+      do {
+        this.#dirty = false;
+        await this.#doSync();
+      } while (this.#dirty && !this.#stopped);
+    };
+    this.#syncing = run().finally(() => { this.#syncing = null; });
     return this.#syncing;
   }
 
@@ -461,6 +475,15 @@ export class RelayCoordination {
    * become the local person's again; everyone else's rows stay, marked as last
    * seen from the relay. Nothing is deleted.
    */
+  /** Before leaving: one best-effort pass at the outbox, bounded by `timeoutMs`. */
+  async drainBeforeLeaving(timeoutMs = 3000): Promise<void> {
+    if (this.#outbox.count() === 0) return;
+    await Promise.race([
+      this.#outbox.drain((row) => this.#send(row)).catch(() => false),
+      new Promise((resolve) => { setTimeout(resolve, timeoutMs).unref?.(); }),
+    ]);
+  }
+
   handBack(local: LocalCoordination): void {
     const localMe = local.me();
     const me = this.#opts.memberId;
@@ -473,7 +496,9 @@ export class RelayCoordination {
           writeClaimSync(this.store, c.id, { note: 'Last seen from the relay.' });
         }
       }
-      this.store.stmt(`DELETE FROM coord_outbox`).run();
+      // Nothing is deleted: what the relay never heard about stays, marked, for Settings to show.
+      this.store.stmt(`UPDATE coord_outbox SET failed_at = COALESCE(failed_at, ?), last_error = COALESCE(last_error || ' ', '') || ? WHERE failed_at IS NULL`)
+        .run(this.store.now(), ABANDONED);
       for (const key of ['relay_seq', 'relay_member_ids', 'relay_team', 'relay_role', 'relay_clock_offset_ms', 'relay_imported']) {
         this.store.stmt(`DELETE FROM coord_meta WHERE key = ?`).run(key);
       }

@@ -639,7 +639,10 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       skills: r.resolve(t.SKILL_SERVICE),
       proposals: r.resolve(t.PLAN_PROPOSAL_REPOSITORY),
       replanRest: (missionId, note, planFitApprovalId) => r.resolve(t.PLANNING_SERVICE).replan(missionId, { note, planFitApprovalId }),
-      claims: { assertMayStart: (mission) => r.resolve(t.COORDINATION_SERVICE).assertMayStart(mission) },
+      claims: {
+        assertMayStart: (mission) => r.resolve(t.COORDINATION_SERVICE).assertMayStart(mission),
+        abandonStart: (mission) => r.resolve(t.COORDINATION_SERVICE).abandonStart(mission),
+      },
       clock: clock(r),
       log: log(r).child({ component: 'approvals' }),
     }), { source: SOURCE });
@@ -698,7 +701,10 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       artifactRoot: (workspaceId) => paths(r).artifacts(workspaceId),
       events: r.resolve(t.EVENT_REPOSITORY),
       targets: r.resolve(t.EXECUTION_TARGET_REPOSITORY),
-      claims: { assertMayStart: (mission) => r.resolve(t.COORDINATION_SERVICE).assertMayStart(mission) },
+      claims: {
+        assertMayStart: (mission) => r.resolve(t.COORDINATION_SERVICE).assertMayStart(mission),
+        abandonStart: (mission) => r.resolve(t.COORDINATION_SERVICE).abandonStart(mission),
+      },
     }), { source: SOURCE });
 
     // Who works on what with the team (relay spec). The ports are optional: a

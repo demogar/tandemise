@@ -139,6 +139,16 @@ for (const [name, spec] of Object.entries(PACKAGES)) {
   }
 }
 
+// The application uses coordination's pure rules only; the store and its SQL belong to the daemon's wiring.
+for (const file of walk('packages/application/src')) {
+  const src = readFileSync(file, 'utf8');
+  for (const m of src.matchAll(IMPORT_RE)) {
+    if (m[1] === '@tandemise/coordination' && !/^\s*(?:import|export)\s+type\s/.test(m[0])) {
+      errors.push(`${file}: the application may import only '@tandemise/coordination/rules' (the pure rules), not the store`);
+    }
+  }
+}
+
 // Sources the relay server loads on their own: type-only imports plus
 // `import { z } from 'zod'`, and nothing else, so the relay stays splittable
 // (docs/superpowers/specs/2026-10-30-relay-design.md, §Monorepo or separate repo).

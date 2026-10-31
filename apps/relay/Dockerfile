@@ -40,6 +40,6 @@ ENV RELAY_DB=/data/relay.db \
 VOLUME ["/data"]
 EXPOSE 8787
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD node -e "fetch('http://127.0.0.1:8787/relay/v1/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"
+  CMD node -e "fetch('http://127.0.0.1:'+(process.env.RELAY_PORT||8787)+'/relay/v1/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"
 ENTRYPOINT ["node", "/app/apps/relay/dist/cli.js"]
 CMD ["serve"]

@@ -137,6 +137,7 @@ section('store');
   s.setPresence(ana.deviceId, 'online');
   check('presence is per device, member online', s.members().find((m) => m.id === ana.memberId).presence === 'online');
   const seqM = s.seq();
+  check('the last admin cannot be removed', reasonOf(() => s.removeMember(ana.memberId, ana.memberId)) === 'last_admin');
   const ended = s.removeMember(bo.memberId, ana.memberId);
   check('removing a member ends their claims as removed', ended.length === 1 && ended[0].endedReason === 'removed', ended);
   check('and revokes their devices', s.devices(bo.memberId).every((d) => d.revokedAt !== null) && s.deviceByToken(bo.deviceToken)?.revokedAt);
@@ -274,6 +275,30 @@ section('parity');
   check('the outbox and the claim sync are daemon-only', 'coord_outbox' in d && 'coord_claim_sync' in d && !('coord_outbox' in r) && !('coord_claim_sync' in r));
   check('the daemon\'s own migration list is untouched by coordination', !P.MIGRATIONS.some((m) => /coord_/.test(m.up ?? '') || /coord/.test(m.name)));
   daemon.close();
+}
+
+section('relay client: a sync asked for mid-sync is not lost');
+{
+  const CR = await import('../packages/coordination-relay/dist/index.js');
+  const db = openDb();
+  C.migrateCoordination(db);
+  C.migrateCoordinationDaemon(db);
+  const store = new C.CoordinationStore(db);
+  let snapshots = 0;
+  const fakeFetch = async (url) => {
+    if (String(url).includes('/snapshot')) {
+      snapshots++;
+      await new Promise((r) => setTimeout(r, 50));
+      const body = { seq: snapshots, team: { id: 't', name: 'T' }, you: { memberId: 'm', deviceId: 'd', role: 'admin' }, members: [], devices: [], presence: [], claims: [], endpoints: [], serverTime: new Date().toISOString(), staleAfterMs: 86_400_000 };
+      return new Response(JSON.stringify(body), { status: 200 });
+    }
+    return new Response('{}', { status: 404 });
+  };
+  // Port 9 refuses at once, so the stream fails fast and only the snapshots are counted.
+  const rc = new CR.RelayCoordination({ store, url: 'http://127.0.0.1:9', token: async () => 'trd_x', memberId: 'm', deviceId: 'd', fetch: fakeFetch });
+  await Promise.all([rc.start(), rc.start()]);
+  check('a second sync requested during the first runs after it (two snapshots, not one)', snapshots === 2, snapshots);
+  rc.stop();
 }
 
 console.log(`\n${passed} passed, ${failures.length} failed`);

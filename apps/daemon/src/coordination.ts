@@ -1,6 +1,7 @@
 import { hostname } from 'node:os';
 import { TandemiseError, type Clock, type Logger } from '@tandemise/shared';
 import type { SecretStorePort } from '@tandemise/domain';
+import { Outbox } from '@tandemise/coordination-relay';
 import type {
   ClaimResult, ClaimSync, CoordinationControlPort, CoordinationMe, CoordinationPort, CoordinationStatus, CoordinationTopic, SettingsStorePort,
 } from '@tandemise/application';
@@ -52,6 +53,8 @@ export interface RelayHandle extends CoordinationPort {
   failures(): readonly { id: string; op: string; lastError: string }[];
   /** Back to solo: own active claims become local ones; other rows stay, marked as last seen from the relay. */
   handBack(local: LocalCoordination): void;
+  /** One bounded, best-effort drain of the outbox before a disconnect. */
+  drainBeforeLeaving(timeoutMs?: number): Promise<void>;
   /** On connect: own local claims become pending relay claims, sent with normal claim semantics. */
   adoptLocal(localMe: ReturnType<LocalCoordination['me']>): void;
 }
@@ -101,6 +104,8 @@ export class SwitchableCoordination implements CoordinationPort, CoordinationCon
   readonly #factory: RelayFactory | null;
   readonly #setRelayHandle: (handle: string | null) => void;
   #presenceTimer: ReturnType<typeof setInterval> | null = null;
+  /** A connect in flight: a second one is refused rather than racing it. */
+  #connecting = false;
 
   constructor(opts: {
     db: SqlHandle;
@@ -222,6 +227,17 @@ export class SwitchableCoordination implements CoordinationPort, CoordinationCon
   async connect(input: { url: string; code: string; displayName: string; deviceLabel: string; allowInsecure: boolean }): Promise<CoordinationStatus> {
     if (this.#factory === null) throw new TandemiseError('PRECONDITION_FAILED', 'This build of Tandemise cannot connect to a team relay.');
     if (this.#relay !== null) throw new TandemiseError('CONFLICT', `You're already connected to ${this.#relay.host}. Disconnect first.`);
+    if (this.#connecting) throw new TandemiseError('CONFLICT', 'Already connecting to a team relay. Wait for it to finish.');
+    this.#connecting = true;
+    try {
+      return await this.#connect(input);
+    } finally {
+      this.#connecting = false;
+    }
+  }
+
+  async #connect(input: { url: string; code: string; displayName: string; deviceLabel: string; allowInsecure: boolean }): Promise<CoordinationStatus> {
+    const factory = this.#factory!;
     let url: URL;
     try {
       url = new URL(input.url.trim());
@@ -233,14 +249,14 @@ export class SwitchableCoordination implements CoordinationPort, CoordinationCon
       throw TandemiseError.validation('This relay address isn\'t encrypted. Use https://, or tick "I understand this is unencrypted".', { reason: 'insecure_url' });
     }
     const base = url.origin;
-    const joined = await this.#factory.redeem({ url: base, code: input.code, displayName: input.displayName, deviceLabel: input.deviceLabel });
+    const joined = await factory.redeem({ url: base, code: input.code, displayName: input.displayName, deviceLabel: input.deviceLabel });
     const ref = await this.#secrets.store(SECRET_NAME, joined.deviceToken);
     this.#writeSettings({
       mode: 'relay', relayUrl: base, deviceTokenRef: ref, memberId: joined.memberId, deviceId: joined.deviceId,
       teamName: joined.team.name, allowInsecure: input.allowInsecure,
     });
     this.#setRelayHandle(`${url.host}/${joined.memberId}`);
-    const relay = this.#factory.create({ store: this.store, url: base, token: () => this.#token(), settings: this.settings(), log: this.#log });
+    const relay = factory.create({ store: this.store, url: base, token: () => this.#token(), settings: this.settings(), log: this.#log });
     relay.adoptLocal(this.#local.me());
     await this.#swapIn(relay);
     return relay.status();
@@ -258,6 +274,7 @@ export class SwitchableCoordination implements CoordinationPort, CoordinationCon
   async disconnect(): Promise<void> {
     const relay = this.#relay;
     if (relay === null) return;
+    await relay.drainBeforeLeaving(3000);
     relay.stop();
     relay.handBack(this.#local);
     this.#relay = null;
@@ -308,7 +325,7 @@ export class SwitchableCoordination implements CoordinationPort, CoordinationCon
   }
 
   failures() {
-    return this.#relay?.failures() ?? [];
+    return this.#relay?.failures() ?? new Outbox(this.store).failures();
   }
 
   exportLines(): string[] {

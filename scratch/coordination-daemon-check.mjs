@@ -171,6 +171,8 @@ if (!onlyRelay) {
   const b = await daemonFor('b', 'Bruno');
   const projectKey = (await a.api('GET', `/v1/coordination/project-key?workspaceId=${a.ws}`)).body.projectKey;
   check('both installs name the project by its repository', projectKey === 'github.com/acme/app' && (await b.api('GET', `/v1/coordination/project-key?workspaceId=${b.ws}`)).body.projectKey === projectKey, projectKey);
+  const kept = JSON.parse(readFileSync(join(a.home, 'settings.json'), 'utf8')).coordination?.projectKeys?.[a.ws];
+  check('…and the key is kept once chosen, so a later remote change can\'t move its claims', kept === 'github.com/acme/app', kept);
   const a7 = await a.mission(7);
   await a.api('POST', `/v1/missions/${a7}/start`);
   check('A, solo, holds #7 locally', (await a.api('GET', `/v1/coordination/claims?workspaceId=${a.ws}`)).body?.[0]?.itemKey === 'acme/app#7');
@@ -247,11 +249,16 @@ if (!onlyRelay) {
   const later = await Promise.all([a, b].map((d) => d.api('POST', '/v1/coordination/mailbox/pull', { workspaceId: d.ws, max: 10, leaseSeconds: 60 })));
   check('a later pull on either gets nothing', later.every((p) => p.body?.length === 0), later.map((p) => p.body));
 
-  section('disconnect falls back to local and keeps your claims');
+  section('disconnect falls back to local, keeps your claims and deletes nothing');
+  // The relay goes away, A starts #9 (queued), then disconnects: the unsent claim is kept and shown, not deleted.
+  await relay.close();
+  await until(async () => (await a.api('GET', '/v1/coordination/status')).body.kind === 'offline', 5000);
   const a9 = await a.mission(9);
   await a.api('POST', `/v1/missions/${a9}/start`);
   const off = await a.api('POST', '/v1/coordination/disconnect');
   check('A disconnects: local', off.body?.kind === 'local', off.body);
+  const failuresA = (await a.api('GET', '/v1/coordination/failures')).body;
+  check('the claim the relay never heard about is kept and listed, not deleted', failuresA?.some((f) => f.op === 'claim' && /disconnected before the team relay heard about it/.test(f.lastError)), failuresA);
   const mine = (await a.api('GET', `/v1/coordination/claims?workspaceId=${a.ws}`)).body;
   check('A\'s own active claims are still listed, as yours', mine.some((r) => r.itemKey === 'acme/app#9' && r.mine), mine);
   const settingsText = readFileSync(join(a.home, 'settings.json'), 'utf8');
@@ -262,7 +269,6 @@ if (!onlyRelay) {
 
   await a.stop();
   await b.stop();
-  await relay.close();
 }
 
 console.log(`\n${passed} passed, ${failures.length} failed`);

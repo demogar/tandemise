@@ -202,7 +202,12 @@ export class CoordinationStore {
   removeMember(id: string, by: string | null): ClaimView[] {
     return this.tx(() => {
       const now = this.now();
-      if (!this.memberRow(id)) throw new CoordError('not_holder', 'That person is not on this team.');
+      const target = this.memberRow(id);
+      if (!target) throw new CoordError('not_holder', 'That person is not on this team.');
+      if (target.role === 'admin' && target.status === 'active') {
+        const admins = (this.stmt(`SELECT COUNT(*) AS n FROM coord_members WHERE role = 'admin' AND status = 'active'`).get() as { n: number }).n;
+        if (admins <= 1) throw new CoordError('last_admin', "You can't remove the team's last admin. Invite another admin first.");
+      }
       this.stmt(`UPDATE coord_members SET status = 'removed', updated_at = ? WHERE id = ?`).run(now, id);
       this.stmt(`UPDATE coord_devices SET revoked_at = ? WHERE member_id = ? AND revoked_at IS NULL`).run(now, id);
       this.stmt(`DELETE FROM coord_presence WHERE member_id = ?`).run(id);

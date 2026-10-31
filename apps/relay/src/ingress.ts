@@ -73,7 +73,7 @@ const principalOf = (ctx: RouteContext) => {
 };
 
 /** Endpoints (admin), pull and ack (any device), parked messages (admin) and the one-shot import (admin). */
-export function mailboxRoutes(d: { store: CoordinationStore; hub: RelayStreamHub }): Route[] {
+export function mailboxRoutes(d: { store: CoordinationStore; hub: RelayStreamHub; maxImportBytes: number }): Route[] {
   const { store, hub } = d;
   return [
     route('POST', '/relay/v1/endpoints', 'admin', async (ctx) => {
@@ -115,6 +115,6 @@ export function mailboxRoutes(d: { store: CoordinationStore; hub: RelayStreamHub
       for (const c of store.activeClaims()) hub.broadcastClaim(c);
       hub.broadcastMembers();
       return { status: 200, body: report };
-    }),
+    }, { maxBytes: d.maxImportBytes }),
   ];
 }

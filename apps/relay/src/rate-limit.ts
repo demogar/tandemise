@@ -22,7 +22,31 @@ export class FailedAuthLimiter {
     return false;
   }
 
+  /** Drops windows and locks that are over. Runs on every failure and every minute. */
+  sweep(): void {
+    const now = this.now();
+    for (const [ip, times] of this.#failures) {
+      const recent = times.filter((t) => now - t < this.windowMs);
+      if (recent.length === 0) this.#failures.delete(ip);
+      else this.#failures.set(ip, recent);
+    }
+    for (const [ip, until] of this.#lockedUntil) if (until <= now) this.#lockedUntil.delete(ip);
+  }
+
+  /** Addresses tracked: what the sweep keeps bounded. */
+  get size(): number {
+    return this.#failures.size + this.#lockedUntil.size;
+  }
+
+  startSweep(everyMs = 60_000): () => void {
+    const timer = setInterval(() => this.sweep(), everyMs);
+    timer.unref();
+    return () => clearInterval(timer);
+  }
+
   fail(ip: string): void {
+    // A burst of addresses can't grow the maps without bound between sweeps.
+    if (this.#failures.size > 10_000) this.sweep();
     const now = this.now();
     const recent = (this.#failures.get(ip) ?? []).filter((t) => now - t < this.windowMs);
     recent.push(now);

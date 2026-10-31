@@ -49,7 +49,8 @@ export async function startRelay(config: RelayConfig): Promise<RunningRelay> {
 
   const now = (): number => clock().getTime();
   const limiter = new FailedAuthLimiter(now);
-  const hub = new RelayStreamHub(store, limiter, log);
+  const hub = new RelayStreamHub(store, limiter, log, config.trustProxy);
+  const stopLimiterSweep = limiter.startSweep();
   // Per webhook endpoint: 60 a minute, bursts of 120 (spec §The webhook mailbox, "Limits").
   const buckets = new TokenBuckets(now);
   const routes = [
@@ -59,9 +60,10 @@ export async function startRelay(config: RelayConfig): Promise<RunningRelay> {
       onFailedRedeem: (ip) => limiter.fail(ip),
       redeemLocked: (ip) => limiter.locked(ip),
     }),
-    ...mailboxRoutes({ store, hub }),
+    // An import carries the mailbox's bodies as base64 inside JSON: the mailbox's own cap, plus a third, plus room.
+    ...mailboxRoutes({ store, hub, maxImportBytes: Math.ceil(config.retention.maxBytes * 4 / 3) + 16 * 1_048_576 }),
   ];
-  const server = createRelayServer({ store, hub, limiter, routes, ingress: ingressHandler({ store, hub, buckets, log }), log });
+  const server = createRelayServer({ store, hub, limiter, routes, ingress: ingressHandler({ store, hub, buckets, log }), log, trustProxy: config.trustProxy });
   const port = await listen(server, config.port, config.host);
   const stopSweep = startSweep(store, config.retention, log);
   log('info', 'relay.listening', { host: config.host, port, publicUrl: config.publicUrl, team: store.team()?.name });
@@ -71,6 +73,7 @@ export async function startRelay(config: RelayConfig): Promise<RunningRelay> {
     bootstrapInvite,
     close: async () => {
       stopSweep();
+      stopLimiterSweep();
       hub.close();
       server.closeAllConnections();
       await new Promise<void>((resolve) => server.close(() => resolve()));

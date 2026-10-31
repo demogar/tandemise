@@ -18,7 +18,12 @@ interface Client {
   readonly principal: Principal;
   projects: Set<string> | null;
   lastHeardAt: number;
+  presence: 'online' | 'away';
+  lastPresenceAt: number;
 }
+
+/** A socket may change its presence at most this often; a repeat of the same status is ignored. */
+const PRESENCE_EVERY_MS = 5_000;
 
 /**
  * The live edge (spec §Protocol, "The stream"). The socket only notifies;
@@ -34,6 +39,7 @@ export class RelayStreamHub {
     private readonly store: CoordinationStore,
     private readonly limiter: FailedAuthLimiter,
     private readonly log: Log,
+    private readonly trustProxy = false,
   ) {
     this.#timer = setInterval(() => this.#reapSilent(), 10_000);
     this.#timer.unref();
@@ -43,7 +49,7 @@ export class RelayStreamHub {
     let principal: Principal;
     try {
       assertVersion(req);
-      principal = authenticate(req, this.store, this.limiter, clientIp(req));
+      principal = authenticate(req, this.store, this.limiter, clientIp(req, this.trustProxy));
     } catch (e) {
       const status = e instanceof RelayError ? e.status : 401;
       socket.write(`HTTP/1.1 ${status} ${status === 412 ? 'Precondition Failed' : status === 429 ? 'Too Many Requests' : 'Unauthorized'}\r\nConnection: close\r\n\r\n`);
@@ -54,7 +60,7 @@ export class RelayStreamHub {
   }
 
   #onConnection(ws: WebSocket, principal: Principal): void {
-    const client: Client = { principal, projects: null, lastHeardAt: Date.now() };
+    const client: Client = { principal, projects: null, lastHeardAt: Date.now(), presence: 'online', lastPresenceAt: 0 };
     this.#clients.set(ws, client);
     this.#send(ws, { type: 'hello', apiVersion: RELAY_API_VERSION, seq: this.store.seq(), serverTime: this.store.now() });
     this.#setPresence(principal.device.id, 'online');
@@ -75,7 +81,14 @@ export class RelayStreamHub {
     const frame = parsed.data;
     if (frame.type === 'ping') this.#send(ws, { type: 'pong', t: frame.t });
     else if (frame.type === 'watch') client.projects = new Set(frame.projects);
-    else if (frame.type === 'presence') this.#setPresence(client.principal.device.id, frame.status);
+    else if (frame.type === 'presence') {
+      const now = Date.now();
+      // No-ops and floods write nothing: each change bumps seq and reaches every socket.
+      if (frame.status === client.presence || now - client.lastPresenceAt < PRESENCE_EVERY_MS) return;
+      client.presence = frame.status;
+      client.lastPresenceAt = now;
+      this.#setPresence(client.principal.device.id, frame.status);
+    }
   }
 
   #onClose(ws: WebSocket, client: Client): void {
@@ -103,6 +116,13 @@ export class RelayStreamHub {
   #reapSilent(): void {
     const now = Date.now();
     for (const [ws, c] of this.#clients) {
+      // A device revoked out of band (the CLI, another process) loses its socket here too.
+      const device = this.store.device(c.principal.device.id);
+      if (device === null || device.revokedAt !== null || this.store.memberRow(c.principal.memberId)?.status !== 'active') {
+        this.#clients.delete(ws);
+        ws.close(CLOSE_REVOKED, 'device revoked');
+        continue;
+      }
       if (now - c.lastHeardAt > SILENT_CLOSE_MS) ws.close(4408, 'silent for 60 s');
     }
   }

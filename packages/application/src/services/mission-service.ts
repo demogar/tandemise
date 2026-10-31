@@ -93,7 +93,7 @@ export interface MissionDeps {
   /** A change handed back retires the step's own worktree, so integration merges the person's branch instead. */
   readonly targets?: Pick<ExecutionTargetRepositoryPort, 'listByMission' | 'update'>;
   /** Claims the mission's tracker item before it starts (relay spec). Optional for older harnesses. */
-  readonly claims?: { assertMayStart(mission: Mission): Promise<void> };
+  readonly claims?: { assertMayStart(mission: Mission): Promise<boolean | void>; abandonStart?(mission: Mission): Promise<void> };
 }
 
 /**
@@ -274,8 +274,15 @@ export class MissionServiceImpl implements MissionService {
     }
 
     // Someone else working on the same tracker item refuses the start, in plain words.
-    if (canTransition(mission.status, 'EXECUTING')) await this.deps.claims?.assertMayStart(mission);
-    const started = this.#transition(mission, 'EXECUTING', 'Started.');
+    const claimed = canTransition(mission.status, 'EXECUTING') ? await this.deps.claims?.assertMayStart(mission) : false;
+    let started: Mission;
+    try {
+      started = this.#transition(mission, 'EXECUTING', 'Started.');
+    } catch (e) {
+      // The start failed after the claim was made: let the item go again.
+      if (claimed === true) await this.deps.claims?.abandonStart?.(mission);
+      throw e;
+    }
     if (started.startedAt === null) {
       this.deps.missions.update(id, { startedAt: this.deps.clock.now() });
     }

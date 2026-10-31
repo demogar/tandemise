@@ -34,6 +34,8 @@ const REASON_STATUS: Readonly<Record<string, [number, ErrorCode]>> = {
   admin_only: [403, 'PERMISSION_DENIED'],
   lease_not_held: [403, 'PERMISSION_DENIED'],
   invite_invalid: [400, 'VALIDATION'],
+  import_invalid: [400, 'VALIDATION'],
+  last_admin: [409, 'CONFLICT'],
   invite_used: [400, 'VALIDATION'],
   invite_expired: [400, 'VALIDATION'],
   device_revoked: [401, 'PERMISSION_DENIED'],
@@ -98,9 +100,16 @@ export async function readJson(req: IncomingMessage, maxBytes = 1_048_576): Prom
   }
 }
 
-/** The client's address, for rate limits. Behind the `tls` profile's Caddy, the first X-Forwarded-For hop. */
-export function clientIp(req: IncomingMessage): string {
-  const fwd = req.headers['x-forwarded-for'];
-  const first = (Array.isArray(fwd) ? fwd[0] : fwd)?.split(',')[0]?.trim();
-  return first || req.socket.remoteAddress || 'unknown';
+/**
+ * The client's address, for rate limits. `X-Forwarded-For` is anyone's to
+ * send, so it is read only with `RELAY_TRUST_PROXY=1` (behind the `tls`
+ * profile's Caddy, which sets it); otherwise the socket's own address.
+ */
+export function clientIp(req: IncomingMessage, trustProxy: boolean): string {
+  if (trustProxy) {
+    const fwd = req.headers['x-forwarded-for'];
+    const first = (Array.isArray(fwd) ? fwd[0] : fwd)?.split(',')[0]?.trim();
+    if (first) return first;
+  }
+  return req.socket.remoteAddress || 'unknown';
 }

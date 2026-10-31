@@ -7,7 +7,7 @@ import type {
 import type { ClaimView, CoordDeviceView, CoordMemberView, CreateEndpointRequest, CreateInviteRequest, EndpointView, ImportReport } from '@tandemise/api-contract/relay';
 import {
   DEFAULT_STALE_AFTER_MS, clockTime, githubItemRef, isStale, itemKey, lastSeenLabel, presenceOf, takeOverRefusal,
-} from '@tandemise/coordination';
+} from '@tandemise/coordination/rules';
 import type { CoordinationControlPort, CoordinationPort, SettingsStorePort } from '../ports.js';
 import type { EventRecorder } from '../support/event-recorder.js';
 
@@ -78,7 +78,11 @@ export class CoordinationService {
     const set = keys?.[workspaceId];
     if (set) return set;
     const remote = this.deps.repositories?.listByWorkspace(asId<'WorkspaceId'>(workspaceId)).find((r) => r.remoteUrl)?.remoteUrl;
-    return remote ? normalizeRemote(remote) : workspaceId;
+    const key = remote ? normalizeRemote(remote) : workspaceId;
+    // Kept once chosen: a repository added or re-pointed later must not move this workspace's claims to another project.
+    const current = (settings['coordination'] as Record<string, unknown> | undefined) ?? {};
+    this.deps.settings.write({ coordination: { ...current, projectKeys: { ...(keys ?? {}), [workspaceId]: key } } });
+    return key;
   }
 
   /** Names a workspace's project explicitly; null goes back to the default. */
@@ -106,20 +110,20 @@ export class CoordinationService {
    * someone else (or you, elsewhere) holds it. Offline claims queue and the
    * mission starts: the network never blocks local work.
    */
-  async assertMayStart(mission: Mission): Promise<void> {
+  async assertMayStart(mission: Mission): Promise<boolean> {
     const port = this.deps.coordination;
-    if (port === null) return;
+    if (port === null) return false;
     const item = this.itemFor(mission);
-    if (item === null) return;
+    if (item === null) return false;
     const existing = port.claimByLocalRef(mission.id);
-    if (existing !== null && existing.state === 'active' && existing.memberId === port.me().memberId) return;
+    if (existing !== null && existing.state === 'active' && existing.memberId === port.me().memberId) return false;
     let result;
     try {
       result = await port.claim({ projectKey: this.projectKey(mission.workspaceId), ...item, localRef: mission.id });
     } catch (e) {
       // A coordination fault is never a reason not to work.
       this.deps.log.warn('claim failed; starting anyway', { missionId: mission.id, error: errorMessage(e) });
-      return;
+      return false;
     }
     this.#invalidate(mission.id);
     if (result.kind === 'held_by') {
@@ -129,6 +133,21 @@ export class CoordinationService {
           holderName: result.claim.memberName, itemKey: itemKey(result.claim.itemRef), missionId: mission.id,
         },
       });
+    }
+    return true;
+  }
+
+  /** The start that claimed this mission's item failed after all: release the claim it just made. */
+  async abandonStart(mission: Mission): Promise<void> {
+    const port = this.deps.coordination;
+    if (port === null) return;
+    const claim = port.claimByLocalRef(mission.id);
+    if (claim === null || claim.state !== 'active' || claim.memberId !== port.me().memberId) return;
+    try {
+      await port.release(claim.id, 'released');
+      this.#invalidate(mission.id);
+    } catch (e) {
+      this.deps.log.warn('could not release a claim after a failed start', { missionId: mission.id, error: errorMessage(e) });
     }
   }
 

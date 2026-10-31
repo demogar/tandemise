@@ -1,10 +1,13 @@
 # The optional team relay: one container, one SQLite file on a volume.
 #
-#   cp apps/relay/.env.example apps/relay/.env    # then edit it
+#   cp apps/relay/env.example apps/relay/.env    # then edit it
 #   docker compose -f apps/relay/compose.yaml up -d --build
 #   docker compose -f apps/relay/compose.yaml logs relay   # the first admin invite
 #
-# With automatic TLS for RELAY_PUBLIC_URL (needs ports 80 and 443 reachable):
+# With automatic TLS for RELAY_PUBLIC_URL (needs ports 80 and 443 reachable), set in .env
+#   RELAY_BIND=127.0.0.1      # the relay is reached only through Caddy
+#   RELAY_TRUST_PROXY=1       # so its rate limits read Caddy's X-Forwarded-For
+# then:
 #   docker compose -f apps/relay/compose.yaml --profile tls up -d --build
 services:
   relay:
@@ -17,6 +20,8 @@ services:
       RELAY_TEAM_NAME: ${RELAY_TEAM_NAME:-Team}
       RELAY_PUBLIC_URL: ${RELAY_PUBLIC_URL:?Set RELAY_PUBLIC_URL in apps/relay/.env (see env.example)}
       RELAY_INSECURE_HTTP: ${RELAY_INSECURE_HTTP:-}
+      # Only behind a proxy you run (the tls profile): X-Forwarded-For is anyone's to send otherwise.
+      RELAY_TRUST_PROXY: ${RELAY_TRUST_PROXY:-}
       RELAY_HOST: 0.0.0.0
       RELAY_PORT: "8787"
       RELAY_DB: /data/relay.db
@@ -27,7 +32,8 @@ services:
       RELAY_MAILBOX_MAX_MB: ${RELAY_MAILBOX_MAX_MB:-200}
       RELAY_LOG_LEVEL: ${RELAY_LOG_LEVEL:-info}
     ports:
-      - "${RELAY_PORT:-8787}:8787"
+      # With the tls profile set RELAY_BIND=127.0.0.1: only Caddy (and this host) reach the relay directly.
+      - "${RELAY_BIND:-0.0.0.0}:${RELAY_PORT:-8787}:8787"
     volumes:
       - relay-data:/data
     restart: unless-stopped

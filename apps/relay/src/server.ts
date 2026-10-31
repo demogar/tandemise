@@ -17,6 +17,7 @@ export interface RelayServerDeps {
   /** `POST|PUT|GET /hooks/:slug`, unauthenticated (ingress.ts). */
   readonly ingress: (req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse, slug: string) => Promise<void>;
   readonly log: Log;
+  readonly trustProxy: boolean;
 }
 
 /**
@@ -28,7 +29,7 @@ export function createRelayServer(d: RelayServerDeps): Server {
   const server = createServer((req, res) => {
     void (async () => {
       const url = new URL(req.url ?? '/', 'http://relay.invalid');
-      const ip = clientIp(req);
+      const ip = clientIp(req, d.trustProxy);
       try {
         if (url.pathname.startsWith(HOOKS_PATH_PREFIX)) {
           const slug = url.pathname.slice(HOOKS_PATH_PREFIX.length);
@@ -51,7 +52,7 @@ export function createRelayServer(d: RelayServerDeps): Server {
         }
         const answer = await route.handler({
           req, res, params, query: url.searchParams, ip, principal,
-          body: (schema) => parseBody(req, schema),
+          body: (schema) => parseBody(req, schema, route.maxBytes),
         });
         if (answer === HANDLED) return;
         sendJson(res, answer.status, answer.status === 204 ? undefined : answer.body);

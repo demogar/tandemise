@@ -36,7 +36,9 @@ export type RelayErrorReason =
   | 'relay_not_empty'
   | 'version_mismatch'
   | 'device_revoked'
-  | 'admin_only';
+  | 'admin_only'
+  | 'import_invalid'
+  | 'last_admin';
 
 export type RelayErrorBody = ApiErrorBody;
 
@@ -245,6 +247,32 @@ export type CoordinationExportLine =
       readonly query: string; readonly headers: Record<string, string>; readonly contentType: string | null; readonly bodyBase64: string;
       readonly attempts: number;
     };
+
+/** One export line, validated: an import of a malformed file is refused line by line, never half-read. */
+const iso = z.string().min(1).max(64);
+const handshakeEnum = z.enum(HANDSHAKES);
+export const coordinationExportLine = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('meta'), schemaVersion: z.number().int().min(1), teamName: z.string().max(200) }),
+  z.object({
+    kind: z.literal('member'), id: z.string().min(1).max(200), displayName: z.string().max(200), handles: z.record(z.string()),
+    role: z.enum(RELAY_ROLES), status: z.enum(['active', 'removed']), createdAt: iso,
+  }),
+  z.object({
+    kind: z.literal('claim'), id: z.string().min(1).max(200), projectKey: z.string().min(1).max(400), itemRef: z.string().min(1).max(400),
+    itemTitle: z.string().max(400), itemUrl: z.string().max(2000).nullable(), memberId: z.string().min(1).max(200), memberName: z.string().max(200),
+    localRef: z.string().max(200).nullable(), startedAt: iso,
+  }),
+  z.object({
+    kind: z.literal('endpoint'), id: z.string().min(1).max(200), projectKey: z.string().min(1).max(400), slug: z.string().min(1).max(200),
+    name: z.string().max(200), source: z.string().max(200), handshake: handshakeEnum, handshakeSecret: z.string().max(400).nullable(),
+    createdAt: iso, disabledAt: iso.nullable(),
+  }),
+  z.object({
+    kind: z.literal('message'), id: z.string().min(1).max(200), endpointId: z.string().min(1).max(200), receivedAt: iso, method: z.string().max(16),
+    query: z.string().max(8192), headers: z.record(z.string()), contentType: z.string().max(400).nullable(), bodyBase64: z.string(),
+    attempts: z.number().int().min(0),
+  }),
+]);
 
 // ---- stream frames
 

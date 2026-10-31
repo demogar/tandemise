@@ -1,4 +1,4 @@
-import type { CoordinationExportLine, ImportReport } from '@tandemise/api-contract/relay';
+import { coordinationExportLine, type CoordinationExportLine, type ImportReport } from '@tandemise/api-contract/relay';
 import { CoordError, type CoordinationStore } from './store.js';
 import { COORD_SCHEMA_VERSION } from './migrations.js';
 import { createEndpoint, storeRequest, unackedMessages, type EndpointRow } from './mailbox.js';
@@ -38,11 +38,21 @@ export function exportLines(store: CoordinationStore, opts: { claimsOf?: string 
 }
 
 function parseLines(lines: readonly string[]): CoordinationExportLine[] {
-  const parsed = lines.filter((l) => l.trim()).map((l) => JSON.parse(l) as CoordinationExportLine);
+  const parsed = lines.filter((l) => l.trim()).map((l, i) => {
+    let raw: unknown;
+    try {
+      raw = JSON.parse(l);
+    } catch {
+      throw new CoordError('import_invalid', `Line ${i + 1} of that export is not JSON.`);
+    }
+    const line = coordinationExportLine.safeParse(raw);
+    if (!line.success) throw new CoordError('import_invalid', `Line ${i + 1} of that export isn't a Tandemise coordination line (${line.error.issues[0]?.path.join('.') || 'shape'}).`);
+    return line.data as CoordinationExportLine;
+  });
   const meta = parsed[0];
-  if (!meta || meta.kind !== 'meta') throw new CoordError('relay_not_empty', 'That is not a Tandemise coordination export: it has no header line.');
+  if (!meta || meta.kind !== 'meta') throw new CoordError('import_invalid', 'That is not a Tandemise coordination export: it has no header line.');
   if (meta.schemaVersion > COORD_SCHEMA_VERSION) {
-    throw new CoordError('relay_not_empty', `That export is from a newer version (${meta.schemaVersion}). Update first.`);
+    throw new CoordError('import_invalid', `That export is from a newer version (${meta.schemaVersion}). Update first.`);
   }
   return parsed;
 }
