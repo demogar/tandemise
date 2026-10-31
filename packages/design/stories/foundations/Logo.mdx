@@ -1,0 +1,32 @@
+import { Meta } from '@storybook/addon-docs/blocks';
+import { LogoAssets, LogoVariants } from './blocks';
+
+<Meta title="Foundations/Logo" />
+
+# Logo
+
+Two wheels on one axle: a tandem. It also reads as two nodes on an edge, one
+piece of work handed from one worker to the next. The lead wheel is larger, so
+the mark has a direction of travel.
+
+## In the app
+
+`<Logo />` draws the mark in the `--logo-*` roles, so it follows the theme.
+`muted` means "nothing to connect to" (the daemon is down), never decoration.
+Minimum size 16px; clear space at least half its height.
+
+<LogoVariants />
+
+## Assets
+
+Emitted from `LOGO` into `assets/`. `logo-mark.svg` follows the viewer's scheme;
+the template is pure black for the macOS menu bar; the app icon is the same mark
+redrawn for 1024px on an indigo tile.
+
+<LogoAssets />
+
+## Don'ts
+
+- Do not make the wheels touch (an infinity sign) or the same size (spectacles).
+- Do not run the axle through the wheels, or add a hub (a blob at 16px).
+- Do not recolour it outside the palette.

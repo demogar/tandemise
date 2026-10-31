@@ -190,14 +190,29 @@ classes in `components.css`, takes its state as props and reports it as
 The pure parts (`trapTarget`, `nextTabIndex`, `tooltipPosition`, `buttonClass`)
 are exported and tested on their own.
 
-## The gallery
+## Storybook
 
-[`gallery/index.html`](gallery/index.html) shows every token (palette, roles,
-type, spacing, radius, elevation, motion, focus, stacking, control heights)
-and every component, side by side in light and dark. It is generated from the
-package by `npm run -w @tandemise/design gallery` (after a build), links the
-package's own stylesheets, and opens straight from disk. `check:design` fails
-when it is stale or misses a component that `@tandemise/design/react` exports.
+The visual reference is a Storybook, published from `main` to the repository's
+GitHub Pages site. It has a page per component with controls for every variant,
+size and state; "In context" stories that compose them the way the desktop does
+(a task card, a confirm dialog, a settings section); and foundations pages
+(colour roles in both themes with every contrast pair measured, type, spacing,
+radius, elevation, z-index, motion, the focus ring, a searchable icon grid, the
+logo). The toolbar switches the theme (light, dark, system) and the density.
+
+```bash
+npm run build                                   # once, from the repository root
+npm run -w @tandemise/design storybook          # http://localhost:6006
+npm run -w @tandemise/design storybook:build    # static site in storybook-static/ (git-ignored)
+npm run -w @tandemise/design storybook:a11y     # axe on every story, light and dark, in headless Chrome
+```
+
+The stories read the package's sources, so an edit to a component or to
+`tokens.ts` shows up at once. `storybook:a11y` also fails when a story's play
+function (the Dialog focus trap, the Tabs arrow keys, the Field wiring) fails;
+set `CHROME_PATH` if Chrome is not in a standard place. `check:design` fails
+when a component that `@tandemise/design/react` exports has no story. None of
+it is published to npm: the package's `files` leaves Storybook out.
 
 ## Changing a token
 

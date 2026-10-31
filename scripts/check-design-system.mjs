@@ -19,8 +19,9 @@
 //   6. the app icon uses a colour that is not in the palette, or the template
 //      mark uses anything but black
 //   7. the main process's pre-paint window colours drift from the palette
-//   8. the gallery (packages/design/gallery) is stale, or leaves out a component
-//      that @tandemise/design/react exports
+//   8. a component that @tandemise/design/react exports has no Storybook story
+//      (packages/design/stories); the stories and the Storybook config are
+//      held to rules 1-5 like any other source
 //
 //   node scripts/check-design-system.mjs     (after `npm run build`: it reads packages/design/dist)
 import { execFileSync } from 'node:child_process';
@@ -43,7 +44,7 @@ function walk(dir, out = []) {
   for (const name of readdirSync(dir)) {
     const path = join(dir, name);
     if (statSync(path).isDirectory()) walk(path, out);
-    else if (/\.(css|tsx?)$/.test(name)) out.push(path);
+    else if (/\.(css|tsx?|mdx)$/.test(name)) out.push(path);
   }
   return out;
 }
@@ -73,19 +74,22 @@ try {
 } catch (error) {
   fail(design, 0, String(error.stderr ?? error.message).trim());
 }
-// 0b. The gallery (gallery/index.html) is fresh, and shows every component the
-// React subpath exports: it is the visual reference, so nothing ships unseen.
-const GALLERY = join(design, 'gallery/index.html');
-try {
-  execFileSync(process.execPath, [join(design, 'scripts/gallery.mjs'), '--check'], { cwd: root, stdio: ['ignore', 'ignore', 'pipe'] });
-} catch (error) {
-  fail(design, 0, String(error.stderr ?? error.message).trim());
-}
-if (existsSync(GALLERY)) {
+// 0b. Every component the React subpath exports has a story: Storybook
+// (packages/design/stories) is the visual reference, so nothing ships unseen.
+// A component counts as covered when a *.stories.tsx names it as its
+// `component` or lists it in `subcomponents` (Tab, on the Tabs page).
+const STORIES = join(design, 'stories');
+{
   const { COMPONENTS } = await import(pathToFileURL(join(design, 'dist/react/index.js')).href);
-  const gallery = readFileSync(GALLERY, 'utf8');
+  const storyFiles = existsSync(STORIES) ? walk(STORIES).filter((file) => file.endsWith('.stories.tsx')) : [];
+  const covered = new Set();
+  for (const file of storyFiles) {
+    const text = readFileSync(file, 'utf8');
+    for (const m of text.matchAll(/^\s*component:\s*([A-Z]\w*)\s*,/gm)) covered.add(m[1]);
+    for (const m of text.matchAll(/^\s*subcomponents:\s*\{([^}]*)\}/gm)) for (const name of m[1].match(/[A-Z]\w*/g) ?? []) covered.add(name);
+  }
   for (const name of COMPONENTS) {
-    if (!gallery.includes(`data-component="${name}"`)) fail(GALLERY, 0, `<${name}> is exported by @tandemise/design/react but missing from the gallery`);
+    if (!covered.has(name)) fail(STORIES, 0, `<${name}> is exported by @tandemise/design/react but has no story - add stories/${name}.stories.tsx (component: ${name})`);
   }
 }
 for (const theme of ['light', 'dark']) {
@@ -101,7 +105,13 @@ for (const theme of ['light', 'dark']) {
 // Everything that reads tokens: the desktop's source and the package's own
 // sources and hand-written CSS. The emitted CSS is not scanned for literals -
 // it is proven equal to tokens.ts above - but its definitions count.
-const files = [...walk(join(desktop, 'src')), ...walk(join(design, 'src')), ...walk(join(design, 'css'))];
+const files = [
+  ...walk(join(desktop, 'src')),
+  ...walk(join(design, 'src')),
+  ...walk(join(design, 'css')),
+  ...walk(join(design, 'stories')),
+  ...walk(join(design, '.storybook')),
+];
 const EMITTED = new Set([TOKENS_CSS, TAILWIND_CSS]);
 const defined = new Set();
 const uses = [];

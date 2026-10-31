@@ -28,7 +28,6 @@
     "dist",
     "css",
     "assets",
-    "gallery",
     "README.md",
     "LICENSE"
   ],
@@ -83,17 +82,25 @@
     }
   },
   "devDependencies": {
+    "@storybook/addon-a11y": "10.6.2",
+    "@storybook/addon-docs": "10.6.2",
+    "@storybook/react-vite": "10.6.2",
     "@types/react": "^18.3.31",
     "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^4.7.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "storybook": "10.6.2",
+    "vite": "^5.4.21"
   },
   "scripts": {
     "build": "tsc -b",
     "emit": "node scripts/emit.mjs",
     "emit:check": "node scripts/emit.mjs --check",
-    "gallery": "node scripts/gallery.mjs",
-    "gallery:check": "node scripts/gallery.mjs --check"
+    "storybook": "storybook dev -p 6006",
+    "storybook:build": "storybook build -o storybook-static --quiet",
+    "storybook:typecheck": "tsc -p tsconfig.storybook.json",
+    "storybook:a11y": "node scripts/storybook-a11y.mjs"
   },
   "publishConfig": {
     "access": "public"

@@ -25,5 +25,5 @@ export { Tabs, Tab, nextTabIndex, type TabsProps, type TabProps } from './Tabs.j
 export { Tooltip, tooltipPosition, type TooltipProps, type TooltipTriggerProps, type TooltipPlacement } from './Tooltip.js';
 export { EmptyState, type EmptyStateProps } from './EmptyState.js';
 
-/** Every component this subpath exports, by name. The gallery must show each one (`npm run check:design`). */
+/** Every component this subpath exports, by name. Each must have a Storybook story in stories/ (`npm run check:design`). */
 export const COMPONENTS = ['Button', 'Badge', 'StatusPill', 'StatusDot', 'Card', 'Icon', 'Logo', 'Field', 'Dialog', 'Tabs', 'Tab', 'Tooltip', 'EmptyState'] as const;

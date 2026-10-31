@@ -17,3 +17,6 @@ apps/desktop/electron.vite.config.*.mjs
 
 # SwiftPM build output (the macOS helper); holds absolute local paths
 .build/
+
+# Storybook static build (packages/design)
+storybook-static/
