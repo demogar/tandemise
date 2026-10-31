@@ -36,6 +36,13 @@ export const keys = {
   skillVersion: (id: string, version: number) => ['workspaces', 'skill-version', id, String(version)] as const,
   // Under 'workspaces': an export or an import changes what it says.
   setup: (ws?: string) => ['workspaces', 'setup', ws ?? 'all'] as const,
+  // The brain (#51): under 'workspaces', so a sync, a link or a lesson refreshes them.
+  brain: (ws?: string) => ['workspaces', 'brain', ws ?? 'all'] as const,
+  brainEntries: (ws: string | undefined, q: string) => ['workspaces', 'brain-entries', ws ?? 'all', q] as const,
+  brainProposals: (ws?: string) => ['workspaces', 'brain-proposals', ws ?? 'all'] as const,
+  brainFactory: (ws?: string) => ['workspaces', 'brain-factory', ws ?? 'all'] as const,
+  // Under 'mission': a run's record moves with the mission it belongs to.
+  runBrain: (runId: string) => ['mission', 'run-brain', runId] as const,
   mission: (id: string) => ['mission', id] as const,
   // Under 'mission' and scoped by id, so the mission's own invalidations refresh it.
   missionArtifacts: (id: string, all: boolean) => ['mission', id, 'artifacts', all ? 'all' : 'live'] as const,
@@ -148,6 +155,40 @@ export function useSetupStatus() {
     queryFn: () => daemon.setupStatus(workspaceId ?? ''),
     enabled: Boolean(workspaceId),
   });
+}
+
+/** The project's brain: link, sync and counts (#51). */
+export function useBrain() {
+  const daemon = useDaemon();
+  const workspaceId = useWorkspaceId();
+  return useQuery({ queryKey: keys.brain(workspaceId), queryFn: () => daemon.brain(workspaceId ?? ''), enabled: Boolean(workspaceId) });
+}
+
+export function useBrainEntries(q: { scope?: string; state?: string; history?: boolean }, enabled = true) {
+  const daemon = useDaemon();
+  const workspaceId = useWorkspaceId();
+  return useQuery({
+    queryKey: keys.brainEntries(workspaceId, JSON.stringify(q)),
+    queryFn: () => daemon.brainEntries(workspaceId ?? '', q),
+    enabled: Boolean(workspaceId) && enabled,
+  });
+}
+
+export function useBrainProposals(enabled = true) {
+  const daemon = useDaemon();
+  const workspaceId = useWorkspaceId();
+  return useQuery({ queryKey: keys.brainProposals(workspaceId), queryFn: () => daemon.brainProposals(workspaceId ?? ''), enabled: Boolean(workspaceId) && enabled, refetchInterval: 5_000 });
+}
+
+export function useBrainFactory(enabled = true) {
+  const daemon = useDaemon();
+  const workspaceId = useWorkspaceId();
+  return useQuery({ queryKey: keys.brainFactory(workspaceId), queryFn: () => daemon.brainFactory(workspaceId ?? ''), enabled: Boolean(workspaceId) && enabled });
+}
+
+export function useRunBrain(runId: string | null) {
+  const daemon = useDaemon();
+  return useQuery({ queryKey: keys.runBrain(runId ?? ''), queryFn: () => daemon.runBrain(runId ?? ''), enabled: runId !== null });
 }
 
 /** The project's backlog and work-in-progress limit (P7). */

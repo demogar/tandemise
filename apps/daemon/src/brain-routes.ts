@@ -1,6 +1,6 @@
 import { asId } from '@tandemise/shared';
 import {
-  applyBrainRequest, brainEntriesQuery, linkBrainRequest, promoteEntryRequest, rememberRequest, retireEntryRequest, shareBrainRequest, voteEntryRequest,
+  applyBrainRequest, brainEntriesQuery, linkBrainRequest, moveWorkflowRequest, promoteEntryRequest, rememberRequest, retireEntryRequest, shareBrainRequest, voteEntryRequest,
 } from '@tandemise/api-contract';
 import { TandemiseError } from '@tandemise/shared';
 import type { TandemiseServices } from '@tandemise/application';
@@ -20,6 +20,9 @@ export function brainRoutes(r: Router, services: TandemiseServices): void {
   r.post('/v1/workspaces/:id/brain/share', async (ctx) => services.brain.share(ctx.caller, asId(ctx.params.id!), await ctx.body(shareBrainRequest)));
   r.delete('/v1/workspaces/:id/brain', (ctx) => services.brain.unlink(ctx.caller, asId(ctx.params.id!)));
   r.post('/v1/workspaces/:id/brain/sync', (ctx) => services.brain.sync(asId(ctx.params.id!), 'person'));
+  r.get('/v1/workspaces/:id/brain/factory', (ctx) => services.brain.factoryView(asId(ctx.params.id!)));
+  r.post('/v1/workspaces/:id/brain/factory/workflows', async (ctx) =>
+    services.brain.moveWorkflowIn(ctx.caller, asId(ctx.params.id!), (await ctx.body(moveWorkflowRequest)).id));
 
   // Memory (spec §5, §7): lessons, Remember this, votes, accept/reject, retire.
   r.get('/v1/workspaces/:id/brain/entries', (ctx) => {

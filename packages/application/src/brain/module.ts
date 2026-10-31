@@ -60,6 +60,7 @@ export function bindBrain(container: Container): void {
     runs: r.resolve(t.RUN_REPOSITORY),
     runScores: r.resolve(t.RUN_SCORE_REPOSITORY),
     issues: r.resolve(t.ISSUE_REPOSITORY),
+    workflowSource: r.resolve(t.WORKFLOW_SOURCE),
     promotion: {
       runtimeManager: r.resolve(RUNTIME_MANAGER),
       runtimeProfiles: r.resolve(t.RUNTIME_PROFILE_REPOSITORY),
@@ -110,10 +111,12 @@ export function bindBrain(container: Container): void {
     diff: r.tryResolve(b.BRAIN_WORKTREE_DIFF) ?? null,
   }), { source: SOURCE });
 
-  container.bind(b.BRAIN_SYNC_LOOP, (r) => new BrainSyncLoop(
-    r.resolve(b.BRAIN_SERVICE), r.resolve(b.WORKSPACE_BRAIN_REPOSITORY), log(r).child({ component: 'brain-sync' }),
-    r.tryResolve(t.EVENT_BUS) ?? null,
-  ), { source: SOURCE });
+  container.bind(b.BRAIN_SYNC_LOOP, (r) => {
+    return new BrainSyncLoop(
+      r.resolve(b.BRAIN_SERVICE), r.resolve(b.WORKSPACE_BRAIN_REPOSITORY), log(r).child({ component: 'brain-sync' }),
+      r.tryResolve(t.EVENT_BUS) ?? null,
+    );
+  }, { source: SOURCE });
 }
 
 const log = (r: Resolver) => r.tryResolve(EXECUTION_LOGGER) ?? nullLogger;

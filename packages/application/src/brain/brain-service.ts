@@ -6,7 +6,8 @@ import type {
   WorkspaceBrain, WorkspaceBrainRepositoryPort, WriterId,
 } from '@tandemise/domain';
 import { TERMINAL_MISSION_STATUSES, foldLedger, isTrialMission, isValidAt, makeWriterId } from '@tandemise/domain';
-import type { BrainAdoptPreview, BrainEntryView, BrainProposalView, BrainView, RememberView, RunBrainView, SetupItemView } from '@tandemise/api-contract';
+import type { BrainAdoptPreview, BrainEntryView, BrainFactoryView, BrainProposalView, BrainView, RememberView, RunBrainView, SetupItemView } from '@tandemise/api-contract';
+import { listProjectWorkflows } from './workflows.js';
 import type { Clock, Logger, MissionId, TaskId, TandemisePaths, WorkspaceId } from '@tandemise/shared';
 import { TandemiseError, asId, errorMessage, slugify } from '@tandemise/shared';
 import { LedgerReader, type LedgerAt } from './memory.js';
@@ -55,6 +56,8 @@ export interface BrainServiceDeps {
   readonly runs?: Pick<RunRepositoryPort, 'get' | 'listByMission' | 'update'>;
   readonly runScores?: Pick<RunScoreRepositoryPort, 'list' | 'listByTask'>;
   readonly issues?: Pick<IssueRepositoryPort, 'getLink'>;
+  /** The code repositories' workflows, for the Factory tab (shadowed ones, Move into the brain). */
+  readonly workflowSource?: import('../ports.js').WorkflowSourcePort;
   /** For promotions (Task 14): the promoter's runtime, the project's rows and the eval port. */
   readonly promotion?: Omit<PromotionsDeps, 'repo' | 'host' | 'records' | 'clock' | 'log' | 'paths'>;
 }
@@ -496,6 +499,44 @@ export class BrainService {
     });
   }
 
+  // ------------------------------------------------------------------ factory tab
+
+  async factoryView(workspaceId: WorkspaceId): Promise<BrainFactoryView> {
+    const row = this.#require(workspaceId);
+    const sha = row.lastPulledSha;
+    const files = sha === null ? [] : await this.deps.repo.listAt(row.clonePath, sha, BRAIN_FACTORY);
+    const items = sha === null ? [] : (await this.deps.setup.previewFiles(workspaceId, await this.factoryFiles(row.clonePath, sha))).items;
+    const paths = this.deps.workspaces.view(workspaceId).repositories.map((r) => r.path);
+    const listed = this.deps.workflowSource === undefined ? { workflows: [], shadowed: [] }
+      : await listProjectWorkflows({ workflows: this.deps.workflowSource, brain: this }, workspaceId, paths);
+    return {
+      files,
+      mcpsNeeded: items.filter((i) => i.kind === 'mcps' && i.action === 'add').map((i) => ({ name: i.name, detail: i.detail })),
+      skillsMissing: items.filter((i) => i.needsImport !== null).map((i) => i.name),
+      shadowed: listed.shadowed.map((w) => ({ id: w.id, path: w.path })),
+      movable: listed.workflows.filter((w) => w.origin === 'repository').map((w) => ({ id: w.id, path: w.path })),
+    };
+  }
+
+  /** "Move into the brain": a code-repo workflow is copied into factory/workflows/ as your edit (spec §2). */
+  async moveWorkflowIn(caller: Caller, workspaceId: WorkspaceId, workflowId: string): Promise<BrainFactoryView> {
+    void caller;
+    if (this.deps.workflowSource === undefined) throw new TandemiseError('PRECONDITION_FAILED', 'Workflows cannot be read in this build.');
+    const paths = this.deps.workspaces.view(workspaceId).repositories.map((r) => r.path);
+    const found = (await this.deps.workflowSource.list(paths)).find((w) => w.id === workflowId);
+    if (found === undefined || found.text === undefined) throw TandemiseError.notFound('Workflow', workflowId);
+    const file = found.path.split(/[\\/]/).pop() ?? `${workflowId}.yaml`;
+    await this.#exclusive(workspaceId, async () => {
+      const row = this.#require(workspaceId);
+      await this.deps.repo.commit(row.clonePath, [{ path: `${BRAIN_FACTORY}/workflows/${file}`, mode: 'write', content: found.text! }], `chore: move the ${workflowId} workflow into the brain`, this.#author());
+      if (row.remote !== null) await this.pushLocked(workspaceId);
+      else this.markPulled(workspaceId, await this.deps.repo.head(row.clonePath));
+    });
+    await this.refreshInfo(workspaceId);
+    this.deps.recorder.invalidate('workspaces');
+    return this.factoryView(workspaceId);
+  }
+
   // ------------------------------------------------------------------ promotion
 
   /** The project's brain.yaml as of its last pull; defaults until read. */
@@ -654,6 +695,21 @@ export class BrainService {
       .sort((a, b) => (b.lastConfirmedAt < a.lastConfirmedAt ? -1 : b.lastConfirmedAt > a.lastConfirmedAt ? 1 : 0) || (a.id < b.id ? -1 : 1));
   }
 
+  /**
+   * Records an event on a mission as another feature would (a hold ending,
+   * say). Only the daemon's test-clock routes reach this; it exists so the
+   * acceptance run can stand in for work not merged yet.
+   */
+  recordForTest(missionId: string, taskId: string | null, body: Record<string, unknown>): { recorded: true } {
+    const mission = this.deps.missions?.get(asId<'MissionId'>(missionId) as MissionId);
+    if (mission === undefined) throw TandemiseError.notFound('Mission', missionId);
+    this.deps.recorder.record(
+      { workspaceId: mission.workspaceId, missionId: mission.id, taskId: taskId === null ? null : (asId<'TaskId'>(taskId) as TaskId) },
+      body as unknown as import('@tandemise/domain').TandemiseEventBody,
+    );
+    return { recorded: true };
+  }
+
   /** The ledger events about one entry at a commit (its history, for brain.read). */
   async eventsFor(workspaceId: WorkspaceId, sha: string, entryId: string): Promise<readonly LedgerEvent[]> {
     const row = this.#require(workspaceId);
@@ -721,6 +777,8 @@ export class BrainService {
       entry: { kind: 'lesson', text: req.text.trim(), scope: cleanScope(req.scope ?? {}), source: { signal: 'person', mission: mission?.title ?? 'Brain screen' }, state: 'active' },
     }], { actor: 'person', missionId: mission?.id ?? null });
     if (event === undefined) throw TandemiseError.validation("Lessons aren't saved during an eval trial.");
+    // "From the next run" has to be true: the lesson is committed now, not at the next batch.
+    await this.flush(workspaceId);
     const view = this.entry(event.id);
     if (view === null) throw TandemiseError.validation('That lesson could not be saved.');
     const words = view.entry.scopeLabel === 'Whole project' ? 'the whole project' : view.entry.scopeLabel;
@@ -751,6 +809,8 @@ export class BrainService {
     void caller;
     const found = this.#requireEntry(entryId);
     await this.append(found.workspaceId, [{ ...input, id: found.entry.id } as LedgerEventInput], { actor: 'person' });
+    // Accepting or retiring changes what the next run loads, so it is committed now.
+    await this.flush(found.workspaceId);
     return this.#requireEntry(found.entry.id).entry;
   }
 

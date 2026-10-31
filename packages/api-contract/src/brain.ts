@@ -157,3 +157,19 @@ export interface BrainProposalView {
   readonly canRevert: boolean;
   readonly updatedAt: string;
 }
+
+/** The Brain screen's Factory tab (#51 spec §11). */
+export interface BrainFactoryView {
+  /** The brain's factory files at the last pull. */
+  readonly files: readonly string[];
+  /** Integrations the project needs that this machine has not connected. */
+  readonly mcpsNeeded: readonly { readonly name: string; readonly detail: string }[];
+  /** Pinned skills whose files this machine doesn't have. */
+  readonly skillsMissing: readonly string[];
+  /** Code-repository workflows a brain workflow of the same id hides. */
+  readonly shadowed: readonly { readonly id: string; readonly path: string }[];
+  /** Code-repository workflows the brain doesn't have yet, which can move in. */
+  readonly movable: readonly { readonly id: string; readonly path: string }[];
+}
+
+export const moveWorkflowRequest = z.object({ id: z.string().trim().min(1).max(200) });
