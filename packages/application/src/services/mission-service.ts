@@ -34,7 +34,7 @@ import {
   COVERED_MESSAGE, LINKABLE_OUTPUT_TYPES, continuedIn, isCoveredPlaceholder, parkedExternalOf, type ParkedExternal,
 } from '../support/outside-work.js';
 import { CLOSED_MISSION_MESSAGE, isReadableText, missionTakesRounds } from '../support/feedback-rules.js';
-import { uploadFilename } from '../planning/intake.js';
+import { uploadFilename } from '../planning/upload-intake.js';
 
 /** Where a step may be continued elsewhere from: queued, running, or done with nobody downstream on it yet (spec A4). */
 const PARKABLE_TASK_STATUSES: readonly MissionTask['status'][] = ['READY', 'RUNNING', 'SUCCEEDED'];

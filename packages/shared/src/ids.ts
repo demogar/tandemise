@@ -38,6 +38,12 @@ export type EvalSuiteId = Brand<string, 'EvalSuiteId'>;
 export type EvalCaseId = Brand<string, 'EvalCaseId'>;
 export type EvalRunId = Brand<string, 'EvalRunId'>;
 export type EvalTrialId = Brand<string, 'EvalTrialId'>;
+export type SignalId = Brand<string, 'SignalId'>;
+export type TrackerItemId = Brand<string, 'TrackerItemId'>;
+export type IntakeLinkId = Brand<string, 'IntakeLinkId'>;
+export type ClosureId = Brand<string, 'ClosureId'>;
+export type IntakeTokenId = Brand<string, 'IntakeTokenId'>;
+export type WebhookMessageId = Brand<string, 'WebhookMessageId'>;
 
 const ALPHABET = '0123456789abcdefghjkmnpqrstvwxyz';
 
@@ -136,6 +142,12 @@ export const ids = {
   evalCase: () => newId<'EvalCaseId'>('eca'),
   evalRun: () => newId<'EvalRunId'>('ern'),
   evalTrial: () => newId<'EvalTrialId'>('etr'),
+  signal: () => newId<'SignalId'>('sig'),
+  trackerItem: () => newId<'TrackerItemId'>('tki'),
+  intakeLink: () => newId<'IntakeLinkId'>('iln'),
+  closure: () => newId<'ClosureId'>('clo'),
+  intakeToken: () => newId<'IntakeTokenId'>('itk'),
+  webhookMessage: () => newId<'WebhookMessageId'>('whm'),
 } as const;
 
 /** Cast a persisted string back to its branded type at a trust boundary. */

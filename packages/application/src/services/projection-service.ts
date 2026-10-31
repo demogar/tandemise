@@ -29,7 +29,7 @@ import { versionLines } from '../support/artifact-versions.js';
 import { currentHandoff, isPlanAsking, isTaskAsking, primaryArtifact } from '../support/handoff-rules.js';
 import { resolveChanges, toFeedbackView } from '../support/feedback-view.js';
 import { missionTakesRounds } from '../support/feedback-rules.js';
-import { intakeArtifactFor, missionUploads, uploadFilename } from '../planning/intake.js';
+import { intakeArtifactFor, missionUploads, uploadFilename } from '../planning/upload-intake.js';
 import { isCoveredPlaceholder, parkedExternalOf, waitingForWorkIn } from '../support/outside-work.js';
 import { handedTo } from '../support/lineage.js';
 

@@ -21,7 +21,7 @@ import { runActorOf } from '../support/run-actor.js';
 import { withdrawApproval } from '../support/withdraw.js';
 import { withoutEscalation } from './staffing-resolver.js';
 import { COVERED_MESSAGE, isCoveredPlaceholder } from '../support/outside-work.js';
-import { uploadFilename } from '../planning/intake.js';
+import { uploadFilename } from '../planning/upload-intake.js';
 import { MAX_REMEDIATION_CYCLES } from './remediation.js';
 
 /** The statuses a task may start its next round from: it has settled, one way or another. */
