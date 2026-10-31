@@ -8,6 +8,7 @@ import { errorMessage, type Clock, type Logger, type WorkspaceId } from '@tandem
 import type { PlannerService } from '../planning/planner-service.js';
 import { SHIPPED_FILES } from '../planning/factory-config.js';
 import type { MergePolicyService } from './merge-policy-service.js';
+import { commitOnFreshBranch } from '../support/branch-commit.js';
 
 /**
  * The factory's learning proposals (#53 §9.2): once a day, the outcome fold is
@@ -33,7 +34,6 @@ export interface ProposalServiceDeps {
   readonly tmpRoot: string;
   /** A linked brain takes proposals instead of the project repository (#51 §8, #53 Task 20). */
   readonly brain?: () => Pick<import('../brain/brain-service.js').BrainService, 'linkOf' | 'readAt' | 'exclusive' | 'author'> | undefined;
-  readonly brainRepo?: () => Pick<import('@tandemise/domain').BrainRepoPort, 'commit' | 'moveUnpushedTo' | 'push' | 'head'> | undefined;
   readonly brainHost?: () => Pick<import('@tandemise/domain').BrainHostPort, 'openPr'> | undefined;
 }
 
@@ -102,53 +102,43 @@ export class ProposalService {
 
   async #openInBrain(workspaceId: WorkspaceId, p: Proposal, backtest: string | null): Promise<boolean> {
     const brain = this.deps.brain?.();
-    const repo = this.deps.brainRepo?.();
     const host = this.deps.brainHost?.();
     const link = brain?.linkOf(workspaceId);
-    if (brain === undefined || repo === undefined || host === undefined || link === undefined || link.lastPulledSha === null) return false;
+    if (brain === undefined || host === undefined || link === undefined || this.deps.exec === null) return false;
     const file = `factory/${p.file}.yaml`;
-    const shown = await brain.readAt(workspaceId, link.lastPulledSha, file);
-    const raw = shown !== null ? (parseYaml(shown) as Record<string, unknown>) : (SHIPPED_FILES[p.file] as Record<string, unknown>);
-    const head = branchOf(p);
-    return brain.exclusive(workspaceId, async () => {
-      await repo.commit(link.clonePath, [{ path: file, mode: 'write', content: stringifyYaml(applyProposal(raw, p.edit)) }], p.title, brain.author());
-      await repo.moveUnpushedTo(link.clonePath, head, link.defaultBranch);
-      const pushed = await repo.push(link.clonePath, head, { setUpstream: false });
-      if (pushed !== 'pushed') return false;
-      await host.openPr({ clone: link.clonePath, head, base: link.defaultBranch, title: p.title, body: proposalBody(file, p, backtest), draft: false });
-      return true;
-    });
+    const ok = await brain.exclusive(workspaceId, () => this.#commit(link.clonePath, link.defaultBranch, file, p, brain.author()));
+    if (!ok) return false;
+    await host.openPr({ clone: link.clonePath, head: branchOf(p), base: link.defaultBranch, title: p.title, body: proposalBody(file, p, backtest), draft: false });
+    return true;
   }
 
   async #open(repository: Repository, repo: string, p: Proposal, backtest: string | null): Promise<void> {
-    const exec = this.deps.exec!;
-    const head = branchOf(p);
-    const base = repository.defaultBranch;
-    const dir = `${this.deps.tmpRoot}/${p.id}-${this.deps.clock.epochMs()}`;
     const file = `.tandemise/factory/${p.file}.yaml`;
-    const git = (args: readonly string[], cwd = repository.path, stdin?: string) => exec.run({
-      command: 'git', args, cwd, timeoutMs: 120_000, ...(stdin === undefined ? {} : { stdin }),
-      env: { GIT_TERMINAL_PROMPT: '0', ...this.deps.credentialEnv?.() },
-    });
-    await git(['fetch', '--quiet', 'origin', base]);
-    const shown = await git(['show', `origin/${base}:${file}`]);
+    if (!(await this.#commit(repository.path, repository.defaultBranch, file, p, { name: 'Tandemise', email: 'factory@tandemise.local' }))) return;
+    await this.deps.pullRequests.open({ cwd: repository.path, repo, head: branchOf(p), base: repository.defaultBranch, title: p.title, body: proposalBody(file, p, backtest) });
+  }
+
+  /** The edited file on a fresh branch from origin/<base>; the checkout and its unpushed commits are never touched. */
+  async #commit(repoPath: string, base: string, file: string, p: Proposal, author: { name: string; email: string }): Promise<boolean> {
+    const exec = this.deps.exec!;
+    const env = { GIT_TERMINAL_PROMPT: '0', ...this.deps.credentialEnv?.() };
+    await exec.run({ command: 'git', args: ['fetch', '--quiet', 'origin', base], cwd: repoPath, timeoutMs: 120_000, env });
+    const shown = await exec.run({ command: 'git', args: ['show', `origin/${base}:${file}`], cwd: repoPath, timeoutMs: 60_000, env });
     const raw = shown.exitCode === 0 ? (parseYaml(shown.stdout) as Record<string, unknown>) : (SHIPPED_FILES[p.file] as Record<string, unknown>);
-    const next = stringifyYaml(applyProposal(raw, p.edit));
-    const added = await git(['worktree', 'add', '-B', head, dir, `origin/${base}`]);
-    if (added.exitCode !== 0) throw new Error(`couldn't start ${head}: ${added.stderr}`);
     try {
-      const blob = await git(['hash-object', '-w', '--stdin'], dir, next);
-      await git(['update-index', '--add', '--cacheinfo', `100644,${blob.stdout.trim()},${file}`], dir);
-      const committed = await git(['-c', 'user.name=Tandemise', '-c', 'user.email=factory@tandemise.local', '-c', 'commit.gpgsign=false', 'commit', '-q', '-m', p.title], dir);
-      if (committed.exitCode !== 0) throw new Error(`couldn't commit the proposal: ${committed.stderr}`);
-      const pushed = await git(['push', '--quiet', '--force', 'origin', `${head}:refs/heads/${head}`], dir);
-      if (pushed.exitCode !== 0) throw new Error(`couldn't push ${head}: ${pushed.stderr}`);
-    } finally {
-      await git(['worktree', 'remove', '--force', dir]);
+      await commitOnFreshBranch({
+        exec, repoPath, base, branch: branchOf(p), files: [{ path: file, content: stringifyYaml(applyProposal(raw, p.edit)) }],
+        message: p.title, author, tmpDir: `${this.deps.tmpRoot}/${p.id}-${this.deps.clock.epochMs()}`, env: this.deps.credentialEnv?.() ?? {},
+      });
+      return true;
+    } catch (e) {
+      this.deps.log.warn('proposals.commit_failed', { id: p.id, error: errorMessage(e) });
+      return false;
     }
-    await this.deps.pullRequests.open({ cwd: repository.path, repo, head, base, title: p.title, body: proposalBody(file, p, backtest) });
   }
 }
+
+const branchOf = (p: Proposal): string => `tandemise/promote/${p.id}`;
 
 function proposalBody(file: string, p: Proposal, backtest: string | null): string {
   return [
@@ -162,4 +152,4 @@ function proposalBody(file: string, p: Proposal, backtest: string | null): strin
   ].join('\n');
 }
 
-const branchOf = (p: Proposal): string => `tandemise/promote/${p.id}`;
+

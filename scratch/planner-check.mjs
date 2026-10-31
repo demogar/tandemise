@@ -574,6 +574,66 @@ await attempt('brain source', async () => {
   clearInterval(keepAlive);
 });
 
+await attempt('review: brain edits offline and by pull request', async () => {
+  section('review: brain edits offline and by pull request');
+  const { mkdtempSync, writeFileSync, mkdirSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { execFileSync } = await import('node:child_process');
+  const { engineHarness, realExecutor } = await import('./planner-harness.mjs');
+  const EL = await import('@tandemise/execution-local');
+  const { nullLogger } = await import('@tandemise/shared');
+  const keepAlive = setInterval(() => {}, 1000);
+  const base = mkdtempSync(join(tmpdir(), 'tdm-brainedit-'));
+  const gitconfig = join(base, 'gitconfig');
+  writeFileSync(gitconfig, '[user]\n\tname = Check\n\temail = check@example.com\n[init]\n\tdefaultBranch = main\n[commit]\n\tgpgsign = false\n');
+  const brainRepo = new EL.GitBrainRepo(new EL.NodeProcessSupervisor(nullLogger), nullLogger, () => ({ GIT_CONFIG_GLOBAL: gitconfig }));
+  mkdirSync(join(base, 'bin'));
+  const h = await engineHarness(join(base, 'home'), { brainRepo, commandExecutor: realExecutor(join(base, 'bin')) });
+  const g = (cwd, ...a) => execFileSync('git', ['-C', cwd, '-c', 'user.name=c', '-c', 'user.email=c@e.com', ...a], { encoding: 'utf8' }).trim();
+  execFileSync('git', ['init', '-q', '-b', 'main', h.paths.root]);
+  g(h.paths.root, 'commit', '-q', '--allow-empty', '-m', 'init');
+  const code = join(base, 'code');
+  mkdirSync(code);
+  execFileSync('git', ['init', '-q', '-b', 'main', code]);
+  g(code, 'commit', '-q', '--allow-empty', '-m', 'init');
+  const caller = { personId: h.services.identity.localPerson().id };
+  const ws = (await h.services.workspaces.create(caller, { name: 'Edits', repositoryPath: code })).workspace.id;
+  const brain = h.container.resolve(app.BRAIN_SERVICE);
+  await brain.link(caller, ws, { mode: 'local' });
+  const clone = brain.linkOf(ws).clonePath;
+  const bare = join(base, 'brain.git');
+  execFileSync('git', ['init', '-q', '--bare', '-b', 'main', bare]);
+  g(clone, 'remote', 'add', 'origin', bare);
+  g(clone, 'push', '-q', 'origin', 'main');
+  h.container.resolve(app.WORKSPACE_BRAIN_REPOSITORY).update(ws, { remote: 'example.test/brain' });
+  // Turn it on (direct edits), then lose the network and turn it off: it is off here at once, and you are told.
+  await h.services.mergePolicy.update(ws, { ...app.SHIPPED_MERGE, autoMerge: 'on' }, caller);
+  g(clone, 'remote', 'set-url', 'origin', join(base, 'nowhere.git'));
+  await h.services.mergePolicy.stop(ws, caller);
+  const planner = h.container.resolve(app.PLANNER_SERVICE);
+  const config = await planner.config(ws);
+  check('stopping auto-merge offline takes effect on this machine', config.origins.merge === 'brain' && config.merge.autoMerge === 'off', [config.origins.merge, config.merge.autoMerge]);
+  check('…and says the push failed', (brain.extraProblems.get(ws) ?? []).some((p) => p.includes("couldn't be pushed")), brain.extraProblems.get(ws));
+  // A brain that asks for edits as pull requests: turning it on opens one and changes nothing here yet.
+  g(clone, 'remote', 'set-url', 'origin', bare);
+  g(clone, 'push', '-q', 'origin', 'main');
+  const manifest = g(clone, 'show', 'HEAD:brain.yaml');
+  writeFileSync(join(clone, 'brain.yaml'), manifest.replace(/humanEdits: direct/, 'humanEdits: pr'));
+  g(clone, 'commit', '-q', '-am', 'chore: edits by pull request');
+  g(clone, 'push', '-q', 'origin', 'main');
+  brain.markPulled(ws, g(clone, 'rev-parse', 'HEAD'));
+  const opened = [];
+  h.container.rebind(app.BRAIN_HOST, () => ({ openPr: async (input) => { opened.push(input); return { url: 'https://github.com/x/brain/pull/9' }; } }), { source: 'check' });
+  g(clone, 'commit', '-q', '--allow-empty', '-m', 'an unrelated local commit');
+  await h.services.mergePolicy.update(ws, { ...app.SHIPPED_MERGE, autoMerge: 'on' }, caller);
+  check('with humanEdits: pr, the edit opens a pull request in the brain', opened.length === 1 && opened[0].head.startsWith('tandemise/edit/'), opened);
+  const onBranch = g(bare, 'show', `${opened[0]?.head}:factory/merge.yaml`);
+  check('…whose branch has the edit, cut from origin', onBranch.includes('autoMerge: on') && !g(bare, 'log', '--format=%s', opened[0]?.head).includes('an unrelated local commit'), onBranch.slice(0, 80));
+  check('…and nothing changes here until it merges', (await planner.config(ws)).merge.autoMerge === 'off' && g(clone, 'log', '-1', '--format=%s') === 'an unrelated local commit');
+  clearInterval(keepAlive);
+});
+
 // @sections
 
 console.log(`\n${passed} passed, ${failures.length} failed`);

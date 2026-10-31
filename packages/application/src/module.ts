@@ -397,7 +397,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       exec: r.tryResolve(INTEGRATION_COMMAND_EXECUTOR) ?? null,
       ...(r.has(t.GIT_CREDENTIAL_ENV) ? { credentialEnv: r.resolve(t.GIT_CREDENTIAL_ENV) } : {}),
       clock: clock(r), log: log(r).child({ component: 'proposals' }), tmpRoot: `${paths(r).root}/proposals`,
-      brain: () => r.tryResolve(BRAIN_SERVICE), brainRepo: () => r.tryResolve(BRAIN_REPO), brainHost: () => r.tryResolve(BRAIN_HOST),
+      brain: () => r.tryResolve(BRAIN_SERVICE), brainHost: () => r.tryResolve(BRAIN_HOST),
     }), { source: SOURCE });
     bind(t.OUTCOME_RECORDER, (r) => new OutcomeRecorder({
       outcomes: r.resolve(t.OUTCOME_REPOSITORY),
@@ -685,6 +685,12 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
     // A linked brain's factory/ first, then the local files (#53 Task 20).
     bind(t.FACTORY_CONFIG_SOURCE, (r) => new BrainFirstFactoryConfigSource(
       () => r.tryResolve(BRAIN_SERVICE), () => r.tryResolve(BRAIN_REPO), r.resolve(t.LOCAL_FACTORY_CONFIG_SOURCE),
+      () => {
+        const exec = r.tryResolve(INTEGRATION_COMMAND_EXECUTOR);
+        const host = r.tryResolve(BRAIN_HOST);
+        if (exec === undefined || host === undefined) return undefined;
+        return { exec, host, tmpRoot: `${paths(r).root}/brain-edits`, ...(r.has(t.GIT_CREDENTIAL_ENV) ? { credentialEnv: r.resolve(t.GIT_CREDENTIAL_ENV) } : {}) };
+      },
     ), { source: SOURCE });
     bind(t.OUTCOME_HISTORY, (r) => new OutcomeHistory(
       r.resolve(t.OUTCOME_REPOSITORY), () => r.tryResolve(BRAIN_SERVICE), () => r.tryResolve(BRAIN_REPO), log(r).child({ component: 'outcomes' }),
