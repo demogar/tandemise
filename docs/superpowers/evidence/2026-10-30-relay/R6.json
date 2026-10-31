@@ -1,0 +1,32 @@
+{
+  "id": "R6",
+  "title": "The relay goes away and comes back; window A follows",
+  "ok": true,
+  "checks": [
+    {
+      "label": "connected before",
+      "ok": true,
+      "observed": "Team relay\n\nConnected to 127.0.0.1:46707\n· Acceptance team\n\nDisconnect\nDisconnecting keeps what you're working on, on this computer.\nWebhooks\n\nNo webhook addresses yet.\n\nWebhook name\nSource\nHandshake\nNo handshake\nMeta (WhatsApp) verify token\nEcho a challenge\nAdd a webhook address"
+    },
+    {
+      "label": "with the relay stopped, Settings says offline",
+      "ok": true,
+      "observed": "Team relay\n\nOffline since Oct 30, 2026, 8:01 PM\n\nYour work carries on. The team hears from you again when the relay is back.\n\nDisconnect\nDisconnecting keeps what you're working on, on this computer.\nWebhooks\n\nNo webhook addresses yet.\n\nWebhook name\nSource\nHandshake\nNo handshake\nMeta (WhatsApp) verify token\nEcho a challenge\nAdd a webhook address"
+    },
+    {
+      "label": "…\"Offline since …\"",
+      "ok": true,
+      "observed": "Team relay\n\nOffline since Oct 30, 2026, 8:01 PM\n\nYour work carries on. The team hears from you again when the relay is back.\n\nDisconnect\nDisconnecting keeps what you're working on, on this computer.\nWebhooks\n\nNo webhook addresses yet.\n\nWebhook name\nSource\nHandshake\nNo handshake\nMeta (WhatsApp) verify token\nEcho a challenge\nAdd a webhook address"
+    },
+    {
+      "label": "after it is back, A reconnects by itself",
+      "ok": true,
+      "observed": "Team relay\n\nConnected to 127.0.0.1:46707\n· Acceptance team\n\nDisconnect\nDisconnecting keeps what you're working on, on this computer.\nWebhooks\n\nNo webhook addresses yet.\n\nWebhook name\nSource\nHandshake\nNo handshake\nMeta (WhatsApp) verify token\nEcho a challenge\nAdd a webhook address"
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/home/demogar/projects/tandemise/tandemise/.claude/worktrees/agent-a7a3a08456d2c2555/docs/superpowers/evidence/2026-10-30-relay/R6-offline.png",
+    "/home/demogar/projects/tandemise/tandemise/.claude/worktrees/agent-a7a3a08456d2c2555/docs/superpowers/evidence/2026-10-30-relay/R6-reconnected.png"
+  ]
+}

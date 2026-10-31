@@ -1,7 +1,10 @@
 // Shared by the relay scenarios: one or two real windows (each with its own
 // home and daemon from this checkout), issue-linked missions, and the relay
 // started from apps/relay/dist.
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, openSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawn } from 'node:child_process';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { hostname } from 'node:os';
 import { DatabaseSync } from 'node:sqlite';
 import { loadEnv, client, until, sleep } from '../p0/lib/api.mjs';
@@ -106,4 +109,86 @@ export async function windowFor(scratch, port) {
 export function relayInfo(scratch) {
   const f = `${scratch}/relay.json`;
   return existsSync(f) ? JSON.parse(readFileSync(f, 'utf8')) : null;
+}
+
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
+
+/** Starts the relay from this checkout's build on a fixed loopback port (restartable on the same DB and port). */
+export function startRelayProcess({ port, db, log }) {
+  const out = openSync(log, 'a');
+  const child = spawn(process.execPath, [join(repoRoot, 'apps/relay/dist/main.js')], {
+    detached: true,
+    stdio: ['ignore', out, out],
+    env: { ...process.env, RELAY_HOST: '127.0.0.1', RELAY_PORT: String(port), RELAY_DB: db, RELAY_PUBLIC_URL: `http://127.0.0.1:${port}`, RELAY_TEST_CLOCK: '1', RELAY_TEAM_NAME: 'Acceptance team', RELAY_LOG_LEVEL: 'info' },
+  });
+  child.unref();
+  return child.pid;
+}
+
+/** Stops the relay this run started, and starts it again on the same DB and port. */
+export async function stopRelay(scratch) {
+  const info = relayInfo(scratch);
+  try { process.kill(info.pid); } catch { /* gone */ }
+  await sleep(500);
+}
+
+export async function restartRelay(scratch) {
+  const info = relayInfo(scratch);
+  const pid = startRelayProcess({ port: info.port, db: info.db, log: `${scratch}/relay.log` });
+  writeFileSync(`${scratch}/relay.json`, JSON.stringify({ ...info, pid }, null, 2));
+  await until(async () => (await fetch(`${info.url}/relay/v1/health`).then((r) => r.ok, () => false)), { label: 'relay back', timeoutMs: 15_000 });
+}
+
+/**
+ * An observer outside both windows: a second admin made with the relay's own
+ * CLI (as \`docker compose exec relay tandemise-relay invite\` would), used to read
+ * the relay's truth and to move its test clock. Made once, after r02's import.
+ */
+export async function observer(scratch) {
+  const info = relayInfo(scratch);
+  if (info.observerToken) return info;
+  const code = execFileSync(process.execPath, [join(repoRoot, 'apps/relay/dist/cli.js'), 'invite', '--role', 'admin', '--name', 'Observer'], { env: { ...process.env, RELAY_DB: info.db, RELAY_LOG_LEVEL: 'error' } }).toString().trim();
+  const res = await fetch(`${info.url}/relay/v1/invites/redeem`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-tandemise-relay-api': '1' }, body: JSON.stringify({ code, displayName: 'Observer', deviceLabel: 'acceptance' }) });
+  const joined = await res.json();
+  const next = { ...info, observerToken: joined.deviceToken };
+  writeFileSync(`${scratch}/relay.json`, JSON.stringify(next, null, 2));
+  return next;
+}
+
+export async function relayCall(scratch, method, path, body) {
+  const info = await observer(scratch);
+  const res = await fetch(`${info.url}${path}`, { method, headers: { authorization: `Bearer ${info.observerToken}`, 'x-tandemise-relay-api': '1', ...(body ? { 'content-type': 'application/json' } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
+  return res.json().catch(() => null);
+}
+
+/** Settings → Team relay: its data-state and text. */
+export async function relaySettings(w) {
+  await w.page.navigate('#/settings');
+  await until(() => w.page.evaluate(`Boolean(document.querySelector('section[aria-label="Team relay"]'))`), { label: 'Team relay section', timeoutMs: 20_000 });
+  await w.page.evaluate(`document.querySelector('section[aria-label="Team relay"]').scrollIntoView({ block: 'start' })`);
+}
+
+export const relayState = (w) => w.page.evaluate(`document.querySelector('section[aria-label="Team relay"]')?.getAttribute('data-state') ?? ''`);
+export const relayText = (w) => w.page.evaluate(`document.querySelector('section[aria-label="Team relay"]')?.innerText ?? ''`);
+
+/** Fills Connect and submits; waits for "connected". */
+export async function connectWindow(w, { url, code, name, device }) {
+  await relaySettings(w);
+  await w.page.click('Connect', { within: 'section[aria-label="Team relay"]' });
+  await w.page.fill('Relay address', url);
+  await w.page.fill('Invite code', code);
+  await w.page.fill('Your name', name);
+  await w.page.fill("This computer's name", device);
+  await w.page.click('Connect to the relay', { within: 'section[aria-label="Team relay"]' });
+  return until(async () => (await relayState(w)) === 'connected', { label: 'connected', timeoutMs: 20_000 }).catch(() => false);
+}
+
+/** Facts one scenario leaves for the next (mission ids), next to the run. */
+export function readState(scratch) {
+  const f = `${scratch}/relay-state.json`;
+  return existsSync(f) ? JSON.parse(readFileSync(f, 'utf8')) : {};
+}
+
+export function writeState(scratch, patch) {
+  writeFileSync(`${scratch}/relay-state.json`, JSON.stringify({ ...readState(scratch), ...patch }, null, 2));
 }

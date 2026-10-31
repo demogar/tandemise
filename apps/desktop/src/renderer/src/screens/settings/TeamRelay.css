@@ -1,0 +1,125 @@
+/* Settings → Team relay, and the Team screen's relay block (relay spec). Colours only from theme.css roles. */
+.team-relay .card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+.team-relay__lead {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.team-relay__detail {
+  margin: 0;
+}
+
+.team-relay__refused {
+  color: var(--status-failed);
+}
+
+.team-relay__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--presence-offline);
+}
+
+.team-relay__dot[data-presence='online'] {
+  background: var(--presence-online);
+}
+
+.team-relay__dot[data-presence='away'] {
+  background: var(--presence-away);
+}
+
+.team-relay__form {
+  gap: var(--s3);
+}
+
+.team-relay__insecure {
+  gap: var(--s2);
+  color: var(--status-blocked);
+}
+
+.team-relay__failures {
+  margin: 0;
+  padding-left: var(--s5);
+  color: var(--status-failed);
+}
+
+.team-relay__subhead {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.team-relay__endpoints {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.team-relay__endpoint {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s2) 0;
+  border-top: 1px solid var(--border);
+}
+
+.team-relay__endpoint[data-disabled='true'] {
+  color: var(--text-tertiary);
+}
+
+.team-relay__endpoint-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.team-relay__url {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+
+.relay-team__row {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s2) var(--s4);
+  border-top: 1px solid var(--border);
+}
+
+.relay-team__row:first-child {
+  border-top: none;
+}
+
+.relay-team__name {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.relay-team__claims {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-secondary);
+}
+
+.relay-team__code {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  padding: var(--s3);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  color: var(--text);
+  user-select: all;
+}

@@ -1,0 +1,32 @@
+{
+  "id": "R3",
+  "title": "Invite someone from the Team screen; window B joins",
+  "ok": true,
+  "checks": [
+    {
+      "label": "Invite someone shows a code",
+      "ok": true,
+      "observed": "TRI-6MF3H-FPTKK-Z3PVG-DEVSG-8ADPM1"
+    },
+    {
+      "label": "…that \"works once and expires on\" a date, shown only now",
+      "ok": true,
+      "observed": "TRI-6MF3H-FPTKK-Z3PVG-DEVSG-8ADPM1\n\nThis code works once and expires on Nov 6, 2026, 8:01 PM. It is shown only now.\n\nCopy\nDone"
+    },
+    {
+      "label": "window B connects with it",
+      "ok": true
+    },
+    {
+      "label": "B's Team screen lists Ana, online",
+      "ok": true,
+      "observed": "online"
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/home/demogar/projects/tandemise/tandemise/.claude/worktrees/agent-a7a3a08456d2c2555/docs/superpowers/evidence/2026-10-30-relay/R3-invite.png",
+    "/home/demogar/projects/tandemise/tandemise/.claude/worktrees/agent-a7a3a08456d2c2555/docs/superpowers/evidence/2026-10-30-relay/R3-b-connected.png",
+    "/home/demogar/projects/tandemise/tandemise/.claude/worktrees/agent-a7a3a08456d2c2555/docs/superpowers/evidence/2026-10-30-relay/R3-b-team.png"
+  ]
+}

@@ -1,0 +1,66 @@
+{
+  "id": "R2",
+  "title": "Connect window A to the relay and bring its local data",
+  "ok": true,
+  "checks": [
+    {
+      "label": "Settings → Team relay starts local",
+      "ok": true,
+      "observed": "local"
+    },
+    {
+      "label": "…\"Only this computer knows what you're working on.\"",
+      "ok": true,
+      "observed": "Team relay\n\nOnly this computer knows what you're working on.\n\nA team relay tells everyone's Tandemise who is working on which tracker item, and holds webhooks for you to pick up. Your work stays on this computer.\n\nConnect"
+    },
+    {
+      "label": "after the address and the code it is connected",
+      "ok": true,
+      "observed": "Team relay\n\nConnected to 127.0.0.1:46707\n· Acceptance team\n\nThis relay is new. Bring what this computer knows: what you're working on, your webhook addresses and unread webhooks.\nBring my local data\nDisconnect\nDisconnecting keeps what you're working on, on this computer.\nWebhooks\n\nNo webhook addresses yet.\n\nWebhook name\nSource\nHandshake\nNo handshake\nMeta (WhatsApp) verify token\nEcho a challenge\nAdd a webhook address"
+    },
+    {
+      "label": "…\"Connected to 127.0.0.1:46707\" with the team name",
+      "ok": true,
+      "observed": "Team relay\n\nConnected to 127.0.0.1:46707\n· Acceptance team\n\nThis relay is new. Bring what this computer knows: what you're working on, your webhook addresses and unread webhooks.\nBring my local data\nDisconnect\nDisconnecting keeps what you're working on, on this computer.\nWebhooks\n\nNo webhook addresses yet.\n\nWebhook name\nSource\nHandshake\nNo handshake\nMeta (WhatsApp) verify token\nEcho a challenge\nAdd a webhook address"
+    },
+    {
+      "label": "…offering \"Bring my local data\"",
+      "ok": true,
+      "observed": "Team relay\n\nConnected to 127.0.0.1:46707\n· Acceptance team\n\nThis relay is new. Bring what this computer knows: what you're working on, your webhook addresses and unread webhooks.\nBring my local data\nDisconnect\nDisconnecting keeps what you're working on, on this computer.\nWebhooks\n\nNo webhook addresses yet.\n\nWebhook name\nSource\nHandshake\nNo handshake\nMeta (WhatsApp) verify token\nEcho a challenge\nAdd a webhook address"
+    },
+    {
+      "label": "the relay now holds acme/app#7 for Ana",
+      "ok": true,
+      "observed": [
+        {
+          "id": "cc_6cec286a-2def-45dd-82d6-e65aaabc393d",
+          "projectKey": "github.com/acme/app",
+          "itemRef": "github:acme/app#7",
+          "itemTitle": "Fix the hello page header",
+          "itemUrl": "https://github.com/acme/app/issues/7",
+          "memberId": "cm_96d6f276-79cb-4697-9e50-d3d84dec3494",
+          "memberName": "Ana",
+          "deviceId": "cd_9225078c-2fdf-438e-8491-a23f6e5a3456",
+          "deviceLabel": "Ana laptop",
+          "localRef": null,
+          "state": "active",
+          "endedReason": null,
+          "endedBy": null,
+          "startedAt": "2026-10-31T01:01:04.243Z",
+          "endedAt": null,
+          "seq": 3
+        }
+      ]
+    },
+    {
+      "label": "Home still says you are on acme/app#7, now through the relay",
+      "ok": true,
+      "observed": "Who's working on what\nYou\nacme/app#7\nFix the hello page header\nsince 20:01"
+    }
+  ],
+  "notes": [],
+  "shots": [
+    "/home/demogar/projects/tandemise/tandemise/.claude/worktrees/agent-a7a3a08456d2c2555/docs/superpowers/evidence/2026-10-30-relay/R2-local.png",
+    "/home/demogar/projects/tandemise/tandemise/.claude/worktrees/agent-a7a3a08456d2c2555/docs/superpowers/evidence/2026-10-30-relay/R2-connected.png"
+  ]
+}

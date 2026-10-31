@@ -14,6 +14,7 @@ import { createServer } from 'node:net';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
+import { startRelayProcess } from './common.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '../../..');
@@ -66,25 +67,13 @@ function install(link, port) {
 
 const freePort = () => new Promise((done) => { const s = createServer(); s.listen(0, '127.0.0.1', () => { const { port } = s.address(); s.close(() => done(port)); }); });
 
-/** Starts the relay from this checkout's build on a fixed loopback port; restartable on the same DB and port. */
-export async function startRelay(port, db) {
-  const out = openSync(`${LINK_A}/relay.log`, 'a');
-  const child = spawn(process.execPath, [join(repoRoot, 'apps/relay/dist/main.js')], {
-    detached: true,
-    stdio: ['ignore', out, out],
-    env: { ...process.env, RELAY_HOST: '127.0.0.1', RELAY_PORT: String(port), RELAY_DB: db, RELAY_PUBLIC_URL: `http://127.0.0.1:${port}`, RELAY_TEST_CLOCK: '1', RELAY_TEAM_NAME: 'Acceptance team' },
-  });
-  child.unref();
-  return child.pid;
-}
-
 const realA = install(LINK_A, PORT_A);
 let realB = null;
 if (needsTeam) {
   realB = install(LINK_B, PORT_B);
   const port = await freePort();
   const db = `${LINK_A}/relay.db`;
-  const pid = await startRelay(port, db);
+  const pid = startRelayProcess({ port, db, log: `${LINK_A}/relay.log` });
   // The first start prints the admin invite once; the scenarios read it from the log.
   const deadline = Date.now() + 15_000;
   let invite = null;
@@ -94,6 +83,14 @@ if (needsTeam) {
   }
   if (invite === null) throw new Error(`relay did not print an admin invite; see ${LINK_A}/relay.log`);
   writeFileSync(`${LINK_A}/relay.json`, JSON.stringify({ pid, port, db, url: `http://127.0.0.1:${port}`, invite }, null, 2));
+  // Two people's installs of one repository: both name the project the same way.
+  for (const link of [LINK_A, LINK_B]) {
+    const env = JSON.parse(readFileSync(`${link}/env.json`, 'utf8'));
+    await fetch(`${env.url}/v1/coordination/project-key`, {
+      method: 'PUT', headers: { authorization: `Bearer ${env.token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ workspaceId: env.workspaceId, projectKey: 'github.com/acme/app' }),
+    });
+  }
 }
 
 let failed = null;
