@@ -9,7 +9,7 @@ import { useConnectors, useDaemonMutation, useIntegrations } from '../lib/querie
 import { useDaemon } from '../lib/connection.js';
 import { useWorkspace } from '../lib/workspace.js';
 import { healthTone, relativeTime } from '../lib/format.js';
-import { Button } from '@tandemise/design/react';
+import { Banner, Button, Chip, Tooltip, Truncate } from '@tandemise/design/react';
 
 /** Gallery order: roughly the order work flows through a project. */
 const CATEGORIES: readonly { id: string; title: string }[] = [
@@ -193,15 +193,19 @@ function ConnectedCard({
           <div className="row row--wrap" style={{ gap: 'var(--s2)' }}>
             <span style={{ fontWeight: 600 }}>{connector?.name ?? integration.name}</span>
             {connector !== undefined && connector.name.toLowerCase() !== integration.name ? (
-              <span className="chip chip--muted mono">{integration.name}</span>
+              <Chip muted className="mono">{integration.name}</Chip>
             ) : null}
             {view.account ? <span className="dim">{view.account}</span> : null}
           </div>
           <div className="row" style={{ gap: 6, marginTop: 4, fontSize: 'var(--fs-xs)' }}>
             <StatusDot tone={needsReconnect ? 'blocked' : healthTone(health.state)} />
-            <span className="dim truncate" title={health.detail}>
-              {needsReconnect ? health.detail : health.state === 'healthy' ? `Working · checked ${relativeTime(health.checkedAt)}` : health.detail}
-            </span>
+            {needsReconnect || health.state !== 'healthy' ? (
+              <Truncate className="dim">{health.detail}</Truncate>
+            ) : (
+              <Tooltip content={health.detail}>
+                <span className="dim truncate">{`Working · checked ${relativeTime(health.checkedAt)}`}</span>
+              </Tooltip>
+            )}
           </div>
           {view.availableCapabilities.length > 0 || connector ? (
             <div className="dim" style={{ fontSize: 'var(--fs-xs)', marginTop: 6 }}>
@@ -224,9 +228,11 @@ function ConnectedCard({
             label={integration.enabled ? `Turn off ${integration.name}` : `Turn on ${integration.name}`}
             onChange={(enabled) => update.mutate(enabled)}
           />
-          <Button iconOnly variant="ghost" aria-label={`Disconnect ${integration.name}`} onClick={onRemove}>
-            <Icon name="trash" size={14} />
-          </Button>
+          <Tooltip content={`Disconnect ${integration.name}`}>
+            <Button iconOnly variant="ghost" aria-label={`Disconnect ${integration.name}`} onClick={onRemove}>
+              <Icon name="trash" size={14} />
+            </Button>
+          </Tooltip>
         </div>
       </div>
       {update.isError ? <ErrorState error={update.error} /> : null}
@@ -403,10 +409,9 @@ function ConnectDialog({ target, onClose }: { target: ConnectTarget; onClose: ()
             Anything that changes data in {title} follows this project's autonomy setting.
           </p>
         ) : attempt.status === 'failed' ? (
-          <div className="banner banner--warn">
-            <Icon name="alert" size={14} />
-            <span>{attempt.error ?? 'The connection did not complete.'}</span>
-          </div>
+          <Banner tone="warn" icon={<Icon name="alert" size={14} />}>
+            {attempt.error ?? 'The connection did not complete.'}
+          </Banner>
         ) : (
           <>
             <div className="row" style={{ gap: 'var(--s3)' }}>
@@ -497,6 +502,7 @@ function CustomServerDialog({ onClose, onConnect }: { onClose: () => void; onCon
     >
       <div className="stack" style={{ gap: 'var(--s4)', color: 'var(--text)' }}>
         <Segmented
+          label="How it connects"
           value={mode}
           onChange={setMode}
           options={[

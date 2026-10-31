@@ -10,7 +10,7 @@ import { WhyTheseSteps } from './WhyTheseSteps.js';
 import { usePlanDecision } from '../../lib/queries.js';
 import { NowLine } from '../../components/TerminalPanel.js';
 import { duration, pluralize, taskBadge, taskTone } from '../../lib/format.js';
-import { Card } from '@tandemise/design/react';
+import { Banner, Card, Tooltip, Truncate } from '@tandemise/design/react';
 
 interface Edge {
   readonly id: string;
@@ -154,20 +154,23 @@ export function PlanPane({ detail }: { detail: MissionDetail }): JSX.Element {
       ) : null}
       {detail.plan?.summary ? (
         <div style={{ padding: 'var(--s4) var(--s7) 0' }}>
-          <div className="banner">
-            <Icon name="sparkle" size={15} className="dim" />
+          <Banner
+            icon={<Icon name="sparkle" size={15} className="dim" />}
+            action={
+              // The approved version's id is for bug reports: behind Details, as in the reader and the task drawer.
+              planArtifactId ? (
+                <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 'var(--s2)', alignItems: 'center' }}>
+                  <button type="button" className="reader__details-toggle" aria-expanded={showPlanId} onClick={() => setShowPlanId((open) => !open)}>
+                    Details
+                    <Icon name={showPlanId ? 'chevronUp' : 'chevronDown'} size={11} />
+                  </button>
+                  {showPlanId ? <IdChip id={planArtifactId} prefix="plan" /> : null}
+                </span>
+              ) : null
+            }
+          >
             <span className="muted">{detail.plan.summary}</span>
-            {/* The approved version's id is for bug reports: behind Details, as in the reader and the task drawer. */}
-            {planArtifactId ? (
-              <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 'var(--s2)', alignItems: 'center' }}>
-                <button type="button" className="reader__details-toggle" aria-expanded={showPlanId} onClick={() => setShowPlanId((open) => !open)}>
-                  Details
-                  <Icon name={showPlanId ? 'chevronUp' : 'chevronDown'} size={11} />
-                </button>
-                {showPlanId ? <IdChip id={planArtifactId} prefix="plan" /> : null}
-              </span>
-            ) : null}
-          </div>
+          </Banner>
         </div>
       ) : null}
 
@@ -231,9 +234,9 @@ function TaskCard({
     return (
       <button type="button" ref={register} className="taskcard taskcard--covered" data-status={task.status} data-selected={selected} onClick={onSelect}>
         <div className="taskcard__title">{task.title} · covered by your upload</div>
-        <div className="taskcard__covered-by" title={task.coveredBy.filename}>
+        <div className="taskcard__covered-by">
           <Icon name="file" size={11} />
-          <span className="truncate">{task.coveredBy.filename}</span>
+          <Truncate>{task.coveredBy.filename}</Truncate>
         </div>
       </button>
     );
@@ -242,7 +245,7 @@ function TaskCard({
   const elapsed =
     task.startedAt && task.finishedAt ? Date.parse(task.finishedAt) - Date.parse(task.startedAt) : null;
 
-  return (
+  const card = (
     <button type="button" ref={register} className="taskcard" data-status={task.status} data-selected={selected} onClick={onSelect}>
       <div className="taskcard__head">
         <span className={`dot dot--${tone}${task.status === 'RUNNING' ? ' dot--pulse' : ''}`} />
@@ -289,7 +292,7 @@ function TaskCard({
       {task.checks.length > 0 ? (
         <div className="taskcard__checks">
           {task.checks.map((check) => (
-            <span key={check.id} className={`checkpill checkpill--${check.outcome}`} title={check.detail}>
+            <span key={check.id} className={`checkpill checkpill--${check.outcome}`}>
               {check.outcome === 'PASS' ? <Icon name="check" size={10} /> : check.outcome === 'FAIL' ? <Icon name="x" size={10} /> : null}
               {check.name.replace(/^checks\./, '')}
             </span>
@@ -326,7 +329,7 @@ function TaskCard({
 
       {task.attention?.kind === 'stale_input' ? (
         // Kept on an older version: worth knowing, not a failure, so it reads like a pending check rather than in red.
-        <div className="taskcard__note" title={task.attention.note}>
+        <div className="taskcard__note">
           <Icon name="info" size={11} />
           <span>Built on an older version of {task.attention.upstream ?? 'its input'}</span>
         </div>
@@ -345,6 +348,8 @@ function TaskCard({
       ) : null}
     </button>
   );
+  // Which version it was built on is not on the card: it shows on the card's own hover and focus.
+  return task.attention?.kind === 'stale_input' ? <Tooltip content={task.attention.note}>{card}</Tooltip> : card;
 }
 
 /** "Yours" only when it is: a task parked for Ana is Ana's, and an open pool task is anyone's. */

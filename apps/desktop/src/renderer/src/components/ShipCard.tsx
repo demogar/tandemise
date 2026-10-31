@@ -3,7 +3,7 @@ import { useDaemonMutation, useShip } from '../lib/queries.js';
 import { Icon } from './Icon.js';
 import { ErrorState } from './primitives.js';
 import './ShipCard.css';
-import { Button } from '@tandemise/design/react';
+import { Button, Tooltip } from '@tandemise/design/react';
 
 /**
  * The ship step (#53 §10): opening the pull request, waiting for CI, then
@@ -35,10 +35,12 @@ function ShipPullRequest({ missionId, pr }: { missionId: string; pr: ShipPullReq
     <div className="ship__pr">
       <div className="ship__row">
         <span className="ship__ref">{pr.repo} #{pr.number}</span>
-        <Button title={pr.url} onClick={() => void window.tandemise.openExternal(pr.url)}>
-          <Icon name="externalLink" size={13} />
-          Open in GitHub
-        </Button>
+        <Tooltip content={pr.url}>
+          <Button onClick={() => void window.tandemise.openExternal(pr.url)}>
+            <Icon name="externalLink" size={13} />
+            Open in GitHub
+          </Button>
+        </Tooltip>
         {decision?.cardId != null ? (
           <Button variant="primary" disabled={merge.isPending} onClick={() => merge.mutate(decision.cardId!)}>
             Merge

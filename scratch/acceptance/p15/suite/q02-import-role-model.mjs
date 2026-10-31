@@ -21,7 +21,7 @@ const rows = await previewRows(c);
 const changed = rows.filter(([label]) => !label.endsWith(': Same'));
 ev.check('exactly one row is not Same: "Developer: Change"', changed.length === 1 && changed[0][0] === 'Developer: Change', changed);
 ev.check('it says what changes', changed[0]?.[1].includes('model: base-model → better-model'), changed[0]?.[1]);
-ev.check('its choice is "Take theirs"', await page.evaluate(`document.querySelector('[aria-label="Choice for Developer"] [aria-pressed="true"]')?.innerText.trim() === 'Take theirs'`));
+ev.check('its choice is "Take theirs"', await page.evaluate(`document.querySelector('[aria-label="Choice for Developer"] [aria-checked="true"]')?.innerText.trim() === 'Take theirs'`));
 ev.check('the model is unchanged until Apply (API)', (await roleOf(c, 'development'))?.models?.model === 'base-model');
 await page.evaluate(`document.querySelector('[aria-label="Import preview"]').scrollIntoView({ block: 'start' })`);
 await c.sleep(300);

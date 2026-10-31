@@ -1,8 +1,17 @@
-import { useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { Icon, type IconName } from './Icon.js';
 import { describeError } from '../lib/daemon.js';
 import { humanizeStatus, type Tone } from '../lib/format.js';
-import { Button, Card, EmptyState, Field as DesignField, StatusDot as DesignStatusDot, StatusPill } from '@tandemise/design/react';
+import { Button, Card, EmptyState, Field as DesignField, StatusDot as DesignStatusDot, StatusPill, type FieldProps } from '@tandemise/design/react';
+
+/**
+ * The design package's accessible controls, re-exported so screens keep one
+ * import path: `Segmented` is a named radio group (pass `label`, or
+ * `aria-labelledby` from a `Field`'s render prop), `Switch` a named
+ * `role="switch"`, `Stat` a description list, and `IdChip` a copy button
+ * (`interactive={false}` inside a link or a button).
+ */
+export { IdChip, Segmented, Stat, Switch } from '@tandemise/design/react';
 
 /** A record's status in words, as a pill in its tone (`StatusPill` from the design package). */
 export function StatusBadge({ status, tone, icon }: { status: string; tone: Tone; icon?: IconName }): JSX.Element {
@@ -93,56 +102,12 @@ export function Field({
   label: string;
   hint?: string;
   error?: string;
-  children: ReactNode;
+  children: FieldProps['children'];
 }): JSX.Element {
   return (
     <DesignField label={label} hint={hint} error={error}>
       {children}
     </DesignField>
-  );
-}
-
-export function Segmented<T extends string>({
-  value,
-  options,
-  onChange,
-  block = false,
-}: {
-  value: T;
-  options: readonly { value: T; label: string }[];
-  onChange: (value: T) => void;
-  block?: boolean;
-}): JSX.Element {
-  return (
-    <div className={`segmented${block ? ' segmented--block' : ''}`} role="group">
-      {options.map((option) => (
-        <button
-          key={option.value}
-          type="button"
-          className="segmented__option"
-          aria-pressed={option.value === value}
-          onClick={() => onChange(option.value)}
-        >
-          {option.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-export function Switch({ checked, onChange, label }: { checked: boolean; onChange: (next: boolean) => void; label: string }): JSX.Element {
-  return (
-    <button type="button" className="switch" role="switch" aria-checked={checked} aria-label={label} onClick={() => onChange(!checked)} />
-  );
-}
-
-export function Stat({ label, value, note, muted = false }: { label: string; value: string; note?: string; muted?: boolean }): JSX.Element {
-  return (
-    <div className="stat">
-      <span className="stat__label">{label}</span>
-      <span className={`stat__value${muted ? ' stat__value--muted' : ''}`}>{value}</span>
-      {note ? <span className="stat__note">{note}</span> : null}
-    </div>
   );
 }
 
@@ -153,41 +118,5 @@ export function SectionHead({ title, meta, action }: { title: string; meta?: str
       {meta ? <span className="section__meta">{meta}</span> : null}
       {action ? <div className="section__action">{action}</div> : null}
     </div>
-  );
-}
-
-/**
- * A record's identifier, shown so a person can point at exactly this mission,
- * task, approval or artifact - in a bug report, in a message to an agent - and
- * copied whole on click. Titles repeat and change; ids do not.
- *
- * A span, not a button: it sits inside clickable cards that are themselves
- * buttons, and a nested button is invalid markup.
- */
-export function IdChip({ id, prefix }: { id: string; prefix?: string }): JSX.Element {
-  const [copied, setCopied] = useState(false);
-  const copy = (event: MouseEvent | KeyboardEvent): void => {
-    event.stopPropagation();
-    event.preventDefault();
-    void navigator.clipboard.writeText(id).then(() => {
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1200);
-    }).catch(() => undefined);
-  };
-  return (
-    <span
-      role="button"
-      tabIndex={0}
-      className="idchip"
-      data-copied={copied}
-      title={`${id} (click to copy)`}
-      onClick={copy}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') copy(event);
-      }}
-    >
-      {prefix ? <span className="idchip__prefix">{prefix}</span> : null}
-      {copied ? 'copied' : id}
-    </span>
   );
 }

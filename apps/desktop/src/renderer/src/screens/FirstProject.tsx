@@ -4,7 +4,7 @@ import { Logo } from '../components/Logo.js';
 import { ErrorState, Field } from '../components/primitives.js';
 import { useDaemonMutation } from '../lib/queries.js';
 import { shortenPath } from '../lib/format.js';
-import { Button } from '@tandemise/design/react';
+import { Button, Tooltip } from '@tandemise/design/react';
 
 /**
  * The first thing a new install shows.
@@ -87,17 +87,21 @@ export function ProjectForm({ onCreated }: { onCreated?: (id: string) => void })
             <div key={path} className="list__row list__row--bordered">
               <Icon name="folder" size={14} className="dim" />
               <div className="list__main">
-                <div className="list__title mono truncate" title={path}>
-                  {shortenPath(path, 3)}
-                </div>
+                <Tooltip content={path}>
+                  <div className="list__title mono truncate">
+                    {shortenPath(path, 3)}
+                  </div>
+                </Tooltip>
               </div>
-              <Button
-                iconOnly variant="ghost"
-                aria-label={`Remove ${path}`}
-                onClick={() => setPaths((current) => current.filter((p) => p !== path))}
-              >
-                <Icon name="x" size={13} />
-              </Button>
+              <Tooltip content={`Remove ${path}`}>
+                <Button
+                  iconOnly variant="ghost"
+                  aria-label={`Remove ${path}`}
+                  onClick={() => setPaths((current) => current.filter((p) => p !== path))}
+                >
+                  <Icon name="x" size={13} />
+                </Button>
+              </Tooltip>
             </div>
           ))}
           <Button onClick={() => void browse()}>

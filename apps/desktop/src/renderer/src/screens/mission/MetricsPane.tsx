@@ -6,7 +6,7 @@ import { LimitFields, limitDraft, limitsFromDraft } from '../../components/Limit
 import { useDaemonMutation } from '../../lib/queries.js';
 import { isTerminalMissionStatus } from '../../lib/domain.js';
 import { dateTime, duration, metric, money } from '../../lib/format.js';
-import { Button, Card } from '@tandemise/design/react';
+import { Banner, Button, Card } from '@tandemise/design/react';
 
 /**
  * MVP.md §22.2: a value the runtime did not report is *unknown*. Rendering it
@@ -85,12 +85,11 @@ export function MetricsPane({ detail }: { detail: MissionDetail }): JSX.Element 
             <Stat label="Cost" value={money(m.costUsd)} muted={m.costUsd === null} />
           </div>
           {m.costUsd === null ? (
-            <div className="banner" style={{ marginTop: 'var(--s3)' }}>
-              <Icon name="info" size={14} className="dim" />
+            <Banner style={{ marginTop: 'var(--s3)' }} icon={<Icon name="info" size={14} className="dim" />}>
               <span className="muted">
                 Subscription-based runtimes do not expose a trustworthy per-run cost, so Tandemise reports nothing rather than a guess.
               </span>
-            </div>
+            </Banner>
           ) : null}
         </section>
       </div>

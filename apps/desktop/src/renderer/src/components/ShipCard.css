@@ -16,7 +16,7 @@
 .ship__dot {
   width: 8px;
   height: 8px;
-  border-radius: var(--radius-full);
+  border-radius: var(--tds-radius-full);
   background: var(--status-pending);
   flex: none;
 }
@@ -65,7 +65,7 @@
 }
 
 .ship__ref {
-  font-family: var(--font-mono);
+  font-family: var(--tds-font-mono);
   font-size: var(--fs-xs);
   color: var(--text-secondary);
 }

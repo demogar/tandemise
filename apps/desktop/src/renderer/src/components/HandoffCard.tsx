@@ -17,7 +17,7 @@ import { showFlash } from '../lib/notices.js';
 import { actorLabel, type Actors } from '../lib/team.js';
 import { SaveCaseDialog } from '../screens/evals/SaveCaseDialog.js';
 import { HoldButton, NowLine } from './TerminalPanel.js';
-import { Badge, Button } from '@tandemise/design/react';
+import { Badge, Button, Chip, Tooltip, Truncate } from '@tandemise/design/react';
 
 /** What changed, at most: the handoff contract caps `changed` at three, and a card shows all of them. */
 const CHANGED_SHOWN = 3;
@@ -117,9 +117,9 @@ export function HandoffCard({
     <article className="feedcard" data-section={card.section} data-tone={tone} data-feed-card={card.key}>
       <header className="feedcard__head">
         {card.roleName ? <span className="feedcard__role">{card.roleName}</span> : null}
-        <h3 className="feedcard__title truncate" title={card.title}>
+        <Truncate as="h3" className="feedcard__title">
           {card.title}
-        </h3>
+        </Truncate>
         <span className={`badge badge--${tone}`}>
           <span className={`dot dot--${tone}${card.status === 'RUNNING' ? ' dot--pulse' : ''}`} />
           {statusLabel(card)}
@@ -127,9 +127,9 @@ export function HandoffCard({
         {card.round > 1 ? <Badge className="feedcard__round">Round {card.round}</Badge> : null}
         {/* A note about length, not a failure: neutral, and it says only what was measured. */}
         {card.overBudget ? (
-          <Badge title="Longer than the word budget for its type">
-            Over budget
-          </Badge>
+          <Tooltip content="Longer than the word budget for its type">
+            <Badge tabIndex={0}>Over budget</Badge>
+          </Tooltip>
         ) : null}
         <span className="feedcard__time">
           {/* A later task replaced this output; saying so (and who, when known) keeps the card honest without a line of its own. */}
@@ -178,9 +178,9 @@ export function HandoffCard({
       </div>
 
       {lead ? (
-        <p className={`feedcard__headline${waiting ? ' feedcard__headline--waiting' : ''}`} title={lead}>
+        <Truncate as="p" className={`feedcard__headline${waiting ? ' feedcard__headline--waiting' : ''}`}>
           {lead}
-        </p>
+        </Truncate>
       ) : null}
 
       {/* What a live agent is doing this moment, under the headline. */}
@@ -214,9 +214,7 @@ export function HandoffCard({
           <Icon name="message" size={12} />
           <span className="feedcard__pending-count">{pendingLabel(pending, card.round)}</span>
           {/* The latest note, on one line: enough to recognise it, and the drawer has the thread. */}
-          <span className="feedcard__pending-text truncate" title={pending[pending.length - 1]!.text}>
-            {pending[pending.length - 1]!.text}
-          </span>
+          <Truncate className="feedcard__pending-text">{pending[pending.length - 1]!.text}</Truncate>
           {/* Only a note no round has taken waits on a person: a queued one rides the running pass, and one with a round joins it. */}
           {pending.some((note) => note.status === 'open' && note.round === null) ? (
             <StartRoundButton taskId={card.taskId} missionId={missionId} className="btn btn--ghost feedcard__link" />
@@ -227,8 +225,8 @@ export function HandoffCard({
       {points.length > 0 ? (
         <ul className="feedcard__points">
           {points.map((point, index) => (
-            <li key={index} title={point}>
-              <span className="truncate">{point}</span>
+            <li key={index}>
+              <Truncate>{point}</Truncate>
             </li>
           ))}
         </ul>
@@ -286,9 +284,9 @@ function ChangedList({ changed, actors }: { changed: readonly FeedChange[]; acto
           const what = change.declined ? change.what.replace(/^Declined:\s*/i, '') : change.what;
           const authors = [...new Set(change.feedback.map((note) => actorLabel(note.author, actors.meId)).filter((name) => name !== '—'))];
           return (
-            <li key={index} title={change.what}>
-              {change.declined ? <span className="chip chip--muted feedcard__declined">Declined</span> : null}
-              <span className="truncate">{what}</span>
+            <li key={index}>
+              {change.declined ? <Chip muted className="feedcard__declined">Declined</Chip> : null}
+              <Truncate>{what}</Truncate>
               {authors.length > 0 ? <span className="feedcard__author">· {authors.join(', ')}</span> : null}
             </li>
           );

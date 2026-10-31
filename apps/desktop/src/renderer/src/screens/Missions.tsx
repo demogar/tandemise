@@ -9,7 +9,7 @@ import { useListNavigation } from '../lib/keyboard.js';
 import { missionTone, pluralize, relativeTime } from '../lib/format.js';
 import { Backlog } from './missions/Backlog.js';
 import { Routines } from './missions/Routines.js';
-import { Badge, Button, Card } from '@tandemise/design/react';
+import { Badge, Banner, Button, Card, Chip, Truncate } from '@tandemise/design/react';
 
 type Filter = 'backlog' | 'routines' | 'active' | 'blocked' | 'finished' | 'all' | 'progress';
 
@@ -125,13 +125,17 @@ export function Missions({ initial = 'active' }: { initial?: Filter } = {}): JSX
         <div className="page__inner">
           {missions.isError ? <ErrorState error={missions.error} onRetry={() => void missions.refetch()} /> : null}
           {filter === 'progress' ? (
-            <div className="banner" style={{ marginBottom: 'var(--s4)' }}>
-              <Icon name="activity" size={15} className="dim" />
-              <span style={{ flex: 1 }}>Showing the {pluralize(counts.progress, 'mission')} in progress, blocked ones included: the work Home counts.</span>
-              <Button onClick={() => setFilter('all')}>
-                Show all missions
-              </Button>
-            </div>
+            <Banner
+              style={{ marginBottom: 'var(--s4)' }}
+              icon={<Icon name="activity" size={15} className="dim" />}
+              action={
+                <Button onClick={() => setFilter('all')}>
+                  Show all missions
+                </Button>
+              }
+            >
+              Showing the {pluralize(counts.progress, 'mission')} in progress, blocked ones included: the work Home counts.
+            </Banner>
           ) : null}
 
           {filter === 'backlog' ? (
@@ -175,19 +179,20 @@ export function Missions({ initial = 'active' }: { initial?: Filter } = {}): JSX
                       <StatusDot tone={tone} live={tone === 'running'} />
                       <div className="list__main">
                         <div className="list__title" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                          <span className="truncate">{summary.mission.title}</span>
-                          <IdChip id={summary.mission.id} />
+                          <Truncate>{summary.mission.title}</Truncate>
+                          {/* Inside the row's link, so not a second control: copied from the mission's own page. */}
+                          <IdChip id={summary.mission.id} interactive={false} />
                         </div>
-                        <div className="list__subtitle truncate" title={summary.currentActivity ?? summary.mission.goal}>
+                        <Truncate as="div" className="list__subtitle">
                           {summary.currentActivity ?? summary.mission.goal}
-                        </div>
+                        </Truncate>
                       </div>
                       <div className="list__aside">
                         {/* The Done-when ledger at a glance (P5), what the desk's "Criteria verified" adds up (P10). */}
                         {summary.criteria ? (
-                          <span className={`chip${summary.criteria.verified === summary.criteria.counted ? '' : ' chip--muted'}`} title="Done-when criteria verified by QA">
-                            {summary.criteria.verified} of {summary.criteria.counted} verified
-                          </span>
+                          <Chip muted={summary.criteria.verified !== summary.criteria.counted}>
+                            {summary.criteria.verified} of {summary.criteria.counted} criteria verified
+                          </Chip>
                         ) : null}
                         {progress.pendingApprovals > 0 ? (
                           <Badge tone="blocked">
@@ -195,7 +200,7 @@ export function Missions({ initial = 'active' }: { initial?: Filter } = {}): JSX
                             {progress.pendingApprovals}
                           </Badge>
                         ) : null}
-                        {summary.repositoryName ? <span className="chip chip--muted">{summary.repositoryName}</span> : null}
+                        {summary.repositoryName ? <Chip muted>{summary.repositoryName}</Chip> : null}
                         {progress.totalTasks > 0 ? (
                           <div style={{ width: 84 }}>
                             <div className="meter">

@@ -178,9 +178,9 @@ export async function drawerButton(c, label) {
 
 /** The "Now" line on a Plan card, on a feed card, and in the open drawer, read as "Now <what>" ('' when none). */
 const NOW = `(el) => el ? [...el.children].map((x) => x.textContent.trim()).join(' ') : ''`;
-export const nowOnPlanCard = (c, title) => c.page.evaluate(`(${NOW})([...document.querySelectorAll('button.taskcard')].find((x) => x.querySelector('.taskcard__title')?.innerText.trim() === ${JSON.stringify(title)})?.querySelector('[aria-label="Now"]'))`);
-export const nowOnFeedCard = (c, key) => c.page.evaluate(`(${NOW})(document.querySelector('[data-feed-card=${JSON.stringify(key)}] [aria-label="Now"]'))`);
-export const nowInDrawer = (c) => c.page.evaluate(`(${NOW})(document.querySelector('.modal [aria-label="Now"]'))`);
+export const nowOnPlanCard = (c, title) => c.page.evaluate(`(${NOW})([...document.querySelectorAll('button.taskcard')].find((x) => x.querySelector('.taskcard__title')?.innerText.trim() === ${JSON.stringify(title)})?.querySelector('.now-line'))`);
+export const nowOnFeedCard = (c, key) => c.page.evaluate(`(${NOW})(document.querySelector('[data-feed-card=${JSON.stringify(key)}] .now-line'))`);
+export const nowInDrawer = (c) => c.page.evaluate(`(${NOW})(document.querySelector('.modal .now-line'))`);
 
 /** Opens a mission's feed and waits for the step's card. */
 export async function openFeed(c, missionId, key = 'design') {

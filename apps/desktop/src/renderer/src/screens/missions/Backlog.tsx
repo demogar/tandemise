@@ -11,7 +11,7 @@ import { isTypingTarget, useListCursor } from '../../lib/keyboard.js';
 import { MISSION_PRIORITIES, priorityLabel } from '../../lib/domain.js';
 import { showFlash } from '../../lib/notices.js';
 import { pluralize } from '../../lib/format.js';
-import { Badge, Button, Card } from '@tandemise/design/react';
+import { Badge, Button, Card, Chip, Tooltip, Truncate } from '@tandemise/design/react';
 
 /** The limits one click away; any other value set elsewhere is shown too. */
 const LIMIT_OPTIONS = ['off', '1', '2', '3', '5'] as const;
@@ -103,6 +103,7 @@ export function Backlog(): JSX.Element {
           <div className="row" style={{ gap: 'var(--s2)' }}>
             <span className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Work on at most</span>
             <Segmented
+              label="Work on at most"
               value={limitValue}
               options={limitOptions}
               onChange={(next) => setLimit.mutate(next === 'off' ? null : Number(next))}
@@ -179,7 +180,7 @@ function BacklogRow({
           <IssueChip missionId={mission.id} linkId={mission.issueLinkId ?? null} />
           <Link href={`/missions/${mission.id}`}>{mission.title}</Link>
         </div>
-        <div className="list__subtitle truncate" title={readiness}>{readiness}</div>
+        <Truncate as="div" className="list__subtitle">{readiness}</Truncate>
       </div>
       <div className="list__aside">
         <span className={`badge badge--${item.ready ? 'succeeded' : 'blocked'}`}>
@@ -204,12 +205,16 @@ function BacklogRow({
         <Button variant="ghost" disabled={busy} onClick={() => onChange({ queued: item.queuePosition === null })}>
           {item.queuePosition === null ? 'Add to queue' : 'Remove from queue'}
         </Button>
-        <Button variant="ghost" iconOnly aria-label="Move up" title="Move up (⌥↑)" disabled={first || busy} onClick={() => onMove('up')}>
-          <Icon name="arrowUp" size={14} />
-        </Button>
-        <Button variant="ghost" iconOnly aria-label="Move down" title="Move down (⌥↓)" disabled={last || busy} onClick={() => onMove('down')}>
-          <Icon name="arrowDown" size={14} />
-        </Button>
+        <Tooltip content="Move up (⌥↑)">
+          <Button variant="ghost" iconOnly aria-label="Move up" aria-keyshortcuts="Alt+ArrowUp" disabled={first || busy} onClick={() => onMove('up')}>
+            <Icon name="arrowUp" size={14} />
+          </Button>
+        </Tooltip>
+        <Tooltip content="Move down (⌥↓)">
+          <Button variant="ghost" iconOnly aria-label="Move down" aria-keyshortcuts="Alt+ArrowDown" disabled={last || busy} onClick={() => onMove('down')}>
+            <Icon name="arrowDown" size={14} />
+          </Button>
+        </Tooltip>
       </div>
     </div>
   );
@@ -222,16 +227,17 @@ function IssueChip({ missionId, linkId }: { missionId: string; linkId: string | 
   const link = issues.data?.links.find((l) => l.id === linkId && l.missionId === missionId);
   if (link === undefined) return null;
   return (
-    <button
-      type="button"
-      className="chip chip--muted"
-      style={{ marginRight: 'var(--s2)' }}
-      aria-label={`Issue #${link.number}`}
-      title={`From ${link.githubRepo}#${link.number}. Open it on GitHub`}
-      onClick={(event) => { event.stopPropagation(); void window.tandemise.openExternal(link.url); }}
-    >
-      #{link.number}
-    </button>
+    <Tooltip content={`From ${link.githubRepo}#${link.number}. Open it on GitHub`}>
+      <button
+        type="button"
+        className="chip chip--muted"
+        style={{ marginRight: 'var(--s2)' }}
+        aria-label={`Issue #${link.number}`}
+        onClick={(event) => { event.stopPropagation(); void window.tandemise.openExternal(link.url); }}
+      >
+        #{link.number}
+      </button>
+    </Tooltip>
   );
 }
 
@@ -240,5 +246,5 @@ function PriorityChip({ priority }: { priority: MissionPriority }): JSX.Element 
   const label = priorityLabel(priority);
   if (priority === 'urgent') return <Badge tone="failed" style={{ minWidth: 64, justifyContent: 'center' }}>{label}</Badge>;
   if (priority === 'high') return <Badge tone="blocked" style={{ minWidth: 64, justifyContent: 'center' }}>{label}</Badge>;
-  return <span className="chip chip--muted" style={{ minWidth: 64, justifyContent: 'center' }}>{label}</span>;
+  return <Chip muted style={{ minWidth: 64, justifyContent: 'center' }}>{label}</Chip>;
 }

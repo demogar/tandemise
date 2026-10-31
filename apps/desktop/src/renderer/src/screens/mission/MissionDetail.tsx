@@ -22,7 +22,7 @@ import { describeError } from '../../lib/daemon.js';
 import { clearMissionNotice, useMissionNotice } from '../../lib/notices.js';
 import { useOpenTerminal } from '../../lib/terminal.js';
 import { TerminalPanel } from '../../components/TerminalPanel.js';
-import { Button, Card } from '@tandemise/design/react';
+import { Banner, Button, Card, Tooltip } from '@tandemise/design/react';
 
 // Feed first: it is where a mission opens, and the order of the tabs says so.
 export const MISSION_TABS = ['feed', 'plan', 'timeline', 'artifacts', 'checks', 'metrics'] as const;
@@ -100,11 +100,11 @@ export function MissionDetail({ id, tab }: { id: string; tab: MissionTab }): JSX
                 && (!factory || (detail.mission.laneRequest === 'careful' && action.lane === undefined));
               const notReady = gated && readiness?.ready !== true;
               return (
+                // Not ready: its label already says what is left ("Answer 1 question to plan"), so a disabled button needs no hidden reason.
                 <Button
                   key={`${action.id}${action.lane ?? ''}`}
                   variant={action.primary ? 'primary' : 'secondary'}
                   disabled={act.isPending || notReady}
-                  title={notReady ? readiness?.detail : undefined}
                   onClick={() => (action.id === 'cancel' ? setConfirming('cancel') : act.mutate(
                     { action: action.id, ...(action.lane === undefined ? {} : { lane: action.lane }) },
                     // Careful work with no Done-when line stays a draft: Get it ready, on the feed, is where it goes next.
@@ -116,9 +116,11 @@ export function MissionDetail({ id, tab }: { id: string; tab: MissionTab }): JSX
                 </Button>
               );
             })}
-            <Button iconOnly variant="ghost" title="Delete mission" onClick={() => setConfirming('delete')}>
-              <Icon name="trash" size={14} />
-            </Button>
+            <Tooltip content="Delete mission">
+              <Button iconOnly variant="ghost" aria-label="Delete mission" onClick={() => setConfirming('delete')}>
+                <Icon name="trash" size={14} />
+              </Button>
+            </Tooltip>
           </>
         }
       />
@@ -136,41 +138,41 @@ export function MissionDetail({ id, tab }: { id: string; tab: MissionTab }): JSX
       {/* On the feed, "Needs you" already says this, at the top, with the decision in reach. */}
       {pendingApprovals.length > 0 && tab !== 'feed' ? (
         // The decision is answered on the mission's own feed, next to the work it is about, rather than in the Inbox.
-        <Link
+        <Banner
+          as={Link}
           href={`/missions/${id}`}
           onClick={() => setFocusNeeds(true)}
-          className="banner banner--warn"
+          tone="warn"
           style={{ margin: 'var(--s3) var(--s7) 0', textDecoration: 'none', color: 'inherit' }}
+          icon={<Icon name="approvals" size={15} />}
+          action={<span className="btn">Review</span>}
         >
-          <Icon name="approvals" size={15} />
-          <span style={{ flex: 1 }}>
-            <strong>{pluralize(pendingApprovals.length, 'decision')} waiting on you.</strong>{' '}
-            {pendingApprovals[0]?.title}
-          </span>
-          <span className="btn">Review</span>
-        </Link>
+          <strong>{pluralize(pendingApprovals.length, 'decision')} waiting on you.</strong>{' '}
+          {pendingApprovals[0]?.title}
+        </Banner>
       ) : null}
 
       {staffingNotice ? (
         <div style={{ padding: 'var(--s3) var(--s7) 0' }}>
-          <div className="banner banner--warn">
-            <Icon name="alert" size={15} />
-            <span style={{ flex: 1 }}>
-              <strong>The mission was created, but its staffing was not saved.</strong> {describeError(staffingNotice).detail} Set it
-              per task from the plan, or in Team for the whole project.
-            </span>
-            <Button variant="ghost" onClick={() => clearMissionNotice(id)}>
-              Dismiss
-            </Button>
-          </div>
+          <Banner
+            tone="warn"
+            icon={<Icon name="alert" size={15} />}
+            action={
+              <Button variant="ghost" onClick={() => clearMissionNotice(id)}>
+                Dismiss
+              </Button>
+            }
+          >
+            <strong>The mission was created, but its staffing was not saved.</strong> {describeError(staffingNotice).detail} Set it
+            per task from the plan, or in Team for the whole project.
+          </Banner>
         </div>
       ) : null}
 
       {(status === 'BLOCKED' || status === 'PAUSED') && detail.mission.statusReason ? (
-        <div className="banner banner--warn" style={{ margin: 'var(--s3) var(--s7) 0' }}>
-          <Icon name="alert" size={15} />
-          <span>{detail.mission.statusReason}</span>
-        </div>
+        <Banner tone="warn" style={{ margin: 'var(--s3) var(--s7) 0' }} icon={<Icon name="alert" size={15} />}>
+          {detail.mission.statusReason}
+        </Banner>
       ) : null}
 
       {detail.claim && detail.claim.state !== 'held' ? (
@@ -467,16 +469,17 @@ function FromIssue({ missionId, linkId }: { missionId: string; linkId: string | 
   const link = issues.data?.links.find((l) => l.id === linkId && l.missionId === missionId);
   if (link === undefined) return null;
   return (
-    <button
-      type="button"
-      className="chip chip--muted"
-      aria-label={`From issue #${link.number}`}
-      title={`Open ${link.githubRepo}#${link.number} on GitHub`}
-      onClick={() => void window.tandemise.openExternal(link.url)}
-    >
-      <Icon name="externalLink" size={11} />
-      From issue #{link.number}
-    </button>
+    <Tooltip content={`Open ${link.githubRepo}#${link.number} on GitHub`}>
+      <button
+        type="button"
+        className="chip chip--muted"
+        aria-label={`From issue #${link.number}`}
+        onClick={() => void window.tandemise.openExternal(link.url)}
+      >
+        <Icon name="externalLink" size={11} />
+        From issue #{link.number}
+      </button>
+    </Tooltip>
   );
 }
 
@@ -486,9 +489,11 @@ function FromRoutine({ routineId }: { routineId: string | null }): JSX.Element |
   if (routineId === null) return null;
   const name = routines.data?.find((view) => view.routine.id === routineId)?.routine.name;
   return (
-    <Link href="/missions/routines" className="chip chip--muted" title="Open the routine that added this mission">
-      <Icon name="clock" size={11} />
-      From routine: {name ?? 'a routine'}
-    </Link>
+    <Tooltip content="Open the routine that added this mission">
+      <Link href="/missions/routines" className="chip chip--muted">
+        <Icon name="clock" size={11} />
+        From routine: {name ?? 'a routine'}
+      </Link>
+    </Tooltip>
   );
 }

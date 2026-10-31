@@ -9,7 +9,7 @@ import { dateTime, relativeTime } from '../../lib/format.js';
 import { RunForm } from './RunForm.js';
 import { Scorecard } from './Scorecard.js';
 import { Refusal, RUN_TONES, UNMEASURED_COST, isLive, useEvalMutation, usd } from './shared.js';
-import { Button } from '@tandemise/design/react';
+import { Banner, Button } from '@tandemise/design/react';
 
 /**
  * A suite's eval runs, newest first, beside the open run or the new-run form.
@@ -120,16 +120,15 @@ function RunDetail({ id }: { id: string }): JSX.Element {
 
       {/* The status line: why a run ended early, in the daemon's words. */}
       {(run.status === 'stopped_at_cap' || run.status === 'failed') && run.reason ? (
-        <div className={`banner ${run.status === 'failed' ? 'banner--warn' : ''}`} aria-label="Status">
-          <Icon name={run.status === 'failed' ? 'alert' : 'info'} size={14} />
-          <span>{run.reason}</span>
-        </div>
+        // Appears when a watched run ends early, so it is announced, politely, as the run's status.
+        <Banner tone={run.status === 'failed' ? 'warn' : 'neutral'} live="polite" aria-label="Status" icon={<Icon name={run.status === 'failed' ? 'alert' : 'info'} size={14} />}>
+          {run.reason}
+        </Banner>
       ) : null}
       {run.costUnmeasured ? (
-        <div className="banner" aria-label="Cost unmeasured">
-          <Icon name="info" size={14} className="dim" />
-          <span>{UNMEASURED_COST}</span>
-        </div>
+        <Banner icon={<Icon name="info" size={14} className="dim" />}>
+          {UNMEASURED_COST}
+        </Banner>
       ) : null}
 
       <div className="grid grid--2">

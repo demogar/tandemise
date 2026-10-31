@@ -22,6 +22,15 @@
 //   8. a component that @tandemise/design/react exports has no Storybook story
 //      (packages/design/stories); the stories and the Storybook config are
 //      held to rules 1-5 like any other source
+//   9. tokens.css declares a name Tailwind v4 keeps in its own theme
+//      (`--font-*`, `--radius-*`, `--shadow-*`, `--ease-*`, `--color-*`,
+//      `--text-sm`, ...): a site loading both would have one silently
+//      override the other. Those scales are `--tds-*`, and tailwind.css maps
+//      Tailwind's names onto them.
+//  10. a native `title` attribute sits on an element (or a `Button`/`Link`,
+//      which pass it to one) in the desktop renderer: a keyboard user never
+//      sees it, and it is not a reliable name. Use `Tooltip`, `Truncate`, or
+//      an `aria-label` on an icon-only control.
 //
 //   node scripts/check-design-system.mjs     (after `npm run build`: it reads packages/design/dist)
 import { execFileSync } from 'node:child_process';
@@ -74,6 +83,16 @@ try {
 } catch (error) {
   fail(design, 0, String(error.stderr ?? error.message).trim());
 }
+// 9. tokens.css stays out of Tailwind v4's theme namespaces.
+{
+  const declared = readFileSync(TOKENS_CSS, 'utf8');
+  for (const match of declared.matchAll(/^\s*(--[\w-]+)\s*:/gm)) {
+    if (tokens.isTailwindThemeName(match[1])) {
+      fail(TOKENS_CSS, lineOf(declared, match.index), `${match[1]} is a Tailwind v4 theme name - give it a --tds- name in src/css.ts and map it in src/tailwind.ts`);
+    }
+  }
+}
+
 // 0b. Every component the React subpath exports has a story: Storybook
 // (packages/design/stories) is the visual reference, so nothing ships unseen.
 // A component counts as covered when a *.stories.tsx names it as its
@@ -186,6 +205,29 @@ for (const m of brand.matchAll(/\/\*\*\s*`(--[a-z0-9-]+)`\s*\*\/\s*\n\s*\w+:\s*'
   const expected = palette.get(m[1]);
   if (!expected) fail(BRAND, lineOf(brand, m.index), `${m[1]} is not in the @tandemise/design palette`);
   else if (expected !== m[2].toLowerCase()) fail(BRAND, lineOf(brand, m.index), `${m[2]} drifted from ${m[1]} (${expected})`);
+}
+
+// ------------------------------------------------------ native tooltips
+
+// 10. No native `title` in the renderer. Parsed as TSX, so a component's own
+// `title` prop (Card, Dialog, PageHeader) is told apart from the attribute.
+{
+  const { default: ts } = await import('typescript');
+  const PASS_THROUGH = new Set(['Button', 'Link']);
+  for (const file of walk(join(desktop, 'src/renderer')).filter((f) => f.endsWith('.tsx'))) {
+    const text = readFileSync(file, 'utf8');
+    const source = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    const visit = (node) => {
+      if (ts.isJsxAttribute(node) && node.name.getText(source) === 'title') {
+        const tag = node.parent.parent.tagName.getText(source);
+        if (/^[a-z]/.test(tag) || PASS_THROUGH.has(tag)) {
+          fail(file, lineOf(text, node.getStart(source)), `native title on <${tag}> - use Tooltip, Truncate or an aria-label (a title is invisible to keyboard users)`);
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(source);
+  }
 }
 
 if (problems.length) {

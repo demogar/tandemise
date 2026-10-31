@@ -30,7 +30,7 @@ export function ImportSkills({ onClose, onImported }: { onClose: () => void; onI
           A skill is a folder with a SKILL.md. You see its files before it is imported, nothing in it is run, and each
           import is kept as a numbered version your roles pin.
         </p>
-        <Segmented value={from} options={FROM} onChange={setFrom} />
+        <Segmented label="Import from" value={from} options={FROM} onChange={setFrom} />
         {from === 'claude' ? <FromClaude onImported={onImported} /> : <FromSource kind={from} onImported={onImported} />}
       </div>
     </Modal>

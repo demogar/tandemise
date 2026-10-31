@@ -18,7 +18,7 @@ import { REQUEST_CHANGES_OPTION, isLimitCard, isPlanFitCard } from '../lib/domai
 import { QuietRow, StalledRow } from './inbox/LivenessRows.js';
 import { ParkedRow } from './inbox/ParkedRow.js';
 import { IntakeDecisionRow } from './inbox/IntakeDecisionRow.js';
-import { Button, Card } from '@tandemise/design/react';
+import { Banner, Button, Card, Chip } from '@tandemise/design/react';
 
 type Filter = 'me' | 'everyone';
 
@@ -57,6 +57,7 @@ export function Inbox({ only }: { only?: 'stalled' } = {}): JSX.Element {
           // A solo workspace has no "everyone else"; the filter would only add a click.
           actors.solo && others === 0 ? null : (
             <Segmented
+              label="Show"
               value={filter}
               onChange={setFilter}
               options={[
@@ -73,13 +74,17 @@ export function Inbox({ only }: { only?: 'stalled' } = {}): JSX.Element {
           {inbox.error ? <ErrorState error={inbox.error} onRetry={inbox.refetch} /> : null}
 
           {only === 'stalled' ? (
-            <div className="banner" style={{ marginBottom: 'var(--s4)' }}>
-              <Icon name="alert" size={15} className="dim" />
-              <span style={{ flex: 1 }}>Showing stalled missions only: nothing moves them until you act.</span>
-              <Button onClick={() => navigate('/inbox')}>
-                Show everything
-              </Button>
-            </div>
+            <Banner
+              style={{ marginBottom: 'var(--s4)' }}
+              icon={<Icon name="alert" size={15} className="dim" />}
+              action={
+                <Button onClick={() => navigate('/inbox')}>
+                  Show everything
+                </Button>
+              }
+            >
+              Showing stalled missions only: nothing moves them until you act.
+            </Banner>
           ) : null}
 
           {unclaimed.length > 0 && only === undefined ? (
@@ -234,7 +239,7 @@ function InboxRow({ item, actors, open, onClick }: { item: InboxItem; actors: Ac
         </div>
       </div>
       <div className="list__aside">
-        <span className="chip chip--muted">{label}</span>
+        <Chip muted>{label}</Chip>
         <span className="dim" style={{ fontSize: 'var(--fs-xs)', minWidth: 56, textAlign: 'right' }}>{relativeTime(item.at)}</span>
         <Icon name={item.kind === 'task' ? 'chevronRight' : open ? 'chevronUp' : 'chevronDown'} size={13} className="dim" />
       </div>
@@ -261,7 +266,7 @@ function RefinementRow({ item, onClick }: { item: Extract<InboxItem, { kind: 're
         </div>
       </div>
       <div className="list__aside">
-        <span className="chip chip--muted">Refinement</span>
+        <Chip muted>Refinement</Chip>
         <span className="dim" style={{ fontSize: 'var(--fs-xs)', minWidth: 56, textAlign: 'right' }}>{relativeTime(item.at)}</span>
         <Icon name="chevronRight" size={13} className="dim" />
       </div>

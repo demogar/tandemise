@@ -1,41 +1,6 @@
 /* Cards, lists, tables, state surfaces, overlays. */
 
-/* Stat tile. */
-.stat {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: var(--s3) var(--s4);
-}
-
-.stat__label {
-  font-size: var(--fs-xs);
-  color: var(--text-tertiary);
-  font-weight: 550;
-}
-
-.stat__value {
-  font-size: var(--fs-xl);
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.2;
-}
-
-.stat__value--muted {
-  font-size: var(--fs-md);
-  font-weight: 500;
-  color: var(--text-tertiary);
-  letter-spacing: 0;
-}
-
-.stat__note {
-  font-size: var(--fs-xs);
-  color: var(--text-secondary);
-}
+/* .stat: @tandemise/design/components.css. */
 
 /* ------------------------------------------------------------------- lists */
 
@@ -44,7 +9,7 @@
   flex-direction: column;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--tds-radius-lg);
   overflow: hidden;
 }
 
@@ -57,7 +22,7 @@
   color: inherit;
   text-align: left;
   width: 100%;
-  transition: background var(--duration-fast) var(--ease);
+  transition: background var(--duration-fast) var(--tds-ease);
   text-decoration: none;
 }
 
@@ -161,7 +126,7 @@
   display: flex;
   gap: var(--s3);
   padding: var(--s4);
-  border-radius: var(--radius-md);
+  border-radius: var(--tds-radius-md);
   border: 1px solid color-mix(in srgb, var(--status-failed) 34%, transparent);
   background: var(--status-failed-soft);
 }
@@ -193,7 +158,7 @@
   );
   background-size: 200% 100%;
   animation: shimmer var(--duration-shimmer) linear infinite;
-  border-radius: var(--radius-sm);
+  border-radius: var(--tds-radius-sm);
 }
 
 @keyframes shimmer {
@@ -223,8 +188,8 @@
   height: 100%;
   background: var(--surface-raised);
   border-left: 1px solid var(--border-strong);
-  box-shadow: var(--shadow-lg);
-  animation: slide-from-right var(--duration) var(--ease);
+  box-shadow: var(--tds-shadow-lg);
+  animation: slide-from-right var(--duration) var(--tds-ease);
 }
 
 .drawer--wide {
@@ -275,10 +240,10 @@
   width: min(620px, calc(100vw - var(--s12)));
   background: var(--surface-raised);
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
+  border-radius: var(--tds-radius-lg);
+  box-shadow: var(--tds-shadow-lg);
   overflow: hidden;
-  animation: rise var(--duration) var(--ease);
+  animation: rise var(--duration) var(--tds-ease);
 }
 
 .palette__input {
@@ -315,7 +280,7 @@
   gap: var(--s3);
   width: 100%;
   padding: var(--s2) var(--s3);
-  border-radius: var(--radius-sm);
+  border-radius: var(--tds-radius-sm);
   text-align: left;
   color: var(--text-secondary);
   font-size: var(--fs-base);
@@ -372,7 +337,7 @@
 }
 
 .disclosure__chevron {
-  transition: transform var(--duration) var(--ease);
+  transition: transform var(--duration) var(--tds-ease);
 }
 
 .disclosure__toggle[aria-expanded='true'] .disclosure__chevron {
@@ -384,7 +349,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--s4);
-  animation: slidein var(--duration) var(--ease);
+  animation: slidein var(--duration) var(--tds-ease);
 }
 
 @keyframes slidein {
@@ -396,26 +361,7 @@
 
 /* ------------------------------------------------------------- toast/banner */
 
-.banner {
-  display: flex;
-  align-items: center;
-  gap: var(--s3);
-  padding: var(--s3) var(--s4);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border);
-  background: var(--surface);
-  font-size: var(--fs-sm);
-}
-
-.banner--warn {
-  border-color: color-mix(in srgb, var(--status-blocked) 34%, transparent);
-  background: var(--status-blocked-soft);
-}
-
-.banner--accent {
-  border-color: var(--accent-line);
-  background: var(--accent-soft);
-}
+/* .banner and its tones: @tandemise/design/components.css. */
 
 /* Error boundary detail: the raw message, readable but not shouting. */
 .error-detail {
@@ -423,7 +369,7 @@
   padding: var(--s3);
   max-width: 560px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: var(--tds-radius-md);
   background: var(--surface-sunken);
   color: var(--text-secondary);
   font-size: var(--fs-xs);

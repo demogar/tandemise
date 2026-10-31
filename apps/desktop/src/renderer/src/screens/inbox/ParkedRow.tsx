@@ -2,6 +2,7 @@ import { Link } from 'wouter';
 import type { InboxParkedView } from '@tandemise/api-contract';
 import { Icon } from '../../components/Icon.js';
 import { relativeTime } from '../../lib/format.js';
+import { Chip } from '@tandemise/design/react';
 
 /**
  * A step taken to another tool, waiting for its hand-back (spec A4). The row
@@ -26,7 +27,7 @@ export function ParkedRow({ parked, bordered = false }: { parked: InboxParkedVie
         </div>
       </div>
       <div className="list__aside">
-        <span className="chip chip--muted">Hand back</span>
+        <Chip muted>Hand back</Chip>
         <span className="dim" style={{ fontSize: 'var(--fs-xs)', minWidth: 56, textAlign: 'right' }}>{relativeTime(parked.since)}</span>
         <Icon name="chevronRight" size={13} className="dim" />
       </div>

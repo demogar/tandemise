@@ -3,7 +3,7 @@ import { ErrorState, SectionHead, SkeletonList } from '../../components/primitiv
 import { useDaemonMutation, useFactory, useRouting } from '../../lib/queries.js';
 import { shortenPath } from '../../lib/format.js';
 import './Factory.css';
-import { Button, Card } from '@tandemise/design/react';
+import { Button, Card, Chip, Tooltip } from '@tandemise/design/react';
 
 /**
  * Project → Factory (#53 §10): where the planner, routing and merge files came
@@ -65,7 +65,11 @@ function FactoryFile({ file }: { file: FactoryFileView }): JSX.Element {
         <div className="list__title">{file.title}</div>
         <div className="list__subtitle">
           {file.originLine}
-          {file.path !== null ? <span className="mono factory__path" title={file.path}> · {shortenPath(file.path, 4)}</span> : null}
+          {file.path !== null ? (
+            <Tooltip content={file.path}>
+              <span className="mono factory__path"> · {shortenPath(file.path, 4)}</span>
+            </Tooltip>
+          ) : null}
         </div>
         {file.problems.length > 0 ? (
           <ul className="factory__problems" aria-label={`Problems in ${file.title}`}>
@@ -74,7 +78,9 @@ function FactoryFile({ file }: { file: FactoryFileView }): JSX.Element {
         ) : null}
       </div>
       <div className="list__aside">
-        <span className="chip chip--muted mono" title="The version of the file that was read">{file.ref}</span>
+        <Tooltip content="The version of the file that was read">
+          <Chip muted className="mono" tabIndex={0}>{file.ref}</Chip>
+        </Tooltip>
       </div>
     </div>
   );

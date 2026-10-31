@@ -6,7 +6,12 @@ import { ConfirmDialog } from '../../components/Modal.js';
 import { ErrorState, Field, SectionHead, SkeletonList } from '../../components/primitives.js';
 import { useBrain, useDaemonMutation } from '../../lib/queries.js';
 import { showFlash } from '../../lib/notices.js';
-import { Button, Card } from '@tandemise/design/react';
+import { Banner, Button, Card, Segmented } from '@tandemise/design/react';
+
+const CHOICES = [
+  { value: 'mine', label: 'Keep mine' },
+  { value: 'theirs', label: 'Take theirs' },
+] as const;
 
 type Mode = 'create' | 'adopt' | 'local' | null;
 
@@ -153,7 +158,7 @@ function Linked({ view, syncing, onSync, onShare, onUnlink }: { view: BrainView;
         {view.counts.candidates > 0 ? ` · ${view.counts.candidates} waiting for you` : ''}
         {view.counts.mcpsNeeded > 0 ? ` · needs ${view.counts.mcpsNeeded} ${view.counts.mcpsNeeded === 1 ? 'connection' : 'connections'}` : ''}
       </p>
-      {view.problems.map((p) => <div key={p} className="banner banner--warn">{p}</div>)}
+      {view.problems.map((p) => <Banner key={p} tone="warn">{p}</Banner>)}
       <div className="row" style={{ gap: 'var(--s2)' }}>
         <Button disabled={syncing} onClick={onSync}>
           <Icon name="refresh" size={13} />
@@ -197,13 +202,12 @@ function AdoptPreview({ preview, choices, onChoose, pending, onLink, onCancel }:
               <td>{ACTION[item.action]}</td>
               <td>
                 {item.choice === null ? <span className="muted">—</span> : (
-                  <div className="segmented" role="group" aria-label={`Choice for ${item.name}`}>
-                    {(['mine', 'theirs'] as const).map((c) => (
-                      <button key={c} type="button" className="segmented__option" aria-pressed={(choices[item.id] ?? item.choice) === c} onClick={() => onChoose(item.id, c)}>
-                        {c === 'mine' ? 'Keep mine' : 'Take theirs'}
-                      </button>
-                    ))}
-                  </div>
+                  <Segmented
+                    label={`Choice for ${item.name}`}
+                    value={choices[item.id] ?? item.choice}
+                    options={CHOICES}
+                    onChange={(c) => onChoose(item.id, c)}
+                  />
                 )}
               </td>
             </tr>

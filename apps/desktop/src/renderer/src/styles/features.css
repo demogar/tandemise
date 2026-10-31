@@ -34,7 +34,7 @@
   z-index: var(--z-raised);
   pointer-events: none;
   opacity: 0;
-  transition: opacity var(--duration) var(--ease);
+  transition: opacity var(--duration) var(--tds-ease);
 }
 
 .dag::before {
@@ -106,13 +106,13 @@
   flex-direction: column;
   gap: var(--s2);
   padding: var(--s3);
-  border-radius: var(--radius-md);
+  border-radius: var(--tds-radius-md);
   border: 1px solid var(--border);
   background: var(--surface);
   text-align: left;
   width: 100%;
-  transition: border-color var(--duration-fast) var(--ease), background var(--duration-fast) var(--ease),
-    transform var(--duration-fast) var(--ease);
+  transition: border-color var(--duration-fast) var(--tds-ease), background var(--duration-fast) var(--tds-ease),
+    transform var(--duration-fast) var(--tds-ease);
 }
 
 .taskcard:hover {
@@ -133,7 +133,7 @@
   top: var(--s3);
   bottom: var(--s3);
   width: 2px;
-  border-radius: var(--radius-full);
+  border-radius: var(--tds-radius-full);
   background: var(--status-pending);
 }
 
@@ -203,9 +203,9 @@
   align-items: center;
   gap: 4px;
   padding: 1px 6px;
-  border-radius: var(--radius-xs);
+  border-radius: var(--tds-radius-xs);
   font-size: var(--fs-micro);
-  font-family: var(--font-mono);
+  font-family: var(--tds-font-mono);
   background: var(--status-pending-soft);
   color: var(--status-pending);
 }
@@ -225,7 +225,7 @@
   align-items: flex-start;
   gap: 5px;
   padding: 5px var(--s2);
-  border-radius: var(--radius-xs);
+  border-radius: var(--tds-radius-xs);
   font-size: var(--fs-xs);
   line-height: 1.4;
   background: var(--surface-sunken);
@@ -328,7 +328,7 @@
 }
 
 .tlitem--new {
-  animation: enter var(--duration) var(--ease);
+  animation: enter var(--duration) var(--tds-ease);
 }
 
 @keyframes enter {
@@ -341,9 +341,9 @@
 .rawlog {
   background: var(--surface-sunken);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: var(--tds-radius-md);
   padding: var(--s3) var(--s4);
-  font-family: var(--font-mono);
+  font-family: var(--tds-font-mono);
   font-size: var(--fs-xs);
   line-height: 1.65;
   white-space: pre-wrap;
@@ -369,7 +369,7 @@
 
 .approval {
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--tds-radius-lg);
   background: var(--surface);
   overflow: hidden;
 }
@@ -477,7 +477,7 @@
   flex-direction: column;
   gap: 1px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: var(--tds-radius-md);
   overflow: hidden;
 }
 
@@ -510,7 +510,7 @@
 .evidence__headline {
   display: block;
   margin-top: 2px;
-  font-family: var(--font-sans);
+  font-family: var(--tds-font-sans);
   font-size: var(--fs-sm);
   color: var(--text-secondary);
 }
@@ -518,7 +518,7 @@
 .evidence__value {
   flex: 1;
   min-width: 0;
-  font-family: var(--font-mono);
+  font-family: var(--tds-font-mono);
   font-size: var(--fs-xs);
   line-height: 1.6;
   overflow-wrap: anywhere;
@@ -539,12 +539,12 @@
   align-items: flex-start;
   gap: var(--s3);
   padding: var(--s3);
-  border-radius: var(--radius-md);
+  border-radius: var(--tds-radius-md);
   border: 1px solid var(--border);
   background: var(--surface);
   text-align: left;
   width: 100%;
-  transition: border-color var(--duration-fast) var(--ease), background var(--duration-fast) var(--ease);
+  transition: border-color var(--duration-fast) var(--tds-ease), background var(--duration-fast) var(--tds-ease);
 }
 
 .option:hover {
@@ -656,7 +656,7 @@
 
 .prose code {
   padding: 1px 5px;
-  border-radius: var(--radius-xs);
+  border-radius: var(--tds-radius-xs);
   background: var(--surface-sunken);
   border: 1px solid var(--border);
   font-size: 0.88em;
@@ -665,7 +665,7 @@
 .prose pre {
   margin: 0;
   padding: var(--s3) var(--s4);
-  border-radius: var(--radius-md);
+  border-radius: var(--tds-radius-md);
   background: var(--surface-sunken);
   border: 1px solid var(--border);
   overflow-x: auto;
@@ -781,7 +781,7 @@
   background: transparent;
   color: var(--text-tertiary);
   font-size: var(--fs-xs);
-  border-radius: var(--radius-xs);
+  border-radius: var(--tds-radius-xs);
 }
 
 .reader__details-toggle:hover {
@@ -862,7 +862,7 @@
   margin-top: var(--s4);
   max-width: 70ch;
   padding: var(--s2) var(--s3);
-  border-radius: var(--radius-sm);
+  border-radius: var(--tds-radius-sm);
   border-left: 2px solid var(--status-blocked);
   background: var(--status-blocked-soft);
   font-size: var(--fs-base);
@@ -923,7 +923,7 @@
 }
 
 .reader__appendix-chevron {
-  transition: transform var(--duration-fast) var(--ease);
+  transition: transform var(--duration-fast) var(--tds-ease);
 }
 
 .reader__appendix[open] .reader__appendix-chevron {
@@ -1043,7 +1043,7 @@
   align-items: center;
   gap: var(--s2);
   padding: 5px var(--s2);
-  border-radius: var(--radius-sm);
+  border-radius: var(--tds-radius-sm);
   background: var(--surface-sunken);
   border: 1px solid var(--border);
   font-size: var(--fs-sm);
@@ -1146,7 +1146,7 @@
   width: 26px;
   height: 26px;
   font-size: var(--fs-sm);
-  border-radius: var(--radius-sm);
+  border-radius: var(--tds-radius-sm);
 }
 
 .staffrow {
@@ -1180,7 +1180,7 @@
   align-items: center;
   gap: var(--s2);
   padding: var(--s2) var(--s3);
-  border-radius: var(--radius-sm);
+  border-radius: var(--tds-radius-sm);
   background: var(--surface-sunken);
   color: var(--text);
   font-size: var(--fs-sm);
@@ -1212,12 +1212,12 @@
   gap: 5px;
   height: 26px;
   padding: 0 var(--s2);
-  border-radius: var(--radius-full);
+  border-radius: var(--tds-radius-full);
   border: 1px solid var(--border-strong);
   background: var(--surface);
   color: var(--text-secondary);
   font-size: var(--fs-sm);
-  transition: background var(--duration-fast) var(--ease), border-color var(--duration-fast) var(--ease);
+  transition: background var(--duration-fast) var(--tds-ease), border-color var(--duration-fast) var(--tds-ease);
 }
 
 .pick:hover:not(:disabled) {
@@ -1235,7 +1235,7 @@
   place-items: center;
   width: 16px;
   height: 16px;
-  border-radius: var(--radius-full);
+  border-radius: var(--tds-radius-full);
   background: var(--accent);
   color: var(--accent-text);
   font-size: var(--fs-micro);
@@ -1336,7 +1336,7 @@
   gap: 2px;
   padding: var(--s3) var(--s4) var(--s3) var(--s5);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: var(--tds-radius-md);
   background: var(--surface);
 }
 
@@ -1348,7 +1348,7 @@
   top: var(--s3);
   bottom: var(--s3);
   width: 2px;
-  border-radius: var(--radius-full);
+  border-radius: var(--tds-radius-full);
   background: var(--status-pending);
 }
 
@@ -1371,7 +1371,7 @@
 /* What waits on me is the one place the feed raises its voice. */
 .feedcard[data-section='needs_you'] {
   border-color: var(--border-strong);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--tds-shadow-sm);
 }
 
 .feedcard__head {
@@ -1456,6 +1456,8 @@
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   overflow: hidden;
+  /* A two-line clamp, not the one-line ellipsis its Truncate class draws. */
+  white-space: normal;
   margin-top: var(--s1);
   font-size: var(--fs-md);
   font-weight: 500;
@@ -1589,7 +1591,7 @@
   margin-top: var(--s2);
   padding: var(--s2) var(--s3);
   border-left: 2px solid var(--status-blocked);
-  border-radius: var(--radius-sm);
+  border-radius: var(--tds-radius-sm);
   background: var(--status-blocked-soft);
 }
 
@@ -1679,13 +1681,13 @@
   transform: translateX(-50%);
   padding: var(--s2) var(--s4);
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius-md);
+  border-radius: var(--tds-radius-md);
   background: var(--surface-raised);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--tds-shadow-md);
   font-size: var(--fs-sm);
   color: var(--text);
   white-space: nowrap;
-  animation: slidein var(--duration) var(--ease);
+  animation: slidein var(--duration) var(--tds-ease);
 }
 
 .composer {
@@ -1778,7 +1780,7 @@
   display: flex;
   flex-direction: column;
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--tds-radius-sm);
   background: var(--surface);
 }
 
@@ -1838,7 +1840,7 @@
   gap: 2px;
   padding: 2px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--tds-radius-sm);
   background: var(--surface-sunken);
 }
 
@@ -1846,10 +1848,10 @@
   height: 20px;
   padding: 0 var(--s2);
   border: none;
-  border-radius: var(--radius-xs);
+  border-radius: var(--tds-radius-xs);
   background: transparent;
   color: var(--text-secondary);
-  font-family: var(--font-mono);
+  font-family: var(--tds-font-mono);
   font-size: var(--fs-xs);
   cursor: pointer;
 }
@@ -1861,7 +1863,7 @@
 .reader__version[aria-pressed='true'] {
   background: var(--surface-raised);
   color: var(--text);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--tds-shadow-sm);
   cursor: default;
 }
 
@@ -1913,7 +1915,7 @@
 .reader__change-chevron {
   flex: none;
   color: var(--text-tertiary);
-  transition: transform var(--duration-fast) var(--ease);
+  transition: transform var(--duration-fast) var(--tds-ease);
 }
 
 .reader__change[open] .reader__change-chevron {
@@ -1929,7 +1931,7 @@
   padding: var(--s2) var(--s3);
   border-left: 2px solid var(--border-strong);
   background: var(--surface-sunken);
-  border-radius: var(--radius-xs);
+  border-radius: var(--tds-radius-xs);
 }
 
 .reader__notes > li {
@@ -1952,7 +1954,7 @@
 
 .diff {
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: var(--tds-radius-md);
   background: var(--surface);
   overflow: hidden;
 }
@@ -1967,7 +1969,7 @@
 .diff__body {
   overflow-x: auto;
   padding-block: var(--s1);
-  font-family: var(--font-mono);
+  font-family: var(--tds-font-mono);
   font-size: var(--fs-xs);
   line-height: 1.6;
 }
@@ -2010,7 +2012,7 @@
 
 .diff__fold {
   padding: var(--s1) var(--s3);
-  font-family: var(--font-sans);
+  font-family: var(--tds-font-sans);
   color: var(--text-tertiary);
 }
 
@@ -2048,7 +2050,7 @@
   flex: none;
   width: 18px;
   height: 18px;
-  border-radius: var(--radius-xs);
+  border-radius: var(--tds-radius-xs);
   color: var(--text-tertiary);
 }
 
@@ -2070,7 +2072,7 @@
   gap: var(--s2);
   padding: var(--s3);
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--tds-radius-sm);
   background: var(--surface-sunken);
 }
 

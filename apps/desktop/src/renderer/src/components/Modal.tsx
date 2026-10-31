@@ -1,5 +1,5 @@
 import { useRef, type ReactNode } from 'react';
-import { Button, Dialog, useDialogLayer } from '@tandemise/design/react';
+import { Button, Dialog, Tooltip, useDialogLayer } from '@tandemise/design/react';
 import { Icon } from './Icon.js';
 
 /**
@@ -99,9 +99,11 @@ export function Drawer({
             <h2 className="modal__title truncate">{title}</h2>
             {subtitle ? <div className="drawer__subtitle">{subtitle}</div> : null}
           </div>
-          <Button iconOnly variant="ghost" aria-label="Close" onClick={onClose}>
-            <Icon name="x" size={14} />
-          </Button>
+          <Tooltip content="Close">
+            <Button iconOnly variant="ghost" aria-label="Close" onClick={onClose}>
+              <Icon name="x" size={14} />
+            </Button>
+          </Tooltip>
         </div>
         <div className="drawer__body">{children}</div>
         {footer ? <div className="modal__foot">{footer}</div> : null}

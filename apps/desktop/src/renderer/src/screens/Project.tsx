@@ -13,7 +13,7 @@ import { Merge } from './project/Merge.js';
 import { Issues } from './project/Issues.js';
 import { SetupAsCode } from './project/SetupAsCode.js';
 import { BrainLink } from './project/BrainLink.js';
-import { Badge, Button, Card } from '@tandemise/design/react';
+import { Badge, Button, Card, Chip, Tooltip } from '@tandemise/design/react';
 
 const AUTONOMY_ROWS: readonly { key: keyof AutonomySettings; label: string; hint: string; options: readonly string[] }[] = [
   { key: 'planApproval', label: 'Plan approval', hint: 'Show the proposed task graph before anything runs.', options: ['ask', 'auto'] },
@@ -112,26 +112,32 @@ export function Project(): JSX.Element {
                                       <Icon name="folder" size={15} className="dim" />
                                       <div className="list__main">
                                         <div className="list__title">{repository.name}</div>
-                                        <div className="list__subtitle mono truncate" title={repository.path}>
-                                          {shortenPath(repository.path, 4)}
-                                        </div>
+                                        <Tooltip content={repository.path}>
+                                          <div className="list__subtitle mono truncate">
+                                            {shortenPath(repository.path, 4)}
+                                          </div>
+                                        </Tooltip>
                                       </div>
                                       <div className="list__aside">
-                                        <span className="chip chip--muted">{repository.defaultBranch}</span>
-                                        <Button
-                                          iconOnly variant="ghost"
-                                          aria-label={`Reveal ${repository.name} in Finder`}
-                                          onClick={() => void window.tandemise.revealInFinder(repository.path)}
-                                        >
-                                          <Icon name="externalLink" size={13} />
-                                        </Button>
-                                        <Button
-                                          iconOnly variant="ghost"
-                                          aria-label={`Remove ${repository.name}`}
-                                          onClick={() => setRemovingRepository(repository)}
-                                        >
-                                          <Icon name="trash" size={13} />
-                                        </Button>
+                                        <Chip muted>{repository.defaultBranch}</Chip>
+                                        <Tooltip content={`Reveal ${repository.name} in Finder`}>
+                                          <Button
+                                            iconOnly variant="ghost"
+                                            aria-label={`Reveal ${repository.name} in Finder`}
+                                            onClick={() => void window.tandemise.revealInFinder(repository.path)}
+                                          >
+                                            <Icon name="externalLink" size={13} />
+                                          </Button>
+                                        </Tooltip>
+                                        <Tooltip content={`Remove ${repository.name}`}>
+                                          <Button
+                                            iconOnly variant="ghost"
+                                            aria-label={`Remove ${repository.name}`}
+                                            onClick={() => setRemovingRepository(repository)}
+                                          >
+                                            <Icon name="trash" size={13} />
+                                          </Button>
+                                        </Tooltip>
                                       </div>
                                     </div>
                                   ))}
@@ -162,6 +168,7 @@ export function Project(): JSX.Element {
                                           </Badge>
                                         ) : (
                                           <Segmented
+                                            label={row.label}
                                             value={current}
                                             options={row.options.map((option) => ({ value: option, label: capitalise(option) }))}
                                             onChange={(next) =>

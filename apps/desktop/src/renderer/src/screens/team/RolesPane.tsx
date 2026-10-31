@@ -8,7 +8,7 @@ import { Empty, ErrorState, Field, SkeletonList } from '../../components/primiti
 import { useDaemonMutation, useRoles, useSkills } from '../../lib/queries.js';
 import { useWorkspace } from '../../lib/workspace.js';
 import { titleCase } from '../../lib/format.js';
-import { Badge, Button, Card } from '@tandemise/design/react';
+import { Badge, Button, Card, Chip, Truncate } from '@tandemise/design/react';
 
 /**
  * What each role is: its instructions, contract and hand-offs.
@@ -66,9 +66,9 @@ export function RolesPane(): JSX.Element {
           >
             <div className="list__main">
               <div className="list__title">{role.name}</div>
-              <div className="list__subtitle truncate" title={role.summary}>{role.summary}</div>
+              <Truncate as="div" className="list__subtitle">{role.summary}</Truncate>
             </div>
-            {role.builtIn ? <span className="chip chip--muted">built-in</span> : null}
+            {role.builtIn ? <Chip muted>built-in</Chip> : null}
           </button>
         ))}
       </div>
@@ -116,7 +116,7 @@ function RoleEditor({ role, workspaceId }: { role: RoleTemplate; workspaceId: st
       <header className="reader__head">
         <h1 className="reader__title">{role.name}</h1>
         <div className="reader__meta">
-          <span className="chip chip--muted">{role.defaultIsolation} isolation</span>
+          <Chip muted>{role.defaultIsolation} isolation</Chip>
           <span>{role.summary}</span>
         </div>
       </header>
@@ -132,7 +132,7 @@ function RoleEditor({ role, workspaceId }: { role: RoleTemplate; workspaceId: st
       <Field label="Default capabilities" hint="One per line. Dotted and hierarchical — `github` implies `github.pr.create`.">
         <textarea
           className="textarea"
-          style={{ minHeight: 84, fontFamily: 'var(--font-mono)', fontSize: 'var(--fs-sm)' }}
+          style={{ minHeight: 84, fontFamily: 'var(--tds-font-mono)', fontSize: 'var(--fs-sm)' }}
           value={capabilities}
           onChange={(event) => setCapabilities(event.target.value)}
         />

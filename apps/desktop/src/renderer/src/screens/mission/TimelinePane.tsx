@@ -8,7 +8,7 @@ import { buildTimeline, rawLines } from '../../lib/events.js';
 import { clockTime, relativeTime } from '../../lib/format.js';
 import { ActorChip } from '../../components/ActorChip.js';
 import { useActors } from '../../lib/team.js';
-import { Badge, Button, Card } from '@tandemise/design/react';
+import { Badge, Button, Card, Tooltip } from '@tandemise/design/react';
 
 /**
  * The live semantic feed (MVP.md §23.3).
@@ -128,9 +128,15 @@ export function TimelinePane({ detail }: { detail: MissionDetail }): JSX.Element
                       {item.actorId && actors.byId.has(item.actorId) ? (
                         <>
                           <span className="sep">·</span>
-                          <span title={item.role ?? undefined}>
+                          {item.role ? (
+                            <Tooltip content={item.role}>
+                              <span>
+                                <ActorChip actor={actors.ref(item.actorId)} meId={actors.meId} />
+                              </span>
+                            </Tooltip>
+                          ) : (
                             <ActorChip actor={actors.ref(item.actorId)} meId={actors.meId} />
-                          </span>
+                          )}
                         </>
                       ) : item.role ? (
                         <>

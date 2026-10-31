@@ -52,7 +52,7 @@ export function ChecksPane({ detail }: { detail: MissionDetail }): JSX.Element {
                       marginTop: 'var(--s3)',
                       padding: 'var(--s2) var(--s3)',
                       background: 'var(--surface-sunken)',
-                      borderRadius: 'var(--radius-sm)',
+                      borderRadius: 'var(--tds-radius-sm)',
                       border: '1px solid var(--border)',
                       overflowX: 'auto',
                     }}

@@ -24,7 +24,7 @@ const desk = async () => (await api.get(`/v1/home?workspaceId=${c.env.workspaceI
 /** The Desk's "Needs you" card on Home, as the window shows it. */
 const deskCard = async () => {
   await page.navigate('#/');
-  return until(() => page.evaluate(`document.querySelector('section[aria-label="Desk"] a[aria-label="Needs you"]')?.innerText ?? false`), { label: 'Desk', timeoutMs: 20_000 });
+  return until(() => page.evaluate(`document.querySelector('section[aria-label="Desk"] a[data-desk="Needs you"]')?.innerText ?? false`), { label: 'Desk', timeoutMs: 20_000 });
 };
 const number = (s) => Number(/(\d+)/.exec(s)?.[1] ?? NaN);
 const before = await deskCard();

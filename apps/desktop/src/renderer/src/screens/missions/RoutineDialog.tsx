@@ -7,7 +7,7 @@ import { LimitFields, limitDraft, limitsFromDraft } from '../../components/Limit
 import { useDaemonMutation, useWorkflows } from '../../lib/queries.js';
 import { useWorkspaceId } from '../../lib/workspace.js';
 import { MISSION_PRIORITIES, ROUTINE_HOURS, ROUTINE_TEMPLATES, WEEKDAY_OPTIONS, priorityLabel } from '../../lib/domain.js';
-import { Button } from '@tandemise/design/react';
+import { Banner, Button, Tooltip } from '@tandemise/design/react';
 
 type Repeats = RoutineSchedule['type'];
 
@@ -148,14 +148,14 @@ export function RoutineDialog({ editing, onClose }: { editing: RoutineView | nul
             <span className="field__label">Start from</span>
             <div className="grid grid--3">
               {ROUTINE_TEMPLATES.map((template) => (
-                <Button
-                  key={template.key}
-                  aria-pressed={draft.name === template.name}
-                  title={template.description}
-                  onClick={() => { setDraft(fromTemplate(template)); setLimits(limitDraft([])); setProblem(null); }}
-                >
-                  {template.name}
-                </Button>
+                <Tooltip key={template.key} content={template.description}>
+                  <Button
+                    aria-pressed={draft.name === template.name}
+                    onClick={() => { setDraft(fromTemplate(template)); setLimits(limitDraft([])); setProblem(null); }}
+                  >
+                    {template.name}
+                  </Button>
+                </Tooltip>
               ))}
             </div>
           </section>
@@ -166,7 +166,9 @@ export function RoutineDialog({ editing, onClose }: { editing: RoutineView | nul
             <input className="input" value={draft.name} data-autofocus onChange={(event) => set({ name: event.target.value })} />
           </Field>
           <Field label="What it does">
-            <Segmented value={draft.kind} options={KINDS} onChange={(kind) => set({ kind })} />
+            {(control, label) => (
+              <Segmented aria-labelledby={label.id} aria-describedby={control['aria-describedby']} value={draft.kind} options={KINDS} onChange={(kind) => set({ kind })} />
+            )}
           </Field>
         </div>
 
@@ -191,32 +193,38 @@ export function RoutineDialog({ editing, onClose }: { editing: RoutineView | nul
         )}
 
         <Field label="Repeats" hint="The daemon’s local time.">
-          <div className="row row--wrap" style={{ gap: 'var(--s3)' }}>
-            <Segmented value={draft.repeats} options={REPEATS} onChange={(repeats) => set({ repeats })} />
-            {draft.repeats === 'weekly' ? (
-              <select className="select" style={{ width: 140 }} aria-label="Day" value={draft.day} onChange={(event) => set({ day: Number(event.target.value) })}>
-                {WEEKDAY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-              </select>
-            ) : null}
-            {draft.repeats === 'hourly' ? (
-              <select className="select" style={{ width: 140 }} aria-label="Every" value={draft.every} onChange={(event) => set({ every: Number(event.target.value) })}>
-                {ROUTINE_HOURS.map((hours) => <option key={hours} value={hours}>{hours === 1 ? 'Every hour' : `Every ${hours} hours`}</option>)}
-              </select>
-            ) : (
-              <input className="input" type="time" style={{ width: 120 }} aria-label="Time" value={draft.at} onChange={(event) => set({ at: event.target.value })} />
-            )}
-          </div>
+          {(control, label) => (
+            <div className="row row--wrap" style={{ gap: 'var(--s3)' }}>
+              <Segmented aria-labelledby={label.id} aria-describedby={control['aria-describedby']} value={draft.repeats} options={REPEATS} onChange={(repeats) => set({ repeats })} />
+              {draft.repeats === 'weekly' ? (
+                <select className="select" style={{ width: 140 }} aria-label="Day" value={draft.day} onChange={(event) => set({ day: Number(event.target.value) })}>
+                  {WEEKDAY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
+              ) : null}
+              {draft.repeats === 'hourly' ? (
+                <select className="select" style={{ width: 140 }} aria-label="Every" value={draft.every} onChange={(event) => set({ every: Number(event.target.value) })}>
+                  {ROUTINE_HOURS.map((hours) => <option key={hours} value={hours}>{hours === 1 ? 'Every hour' : `Every ${hours} hours`}</option>)}
+                </select>
+              ) : (
+                <input className="input" type="time" style={{ width: 120 }} aria-label="Time" value={draft.at} onChange={(event) => set({ at: event.target.value })} />
+              )}
+            </div>
+          )}
         </Field>
 
         {draft.kind === 'mission' ? (
           <>
             <div className="grid grid--2">
               <Field label="Priority" hint="Where each mission lands in the backlog.">
-                <Segmented
-                  value={draft.priority}
-                  options={MISSION_PRIORITIES.map((value) => ({ value, label: priorityLabel(value) }))}
-                  onChange={(priority) => set({ priority })}
-                />
+                {(control, label) => (
+                  <Segmented
+                    aria-labelledby={label.id}
+                    aria-describedby={control['aria-describedby']}
+                    value={draft.priority}
+                    options={MISSION_PRIORITIES.map((value) => ({ value, label: priorityLabel(value) }))}
+                    onChange={(priority) => set({ priority })}
+                  />
+                )}
               </Field>
               <Field label="Workflow" hint="How each mission is broken into tasks.">
                 <select className="select" value={draft.workflowPreset} onChange={(event) => set({ workflowPreset: event.target.value })}>
@@ -234,7 +242,7 @@ export function RoutineDialog({ editing, onClose }: { editing: RoutineView | nul
           </>
         ) : null}
 
-        {problem !== null ? <div className="banner banner--warn" role="alert">{problem}</div> : null}
+        {problem !== null ? <Banner tone="warn" live="assertive">{problem}</Banner> : null}
         {save.isError ? <ErrorState error={save.error} /> : null}
       </div>
     </Modal>
