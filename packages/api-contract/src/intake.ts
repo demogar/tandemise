@@ -557,3 +557,38 @@ export interface IntakeConfigView {
 export interface IntakePushView {
   readonly results: readonly IngestResultView[];
 }
+
+/**
+ * One closure on a source's feed (spec §2 "Closures for custom sources are
+ * pulled", plan Task 13): what the loop closes, at which item, with which pull
+ * request. Additive to the plan's fields: `state` (the CLI prints it),
+ * `lastError`, and the signal's own `reply`, which a custom runner set when it
+ * pushed and needs back to reply where the work came from.
+ */
+export interface IntakeClosureView {
+  readonly id: string;
+  readonly fingerprint: string;
+  readonly key: string;
+  readonly url: string;
+  /** `done`, or `not_planned` for a won't-do item on a source with `closeWontDo`. */
+  readonly kind: 'done' | 'not_planned';
+  readonly state: 'pending' | 'closed' | 'failed';
+  readonly item: { readonly key: string; readonly url: string };
+  readonly prUrl: string | null;
+  readonly reply: { readonly address: string } | null;
+  readonly lastError: string | null;
+}
+
+/** `GET /v1/intake/closures?sourceId=&after=`: a source's closures in id order. */
+export interface IntakeClosuresView {
+  readonly closures: readonly IntakeClosureView[];
+}
+
+/** `POST /v1/intake/closures/:id/ack`: the custom runner closed the loop, or says why it could not. */
+export const ackIntakeClosureRequest = z
+  .object({
+    ok: z.boolean(),
+    error: z.string().trim().min(1).max(2000).optional(),
+  })
+  .strict();
+export type AckIntakeClosureRequest = z.infer<typeof ackIntakeClosureRequest>;

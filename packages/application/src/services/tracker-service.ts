@@ -50,6 +50,8 @@ export interface TrackerServiceDeps {
   readonly unitOfWork: UnitOfWork;
   readonly clock: Clock;
   readonly log: Logger;
+  /** `ClosureService.detect`, after each refresh: a done item closes the loop at its sources (plan Task 13). */
+  readonly detectClosures?: (workspaceId: WorkspaceId, items: readonly TrackedItem[]) => void;
 }
 
 /** Spec §7: the board is refreshed on the scheduler tick every 2 minutes by default. */
@@ -204,6 +206,12 @@ export class TrackerService {
       }
       this.deps.items.removeMissing(workspaceId, [...keep]);
       this.#refreshes.set(workspaceId, { at: this.deps.clock.now(), problem: null });
+      // Spec §8: an item seen done closes the loop, whoever moved it there.
+      try {
+        this.deps.detectClosures?.(workspaceId, this.deps.items.list(workspaceId));
+      } catch (e) {
+        this.deps.log.warn('intake.closure_detect_failed', { workspaceId, error: errorMessage(e) });
+      }
     } catch (e) {
       const message = errorMessage(e).replace(/[.\s]+$/, '');
       const previous = this.#refreshes.get(workspaceId);

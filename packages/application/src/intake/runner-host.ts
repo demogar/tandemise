@@ -1,5 +1,5 @@
 import type {
-  IntakeClaimsPort, IntakeConfigSource, IntakeRepositoryPort, IntakeRunner, IntakeSourceConfig, IntakeSourcePatch, MemberRepositoryPort,
+  Closure, ClosureResult, IntakeClaimsPort, IntakeConfigSource, IntakeRepositoryPort, IntakeRunner, IntakeSourceConfig, IntakeSourcePatch, MemberRepositoryPort,
   RunnerContext, RunnerHandle, SecretStorePort, WebhookMailboxPort, WebhookMessage, WorkspaceRepositoryPort,
 } from '@tandemise/domain';
 import type { BoardView, IngestResultView } from '@tandemise/api-contract';
@@ -44,6 +44,8 @@ const CLAIM_RETRY_MS = 30_000;
 const STALE_CLAIM_MS = 10 * 60_000;
 /** What a webhook delivery for a source no runner reads says on that source (plan Task 10). */
 export const NO_RUNNER_FOR_SOURCE = 'No runner for this source.';
+/** Why a closure fails at once when its project no longer configures the source (plan Task 13). */
+export const SOURCE_NOT_CONFIGURED = 'This project no longer reads this source.';
 
 /** A runner started for one project's source. */
 interface Running {
@@ -126,6 +128,25 @@ export class IntakeRunnerHost {
       await this.deps.pipeline.settle();
     }
     return this.deps.board.refreshBoard(workspaceId);
+  }
+
+  /**
+   * Hands one closure to the runner of its source (plan Task 13), with the
+   * source's context (its secrets), under the source's claim (spec §8: with
+   * several daemons, the closure runs under the source's claim). Null when it
+   * is not this daemon's to close now: no shipped runner closes that kind (a
+   * custom source's closure waits on its feed), the source is switched off on
+   * this machine, or another daemon holds its claim. A source the project no
+   * longer configures fails without retry.
+   */
+  async close(workspaceId: WorkspaceId, sourceId: string, closure: Closure): Promise<ClosureResult | null> {
+    const source = this.deps.config.read(workspaceId).sources.find((s) => s.id === sourceId);
+    if (source === undefined) return { ok: false, error: SOURCE_NOT_CONFIGURED, retryable: false };
+    const runner = this.deps.runners().find((r) => r.kind === source.kind);
+    if (runner?.close === undefined) return null;
+    if (this.deps.intake.source(workspaceId, source.id)?.enabled === false) return null;
+    if (!(await this.#claimed(workspaceId, source.id))) return null;
+    return runner.close(closure, this.#context(workspaceId, source, new AbortController().signal));
   }
 
   /** Resolves when everything started so far has finished (tests, shutdown). */

@@ -77,6 +77,8 @@ export interface TandemiseServices {
   readonly tracker: import('./services/tracker-service.js').TrackerService;
   /** The shipped intake runners, and "Check sources now" (intake spec §2, plan Task 10). */
   readonly intakeRunners: import('./intake/runner-host.js').IntakeRunnerHost;
+  /** Closing the loop at every source when the tracker item is done (intake spec §8, plan Task 13). */
+  readonly closures: import('./services/closure-service.js').ClosureService;
 }
 
 /** One contribution pinned as Evidence, with what a caller needs to type it next. */

@@ -7,6 +7,7 @@ import type { IntakeService } from './services/intake-service.js';
 import type { TrackerService } from './services/tracker-service.js';
 import type { TrackerResolver } from './intake/tracker-resolver.js';
 import type { IntakeRunnerHost } from './intake/runner-host.js';
+import type { ClosureService } from './services/closure-service.js';
 
 /**
  * Intake's application tokens (spec 2026-10-30-intake-design.md). They live
@@ -36,3 +37,5 @@ export const INTAKE_CLAIMS = token<IntakeClaimsPort>('port.IntakeClaims');
 export const TRACKER_SERVICE = token<TrackerService>('application.TrackerService');
 /** Drives the shipped intake runners and "Check sources now" (plan Task 10). */
 export const INTAKE_RUNNER_HOST = token<IntakeRunnerHost>('application.IntakeRunnerHost');
+/** Closes the loop at each source when the tracker item is done (plan Task 13). */
+export const CLOSURE_SERVICE = token<ClosureService>('application.ClosureService');

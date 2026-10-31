@@ -13,6 +13,8 @@
 // Task 12: "slack" and "discord", over scratch/fake-slack.mjs (Web API plus
 // Socket Mode) and scratch/fake-discord.mjs (REST plus the gateway), both on
 // `ws`; the runners themselves use Node 22's built-in WebSocket.
+// Task 13: "closure", the loop closing at every source once a person sets the
+// tracker item done in the fake YouTrack (ClosureService over the runners).
 import { execFile } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -84,9 +86,9 @@ const ghCalls = (pred) => calls(GH).filter((c) => pred(c.args)).length;
 const listCalls = (repo) => ghCalls((a) => a[0] === 'issue' && a[1] === 'list' && a.includes(repo) && a.includes('--label'));
 const createCalls = () => ghCalls((a) => a[0] === 'issue' && a[1] === 'create');
 
-/** One daemon over a fresh home, with both tracker modules and the fake gh on PATH. */
-async function open({ bindings } = {}) {
-  const home = newHome();
+/** One daemon over a fresh home (or `home`, for a restart), with both tracker modules and the fake gh on PATH. */
+async function open({ bindings, home: reopened } = {}) {
+  const home = reopened ?? newHome();
   const paths = createPaths(home);
   mkdirSync(paths.root, { recursive: true });
   const container = new Container();
@@ -678,6 +680,200 @@ try {
     await slack.close();
     await discord.close();
     await sentry3.close();
+  }
+
+  // ------------------------------------------------------------------ Task 13: closing the loop
+  // A person sets the item done in the fake YouTrack; the board refresh writes
+  // the closures and `closures.tick()` hands each to its source's runner.
+  // Signals arrive through the pipeline directly (as a runner pushes them), so
+  // no socket or poll runs here.
+  const yt4 = await startFakeYouTrack({ project: 'GAR', token: 'perm:test', login: 'tandemise-bot' });
+  const slack4 = await startFakeSlack({ workspace: 'acme' });
+  const sentry4 = await startFakeSentry({ token: 'sntrys_test', org: 'acme', project: 'web', repos: ['acme/web'] });
+  const C_SLACK = { id: 'slack-support', kind: 'slack', instance: 'acme.slack.com#support', api: slack4.url, closeOnDone: true, closeWontDo: false };
+  const C_SENTRY = { id: 'sentry-web', kind: 'sentry', instance: 'acme/web', api: sentry4.url, every: '60m', closeOnDone: true, closeWontDo: false };
+  const C_GITHUB = { id: 'github-acme-shop', kind: 'github', instance: 'acme/shop', every: '60m', closeOnDone: false, closeWontDo: false };
+  const closureSources = (over = {}) => [C_SLACK, C_SENTRY, { ...C_GITHUB, ...over }];
+  // One settings store and one secret store for both lives of the daemon, as the disk would keep them.
+  const sharedSettings = app.createMemorySettingsStore();
+  const sharedSecrets = memorySecrets();
+  const shared = (c) => {
+    c.rebind(app.SETTINGS_STORE, () => sharedSettings, { source: 'check' });
+    c.rebind(app.SECRET_STORE, () => sharedSecrets, { source: 'check' });
+  };
+  let d6 = null;
+  try {
+    section('closure: a person sets GAR-1 Fixed; Sentry and Slack close (plan Task 13, 1)');
+    d6 = await open({ bindings: shared });
+    const home6 = d6.home;
+    const ws = (await d6.services.workspaces.create(d6.caller, { name: 'Closing' })).workspace.id;
+    d6.config.write(ws, { tracker: ytTracker(yt4.url), intake: { sources: closureSources(), dailyCap: 20, similarity: { link: 0.85, ask: 0.55 } } });
+    await d6.resolver.saveCredential(ws, 'perm:test');
+    await d6.services.intake.saveSourceSecret(d6.caller, ws, 'sentry-web', { name: 'token', value: 'sntrys_test' });
+    await d6.services.intake.saveSourceSecret(d6.caller, ws, 'slack-support', { name: 'botToken', value: 'xoxb-test' });
+    const closures = d6.services.closures;
+    check('services.closures is the ClosureService', typeof closures?.tick === 'function' && typeof closures?.detect === 'function');
+    const push = async (d, sourceId, signal) => {
+      await d.services.intake.ingest({ workspaceId: ws, sourceId, tokenId: null }, { schema: 'tandemise.intake/v1', ...signal }, { fromRunner: true });
+      await d.settle();
+    };
+    const sentrySignal = (id, title) => ({ source: { kind: 'sentry', instance: 'acme/web' }, key: id, url: `https://acme.sentry.io/issues/${id}/`, title, impact: { level: 'error', events: 50 } });
+    const slackSignal = (ts, title) => ({ source: { kind: 'slack', instance: 'acme.slack.com#support' }, key: `C0SUPPORT:${ts}`, url: slack4.permalink('C0SUPPORT', ts), title, reply: { address: `C0SUPPORT:${ts}` } });
+    const ghSignal = (n, title) => ({ source: { kind: 'github', instance: 'acme/shop' }, key: String(n), url: `https://github.com/acme/shop/issues/${n}`, title });
+    const closureOf = (d, sourceId, fp) => {
+      const s = d.repo.findSignal(ws, fp);
+      return s === undefined ? undefined : d.repo.closures.listForSource(ws, sourceId).find((c) => c.signalId === s.id);
+    };
+    const keyOf = (d, fp) => d.repo.linkFor(d.repo.findSignal(ws, fp)?.id)?.itemRef?.replace('youtrack:', '');
+    const tickClosures = async (d) => { d.services.closures?.tick(); await d.services.closures?.settle(); };
+    const refreshAndClose = async (d) => {
+      await d.services.tracker.refreshBoard(ws);
+      await tickClosures(d);
+      await d.settle();
+    };
+    const threadReplies = (ts) => slack4.calls.filter((c) => c.path === '/chat.postMessage' && c.body?.thread_ts === ts);
+    const sentryPuts = (id) => sentry4.calls.filter((c) => c.method === 'PUT' && c.path === `/api/0/issues/${id}/`);
+
+    sentry4.putIssue({ id: '101', title: 'TypeError: cart is undefined', count: '50' });
+    await push(d6, 'sentry-web', sentrySignal('101', 'TypeError: cart is undefined'));
+    const root1 = slack4.postMessage({ channel: 'C0SUPPORT', user: 'U0SAM', text: 'TypeError: cart is undefined' });
+    await push(d6, 'slack-support', slackSignal(root1.ts, 'TypeError: cart is undefined'));
+    const sSentry = d6.repo.findSignal(ws, 'sentry:acme/web:101');
+    const sSlack = d6.repo.findSignal(ws, `slack:acme.slack.com#support:C0SUPPORT:${root1.ts}`);
+    check('the Sentry signal created GAR-1 and the Slack thread linked to it',
+      d6.repo.linkFor(sSentry?.id)?.itemRef === 'youtrack:GAR-1' && d6.repo.linkFor(sSlack?.id)?.itemRef === 'youtrack:GAR-1',
+      { sentry: sSentry?.status, slack: sSlack?.status, reason: sSlack?.reason });
+    // A started mission in a repository whose remote is acme/web, with a commit and a pull request.
+    await d6.services.tracker.refreshBoard(ws);
+    const gar1 = d6.container.resolve(app.TRACKER_ITEM_REPOSITORY).byKey(ws, 'GAR-1');
+    const checkout = join(home6, 'web');
+    mkdirSync(checkout, { recursive: true });
+    d6.container.resolve(app.REPO_REPOSITORY).create({ id: 'rep_web', workspaceId: ws, name: 'web', path: checkout, defaultBranch: 'main', remoteUrl: 'https://github.com/acme/web.git', checks: D.NO_CHECKS });
+    const mission = await d6.services.missions.create(d6.caller, { workspaceId: ws, repositoryId: 'rep_web', title: 'Fix the cart', goal: 'Fix the cart on checkout' }, { trackerItemId: gar1.id });
+    d6.container.resolve(app.ARTIFACT_REPOSITORY).create({
+      id: 'art_close_1', workspaceId: ws, missionId: mission.id, taskId: null, createdByRunId: null, type: 'ChangeSet', title: 'The fix',
+      contentRef: 'artifacts/close-1.md', mediaType: 'text/markdown', sha256: 'c'.repeat(64), byteSize: 1, schemaVersion: 1,
+      sourceRefs: [{ kind: 'git.commit', value: 'abc123' }, { kind: 'github.pr', value: 'https://github.com/acme/web/pull/7' }],
+      supersedes: null, summary: 'The fix', createdAt: clock.now(),
+    });
+    yt4.setState('GAR-1', 'Fixed');
+    await d6.services.tracker.refreshBoard(ws);
+    check('the refresh writes a pending closure per linked signal, and both signals read closure_pending',
+      closureOf(d6, 'sentry-web', sSentry?.fingerprint)?.state === 'pending' && closureOf(d6, 'slack-support', sSlack?.fingerprint)?.state === 'pending'
+      && d6.repo.getSignal(sSentry?.id)?.status === 'closure_pending' && d6.repo.getSignal(sSlack?.id)?.status === 'closure_pending',
+      { sentry: closureOf(d6, 'sentry-web', sSentry?.fingerprint), slack: d6.repo.getSignal(sSlack?.id)?.status });
+    await tickClosures(d6);
+    const put101 = sentryPuts('101').at(-1)?.body;
+    check('Sentry 101 resolved inCommit abc123 (the newest git.commit of the mission, the repo from its remote)',
+      put101?.status === 'resolved' && put101?.statusDetails?.inCommit?.commit === 'abc123' && put101?.statusDetails?.inCommit?.repository === 'acme/web', put101);
+    check("Slack got one reply: 'Done: TypeError: cart is undefined · GAR-1 · https://github.com/acme/web/pull/7'",
+      threadReplies(root1.ts).length === 1 && threadReplies(root1.ts)[0].body?.text === 'Done: TypeError: cart is undefined · GAR-1 · https://github.com/acme/web/pull/7',
+      threadReplies(root1.ts).map((c) => c.body));
+    const cSentry = closureOf(d6, 'sentry-web', sSentry?.fingerprint);
+    const cSlack = closureOf(d6, 'slack-support', sSlack?.fingerprint);
+    check('both signals are closed; the closures carry the external id and closed_at',
+      d6.repo.getSignal(sSentry?.id)?.status === 'closed' && d6.repo.getSignal(sSlack?.id)?.status === 'closed'
+      && cSentry?.state === 'closed' && cSentry?.externalId === '101' && cSentry?.closedAt === clock.now()
+      && cSlack?.state === 'closed' && typeof cSlack?.externalId === 'string',
+      { cSentry, cSlack, statuses: [d6.repo.getSignal(sSentry?.id)?.status, d6.repo.getSignal(sSlack?.id)?.status] });
+    await refreshAndClose(d6);
+    check('a second refresh and tick write nothing more', threadReplies(root1.ts).length === 1 && sentryPuts('101').length === 1);
+
+    section('closure: GitHub closes only with closeOnDone (plan Task 13, 2)');
+    putIssue(GH, 'acme/shop', { number: 5, title: 'Coupon field rejects lowercase codes', author: 'sam' });
+    putIssue(GH, 'acme/shop', { number: 6, title: 'Wishlist forgets sizes', author: 'kim' });
+    const ghCloses = (n) => ghCalls((a) => a[0] === 'issue' && a[1] === 'close' && a.includes('acme/shop') && a.includes(String(n)));
+    await push(d6, 'github-acme-shop', ghSignal(5, 'Coupon field rejects lowercase codes'));
+    const key5 = keyOf(d6, 'github:acme/shop:5');
+    yt4.setState(key5, 'Fixed');
+    await refreshAndClose(d6);
+    const comments5 = commentsOf(GH, 'acme/shop', 5);
+    check('closeOnDone false: one comment ("Done; tracked as <key>."), no gh issue close',
+      comments5.length === 1 && comments5[0].body.includes(`Done; tracked as ${key5}.`) && ghCloses(5) === 0
+      && d6.repo.findSignal(ws, 'github:acme/shop:5')?.status === 'closed', { key5, comments5, closes: ghCloses(5) });
+    d6.config.write(ws, { intake: { sources: closureSources({ closeOnDone: true }), dailyCap: 20, similarity: { link: 0.85, ask: 0.55 } } });
+    await push(d6, 'github-acme-shop', ghSignal(6, 'Wishlist forgets sizes'));
+    const key6 = keyOf(d6, 'github:acme/shop:6');
+    yt4.setState(key6, 'Done');
+    await refreshAndClose(d6);
+    const comments6 = commentsOf(GH, 'acme/shop', 6);
+    check('closeOnDone true: the comment, then gh issue close', comments6.length === 1 && comments6[0].body.includes(`Done; tracked as ${key6}.`) && ghCloses(6) === 1
+      && d6.repo.findSignal(ws, 'github:acme/shop:6')?.status === 'closed', { key6, comments6, closes: ghCloses(6) });
+
+    section("closure: Won't fix without closeWontDo writes nothing (plan Task 13, 3)");
+    sentry4.putIssue({ id: '102', title: 'Image upload stalls at 99%', count: '50' });
+    await push(d6, 'sentry-web', sentrySignal('102', 'Image upload stalls at 99%'));
+    const s102 = d6.repo.findSignal(ws, 'sentry:acme/web:102');
+    yt4.setState(keyOf(d6, 'sentry:acme/web:102'), "Won't fix");
+    await refreshAndClose(d6);
+    check('no closure row, the signal keeps its status, Sentry is not asked',
+      closureOf(d6, 'sentry-web', 'sentry:acme/web:102') === undefined && d6.repo.getSignal(s102?.id)?.status === 'created' && sentryPuts('102').length === 0,
+      { closure: closureOf(d6, 'sentry-web', 'sentry:acme/web:102'), status: d6.repo.getSignal(s102?.id)?.status });
+
+    section('closure: Sentry answers 500; backoff, then closure_failed, then retry (plan Task 13, 4)');
+    sentry4.putIssue({ id: '103', title: 'Search ignores quoted phrases', count: '50' });
+    await push(d6, 'sentry-web', sentrySignal('103', 'Search ignores quoted phrases'));
+    const s103 = d6.repo.findSignal(ws, 'sentry:acme/web:103');
+    yt4.setState(keyOf(d6, 'sentry:acme/web:103'), 'Fixed');
+    sentry4.failPuts(500);
+    const at0 = t;
+    await refreshAndClose(d6);
+    const c1 = closureOf(d6, 'sentry-web', 'sentry:acme/web:103');
+    check('attempt 1 fails: still pending, next attempt at +60 s', c1?.state === 'pending' && c1?.attempts === 1 && c1?.nextAttemptAt === new Date(at0 + 60_000).toISOString(), c1);
+    await tickClosures(d6);
+    check('…and it is not tried again before then', closureOf(d6, 'sentry-web', 'sentry:acme/web:103')?.attempts === 1);
+    advance(60_000);
+    const at1 = t;
+    await tickClosures(d6);
+    const c2 = closureOf(d6, 'sentry-web', 'sentry:acme/web:103');
+    check('attempt 2 fails: next attempt at +120 s', c2?.state === 'pending' && c2?.attempts === 2 && c2?.nextAttemptAt === new Date(at1 + 120_000).toISOString(), c2);
+    for (let i = 3; i <= 8; i++) {
+      advance(3_600_000);
+      await tickClosures(d6);
+    }
+    const c8 = closureOf(d6, 'sentry-web', 'sentry:acme/web:103');
+    const f103 = d6.repo.getSignal(s103?.id);
+    check("after 8 attempts: failed in Sentry's words, and the signal is closure_failed \"Couldn't close at Sentry: …\"",
+      c8?.state === 'failed' && c8?.attempts === 8 && c8?.lastError === 'Sentry answered 500 to PUT /api/0/issues/103/.'
+      && f103?.status === 'closure_failed' && f103?.reason === "Couldn't close at Sentry: Sentry answered 500 to PUT /api/0/issues/103/.", { c8, status: f103?.status, reason: f103?.reason });
+    advance(3_600_000);
+    await tickClosures(d6);
+    check('…and a failed closure is not tried again on its own', closureOf(d6, 'sentry-web', 'sentry:acme/web:103')?.attempts === 8 && sentryPuts('103').length === 8);
+    const retried = await refusal(async () => { const v = await closures?.retry(d6.caller, c8?.id); if (v?.state !== 'pending') throw new Error(JSON.stringify(v)); });
+    const r103 = closureOf(d6, 'sentry-web', 'sentry:acme/web:103');
+    check('retry makes it pending again: attempts reset, the signal closure_pending',
+      retried === null && r103?.state === 'pending' && r103?.attempts === 0 && r103?.lastError === null && d6.repo.getSignal(s103?.id)?.status === 'closure_pending', { retried: String(retried), r103 });
+    sentry4.failPuts(null);
+    await tickClosures(d6);
+    check('…and with Sentry back, the next tick closes it', closureOf(d6, 'sentry-web', 'sentry:acme/web:103')?.state === 'closed' && d6.repo.getSignal(s103?.id)?.status === 'closed');
+    const closedAgain = await refusal(() => closures?.retry(d6.caller, c8?.id));
+    check('retrying a closed closure is refused', closedAgain?.code === 'PRECONDITION_FAILED', closedAgain?.message);
+
+    section('closure: a restart between postMessage and storing the result, still one Slack reply (plan Task 13, 5)');
+    const root2 = slack4.postMessage({ channel: 'C0SUPPORT', user: 'U0KIM', text: 'Dark mode flickers on login' });
+    await push(d6, 'slack-support', slackSignal(root2.ts, 'Dark mode flickers on login'));
+    const s2fp = `slack:acme.slack.com#support:C0SUPPORT:${root2.ts}`;
+    yt4.setState(keyOf(d6, s2fp), 'Fixed');
+    // The process dies once Slack has the reply and before the closure is stored as closed.
+    const update = d6.repo.closures.update;
+    d6.repo.closures.update = (id, patch) => { if (patch.state === 'closed') throw new Error('the process died here'); return update(id, patch); };
+    await refreshAndClose(d6);
+    check('Slack has the reply; the closure is still pending', threadReplies(root2.ts).length === 1 && closureOf(d6, 'slack-support', s2fp)?.state === 'pending',
+      { replies: threadReplies(root2.ts).length, closure: closureOf(d6, 'slack-support', s2fp) });
+    await d6.dispose();
+    d6 = await open({ home: home6, bindings: shared });
+    await tickClosures(d6);
+    const after = closureOf(d6, 'slack-support', s2fp);
+    check('after the restart the tick finds its own reply: still one reply, the closure closed with it as the external id',
+      threadReplies(root2.ts).length === 1 && after?.state === 'closed' && typeof after?.externalId === 'string' && d6.repo.findSignal(ws, s2fp)?.status === 'closed',
+      { replies: threadReplies(root2.ts).length, after });
+  } catch (e) {
+    check('the closure sections ran', false, String(e?.stack ?? e));
+  } finally {
+    await d6?.dispose();
+    await yt4.close();
+    await slack4.close();
+    await sentry4.close();
   }
 } finally {
   await fake.close();

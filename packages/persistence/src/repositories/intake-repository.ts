@@ -425,6 +425,10 @@ export class SqliteIntakeRepository implements IntakeRepositoryPort {
 
     this.closures = {
       ensure: (signalId, kind) => this.#ensureClosure(signalId, kind),
+      get: (id) => {
+        const row = this.#selectClosure.get({ id });
+        return row === undefined ? undefined : closureFromRow(row);
+      },
       due: (nowIso) => this.#dueClosures.all({ now: nowIso }).map(closureFromRow),
       update: (id, patch) => this.#updateClosureBy(id, patch),
       listForSource: (ws, sourceId, afterId) =>

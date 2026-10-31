@@ -80,6 +80,8 @@ export interface IntakeRepositoryPort {
   readonly closures: {
     /** Returns the existing closure for `(signal, kind)`, or a new `pending` one due now. */
     ensure(signalId: SignalId, kind: ClosureKind): IntakeClosure;
+    /** By id: the feed's ack and the Intake tab's Retry name one (plan Task 13). */
+    get(id: ClosureId): IntakeClosure | undefined;
     /** Pending closures whose next attempt is at or before `nowIso`, oldest first. */
     due(nowIso: string): readonly IntakeClosure[];
     update(id: ClosureId, patch: IntakeClosurePatch): IntakeClosure;

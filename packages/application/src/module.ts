@@ -80,6 +80,7 @@ import { LocalIntakeConfigSource } from './intake/config-source.js';
 import { MemoryBlobs } from './intake/memory-blobs.js';
 import { TrackerResolver } from './intake/tracker-resolver.js';
 import { IntakeRunnerHost } from './intake/runner-host.js';
+import { ClosureService } from './services/closure-service.js';
 import { INTAKE_RUNNERS } from '@tandemise/integrations-core';
 
 const SOURCE = 'application';
@@ -390,7 +391,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       syncIssues: () => r.resolve(t.ISSUE_SERVICE).tick(),
       // Resolved per pass: intake retries and recovers in the background (plan Task 7).
       // The runner host starts due polls and drains the webhook mailbox there too (plan Task 10).
-      syncIntake: () => { r.resolve(it.INTAKE_SERVICE).tick(); r.resolve(it.TRACKER_SERVICE).tick(); r.resolve(it.INTAKE_RUNNER_HOST).tick(); },
+      syncIntake: () => { r.resolve(it.INTAKE_SERVICE).tick(); r.resolve(it.TRACKER_SERVICE).tick(); r.resolve(it.INTAKE_RUNNER_HOST).tick(); r.resolve(it.CLOSURE_SERVICE).tick(); },
       pullBacklog: () => r.resolve(t.BACKLOG_SERVICE).pull(),
       limits: r.resolve(t.LIMIT_SERVICE),
       // Resolved per pass, like the backlog: it reads the planner, composed after this.
@@ -939,6 +940,8 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       unitOfWork: r.resolve(t.UNIT_OF_WORK),
       clock: clock(r),
       log: log(r).child({ component: 'intake' }),
+      // Resolved per call: the closure service reaches the runner host, which reads this board (plan Task 13).
+      detectClosures: (workspaceId, items) => r.resolve(it.CLOSURE_SERVICE).detect(workspaceId, items),
     }), { source: SOURCE });
     // The shipped runners (plan Task 10): contributed by the provider modules,
     // read per pass, driven from the scheduler's `syncIntake`.
@@ -953,6 +956,23 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       secrets: r.resolve(t.SECRET_STORE),
       workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
       members: r.resolve(t.MEMBER_REPOSITORY),
+      clock: clock(r),
+      log: log(r).child({ component: 'intake' }),
+    }), { source: SOURCE });
+    // Closing the loop (plan Task 13): the board refresh detects, the scheduler's
+    // `syncIntake` ticks, and each closure goes to its runner through the host.
+    bind(it.CLOSURE_SERVICE, (r) => new ClosureService({
+      intake: r.resolve(it.INTAKE_REPOSITORY),
+      config: r.resolve(it.INTAKE_CONFIG_SOURCE),
+      items: r.resolve(it.TRACKER_ITEM_REPOSITORY),
+      missions: r.resolve(t.MISSION_REPOSITORY),
+      artifacts: r.resolve(t.ARTIFACT_REPOSITORY),
+      repositories: r.resolve(t.REPO_REPOSITORY),
+      closer: r.resolve(it.INTAKE_RUNNER_HOST),
+      workspaces: r.resolve(t.WORKSPACE_REPOSITORY),
+      members: r.resolve(t.MEMBER_REPOSITORY),
+      projections: r.resolve(t.PROJECTION_BUS),
+      unitOfWork: r.resolve(t.UNIT_OF_WORK),
       clock: clock(r),
       log: log(r).child({ component: 'intake' }),
     }), { source: SOURCE });
@@ -1060,6 +1080,7 @@ export function createApplicationModule(options: ApplicationModuleOptions = {}):
       intake: r.resolve(it.INTAKE_SERVICE),
       tracker: r.resolve(it.TRACKER_SERVICE),
       intakeRunners: r.resolve(it.INTAKE_RUNNER_HOST),
+      closures: r.resolve(it.CLOSURE_SERVICE),
     }), { source: SOURCE });
   });
 }

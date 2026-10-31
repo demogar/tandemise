@@ -19,6 +19,7 @@ import {
   decideIntakeSignalRequest,
   startBoardItemRequest,
   saveIntakeSourceSecretRequest, saveTrackerSecretRequest,
+  ackIntakeClosureRequest,
 } from '@tandemise/api-contract';
 import type { EvalSuiteView } from '@tandemise/api-contract';
 import { normalizeLimits } from '@tandemise/domain';
@@ -187,6 +188,16 @@ export function buildRouter(services: TandemiseServices, options: { readonly tes
   r.post('/v1/intake/signals/:id/decide', async (ctx) =>
     services.intake.decide(ctx.caller, asId(ctx.params.id!), (await ctx.body(decideIntakeSignalRequest)).decision));
   r.post('/v1/intake/signals/:id/retry', (ctx) => services.intake.retry(ctx.caller, asId(ctx.params.id!)));
+  // Closures (spec §2, §8, plan Task 13): a custom source pulls its own feed and
+  // acks each one, with its intake token or the daemon token plus ?workspace=.
+  // Retry is the Intake tab's, with the daemon token only.
+  r.get('/v1/intake/closures', (ctx) => {
+    const scope = services.closures.feedScope(ctx.intake, ctx.query.get('workspace'), ctx.query.get('sourceId'));
+    return services.closures.feed(scope, ctx.query.get('after'));
+  });
+  r.post('/v1/intake/closures/:id/ack', async (ctx) =>
+    services.closures.ack(ctx.intake, () => ctx.caller, ctx.params.id!, await ctx.body(ackIntakeClosureRequest)));
+  r.post('/v1/intake/closures/:id/retry', (ctx) => services.closures.retry(ctx.caller, ctx.params.id!));
   // The board from the primary tracker, and Start (plan Task 8). Start names
   // the item in the body: a GitHub ref holds `/` and `#`.
   r.get('/v1/workspaces/:id/board', (ctx) => services.tracker.board(asId(ctx.params.id!)));

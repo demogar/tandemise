@@ -105,6 +105,9 @@ export { TrackerResolver, trackerSecretName } from './intake/tracker-resolver.js
 export type { TrackerResolverDeps } from './intake/tracker-resolver.js';
 export { IntakeRunnerHost, NO_RUNNER_FOR_SOURCE } from './intake/runner-host.js';
 export type { IntakeRunnerHostDeps } from './intake/runner-host.js';
+export { CLOSURE_MAX_ATTEMPTS, ClosureService, closureBackoffMs } from './services/closure-service.js';
+export type { ClosureServiceDeps } from './services/closure-service.js';
+export { SOURCE_NOT_CONFIGURED } from './intake/runner-host.js';
 export { ContributionError, ContributionServiceImpl, pickGitCredentialEnv } from './services/contribution-service.js';
 export type { ContributionDeps, ContributionErrorCode } from './services/contribution-service.js';
 export { EvalError, EvalService } from './services/eval-service.js';

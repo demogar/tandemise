@@ -380,3 +380,30 @@ was ambiguous or wrong, decided against the spec
     asynchronously. Surfacing it needs a way for a socket runner to report (Task 14's Settings → Intake).
   - **The fakes** take the same `/_fake/…` doors as `fake-sentry.mjs` (`messages`, `emit`, `drop`, `state`)
     and a script mode (`--port 0 --state <dir>`, `<dir>/url`, `state.json`) for the acceptance run.
+- Ruling 19 (closing the loop, Task 13): decided from spec §2, §3 and §8:
+  - **What closes.** `detect` runs after every successful board refresh (the tick's and `refreshBoard`'s) over the
+    project's cached items, so an item the board query no longer returns but a link keeps (Ruling 13) is seen done
+    too. Only a `done` link closes: a pending one has not reached the tracker, and a `source_is_item` link is the
+    item itself. A signal already in a closure status keeps it (a refresh never sets a closed signal back to
+    `closure_pending`). A `wont_do` item writes `not_planned` closures only for sources with `closeWontDo`.
+  - **Where it runs.** `ClosureService.tick` runs from `syncIntake`, one pass at a time, and hands each due closure
+    to `IntakeRunnerHost.close`, which reuses the runner's context (its secrets) and asks the source's claim first.
+    The host answers null, and the closure waits untouched (no attempt counted), when no shipped runner closes that
+    kind (a custom source: its feed), the source is switched off on this machine, or the claim is refused. A source
+    the project no longer configures fails at once: "This project no longer reads this source." A runner that
+    throws counts as a retryable failure. A crash while storing the result leaves the closure as it was; the
+    runner's own-reply check makes the next attempt write nothing twice.
+  - **The closure's facts.** The item's mission is its open one, else the newest. `prUrl` is its first pull request
+    (`deliveryLinks`); `commit` is the `git.commit` ref of its newest artifact, with the repo from
+    `githubRepoFromRemote` of the mission's repository, else null. The failure reason keeps the source's words as
+    they are: "Couldn't close at Sentry: Sentry answered 500 to PUT /api/0/issues/103/."
+  - **Retry and the feed.** `retry` takes a pending or failed closure back to pending, due now, attempts 0, the
+    signal `closure_pending`; a closed one is `PRECONDITION_FAILED` "Already closed at <Label>." The feed's view
+    adds `state`, `lastError` and the signal's `reply` (the address a custom runner set and needs back to reply)
+    to the plan's fields. The daemon token names `?workspace=&sourceId=` (400 otherwise, as a push); an intake
+    token reads only its own source (403 "This token can only read the closures of '<id>'."), and acks only its
+    own source's closures: any other is `NOT_FOUND` to it. An ack of a closed closure changes nothing; `ok:false`
+    without `error` fails it as "The runner could not close it." Retry is daemon-token only (the listener's
+    intake paths leave it out). The repository port gained `closures.get(id)`.
+  - **The CLI** prints `<id> <fingerprint> <state>` per closure, and the acked closure's line after `--ack`;
+    `--error` without `--ack` is a usage error.

@@ -253,6 +253,102 @@ section('daemon: secrets over the API and the opt-in webhook listener (plan Task
   }
 }
 
+section('daemon: a custom source reads and acks its closures (plan Task 13)');
+{
+  const root = mkdtempSync(join(tmpdir(), 'tdi-closures-'));
+  const home = join(root, 'h');
+  const { startDaemon } = await import('../apps/daemon/dist/main.js');
+  let daemon;
+  let fake;
+  try {
+    fake = await startFakeYouTrack({ project: 'GAR', token: 'perm:test', login: 'tandemise-bot' });
+    daemon = await startDaemon({ home, logLevel: 'error', tickIntervalMs: 200 });
+    const token = JSON.parse(readFileSync(join(home, 'daemon.json'), 'utf8')).token;
+    const call = async (method, path, body, bearer = token) => {
+      const res = await fetch(`${daemon.url}${path}`, {
+        method,
+        headers: { authorization: `Bearer ${bearer}`, 'x-tandemise-api-version': 'v1', ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      });
+      const text = await res.text();
+      return { status: res.status, body: text ? JSON.parse(text) : undefined };
+    };
+    const until = async (cond, ms = 10_000) => {
+      const end = Date.now() + ms;
+      while (Date.now() < end) {
+        if (await cond()) return true;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      return Boolean(await cond());
+    };
+    const ws = (await call('POST', '/v1/workspaces', { name: 'Closures' })).body?.workspace?.id;
+    const put = await call('PUT', `/v1/workspaces/${ws}/intake/config`, {
+      tracker: {
+        kind: 'youtrack', url: fake.url, project: 'GAR', board: 'project: GAR #Unresolved',
+        states: { ready: ['Open'], in_progress: 'In Progress', done: ['Done'], wont_do: ["Won't fix"] }, onComplete: 'done',
+      },
+      intake: { sources: [{ id: 'custom-feed', kind: 'custom', instance: 'custom-feed' }, { id: 'other-feed', kind: 'custom', instance: 'other-feed' }] },
+    });
+    await call('PUT', `/v1/workspaces/${ws}/intake/tracker/secret`, { value: 'perm:test' });
+    check('a project with a fake YouTrack and two custom sources', put.status === 200, put);
+    const minted = await call('POST', `/v1/workspaces/${ws}/intake/tokens`, { sourceId: 'custom-feed' });
+    const intakeToken = minted.body?.token;
+    const pushed = await call('POST', '/v1/intake/signals', {
+      schema: 'tandemise.intake/v1', source: { kind: 'custom', instance: 'custom-feed' }, key: 'c1',
+      url: 'https://feed.test/c1', title: 'Export to CSV drops the last row', reply: { address: 'ticket-77' },
+    }, intakeToken);
+    check('the custom token pushes c1', pushed.status === 202 && pushed.body?.results?.[0]?.fingerprint === 'custom:custom-feed:c1', pushed);
+    const signalOf = async () => (await call('GET', `/v1/workspaces/${ws}/intake/signals`)).body?.find((s) => s.fingerprint === 'custom:custom-feed:c1');
+    check('…and it lands in YouTrack as GAR-1', await until(async () => (await signalOf())?.status === 'created') && fake.issues.get('GAR-1')?.summary === 'Export to CSV drops the last row', await signalOf());
+
+    const empty = await call('GET', '/v1/intake/closures', undefined, intakeToken);
+    check('before the item is done, the feed is empty', empty.status === 200 && Array.isArray(empty.body?.closures) && empty.body.closures.length === 0, empty);
+    fake.setState('GAR-1', 'Done');
+    const refreshed = await call('POST', `/v1/workspaces/${ws}/board/refresh`);
+    check('the item set to Done in YouTrack, then refresh', refreshed.status === 200, refreshed);
+
+    const env = { TANDEMISE_HOME: home };
+    const listed = await cli(['intake', 'closures', '--source', 'custom-feed'], env);
+    const line = listed.stdout.trim().split('\n');
+    const [closureId, fp, state] = (line[0] ?? '').split(' ');
+    check('tandemise intake closures --source custom-feed lists one pending closure: <id> <fingerprint> <state>',
+      listed.code === 0 && line.length === 1 && closureId?.startsWith('clo') && fp === 'custom:custom-feed:c1' && state === 'pending', listed);
+    check('…and the signal reads closure_pending (the tick never closes a custom closure itself)', (await signalOf())?.status === 'closure_pending', await signalOf());
+
+    const feed = await call('GET', '/v1/intake/closures', undefined, intakeToken);
+    const item = feed.body?.closures?.[0];
+    check('the token reads its feed: id, fingerprint, key, url, kind, item, prUrl and the reply address',
+      feed.status === 200 && feed.body?.closures?.length === 1 && item?.id === closureId && item?.fingerprint === 'custom:custom-feed:c1' && item?.key === 'c1'
+      && item?.url === 'https://feed.test/c1' && item?.kind === 'done' && item?.item?.key === 'GAR-1' && typeof item?.item?.url === 'string'
+      && item?.prUrl === null && item?.reply?.address === 'ticket-77' && item?.state === 'pending', feed);
+    const after = await call('GET', `/v1/intake/closures?after=${closureId}`, undefined, intakeToken);
+    check('…after=<id> answers what came after it', after.status === 200 && after.body?.closures?.length === 0, after);
+    const otherFeed = await call('GET', '/v1/intake/closures?sourceId=other-feed', undefined, intakeToken);
+    check("…another source's feed is refused (403)", otherFeed.status === 403, otherFeed);
+    const noProject = await call('GET', '/v1/intake/closures?sourceId=custom-feed');
+    check('the daemon token without ?workspace= is 400', noProject.status === 400, noProject);
+    const otherToken = (await call('POST', `/v1/workspaces/${ws}/intake/tokens`, { sourceId: 'other-feed' })).body?.token;
+    const foreignAck = await call('POST', `/v1/intake/closures/${closureId}/ack`, { ok: true }, otherToken);
+    check("another source's token cannot ack it (404)", foreignAck.status === 404, foreignAck);
+    const retryByToken = await call('POST', `/v1/intake/closures/${closureId}/retry`, undefined, intakeToken);
+    check('an intake token cannot reach retry (403)', retryByToken.status === 403, retryByToken);
+
+    const acked = await cli(['intake', 'closures', '--source', 'custom-feed', '--ack', closureId], env);
+    check('tandemise intake closures --ack <id> marks it closed', acked.code === 0 && acked.stdout.trim() === `${closureId} custom:custom-feed:c1 closed`, acked);
+    check('…and the signal shows closed', (await signalOf())?.status === 'closed', await signalOf());
+    const relisted = await cli(['intake', 'closures', '--source', 'custom-feed'], env);
+    check('…the list says closed', relisted.code === 0 && relisted.stdout.trim() === `${closureId} custom:custom-feed:c1 closed`, relisted);
+    const usage = await cli(['intake', 'closures', '--source', 'custom-feed', '--error', 'nope'], env);
+    check('--error without --ack is a usage error (2)', usage.code === 2, usage);
+  } catch (e) {
+    check('the closures section ran', false, String(e?.stack ?? e));
+  } finally {
+    await daemon?.stop();
+    await fake?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length > 0) {
   for (const f of failures) console.log(`  - ${f}`);

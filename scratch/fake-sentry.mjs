@@ -44,6 +44,8 @@ export async function startFakeSentry(options = {}) {
   /** every request: { method, path, query (URLSearchParams), authorization, body } */
   const calls = [];
   let nextId = 4501234567;
+  /** When set, every `PUT /api/0/issues/<id>/` answers this status (intake plan Task 13: a closure that keeps failing). */
+  let putStatus = null;
 
   if (persist && existsSync(persist)) {
     const saved = JSON.parse(readFileSync(persist, 'utf8'));
@@ -119,6 +121,7 @@ export async function startFakeSentry(options = {}) {
       }
       const one = /^\/api\/0\/issues\/([^/]+)\/$/.exec(path);
       if (one && req.method === 'PUT') {
+        if (putStatus !== null) return send(putStatus, { detail: 'Internal Error' });
         const issue = issues.get(one[1]);
         if (!issue) return send(404, { detail: 'The requested resource does not exist' });
         if (body?.status !== undefined) issue.status = body.status;
@@ -138,6 +141,8 @@ export async function startFakeSentry(options = {}) {
     calls,
     putIssue,
     setRepos,
+    /** Every later issue update answers `status` (e.g. 500) until `failPuts(null)`. */
+    failPuts(status) { putStatus = status; },
     get repos() { return repos; },
     close() {
       server.closeAllConnections();
