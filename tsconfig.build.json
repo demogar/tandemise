@@ -50,6 +50,9 @@
       "path": "./packages/execution-local"
     },
     {
+      "path": "./packages/terminal"
+    },
+    {
       "path": "./packages/integration-github"
     },
     {

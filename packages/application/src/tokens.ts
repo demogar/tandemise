@@ -2,7 +2,7 @@ import { token, type Token } from '@tandemise/kernel';
 import type {
   ApprovalRepositoryPort, ArtifactRepositoryPort, ArtifactStorePort, AssignmentRepositoryPort,
   CheckpointRepositoryPort, DecisionRepositoryPort, EvalBlobPort, EvalRepositoryPort, EvaluationRepositoryPort, EventBusPort,
-  EventRepositoryPort, ExecutionTargetRepositoryPort, FeedbackRepositoryPort, IntegrationRepositoryPort,
+  EventRepositoryPort, ExecutionTargetRepositoryPort, FeedbackRepositoryPort, IntegrationRepositoryPort, InteractiveSessionsPort,
   LeaseRepositoryPort, MemberRepositoryPort, MissionCriteriaRepositoryPort, MissionQuestionRepositoryPort, MissionRepositoryPort, LimitRepositoryPort, RoutineRepositoryPort, RunScoreRepositoryPort, SkillRepositoryPort, IssueRepositoryPort, IssueTrackerPort, PullRequestSnapshotPort, PersonRepositoryPort, ProjectionBusPort, RepoRepositoryPort,
   PlanProposalRepositoryPort, TaskHoldRepositoryPort, RoleRepositoryPort, RunInputRepositoryPort, RunRepositoryPort, RuntimeProfileRepositoryPort, SecretStorePort,
   TaskRepositoryPort, UnitOfWork, WorkspaceRepositoryPort,
@@ -67,6 +67,7 @@ import type { RepositoryProber } from './support/repository-prober.js';
 
 export const UNIT_OF_WORK = token<UnitOfWork>('port.UnitOfWork');
 
+export const INTERACTIVE_SESSIONS = token<InteractiveSessionsPort>('port.InteractiveSessions');
 export const WORKSPACE_REPOSITORY = token<WorkspaceRepositoryPort>('port.WorkspaceRepository');
 export const REPO_REPOSITORY = token<RepoRepositoryPort>('port.RepoRepository');
 export const MISSION_REPOSITORY = token<MissionRepositoryPort>('port.MissionRepository');
