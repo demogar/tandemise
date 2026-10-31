@@ -40,7 +40,7 @@ rep(`const REFINE_POOL = [
 rep(`{ text: 'Which pages should greet the visitor by name?', why: 'It decides how many pages the plan touches and what QA checks', options: ['Only the home page', 'Every page'] },`,
     `{ text: 'Should a shared link stop working on its own after a while?', why: 'An expiry adds a setting to build and a case for QA to verify', options: ['No, only when the owner turns it off', 'Yes, after 30 days'] },`);
 rep("headline: `${type} ready for the hello page`,", "headline: DEMO_HEADLINE[type] ?? `${type} written`,");
-rep("points: ['Written by the scripted acceptance agent', 'No model was called'],", "points: DEMO_POINTS[type] ?? ['Ready for the next step'],");
+rep(": ['Written by the scripted acceptance agent', 'No model was called'],", ": (DEMO_POINTS[type] ?? ['Ready for the next step']),");
 rep("for (const { type, destination } of outputs) {", `const DEMO_HEADLINE = {
   ProductSpec: 'Spec written with three acceptance criteria',
   QAReport: 'QA checked the change against every criterion',
